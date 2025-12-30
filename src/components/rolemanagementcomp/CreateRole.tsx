@@ -32,7 +32,7 @@ const CreateRole: React.FC = () => {
     setFormData({
       roleName: '',
       roleLevel: '',
-      roleStatus: 'active',
+      roleStatus: 'Active',
       description: ''
     });
     alert('Role created successfully!');
