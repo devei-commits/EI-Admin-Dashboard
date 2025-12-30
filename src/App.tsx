@@ -1,9 +1,14 @@
-
+import Dashboard from "./pages/dashboard"
+import Sidebar from "./components/sidebar/sidebar"
 const App = () => {
   return (
-    <div className='w-screen h-screen bg-black text-white text-8xl flex items-center justify-center'>
-      Hello!
+    <div>
+      <div className="flex flex-row">
+        <Sidebar />
+        <Dashboard />
+      </div>
     </div>
+
   )
 }
 

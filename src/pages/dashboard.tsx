@@ -1,11 +1,10 @@
 
-
-const dashboard = () => {
+const Dashboard = () => {
   return (
-    <div>
+    <div className="w-screen h-screen bg-green-100">
       
     </div>
   )
 }
 
-export default dashboard
+export default Dashboard
