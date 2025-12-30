@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import UserDetailPopup from './UserDetailPopup';
+import EditUserPopup from './EditUserPopup';
 
 interface User {
   id: string;
@@ -16,9 +17,9 @@ interface User {
 
 const ViewUsers: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
-
-  const mockUsers: User[] = [
+  const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
+  const [isEditPopupOpen, setIsEditPopupOpen] = useState(false);
+  const [users, setUsers] = useState<User[]>([
     {
       id: 'USR001',
       name: 'John Smith',
@@ -91,15 +92,33 @@ const ViewUsers: React.FC = () => {
       lastUpdate: '2024-02-28 15:25:00',
       status: 'active'
     }
-  ];
+  ]);
 
   const handleViewUser = (user: User) => {
     setSelectedUser(user);
-    setIsPopupOpen(true);
+    setIsViewPopupOpen(true);
   };
 
-  const handleClosePopup = () => {
-    setIsPopupOpen(false);
+  const handleEditUser = (user: User) => {
+    setSelectedUser(user);
+    setIsEditPopupOpen(true);
+  };
+
+  const handleSaveUser = (updatedUser: User) => {
+    setUsers(prevUsers => 
+      prevUsers.map(user => 
+        user.id === updatedUser.id ? updatedUser : user
+      )
+    );
+  };
+
+  const handleCloseViewPopup = () => {
+    setIsViewPopupOpen(false);
+    setSelectedUser(null);
+  };
+
+  const handleCloseEditPopup = () => {
+    setIsEditPopupOpen(false);
     setSelectedUser(null);
   };
 
@@ -145,7 +164,7 @@ const ViewUsers: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {mockUsers.map((user) => (
+            {users.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50">
                 <td className="border border-gray-300 px-4 py-2">
                   {user.name}
@@ -173,7 +192,7 @@ const ViewUsers: React.FC = () => {
                       View
                     </button>
                     <button
-                      onClick={() => console.log('Edit user:', user.id)}
+                      onClick={() => handleEditUser(user)}
                       className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
                     >
                       Edit
@@ -187,10 +206,19 @@ const ViewUsers: React.FC = () => {
       </div>
 
       {/* User Detail Popup */}
-      {isPopupOpen && selectedUser && (
+      {isViewPopupOpen && selectedUser && (
         <UserDetailPopup
           user={selectedUser}
-          onClose={handleClosePopup}
+          onClose={handleCloseViewPopup}
+        />
+      )}
+
+      {/* Edit User Popup */}
+      {isEditPopupOpen && selectedUser && (
+        <EditUserPopup
+          user={selectedUser}
+          onClose={handleCloseEditPopup}
+          onSave={handleSaveUser}
         />
       )}
     </div>
