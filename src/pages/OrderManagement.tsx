@@ -1,5 +1,5 @@
 
-import { OrderTable } from '../components/Ordermanagementcomp';
+import { OrderTable } from '../components/ordermanagementcomp';
 
 const Ordermanagement = () => {
   return (
