@@ -1,4 +1,4 @@
-import Ordermanagement from "./pages/Ordermanagement"
+import Ordermanagement from "./pages/Ordermanagement.tsx"
 import Sidebar from "./components/sidebar/sidebar"
 const App = () => {
   return (
