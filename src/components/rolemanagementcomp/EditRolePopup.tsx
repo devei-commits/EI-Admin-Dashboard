@@ -36,9 +36,7 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
     const { name, value } = e.target;
     setEditedRole(prev => ({ 
       ...prev, 
-      [name]: value,
-      // Reset role name if level changes
-      ...(name === 'roleLevel' && { roleName: '' })
+      [name]: value
     }));
   };
 
