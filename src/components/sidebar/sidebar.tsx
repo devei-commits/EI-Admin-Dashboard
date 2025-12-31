@@ -1,5 +1,7 @@
 
 
+import eilogofull from "../../assets/logo/eilogofull.svg";
+
 const Sidebar = () => {
     return (
         <div className="w-80 h-screen flex flex-col border border-black">
@@ -7,7 +9,7 @@ const Sidebar = () => {
 
             <div className="flex-1 flex flex-col">
                 <div className="p-2 flex items-center justify-center border-b border-black">
-                    <img src="/src/assets/logo/eilogofull.svg" alt="Logo" className="max-h-10 max-w-full object-contain" />
+                    <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain" />
                 </div>
 
 
