@@ -6,11 +6,11 @@ const RoleManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'createRole' | 'viewRoles'>('createRole');
 
   return (
-    <div className="w-full p-4">
+    <div className="w-full p-2 md:p-4">
       {/* Tab Selection */}
-      <div className="mb-6">
+      <div className="mb-4 md:mb-6">
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-8">
+          <nav className="flex space-x-4 md:space-x-8 overflow-x-auto">
             <button
               onClick={() => setActiveTab('createRole')}
               className={`py-2 px-4 text-sm font-medium border-b-2 ${

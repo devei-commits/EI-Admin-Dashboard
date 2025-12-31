@@ -145,9 +145,49 @@ const ViewRoles: React.FC = () => {
 
   return (
     <div className="w-full">
-      <h2 className="text-xl font-bold mb-4">View Roles</h2>
+      <h2 className="text-lg md:text-xl font-bold mb-4">View Roles</h2>
       
-      <div className="overflow-x-auto">
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {roles.map((role) => (
+          <div key={role.id} className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+            <div className="flex justify-between items-start mb-2">
+              <span className="font-semibold">{role.roleName}</span>
+              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(role.roleStatus)}`}>
+                {role.roleStatus}
+              </span>
+            </div>
+            <div className="space-y-1 text-sm mb-3">
+              <p><span className="font-medium text-gray-600">Level:</span> <span className={`px-2 py-0.5 text-xs rounded-full ${getLevelColor(role.roleLevel)}`}>{role.roleLevel}</span></p>
+              <p><span className="font-medium text-gray-600">Created:</span> {role.roleCreatedAt}</p>
+              <p><span className="font-medium text-gray-600">Updated:</span> {role.roleUpdatedAt}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleViewRole(role)}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                View
+              </button>
+              <button
+                onClick={() => handleEditRole(role)}
+                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => handleDeleteRole(role.id)}
+                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-gray-100">

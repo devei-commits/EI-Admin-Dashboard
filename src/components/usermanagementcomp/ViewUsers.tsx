@@ -137,9 +137,43 @@ const ViewUsers: React.FC = () => {
 
   return (
     <div className="w-full">
-      <h2 className="text-xl font-bold mb-4">View Users</h2>
+      <h2 className="text-lg md:text-xl font-bold mb-4">View Users</h2>
       
-      <div className="overflow-x-auto">
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {users.map((user) => (
+          <div key={user.id} className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
+            <div className="flex justify-between items-start mb-2">
+              <span className="font-semibold">{user.name}</span>
+              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(user.status)}`}>
+                {user.status}
+              </span>
+            </div>
+            <div className="space-y-1 text-sm mb-3">
+              <p><span className="font-medium text-gray-600">Email:</span> {user.email}</p>
+              <p><span className="font-medium text-gray-600">Mobile:</span> {user.mobile}</p>
+              <p><span className="font-medium text-gray-600">Role:</span> {user.role}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleViewUser(user)}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                View
+              </button>
+              <button
+                onClick={() => handleEditUser(user)}
+                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-gray-100">

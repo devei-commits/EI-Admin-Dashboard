@@ -47,9 +47,9 @@ const CreateRole: React.FC = () => {
 
   return (
     <div className="w-full max-w-2xl">
-      <h2 className="text-xl font-bold mb-4">Create New Role</h2>
+      <h2 className="text-lg md:text-xl font-bold mb-4">Create New Role</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {/* Role Level  */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
