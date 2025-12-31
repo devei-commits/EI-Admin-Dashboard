@@ -1,34 +1,56 @@
-
-
+import { NavLink } from "react-router-dom";
 import eilogofull from "../../assets/logo/eilogofull.svg";
 
 const Sidebar = () => {
+    const linkClass = ({ isActive }: { isActive: boolean }) =>
+        `flex items-center px-4 py-3 rounded-lg transition-colors ${
+            isActive
+                ? "bg-gray-200 text-gray-900 font-semibold"
+                : "text-gray-700 hover:bg-gray-100"
+        }`;
+
     return (
-        <div className="w-80 h-screen flex flex-col border border-black">
-
-
-            <div className="flex-1 flex flex-col">
-                <div className="p-2 flex items-center justify-center border-b border-black">
-                    <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain" />
-                </div>
-
-
-                <div className="flex flex-col flex-1 p-2 items-center justify-center">
-                    <div>1</div>
-                    <div>2</div>
-                    <div>3</div>
-                    <div>4</div>
-                </div>
+        <div className="w-64 h-screen flex flex-col bg-white border-r border-gray-200">
+            {/* Logo Section */}
+            <div className="p-4 flex items-center justify-center border-b border-gray-200">
+                <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain" />
             </div>
 
-            <div className="bg-yellow-50 flex-1">
-                second part
-            </div>
+            {/* Navigation Links */}
+            <nav className="flex-1 p-4">
+                <ul className="space-y-2">
+                    <li>
+                        <NavLink to="/" className={linkClass}>
+                            <span className="font-medium">Dashboard</span>
+                        </NavLink>
+                    </li>
+                    <li>
+                        <NavLink to="/role-management" className={linkClass}>
+                            <span className="font-medium">Role Management</span>
+                        </NavLink>
+                    </li>
+                    <li>
+                        <NavLink to="/user-management" className={linkClass}>
+                            <span className="font-medium">User Management</span>
+                        </NavLink>
+                    </li>
+                    <li>
+                        <NavLink to="/order-management" className={linkClass}>
+                            <span className="font-medium">Order Management</span>
+                        </NavLink>
+                    </li>
+                    <li>
+                        <NavLink to="/enquiry-management" className={linkClass}>
+                            <span className="font-medium">Enquiry Management</span>
+                        </NavLink>
+                    </li>
+                </ul>
+            </nav>
 
-            <div className="bg-blue-50 flex-1">
-                third part
+            {/* Footer Section (optional) */}
+            <div className="p-4 border-t border-gray-200">
+                <p className="text-sm text-gray-500 text-center">© 2025 Eisthetic</p>
             </div>
-
         </div>
     )
 }

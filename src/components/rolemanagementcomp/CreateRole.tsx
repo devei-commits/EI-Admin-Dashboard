@@ -50,7 +50,7 @@ const CreateRole: React.FC = () => {
       <h2 className="text-xl font-bold mb-4">Create New Role</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Role Level */}
+          {/* Role Level  */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Role Level
@@ -116,7 +116,7 @@ const CreateRole: React.FC = () => {
               Description
             </label>
             <textarea
-              name="description"
+              name="description."
               value={formData.description}
               onChange={handleInputChange}
               rows={3}
@@ -125,23 +125,6 @@ const CreateRole: React.FC = () => {
             />
           </div>
         </div>
-
-        {/* Role Hierarchy Display */}
-        {formData.roleLevel && (
-          <div className="mt-6 p-4 bg-gray-50 rounded-md">
-            <h3 className="font-medium text-gray-800 mb-2">Available roles in {formData.roleLevel} level:</h3>
-            <div className="flex flex-wrap gap-2">
-              {getAvailableRoles().map((role) => (
-                <span
-                  key={role}
-                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                >
-                  {role}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         <div className="mt-6">
           <button
