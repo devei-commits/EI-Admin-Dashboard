@@ -73,15 +73,15 @@ const OrderTable: React.FC = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">
         {orders.map((order) => (
-          <div key={order.orderId} className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
-            <div className="flex justify-between items-start mb-2">
-              <span className="font-semibold text-blue-600">{order.orderId}</span>
-              <span className="px-2 py-1 text-xs rounded-full bg-gray-100">{order.orderStatus}</span>
+          <div key={order.orderId} className="bg-gray-50/50 border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors">
+            <div className="flex justify-between items-start mb-3">
+              <span className="font-semibold text-gray-800">{order.orderId}</span>
+              <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-100">{order.orderStatus}</span>
             </div>
-            <div className="space-y-1 text-sm">
-              <p><span className="font-medium text-gray-600">Company:</span> {order.companyName}</p>
-              <p><span className="font-medium text-gray-600">Address:</span> {order.doctorClinicAddress}</p>
-              <p><span className="font-medium text-gray-600">Date:</span> {order.dateRegistered}</p>
+            <div className="space-y-2 text-sm">
+              <p><span className="font-medium text-gray-400">Company:</span> <span className="text-gray-700">{order.companyName}</span></p>
+              <p><span className="font-medium text-gray-400">Address:</span> <span className="text-gray-700">{order.doctorClinicAddress}</span></p>
+              <p><span className="font-medium text-gray-400">Date:</span> <span className="text-gray-700">{order.dateRegistered}</span></p>
             </div>
           </div>
         ))}
@@ -89,43 +89,45 @@ const OrderTable: React.FC = () => {
 
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full border-collapse border border-gray-300">
+        <table className="w-full">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+            <tr className="border-b border-gray-100">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Order ID
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Company Name
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Doctor Clinic Address
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Date Registered
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Order Status
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-50">
             {orders.map((order) => (
-              <tr key={order.orderId} className="hover:bg-gray-50">
-                <td className="border border-gray-300 px-4 py-2">
+              <tr key={order.orderId} className="hover:bg-gray-50/50 transition-colors">
+                <td className="px-4 py-4 font-semibold text-gray-800">
                   {order.orderId}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-700">
                   {order.companyName}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-600 text-sm">
                   {order.doctorClinicAddress}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-500">
                   {order.dateRegistered}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {order.orderStatus}
+                <td className="px-4 py-4">
+                  <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                    {order.orderStatus}
+                  </span>
                 </td>
               </tr>
             ))}

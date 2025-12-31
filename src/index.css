@@ -1,1 +1,63 @@
 @import "tailwindcss";
+
+/* Light Theme with Gold Accents */
+:root {
+  --color-primary: #B8860B; /* Dark Goldenrod */
+  --color-primary-light: #DAA520; /* Goldenrod */
+  --color-primary-dark: #8B6914;
+  --color-accent: #F5F0E1; /* Light gold tint for backgrounds */
+  --color-bg: #FAFAFA;
+  --color-bg-secondary: #F5F5F5;
+  --color-text: #1F2937;
+  --color-text-secondary: #6B7280;
+  --color-border: #E5E7EB;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3F4F6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Gold accent utilities */
+.text-gold {
+  color: var(--color-primary);
+}
+
+.bg-gold {
+  background-color: var(--color-primary);
+}
+
+.bg-gold-light {
+  background-color: var(--color-accent);
+}
+
+.border-gold {
+  border-color: var(--color-primary);
+}
+
+.hover\:bg-gold:hover {
+  background-color: var(--color-primary);
+}
+
+.ring-gold {
+  --tw-ring-color: var(--color-primary);
+}

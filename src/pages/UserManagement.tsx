@@ -3,9 +3,14 @@ import { UserManagement } from '../components/usermanagementcomp';
 
 const Usermanagement = () => {
   return (
-    <div className="p-3 md:p-4 bg-white rounded shadow min-h-screen">
-      <h1 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">User Management</h1>
-      <UserManagement />
+    <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">User Management</h1>
+        <p className="text-gray-500 mt-1">Manage users and their access</p>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+        <UserManagement />
+      </div>
     </div>
   )
 }

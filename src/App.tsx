@@ -9,9 +9,9 @@ import Sidebar from "./components/sidebar/sidebar"
 const App = () => {
   return (
     <BrowserRouter>
-      <div className="flex flex-row">
+      <div className="flex flex-row min-h-screen bg-gray-50">
         <Sidebar />
-        <div className="flex-1 pt-14 md:pt-0">
+        <div className="flex-1 pt-14 md:pt-0 overflow-auto">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/role-management" element={<RoleManagement />} />

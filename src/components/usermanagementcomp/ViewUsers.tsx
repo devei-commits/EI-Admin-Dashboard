@@ -125,45 +125,45 @@ const ViewUsers: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return 'bg-green-100 text-green-800';
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       case 'deactive':
-        return 'bg-red-100 text-red-800';
+        return 'bg-gray-100 text-gray-600 border border-gray-200';
       case 'suspended':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-amber-50 text-amber-700 border border-amber-100';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-600 border border-gray-200';
     }
   };
 
   return (
     <div className="w-full">
-      <h2 className="text-lg md:text-xl font-bold mb-4">View Users</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-5">View Users</h2>
       
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">
         {users.map((user) => (
-          <div key={user.id} className="bg-white border border-gray-300 rounded-lg p-4 shadow-sm">
-            <div className="flex justify-between items-start mb-2">
-              <span className="font-semibold">{user.name}</span>
-              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(user.status)}`}>
+          <div key={user.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors">
+            <div className="flex justify-between items-start mb-3">
+              <span className="font-semibold text-gray-800">{user.name}</span>
+              <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(user.status)}`}>
                 {user.status}
               </span>
             </div>
-            <div className="space-y-1 text-sm mb-3">
-              <p><span className="font-medium text-gray-600">Email:</span> {user.email}</p>
-              <p><span className="font-medium text-gray-600">Mobile:</span> {user.mobile}</p>
-              <p><span className="font-medium text-gray-600">Role:</span> {user.role}</p>
+            <div className="space-y-2 text-sm mb-4">
+              <p><span className="font-medium text-gray-400">Email:</span> <span className="text-gray-600">{user.email}</span></p>
+              <p><span className="font-medium text-gray-400">Mobile:</span> <span className="text-gray-600">{user.mobile}</span></p>
+              <p><span className="font-medium text-gray-400">Role:</span> <span className="text-gray-600">{user.role}</span></p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleViewUser(user)}
-                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
               >
                 View
               </button>
               <button
                 onClick={() => handleEditUser(user)}
-                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 Edit
               </button>
@@ -174,60 +174,60 @@ const ViewUsers: React.FC = () => {
 
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full border-collapse border border-gray-300">
+        <table className="w-full">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+            <tr className="border-b border-gray-100">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Name
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Email
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Mobile
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Role
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Status
               </th>
-              <th className="border border-gray-300 px-4 py-2 text-left font-medium">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-50">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
-                <td className="border border-gray-300 px-4 py-2">
+              <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                <td className="px-4 py-4 font-medium text-gray-800">
                   {user.name}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-600">
                   {user.email}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-600">
                   {user.mobile}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4 text-gray-600">
                   {user.role}
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(user.status)}`}>
+                <td className="px-4 py-4">
+                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(user.status)}`}>
                     {user.status}
                   </span>
                 </td>
-                <td className="border border-gray-300 px-4 py-2">
+                <td className="px-4 py-4">
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleViewUser(user)}
-                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
                     >
                       View
                     </button>
                     <button
                       onClick={() => handleEditUser(user)}
-                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                      className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                     >
                       Edit
                     </button>
