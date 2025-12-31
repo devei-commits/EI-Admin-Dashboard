@@ -19,105 +19,84 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return 'bg-green-100 text-green-800';
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       case 'inactive':
-        return 'bg-red-100 text-red-800';
+        return 'bg-gray-100 text-gray-600 border border-gray-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-600 border border-gray-200';
     }
   };
 
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'admin':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-violet-50 text-violet-700 border border-violet-100';
       case 'manager':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-amber-50 text-amber-700 border border-amber-100';
       case 'staff':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-sky-50 text-sky-700 border border-sky-100';
       case 'client':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-50 text-gray-600 border border-gray-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-50 text-gray-600 border border-gray-200';
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-90vh overflow-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">Role Details</h3>
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center p-5 border-b border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-800">Role Details</h3>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            ×
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-gray-300">
-            <tbody>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Role Name
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  {role.roleName}
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Role Level
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  <span className={`px-3 py-1 text-sm rounded-full ${getLevelColor(role.roleLevel)}`}>
-                    {role.roleLevel}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Role Status
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  <span className={`px-3 py-1 text-sm rounded-full ${getStatusColor(role.roleStatus)}`}>
-                    {role.roleStatus}
-                  </span>
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Role Created At
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  {role.roleCreatedAt}
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Role Updated At
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  {role.roleUpdatedAt}
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-gray-300 px-4 py-3 font-medium bg-gray-50">
-                  Description
-                </td>
-                <td className="border border-gray-300 px-4 py-3">
-                  {role.description || 'No description available'}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Role Name</p>
+              <p className="text-gray-800 font-medium">{role.roleName}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Role Level</p>
+              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)}`}>
+                {role.roleLevel}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Status</p>
+              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)}`}>
+                {role.roleStatus}
+              </span>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Description</p>
+              <p className="text-gray-600">{role.description || 'No description available'}</p>
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Created At</p>
+              <p className="text-gray-600 text-sm">{role.roleCreatedAt}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Updated At</p>
+              <p className="text-gray-600 text-sm">{role.roleUpdatedAt}</p>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="p-5 border-t border-gray-100 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+            className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
           >
             Close
           </button>

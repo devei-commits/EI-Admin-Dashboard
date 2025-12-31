@@ -59,30 +59,32 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-90vh overflow-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">Edit Role</h3>
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center p-5 border-b border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-800">Edit Role</h3>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            ×
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Role Level */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Role Level
               </label>
               <select
                 name="roleLevel"
                 value={editedRole.roleLevel}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
                 required
               >
                 {roleLevels.map((level) => (
@@ -95,14 +97,14 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
 
             {/* Role Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Role Name
               </label>
               <select
                 name="roleName"
                 value={editedRole.roleName}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
                 required
               >
                 <option value="">Select Role Name</option>
@@ -116,14 +118,14 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
 
             {/* Role Status */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Role Status
               </label>
               <select
                 name="roleStatus"
                 value={editedRole.roleStatus}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
                 required
               >
                 {statusOptions.map((status) => (
@@ -136,7 +138,7 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
 
             {/* Description */}
             <div className="md:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Description
               </label>
               <textarea
@@ -144,49 +146,49 @@ const EditRolePopup: React.FC<EditRolePopupProps> = ({ role, onClose, onSave }) 
                 value={editedRole.description}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all resize-none"
                 placeholder="Enter role description..."
               />
             </div>
           </div>
 
           {/* Read-only fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-5 border-t border-gray-100">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Role Created At
               </label>
               <input
                 type="text"
                 value={editedRole.roleCreatedAt}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                 readOnly
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-600 mb-2">
                 Role Updated At
               </label>
               <input
                 type="text"
                 value={editedRole.roleUpdatedAt}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                 readOnly
               />
             </div>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-6">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-5 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="w-full sm:w-auto px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
             >
               Save Changes
             </button>
