@@ -19,7 +19,7 @@ const ViewRoles: React.FC = () => {
   const [roles, setRoles] = useState<Role[]>([
     {
       id: 'ROLE001',
-      roleName: 'super admin',
+      roleName: 'Super Admin',
       roleLevel: 'admin',
       roleStatus: 'active',
       roleCreatedAt: '2024-01-10',
@@ -28,57 +28,129 @@ const ViewRoles: React.FC = () => {
     },
     {
       id: 'ROLE002',
-      roleName: 'BD manager',
-      roleLevel: 'manager',
+      roleName: 'Admin',
+      roleLevel: 'admin',
       roleStatus: 'active',
       roleCreatedAt: '2024-01-12',
       roleUpdatedAt: '2024-02-20 14:20:00',
-      description: 'Manages business development operations and team'
+      description: 'Administrative access with system management capabilities'
     },
     {
       id: 'ROLE003',
-      roleName: 'QA staff',
-      roleLevel: 'staff',
+      roleName: 'BD Manager',
+      roleLevel: 'manager',
       roleStatus: 'active',
       roleCreatedAt: '2024-01-15',
       roleUpdatedAt: '2024-02-18 09:45:00',
-      description: 'Quality assurance testing and validation'
+      description: 'Manages business development operations and team'
     },
     {
       id: 'ROLE004',
-      roleName: 'R&D manager',
+      roleName: 'QA Manager',
       roleLevel: 'manager',
       roleStatus: 'active',
       roleCreatedAt: '2024-01-18',
       roleUpdatedAt: '2024-02-22 16:15:00',
-      description: 'Research and development team leadership'
+      description: 'Oversees quality assurance processes and team management'
     },
     {
       id: 'ROLE005',
-      roleName: 'Sales',
-      roleLevel: 'staff',
+      roleName: 'R&D Lead',
+      roleLevel: 'manager',
       roleStatus: 'active',
       roleCreatedAt: '2024-01-20',
       roleUpdatedAt: '2024-02-25 11:30:00',
-      description: 'Sales operations and customer relations'
+      description: 'Leads research and development initiatives and team'
     },
     {
       id: 'ROLE006',
-      roleName: 'Doctor',
-      roleLevel: 'client',
+      roleName: 'Procurement',
+      roleLevel: 'staff',
       roleStatus: 'active',
-      roleCreatedAt: '2024-01-25',
-      roleUpdatedAt: '2024-02-28 13:45:00',
-      description: 'Medical professional client access'
+      roleCreatedAt: '2024-01-22',
+      roleUpdatedAt: '2024-02-20 10:15:00',
+      description: 'Handles procurement and vendor management operations'
     },
     {
       id: 'ROLE007',
+      roleName: 'Manufacturing and Production',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-01-24',
+      roleUpdatedAt: '2024-02-22 14:30:00',
+      description: 'Manages manufacturing and production processes'
+    },
+    {
+      id: 'ROLE008',
+      roleName: 'Sales',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-01-26',
+      roleUpdatedAt: '2024-02-24 11:45:00',
+      description: 'Sales operations and customer relations'
+    },
+    {
+      id: 'ROLE009',
+      roleName: 'Logistics',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-01-28',
+      roleUpdatedAt: '2024-02-26 09:20:00',
+      description: 'Manages logistics, shipping, and supply chain operations'
+    },
+    {
+      id: 'ROLE010',
       roleName: 'Design',
       roleLevel: 'staff',
-      roleStatus: 'inactive',
+      roleStatus: 'active',
       roleCreatedAt: '2024-02-01',
-      roleUpdatedAt: '2024-02-26 08:20:00',
+      roleUpdatedAt: '2024-02-28 13:30:00',
       description: 'Product and graphic design responsibilities'
+    },
+    {
+      id: 'ROLE011',
+      roleName: 'R&D Staff',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-02-03',
+      roleUpdatedAt: '2024-02-25 15:10:00',
+      description: 'Research and development team member'
+    },
+    {
+      id: 'ROLE012',
+      roleName: 'QA Staff',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-02-05',
+      roleUpdatedAt: '2024-02-27 10:25:00',
+      description: 'Quality assurance testing and validation'
+    },
+    {
+      id: 'ROLE013',
+      roleName: 'BD Staff',
+      roleLevel: 'staff',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-02-07',
+      roleUpdatedAt: '2024-02-28 16:40:00',
+      description: 'Business development support and operations'
+    },
+    {
+      id: 'ROLE014',
+      roleName: 'Doctor',
+      roleLevel: 'client',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-02-10',
+      roleUpdatedAt: '2024-02-28 12:15:00',
+      description: 'Medical professional client access'
+    },
+    {
+      id: 'ROLE015',
+      roleName: 'Customer',
+      roleLevel: 'client',
+      roleStatus: 'active',
+      roleCreatedAt: '2024-02-12',
+      roleUpdatedAt: '2024-02-28 14:50:00',
+      description: 'Customer client access to platform services'
     }
   ]);
 
