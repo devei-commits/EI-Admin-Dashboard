@@ -52,8 +52,8 @@ const EnquiryDetailPopup: React.FC<EnquiryDetailPopupProps> = ({ enquiry, onClos
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-100 sticky top-0 bg-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+              <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
@@ -123,7 +123,7 @@ const EnquiryDetailPopup: React.FC<EnquiryDetailPopupProps> = ({ enquiry, onClos
                 value={responseMessage}
                 onChange={(e) => setResponseMessage(e.target.value)}
                 placeholder="Type your response message here..."
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none"
+                className="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all resize-none bg-gray-50/50"
                 rows={4}
               />
             </div>
@@ -131,10 +131,10 @@ const EnquiryDetailPopup: React.FC<EnquiryDetailPopupProps> = ({ enquiry, onClos
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 flex gap-3 justify-end sticky bottom-0">
+        <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col-reverse sm:flex-row gap-3 justify-end sticky bottom-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Close
           </button>
@@ -143,13 +143,13 @@ const EnquiryDetailPopup: React.FC<EnquiryDetailPopupProps> = ({ enquiry, onClos
               <button
                 onClick={handleSendResponse}
                 disabled={!responseMessage.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 rounded-lg transition-colors disabled:cursor-not-allowed"
+                className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 rounded-lg transition-colors disabled:cursor-not-allowed"
               >
                 Send Response
               </button>
               <button
                 onClick={handleClose}
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                className="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors"
               >
                 Mark as Closed
               </button>

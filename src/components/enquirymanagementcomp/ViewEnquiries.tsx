@@ -109,14 +109,14 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
               placeholder="Search by name, email or mobile..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all bg-gray-50/50"
             />
           </div>
         </div>
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as 'all' | 'new' | 'responded' | 'closed')}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all bg-white"
+          className="px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all bg-gray-50/50"
         >
           <option value="all">All Status</option>
           <option value="new">New</option>
@@ -125,39 +125,79 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
         </select>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {filteredEnquiries.length > 0 ? (
+          filteredEnquiries.map((enquiry) => (
+            <div key={enquiry.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors">
+              <div className="flex justify-between items-start mb-3">
+                <span className="font-semibold text-gray-800">{enquiry.id}</span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(enquiry.status)}`}>
+                  {getStatusIcon(enquiry.status)}
+                  {enquiry.status.charAt(0).toUpperCase() + enquiry.status.slice(1)}
+                </span>
+              </div>
+              <div className="space-y-2 text-sm mb-4">
+                <p><span className="font-medium text-gray-400">Name:</span> <span className="text-gray-700">{enquiry.contactName}</span></p>
+                <p><span className="font-medium text-gray-400">Email:</span> <span className="text-gray-700 break-all">{enquiry.email}</span></p>
+                <p><span className="font-medium text-gray-400">Mobile:</span> <span className="text-gray-700">{enquiry.mobileNumber}</span></p>
+                <p><span className="font-medium text-gray-400">Date:</span> <span className="text-gray-700">{enquiry.date}</span></p>
+              </div>
+              <button
+                onClick={() => onSelectEnquiry(enquiry)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                View Details
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-8">
+            <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            <p className="text-gray-500">No enquiries found</p>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Table */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Enquiry ID</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Contact Name</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Mobile</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Action</th>
+            <tr className="border-b border-gray-100">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Enquiry ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Contact Name</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Email</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Mobile</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Action</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-50">
             {filteredEnquiries.length > 0 ? (
               filteredEnquiries.map((enquiry) => (
-                <tr key={enquiry.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{enquiry.id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{enquiry.contactName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700 truncate">{enquiry.email}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{enquiry.mobileNumber}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{enquiry.date}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(enquiry.status)}`}>
+                <tr key={enquiry.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-4 py-4 text-sm font-medium text-gray-800">{enquiry.id}</td>
+                  <td className="px-4 py-4 text-sm text-gray-700">{enquiry.contactName}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{enquiry.email}</td>
+                  <td className="px-4 py-4 text-sm text-gray-600">{enquiry.mobileNumber}</td>
+                  <td className="px-4 py-4 text-sm text-gray-500">{enquiry.date}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(enquiry.status)}`}>
                       {getStatusIcon(enquiry.status)}
                       {enquiry.status.charAt(0).toUpperCase() + enquiry.status.slice(1)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     <button
                       onClick={() => onSelectEnquiry(enquiry)}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -183,7 +223,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
       </div>
 
       {/* Entries Counter */}
-      <div className="flex justify-between items-center text-sm text-gray-500 mt-4">
+      <div className="flex justify-between items-center text-sm text-gray-400 mt-4 pt-4 border-t border-gray-100">
         <span>Showing {filteredEnquiries.length} of {enquiries.length} enquiries</span>
       </div>
     </div>
