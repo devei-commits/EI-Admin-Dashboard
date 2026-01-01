@@ -1,4 +1,4 @@
-
+import { EnquiryManagement } from '../components/enquirymanagementcomp';
 
 const Enquirymanagement = () => {
   return (
@@ -8,7 +8,7 @@ const Enquirymanagement = () => {
         <p className="text-gray-500 mt-1">View and respond to customer enquiries</p>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-        <p className="text-gray-500">No enquiries yet.</p>
+        <EnquiryManagement />
       </div>
     </div>
   )
