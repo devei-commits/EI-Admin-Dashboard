@@ -1,6 +1,6 @@
-import { EnquiryManagement } from '../components/enquirymanagementcomp';
+import { EnquiryManagement as EnquiryManagementComponent } from '../components/enquirymanagementcomp';
 
-const Enquirymanagement = () => {
+const EnquiryManagement = () => {
   return (
     <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
       <div className="mb-6">
@@ -8,10 +8,10 @@ const Enquirymanagement = () => {
         <p className="text-gray-500 mt-1">View and respond to customer enquiries</p>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-        <EnquiryManagement />
+        <EnquiryManagementComponent />
       </div>
     </div>
   )
 }
 
-export default Enquirymanagement
+export default EnquiryManagement

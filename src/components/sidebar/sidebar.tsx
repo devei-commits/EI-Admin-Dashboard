@@ -1,9 +1,29 @@
-import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import eilogofull from "../../assets/logo/eilogofull.svg";
 
 const Sidebar = () => {
     const [isOpen, setIsOpen] = useState(false);
+    const [enquiryOpen, setEnquiryOpen] = useState(false);
+    const location = useLocation();
+
+    // Check if any enquiry submenu item is active
+    const isEnquiryActive = [
+        '/enquiry-management',
+        '/doctor-appointments',
+        '/contact-enquiry',
+        '/new-developments',
+        '/product-samples'
+    ].includes(location.pathname);
+
+    // Auto-open dropdown when navigating to enquiry pages, close when navigating away
+    useEffect(() => {
+        if (isEnquiryActive && !enquiryOpen) {
+            setEnquiryOpen(true);
+        } else if (!isEnquiryActive && enquiryOpen) {
+            setEnquiryOpen(false);
+        }
+    }, [location.pathname, isEnquiryActive, enquiryOpen]);
 
     const linkClass = ({ isActive }: { isActive: boolean }) =>
         `flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
@@ -106,12 +126,110 @@ const Sidebar = () => {
                             </NavLink>
                         </li>
                         <li>
-                            <NavLink to="/enquiry-management" className={linkClass} onClick={handleLinkClick}>
-                                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                </svg>
-                                <span className="font-medium">Enquiry Management</span>
-                            </NavLink>
+                            <div className={`rounded-lg transition-all duration-200 ${
+                                isEnquiryActive || enquiryOpen
+                                    ? "bg-amber-50 text-amber-700 font-semibold border-l-4 border-amber-500"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                            }`}>
+                                <div className="flex items-center">
+                                    <NavLink
+                                        to="/enquiry-management"
+                                        className="flex-1 flex items-center px-4 py-3"
+                                        onClick={handleLinkClick}
+                                    >
+                                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                        </svg>
+                                        <span className="font-medium">Enquiry Management</span>
+                                    </NavLink>
+                                    <button
+                                        onClick={() => setEnquiryOpen(!enquiryOpen)}
+                                        className="p-2 rounded hover:bg-amber-100 transition-colors"
+                                    >
+                                        <svg
+                                            className={`w-5 h-5 transition-transform duration-300 ease-in-out ${enquiryOpen ? "rotate-180" : ""}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Submenu with smooth animation */}
+                            <div
+                                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                                    enquiryOpen ? "max-h-96" : "max-h-0"
+                                }`}
+                            >
+                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    <li>
+                                        <NavLink
+                                            to="/doctor-appointments"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            <span>Doctor Appointments</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/contact-enquiry"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
+                                            <span>Contact Enquiry</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/new-developments"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                            <span>New Developments</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/product-samples"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                            </svg>
+                                            <span>Product Samples</span>
+                                        </NavLink>
+                                    </li>
+                                </ul>
+                            </div>
                         </li>
                     </ul>
                 </nav>
