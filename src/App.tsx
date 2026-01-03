@@ -4,6 +4,10 @@ import RoleManagement from './pages/RoleManagement'
 import UserManagement from './pages/UserManagement'
 import OrderManagement from './pages/OrderManagement'
 import EnquiryManagement from './pages/EnquiryManagement'
+import DoctorAppointments from './pages/DoctorAppointments'
+import ContactEnquiry from './pages/ContactEnquiry'
+import NewDevelopments from './pages/NewDevelopments'
+import ProductSamples from './pages/ProductSamples'
 import Sidebar from "./components/sidebar/sidebar"
 
 const App = () => {
@@ -18,6 +22,10 @@ const App = () => {
             <Route path="/user-management" element={<UserManagement />} />
             <Route path="/order-management" element={<OrderManagement />} />
             <Route path="/enquiry-management" element={<EnquiryManagement />} />
+            <Route path="/doctor-appointments" element={<DoctorAppointments />} />
+            <Route path="/contact-enquiry" element={<ContactEnquiry />} />
+            <Route path="/new-developments" element={<NewDevelopments />} />
+            <Route path="/product-samples" element={<ProductSamples />} />
           </Routes>
         </div>
       </div>
