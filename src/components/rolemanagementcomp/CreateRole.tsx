@@ -116,7 +116,7 @@ const CreateRole: React.FC = () => {
               Description
             </label>
             <textarea
-              name="description."
+              name="description"
               value={formData.description}
               onChange={handleInputChange}
               rows={3}
