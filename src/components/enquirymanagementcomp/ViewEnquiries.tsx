@@ -200,7 +200,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
       className="flex items-center gap-1 hover:bg-gray-50 p-2 rounded transition-colors min-w-0 w-full justify-start"
     >
       <span className="truncate">{children}</span>
-      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         {sortField === field ? (
           sortDirection === 'asc' ? (
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -218,7 +218,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
     <div className="w-full space-y-6">
       {/* Quick Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+        <div className="bg-linear-to-rrom-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">Total</p>
@@ -232,7 +232,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
+        <div className="bg-linear-to-r from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-amber-600 uppercase tracking-wide">New</p>
@@ -246,7 +246,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200">
+        <div className="bg-linear-to-r from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide">Responded</p>
@@ -260,7 +260,7 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200">
+        <div className="bg-linear-to-r from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Closed</p>
@@ -433,25 +433,25 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
             <table className="w-full table-auto">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">
                     <SortButton field="id">Enquiry ID</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
                     <SortButton field="contactName">Contact Name</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-45">
                     <SortButton field="email">Email</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[110px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-27.5">
                     <SortButton field="mobileNumber">Mobile</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
                     <SortButton field="date">Date</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
                     <SortButton field="status">Status</SortButton>
                   </th>
-                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                  <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">
                     Action
                   </th>
                 </tr>
@@ -464,12 +464,12 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
                         {enquiry.id}
                       </td>
                       <td className="px-2 sm:px-4 py-4 text-sm font-medium text-gray-900">
-                        <div className="max-w-[140px] truncate" title={enquiry.contactName}>
+                        <div className="max-w-35 truncate" title={enquiry.contactName}>
                           {enquiry.contactName}
                         </div>
                       </td>
                       <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
-                        <div className="max-w-[180px] truncate" title={enquiry.email}>
+                        <div className="max-w-45 truncate" title={enquiry.email}>
                           {enquiry.email}
                         </div>
                       </td>

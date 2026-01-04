@@ -163,7 +163,7 @@ const Sidebar = () => {
                                     enquiryOpen ? "max-h-96" : "max-h-0"
                                 }`}
                             >
-                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
                                     <li>
                                         <NavLink
                                             to="/doctor-appointments"
