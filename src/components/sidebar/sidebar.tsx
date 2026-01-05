@@ -5,6 +5,8 @@ import eilogofull from "../../assets/logo/eilogofull.svg";
 const Sidebar = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [enquiryOpen, setEnquiryOpen] = useState(false);
+    const [orderOpen, setOrderOpen] = useState(false);
+    const [productOpen, setProductOpen] = useState(false);
     const location = useLocation();
 
     // Check if any enquiry submenu item is active
@@ -16,6 +18,21 @@ const Sidebar = () => {
         '/product-samples'
     ].includes(location.pathname);
 
+    // Check if any order submenu item is active
+    const isOrderActive = [
+        '/order-management',
+        '/order-list',
+        '/coupon-management',
+        '/discount-management'
+    ].includes(location.pathname);
+
+    // Check if any product submenu item is active
+    const isProductActive = [
+        '/catalogue-management',
+        '/packaging-management',
+        '/active-ingredients'
+    ].includes(location.pathname);
+
     // Auto-open dropdown when navigating to enquiry pages, close when navigating away
     useEffect(() => {
         if (isEnquiryActive && !enquiryOpen) {
@@ -24,6 +41,24 @@ const Sidebar = () => {
             setEnquiryOpen(false);
         }
     }, [location.pathname, isEnquiryActive, enquiryOpen]);
+
+    // Auto-open dropdown when navigating to order pages, close when navigating away
+    useEffect(() => {
+        if (isOrderActive && !orderOpen) {
+            setOrderOpen(true);
+        } else if (!isOrderActive && orderOpen) {
+            setOrderOpen(false);
+        }
+    }, [location.pathname, isOrderActive, orderOpen]);
+
+    // Auto-open dropdown when navigating to product pages, close when navigating away
+    useEffect(() => {
+        if (isProductActive && !productOpen) {
+            setProductOpen(true);
+        } else if (!isProductActive && productOpen) {
+            setProductOpen(false);
+        }
+    }, [location.pathname, isProductActive, productOpen]);
 
     const linkClass = ({ isActive }: { isActive: boolean }) =>
         `flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
@@ -118,11 +153,191 @@ const Sidebar = () => {
                             </NavLink>
                         </li>
                         <li>
-                            <NavLink to="/order-management" className={linkClass} onClick={handleLinkClick}>
+                            <div className={`rounded-lg transition-all duration-200 ${
+                                isOrderActive || orderOpen
+                                    ? "bg-amber-50 text-amber-700 font-semibold border-l-4 border-amber-500"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                            }`}>
+                                <div className="flex items-center">
+                                    <NavLink
+                                        to="/order-management"
+                                        className="flex-1 flex items-center px-4 py-3"
+                                        onClick={handleLinkClick}
+                                    >
+                                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                        </svg>
+                                        <span className="font-medium">Order Management</span>
+                                    </NavLink>
+                                    <button
+                                        onClick={() => setOrderOpen(!orderOpen)}
+                                        className="p-2 rounded hover:bg-amber-100 transition-colors"
+                                    >
+                                        <svg
+                                            className={`w-5 h-5 transition-transform duration-300 ease-in-out ${orderOpen ? "rotate-180" : ""}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Submenu with smooth animation */}
+                            <div
+                                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                                    orderOpen ? "max-h-96" : "max-h-0"
+                                }`}
+                            >
+                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    <li>
+                                        <NavLink
+                                            to="/order-list"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                            </svg>
+                                            <span>Order List</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/coupon-management"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                                            </svg>
+                                            <span>Coupon Management</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/discount-management"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <span>Discount Management</span>
+                                        </NavLink>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li>
+                            <div className={`rounded-lg transition-all duration-200 ${
+                                isProductActive || productOpen
+                                    ? "bg-amber-50 text-amber-700 font-semibold border-l-4 border-amber-500"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                            }`}>
+                                <div className="flex items-center">
+                                    <NavLink
+                                        to="/catalogue-management"
+                                        className="flex-1 flex items-center px-4 py-3"
+                                        onClick={handleLinkClick}
+                                    >
+                                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                        </svg>
+                                        <span className="font-medium">Product Management</span>
+                                    </NavLink>
+                                    <button
+                                        onClick={() => setProductOpen(!productOpen)}
+                                        className="p-2 rounded hover:bg-amber-100 transition-colors"
+                                    >
+                                        <svg
+                                            className={`w-5 h-5 transition-transform duration-300 ease-in-out ${productOpen ? "rotate-180" : ""}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Submenu with smooth animation */}
+                            <div
+                                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                                    productOpen ? "max-h-96" : "max-h-0"
+                                }`}
+                            >
+                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    <li>
+                                        <NavLink
+                                            to="/catalogue-management"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                            </svg>
+                                            <span>Catalogue Management</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/packaging-management"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                            </svg>
+                                            <span>Packaging Management</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/active-ingredients"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                            </svg>
+                                            <span>Active Ingredients</span>
+                                        </NavLink>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li>
+                            <NavLink to="/customisation" className={linkClass} onClick={handleLinkClick}>
                                 <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                                 </svg>
-                                <span className="font-medium">Order Management</span>
+                                <span className="font-medium">Customisation</span>
                             </NavLink>
                         </li>
                         <li>

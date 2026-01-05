@@ -3,6 +3,12 @@ import Dashboard from './pages/Dashboard'
 import RoleManagement from './pages/RoleManagement'
 import UserManagement from './pages/UserManagement'
 import OrderManagement from './pages/OrderManagement'
+import OrderList from './pages/OrderList'
+import CouponManagement from './pages/CouponManagement'
+import DiscountManagement from './pages/DiscountManagement'
+import CatalogueManagement from './pages/CatalogueManagement'
+import PackagingManagement from './pages/PackagingManagement'
+import ActiveIngredients from './pages/ActiveIngredients'
 import EnquiryManagement from './pages/EnquiryManagement'
 import DoctorAppointments from './pages/DoctorAppointments'
 import ContactEnquiry from './pages/ContactEnquiry'
@@ -21,6 +27,12 @@ const App = () => {
             <Route path="/role-management" element={<RoleManagement />} />
             <Route path="/user-management" element={<UserManagement />} />
             <Route path="/order-management" element={<OrderManagement />} />
+            <Route path="/order-list" element={<OrderList />} />
+            <Route path="/coupon-management" element={<CouponManagement />} />
+            <Route path="/discount-management" element={<DiscountManagement />} />
+            <Route path="/catalogue-management" element={<CatalogueManagement />} />
+            <Route path="/packaging-management" element={<PackagingManagement />} />
+            <Route path="/active-ingredients" element={<ActiveIngredients />} />
             <Route path="/enquiry-management" element={<EnquiryManagement />} />
             <Route path="/doctor-appointments" element={<DoctorAppointments />} />
             <Route path="/contact-enquiry" element={<ContactEnquiry />} />
