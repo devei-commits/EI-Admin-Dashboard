@@ -1,8 +1,7 @@
-
 import { Link } from 'react-router-dom';
 import { OrderTable } from '../components/ordermanagementcomp';
 
-const Ordermanagement = () => {
+const OrderList = () => {
   return (
     <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
       <div className="mb-6">
@@ -20,7 +19,7 @@ const Ordermanagement = () => {
         <OrderTable />
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Ordermanagement
+export default OrderList;
