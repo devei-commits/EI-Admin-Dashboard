@@ -1,4 +1,5 @@
 import React from 'react';
+import eilogofull from '../../../../assets/logo/eilogofull.svg';
 
 interface LogoProps {
   className?: string;
@@ -7,9 +8,9 @@ interface LogoProps {
 export const Logo: React.FC<LogoProps> = ({ className }) => {
   return (
     <img
-      src="/logo.svg"
+      src={eilogofull}
       alt="Esthetic Insights"
-      className={className || 'h-8 sm:h-10 w-auto object-contain'}
+      className={className || 'h-9 sm:h-10 w-auto object-contain'}
     />
   );
 };

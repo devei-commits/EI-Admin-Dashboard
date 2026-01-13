@@ -15,6 +15,7 @@ import { UserRole } from '../../types/pis';
 import { cn } from '../ui/utils';
 import { Button } from '../ui/button';
 import { usePIS } from '../../context/PISContext';
+import eilogofull from '../../../../assets/logo/eilogofull.svg';
 
 interface SidebarProps {
   currentRole: UserRole;
@@ -209,7 +210,7 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
       {/* Mobile overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
         />
       )}
@@ -217,23 +218,30 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
       {/* Sidebar */}
       <aside 
         className={cn(
-          "fixed lg:sticky top-0 left-0 h-screen bg-gradient-to-b from-[#34495E] to-[#2C3E50] text-white w-64 transition-transform duration-300 z-50 shadow-2xl flex flex-col",
+          "fixed lg:sticky top-0 left-0 h-screen bg-white border-r border-gray-100 text-gray-700 w-72 transition-transform duration-300 ease-in-out z-50 shadow-xl flex flex-col",
           !isOpen && "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Close button for mobile */}
-        <div className="lg:hidden p-4 flex justify-end">
+        <div className="lg:hidden p-4 flex justify-end border-b border-gray-100">
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="text-white hover:bg-white/10"
+            className="text-gray-500 hover:bg-gray-100 hover:text-gray-700 rounded-xl"
           >
             <X className="h-5 w-5" />
           </Button>
         </div>
 
-        <nav className="flex-1 py-4 overflow-y-auto">
+        {/* Logo Section */}
+        <div className="hidden lg:flex p-6 items-center justify-center border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+          <img src={eilogofull} alt="Esthetic Insights" className="h-10 max-w-full object-contain" />
+        </div>
+
+        <nav className="flex-1 py-4 px-3 overflow-y-auto">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-4">Navigation</p>
+          <div className="space-y-1">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const badgeCount = ['bd-tasks', 'rnd-tasks', 'qa-tasks', 'packaging-tasks'].includes(
@@ -249,16 +257,23 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
                   onClose?.();
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 px-6 py-3 text-left transition-all duration-200",
-                  "hover:bg-white/10 hover:pl-8",
-                  activeView === item.id && "bg-white/20 border-l-4 border-blue-400 pl-6 font-medium"
+                  "w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-200 rounded-xl",
+                  "hover:bg-amber-50 hover:text-amber-700",
+                  activeView === item.id 
+                    ? "bg-amber-50 text-amber-700 font-semibold border-l-4 border-amber-500 shadow-sm" 
+                    : "text-gray-600 border-l-4 border-transparent"
                 )}
               >
                 <div className="relative flex items-center gap-3 flex-1">
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="flex-1 text-left">{item.label}</span>
+                  <div className={cn(
+                    "p-2 rounded-lg transition-colors",
+                    activeView === item.id ? "bg-amber-100" : "bg-gray-100"
+                  )}>
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                  </div>
+                  <span className="flex-1 text-left text-sm">{item.label}</span>
                   {badgeCount > 0 && (
-                    <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 text-white text-xs min-w-[1.25rem] h-5 px-1">
+                    <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium min-w-[1.5rem] h-6 px-2 shadow-sm">
                       {badgeCount}
                     </span>
                   )}
@@ -266,10 +281,11 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
               </button>
             );
           })}
+          </div>
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
           <p className="text-xs text-gray-400 text-center">
             © 2024 Esthetic Insights
           </p>

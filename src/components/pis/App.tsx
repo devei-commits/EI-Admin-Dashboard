@@ -241,7 +241,7 @@ function AppContent() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       <Sidebar
         currentRole={currentRole}
         activeView={activeView}
@@ -257,14 +257,16 @@ function AppContent() {
           onMenuToggle={handleMenuToggle}
         />
         
-        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10">
           <div className="max-w-[1920px] mx-auto">
             {renderContent()}
           </div>
         </main>
 
-        <footer className="bg-white border-t py-4 px-3 sm:px-4 md:px-6 text-center text-xs sm:text-sm text-gray-600">
-          Copyright © ESTHETICINSIGHTS 2024 | PIS Workflow Management System v1.0
+        <footer className="bg-white/80 backdrop-blur-sm border-t border-gray-100 py-5 px-4 sm:px-6 md:px-8 text-center shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-500">
+            Copyright © <span className="font-semibold text-gray-700">ESTHETIC INSIGHTS</span> 2024 | PIS Workflow Management System v1.0
+          </p>
         </footer>
       </div>
 
