@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
-import EditRolePopup from './EditRolePopup.tsx';
+import EditRoleFullPage from './EditRoleFullPage.tsx';
 
 interface Role {
   id: string;
@@ -12,10 +12,18 @@ interface Role {
   description: string;
 }
 
+interface RoleUser {
+  id: string;
+  email: string;
+  password: string;
+  name: string;
+  addedAt: string;
+}
+
 const ViewRoles: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
-  const [isEditPopupOpen, setIsEditPopupOpen] = useState(false);
+  const [isEditFullPageOpen, setIsEditFullPageOpen] = useState(false);
   const [roles, setRoles] = useState<Role[]>([
     {
       id: 'ROLE001',
@@ -161,7 +169,7 @@ const ViewRoles: React.FC = () => {
 
   const handleEditRole = (role: Role) => {
     setSelectedRole(role);
-    setIsEditPopupOpen(true);
+    setIsEditFullPageOpen(true);
   };
 
   const handleDeleteRole = (roleId: string) => {
@@ -171,12 +179,16 @@ const ViewRoles: React.FC = () => {
     }
   };
 
-  const handleSaveRole = (updatedRole: Role) => {
+  const handleSaveRole = (updatedRole: Role, users?: RoleUser[]) => {
     setRoles(prevRoles => 
       prevRoles.map(role => 
         role.id === updatedRole.id ? updatedRole : role
       )
     );
+    // In production, you would also save the users to your backend
+    if (users) {
+      console.log('Users for role:', users);
+    }
   };
 
   const handleCloseViewPopup = () => {
@@ -184,8 +196,8 @@ const ViewRoles: React.FC = () => {
     setSelectedRole(null);
   };
 
-  const handleCloseEditPopup = () => {
-    setIsEditPopupOpen(false);
+  const handleCloseEditFullPage = () => {
+    setIsEditFullPageOpen(false);
     setSelectedRole(null);
   };
 
@@ -341,11 +353,11 @@ const ViewRoles: React.FC = () => {
         />
       )}
 
-      {/* Edit Role Popup */}
-      {isEditPopupOpen && selectedRole && (
-        <EditRolePopup
+      {/* Edit Role Full Page */}
+      {isEditFullPageOpen && selectedRole && (
+        <EditRoleFullPage
           role={selectedRole}
-          onClose={handleCloseEditPopup}
+          onClose={handleCloseEditFullPage}
           onSave={handleSaveRole}
         />
       )}
