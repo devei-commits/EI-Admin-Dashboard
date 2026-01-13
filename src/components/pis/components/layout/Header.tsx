@@ -113,26 +113,6 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {/* Explicit logout button so every user clearly sees it */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-gray-600 hover:bg-gray-100 sm:hidden rounded-xl"
-          onClick={handleLogout}
-          aria-label="Logout"
-        >
-          <LogOut className="h-5 w-5" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden sm:flex items-center gap-2 bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 hover:border-gray-300 rounded-xl shadow-sm"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4" />
-          <span className="text-xs font-medium">Logout</span>
-        </Button>
       </div>
     </header>
   );
