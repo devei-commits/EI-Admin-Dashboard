@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { PISProvider, usePIS } from './context/PISContext';
-
-// Auth components
-import { Login, WaitingForRole } from './components/auth';
+import { PISProvider } from './context/PISContext';
+import { UserRole } from './types/pis';
 
 // Layout components
 import { Header, Sidebar, ScrollToTopButton } from './components/layout';
@@ -21,11 +19,99 @@ import { Toaster } from './components/ui/sonner';
 // Hooks
 import { scrollToTop } from './hooks/useScrollToTop';
 
+// Map admin panel roles to PIS roles
+const mapAdminRoleToPISRole = (adminRole: string): UserRole => {
+  const roleMapping: Record<string, UserRole> = {
+    // Admin roles
+    'super admin': 'SUPER_ADMIN',
+    'superadmin': 'SUPER_ADMIN',
+    'super_admin': 'SUPER_ADMIN',
+    'SUPER_ADMIN': 'SUPER_ADMIN',
+    'admin': 'ADMIN',
+    'ADMIN': 'ADMIN',
+    
+    // BD roles
+    'bd manager': 'BD_MANAGER',
+    'bd_manager': 'BD_MANAGER',
+    'BD_MANAGER': 'BD_MANAGER',
+    'bd staff': 'BD_STAFF',
+    'bd_staff': 'BD_STAFF',
+    'BD_STAFF': 'BD_STAFF',
+    
+    // R&D roles
+    'r&d lead': 'RND_LEAD',
+    'rnd lead': 'RND_LEAD',
+    'rnd_lead': 'RND_LEAD',
+    'RND_LEAD': 'RND_LEAD',
+    'r&d staff': 'RND_STAFF',
+    'rnd staff': 'RND_STAFF',
+    'rnd_staff': 'RND_STAFF',
+    'RND_STAFF': 'RND_STAFF',
+    
+    // QA roles
+    'qa manager': 'QA_MANAGER',
+    'qa_manager': 'QA_MANAGER',
+    'QA_MANAGER': 'QA_MANAGER',
+    'qa staff': 'QA_STAFF',
+    'qa_staff': 'QA_STAFF',
+    'QA_STAFF': 'QA_STAFF',
+    
+    // Other roles
+    'procurement': 'BD_STAFF',
+    'manufacturing and production': 'PKG_STAFF',
+    'sales': 'BD_STAFF',
+    'logistics': 'PKG_STAFF',
+    'design': 'PKG_STAFF',
+    'packaging': 'PKG_STAFF',
+    'pkg_staff': 'PKG_STAFF',
+    'PKG_STAFF': 'PKG_STAFF',
+    
+    // Client roles
+    'doctor': 'CLIENT',
+    'customer': 'CLIENT',
+    'client': 'CLIENT',
+    'CLIENT': 'CLIENT',
+  };
+
+  const normalizedRole = adminRole.toLowerCase().trim();
+  return roleMapping[normalizedRole] || roleMapping[adminRole] || 'SUPER_ADMIN';
+};
+
 function AppContent() {
-  const { currentRole, setCurrentRole, isAuthenticated, login, signup, logout, currentUser, hasInitializedSession } = usePIS();
   const [activeView, setActiveView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pisPreset, setPisPreset] = useState<PISManagementPreset | undefined>(undefined);
+  const [currentRole, setCurrentRole] = useState<UserRole>('SUPER_ADMIN');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Get role from URL parameter on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleFromUrl = urlParams.get('role');
+    
+    if (roleFromUrl) {
+      const mappedRole = mapAdminRoleToPISRole(roleFromUrl);
+      setCurrentRole(mappedRole);
+      localStorage.setItem('pisCurrentRole', mappedRole);
+    } else {
+      const storedRole = localStorage.getItem('pisCurrentRole');
+      if (storedRole) {
+        setCurrentRole(storedRole as UserRole);
+      }
+    }
+    
+    setIsLoading(false);
+  }, []);
+
+  // Show toast notification when PIS opens
+  useEffect(() => {
+    if (!isLoading) {
+      toast.success('PIS Tool opened successfully', {
+        description: `Logged in as ${currentRole.replace(/_/g, ' ')}`,
+        duration: 4000,
+      });
+    }
+  }, [isLoading, currentRole]);
 
   // Close sidebar on mobile by default
   useEffect(() => {
@@ -42,28 +128,6 @@ function AppContent() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Show toast notification when PIS opens
-  useEffect(() => {
-    if (isAuthenticated && currentUser) {
-      toast.success('PIS Tool opened in new page', {
-        description: 'Welcome to the Product Information System',
-        duration: 4000,
-      });
-    }
-  }, [isAuthenticated, currentUser]);
-
-  // Automatically set role based on user's assigned role (no role selector)
-  useEffect(() => {
-    if (!isAuthenticated || !currentUser?.role) return;
-    // Always use the user's assigned role - no role switching
-    if (currentRole !== currentUser.role) {
-      setCurrentRole(currentUser.role);
-      // Reset to dashboard when role is set
-      setActiveView('dashboard');
-      scrollToTop();
-    }
-  }, [isAuthenticated, currentUser?.role, currentRole, setCurrentRole]);
-
   const handleMenuToggle = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
@@ -72,46 +136,31 @@ function AppContent() {
     setActiveView(view);
 
     if (view === 'pis') {
-      // Set preset with key if provided, otherwise clear preset
       setPisPreset(preset ? { ...preset, key: Date.now() } : undefined);
     }
 
     scrollToTop();
-    // Close sidebar on mobile after navigation
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
     }
   };
 
-  // Show loading screen while checking authentication
-  if (!hasInitializedSession) {
+  const handleLogout = () => {
+    localStorage.removeItem('pisCurrentRole');
+    toast.info('Returning to Admin Panel...');
+    setTimeout(() => {
+      window.close();
+      window.location.href = '/';
+    }, 1000);
+  };
+
+  // Show loading screen
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Authentication flow
-  if (!isAuthenticated) {
-    return <Login onLogin={login} onSignup={signup} />;
-  }
-
-  // User signed up but waiting for role assignment
-  if (currentUser && currentUser.status === 'PENDING') {
-    return <WaitingForRole onLogout={logout} />;
-  }
-
-  // Safety: authenticated but role not yet set - wait for role to be set
-  if (!currentRole || !currentUser?.role) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading your workspace...</p>
+          <p className="text-gray-600">Loading PIS...</p>
         </div>
       </div>
     );
@@ -187,7 +236,7 @@ function AppContent() {
       case 'settings':
         return <SettingsView currentRole={currentRole} />;
       default:
-        return <ImprovedDashboard currentRole={currentRole} />;
+        return <ImprovedDashboard currentRole={currentRole} onNavigate={handleViewChange} />;
     }
   };
 

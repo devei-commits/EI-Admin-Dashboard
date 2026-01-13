@@ -140,7 +140,10 @@ const Sidebar = () => {
                             <button
                                 onClick={() => {
                                     handleLinkClick();
-                                    window.open('/pis', '_blank');
+                                    // Get current user role from admin panel and pass to PIS
+                                    // For now, default to SUPER_ADMIN - this should be updated when admin auth is implemented
+                                    const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
+                                    window.open(`/pis?role=${userRole}`, '_blank');
                                 }}
                                 className="flex items-center px-4 py-3 rounded-lg transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent w-full text-left"
                             >
