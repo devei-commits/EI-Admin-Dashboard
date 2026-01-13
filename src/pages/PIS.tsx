@@ -1,17 +1,19 @@
-import React from 'react';
+import { PISProvider, ImprovedPISManagement } from '../components/pis';
+import { Toaster } from '../components/pis/ui/sonner';
+import type { UserRole } from '../components/pis/types/pis';
 
-const PIS: React.FC = () => {
+interface PISProps {
+  role?: UserRole;
+}
+
+const PIS: React.FC<PISProps> = ({ role = 'SUPER_ADMIN' }) => {
   return (
-    <div className="w-full min-h-screen bg-gray-50/50 p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">PIS</h1>
-        <p className="text-gray-500 mt-1">Product Information System</p>
+    <PISProvider>
+      <div className="w-full min-h-screen bg-gray-50/50">
+        <ImprovedPISManagement currentRole={role} />
+        <Toaster position="top-right" richColors />
       </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <p className="text-gray-600">This is a placeholder for the PIS page. You can build out the required functionality here.</p>
-      </div>
-    </div>
+    </PISProvider>
   );
 };
 
