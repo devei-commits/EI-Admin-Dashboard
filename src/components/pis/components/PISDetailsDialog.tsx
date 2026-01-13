@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { PISRecord, UserRole, Customer, Product, PISStatus } from './types/pis';
-import { getStageLabel } from './utils/permissions';
-import { usePIS } from './context/PISContext';
+import { PISRecord, UserRole, Customer, Product, PISStatus } from '../types/pis';
+import { getStageLabel } from '../utils/permissions';
+import { usePIS } from '../context/PISContext';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ import {
 import { Checkbox } from './ui/checkbox';
 import { StageTemplatesForm } from './StageTemplatesForm';
 import { PISChat } from './PISChat';
-import { getServerBaseUrl, pisApi } from './utils/api';
+import { getServerBaseUrl, pisApi } from '../utils/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 

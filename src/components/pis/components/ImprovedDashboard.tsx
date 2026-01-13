@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { UserRole, PISRecord } from './types/pis';
+import { UserRole, PISRecord } from '../types/pis';
 import { DashboardStats } from './DashboardStats';
-import { usePIS } from './context/PISContext';
+import { usePIS } from '../context/PISContext';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { getStageLabel } from './utils/permissions';
+import { getStageLabel } from '../utils/permissions';
 import { ArrowRight, TrendingUp, Clock, AlertTriangle } from 'lucide-react';
 import { PISDetailsDialog } from './PISDetailsDialog';
-import { getServerBaseUrl, pisApi } from './utils/api';
+import { getServerBaseUrl, pisApi } from '../utils/api';
 import { toast } from 'sonner';
 
 interface ImprovedDashboardProps {

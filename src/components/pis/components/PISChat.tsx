@@ -4,8 +4,8 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
-import { usePIS } from './context/PISContext';
-import { pisApi } from './utils/api';
+import { usePIS } from '../context/PISContext';
+import { pisApi } from '../utils/api';
 import { toast } from 'sonner';
 
 interface PISMessage {

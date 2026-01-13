@@ -5,9 +5,9 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { PISRecord, Customer, Product } from './types/pis';
+import { PISRecord, Customer, Product } from '../types/pis';
 import { toast } from 'sonner';
-import { usePIS } from './context/PISContext';
+import { usePIS } from '../context/PISContext';
 
 interface CreatePISDialogProps {
   isOpen: boolean;

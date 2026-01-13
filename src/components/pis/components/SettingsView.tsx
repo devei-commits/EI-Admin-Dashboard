@@ -8,9 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { toast } from 'sonner';
-import { usePIS } from './context/PISContext';
-import { UserRole } from './types/pis';
-import { getRolePermissions } from './utils/permissions';
+import { usePIS } from '../context/PISContext';
+import { UserRole } from '../types/pis';
+import { getRolePermissions } from '../utils/permissions';
 
 interface SettingsViewProps {
   currentRole: UserRole;

@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { X, Filter, ChevronDown, ChevronUp } from 'lucide-react';
-import { PISStage, PISStatus, UserRole } from './types/pis';
-import { getStageLabel } from './utils/permissions';
+import { PISStage, PISStatus, UserRole } from '../types/pis';
+import { getStageLabel } from '../utils/permissions';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 
 export interface FilterState {

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { UserRole, PISRecord, SystemUser } from './types/pis';
-import { usePIS } from './context/PISContext';
+import { UserRole, PISRecord, SystemUser } from '../types/pis';
+import { usePIS } from '../context/PISContext';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import { getStageLabel } from './utils/permissions';
+import { getStageLabel } from '../utils/permissions';
 import { 
   Clock, 
   AlertCircle, 

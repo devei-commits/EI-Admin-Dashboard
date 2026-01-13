@@ -59,9 +59,6 @@ export type PISStage =
   | 'RND_DEVELOPMENT'     // Stage 5: Development Execution
   | 'QUALITY_REVIEW'      // Stage 6: Quality
   | 'WAY_FORWARD'         // Stage 7: Way Forward (Client Decision)
-  | 'BD_WFP_REVIEW'       // BD WFP Review
-  | 'RND_APPROVAL'        // R&D Approval
-  | 'RND_REVIEW_CORRECTIONS' // R&D Review Corrections
   | 'PACKAGING'           // Parallel: Packaging Track
   | 'SAMPLE_DISPATCH'     // Sample Dispatch
   | 'CLIENT_FEEDBACK'     // Client Feedback after dispatch
@@ -179,38 +176,25 @@ export interface RndLeadReviewChecklist {
 
 // Stage 5: Development Execution Checklist
 export interface RndDevelopmentChecklist {
-  keyRawMaterialsSourced?: boolean;
-  formulaFrozenForSample?: boolean;
-  inProcessChecksDone?: boolean;
-  stabilitySamplesInitiated?: boolean;
-  formulationPrototypeReady?: boolean;
-  sampleReadyForQC?: boolean;
-  stabilityPlanDefined?: boolean;
-  regulatoryImpactReviewed?: boolean;
-  [key: string]: boolean | undefined;
+  keyRawMaterialsSourced: boolean;
+  formulaFrozenForSample: boolean;
+  inProcessChecksDone: boolean;
+  stabilitySamplesInitiated: boolean;
 }
 
 // Stage 6: Quality Checklist
 export interface QaChecklist {
-  sampleSubmittedToQc?: boolean;
-  qcReviewComplete?: boolean;
-  qcApproved?: boolean;
-  labResultsReviewed?: boolean;
-  samplesDispatched?: boolean;
-  labelClaimsVerified?: boolean;
-  [key: string]: boolean | undefined;
+  sampleSubmittedToQc: boolean;
+  qcReviewComplete: boolean;
+  qcApproved: boolean;
 }
 
 // Packaging Checklist
 export interface PackagingChecklist {
-  packagingLeadReview?: boolean;
-  possibilitiesLimitations?: boolean;
-  allAligned?: boolean;
-  packagingCatalogue?: boolean;
-  artworkApproved?: boolean;
-  samplesReceived?: boolean;
-  componentsConfirmed?: boolean;
-  [key: string]: boolean | undefined;
+  packagingLeadReview: boolean;
+  possibilitiesLimitations: boolean;
+  allAligned: boolean;
+  packagingCatalogue: boolean;
 }
 
 // ============================================
@@ -222,7 +206,7 @@ export interface PISRecord {
   formulation: string;
   
   // Source/Origin tracking
-  originType?: PISOriginType;
+  originType: PISOriginType;
   enquiryReference?: string;
   customizationRef?: string;
   
@@ -505,6 +489,111 @@ export interface CustomizationRequest {
   rejectionReason?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+  
+  // Assignments
+  // Creator user (string id) — used to scope records for CLIENT
+  createdById?: string;
+  bdTeam?: string;
+  // Which BD role currently owns this PIS in the BD workflow
+  assignedBdRole?: 'BD_MANAGER' | 'BD_STAFF';
+  // Specific BD staff member currently assigned (when assignedBdRole is BD_STAFF)
+  assignedBdStaffId?: string;
+  rndLeadAssignment?: string;
+  rndStaffAssignment?: string;
+  qaAssignment?: string;
+  pkgDesignAssignment?: string;
+  pkgProductSubmission?: string;
+  pkgLabelSubmission?: string;
+  sampleDispatchPreparation?: string;
+  
+  // Way Forward Plan
+  wfp?: WayForwardPlan;
+  
+  // Sample Submission
+  sampleSubmission?: SampleSubmission;
+
+  // Stage templates
+  stageTemplates?: any;
+
+  // Stage-specific checklists (matching new flow)
+  // Stage 1: Client Request Review & Completion (CRR)
+  crrChecklist?: {
+    productDosageSkinType: boolean;        // Product / Dosage / Skin Type
+    packConfiguration: boolean;            // Pack Configuration
+    claimsMustHave: boolean;               // Claims Must Have
+    activesRequested: boolean;             // Actives Requested
+    costMoqTimeline: boolean;              // Cost, MOQ, Timeline
+    attachmentsReferences: boolean;        // Attachments and References
+    bdNotesRisks: boolean;                 // BD Notes and Risks
+  };
+  // Stage 2: Alignment checklist
+  alignmentChecklist?: {
+    dosageAgreed: boolean;
+    activeDirectionAgreed: boolean;
+    keyClaimsAgreed: boolean;
+    specsRangeAgreed: boolean;
+    packagingDirectionAgreed: boolean;
+    timelineAgreed: boolean;
+  };
+  // Stage 3: Agreement & Handover checklist
+  agreementChecklist?: {
+    handoverToRdLead: boolean;
+    finalPisLocked: boolean;
+    agreementSigned: boolean;
+    projectCodeCreated: boolean;
+    packagingTrackTriggered: boolean;
+    kickoffNotes: boolean;
+  };
+  // R&D Lead Review checklist
+  rndLeadReviewChecklist?: {
+    rdLeadAssigned: boolean;
+    activeCompositionConfirmed: boolean;
+    dosageFormConfirmed: boolean;
+    claimsFeasibilityConfirmed: boolean;
+    specificationsConfirmed: boolean;
+  };
+  // Stage 5: Development Execution checklist
+  rndDevelopmentChecklist?: {
+    keyRawMaterialsSourced: boolean;
+    formulaFrozenForSample: boolean;
+    inProcessChecksDone: boolean;
+    stabilitySamplesInitiated: boolean;
+  };
+  // Stage 6: Quality checklist
+  qaChecklist?: {
+    sampleSubmittedToQc: boolean;
+    qcReviewComplete: boolean;
+    qcApproved: boolean;
+  };
+  // Packaging checklist
+  packagingChecklist?: {
+    packagingLeadReview: boolean;
+    possibilitiesLimitations: boolean;
+    allAligned: boolean;
+    packagingCatalogue: boolean;
+  };
+  // Stage 7: Way Forward decision
+  wayForwardDecision?: 'PROCEED' | 'HOLD' | 'DROP';
+
+  // Loop analytics: counts how many times work was sent backwards in the flow
+  loopCount?: number;
+
+  // History / audit trail
+  history?: PISHistoryEntry[];
+  
+  // Timeline
+  createdAt: Date;
+  updatedAt: Date;
+  tentativeTimeline?: Date;
+  
+  // Client feedback
+  clientFeedback?: string;
+  clientApproved?: boolean;
+  
+  // Converted to order
+  convertedToOrder?: boolean;
+  orderReference?: string;
 }
 
 // Shared master data types so that Customers / Products can live in context

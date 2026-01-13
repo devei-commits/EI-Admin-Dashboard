@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { UserPlus, FileText, Eye, Plus } from 'lucide-react';
 
-import { usePIS } from './context/PISContext';
-import { PISRecord } from './types/pis';
-import { getRolePermissions } from './utils/permissions';
+import { usePIS } from '../context/PISContext';
+import { PISRecord } from '../types/pis';
+import { getRolePermissions } from '../utils/permissions';
 
 import { Card } from './ui/card';
 import { Button } from './ui/button';

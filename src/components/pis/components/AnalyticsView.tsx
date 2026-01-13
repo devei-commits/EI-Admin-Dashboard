@@ -5,9 +5,9 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { usePIS } from './context/PISContext';
-import { PISStage, UserRole } from './types/pis';
-import { getStageLabel } from './utils/permissions';
+import { usePIS } from '../context/PISContext';
+import { PISStage, UserRole } from '../types/pis';
+import { getStageLabel } from '../utils/permissions';
 
 interface AnalyticsViewProps {
   currentRole: UserRole;

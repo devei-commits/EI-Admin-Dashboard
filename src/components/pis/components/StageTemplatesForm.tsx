@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PISRecord, PISStage } from './types/pis';
+import { PISRecord, PISStage } from '../types/pis';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { usePIS } from './context/PISContext';
+import { usePIS } from '../context/PISContext';
 
 export type TemplateStageKey =
   | 'S0'

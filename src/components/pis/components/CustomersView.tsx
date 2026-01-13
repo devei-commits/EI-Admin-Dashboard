@@ -11,9 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Textarea } from './ui/textarea';
 import { toast } from 'sonner';
-import { UserRole, Customer } from './types/pis';
-import { usePIS } from './context/PISContext';
-import { getRolePermissions } from './utils/permissions';
+import { UserRole, Customer } from '../types/pis';
+import { usePIS } from '../context/PISContext';
+import { getRolePermissions } from '../utils/permissions';
 
 interface CustomersViewProps {
   currentRole: UserRole;

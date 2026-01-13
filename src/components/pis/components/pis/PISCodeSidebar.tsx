@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
-import { PISRecord } from './types/pis';
-import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { cn } from './ui/utils';
+import { PISRecord } from '../../types/pis';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { cn } from '../ui/utils';
 import { 
   Search, 
   ChevronLeft, 
@@ -14,8 +14,8 @@ import {
   AlertCircle,
   XCircle
 } from 'lucide-react';
-import { getStageLabel } from './utils/permissions';
-import { usePIS } from './context/PISContext';
+import { getStageLabel } from '../../utils/permissions';
+import { usePIS } from '../../context/PISContext';
 
 interface PISCodeSidebarProps {
   pisRecords: PISRecord[];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { PISRecord, UserRole } from './types/pis';
-import { getRolePermissions, getStageLabel } from './utils/permissions';
+import { PISRecord, UserRole } from '../types/pis';
+import { getRolePermissions, getStageLabel } from '../utils/permissions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
-import { usePIS } from './context/PISContext';
+import { usePIS } from '../context/PISContext';
 
 interface EnhancedPISTableProps {
   data: PISRecord[];

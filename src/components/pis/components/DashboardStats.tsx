@@ -7,8 +7,8 @@ import {
   AlertCircle,
   TrendingUp
 } from 'lucide-react';
-import { PISRecord, UserRole } from './types/pis';
-import { usePIS } from './context/PISContext';
+import { PISRecord, UserRole } from '../types/pis';
+import { usePIS } from '../context/PISContext';
 import type { PISManagementPreset } from './ImprovedPISManagement';
 
 interface DashboardStatsProps {
@@ -59,7 +59,7 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
   const { currentUser } = usePIS();
 
   // Log for debugging CLIENT dashboard
-  if (currentRole === 'CLIENT' && import.meta.env.DEV) {
+  if (currentRole === 'CLIENT' && process.env.NODE_ENV === 'development') {
     console.log('[DashboardStats] CLIENT user - Total data received:', data.length);
     console.log('[DashboardStats] Status breakdown:', {
       IN_PROGRESS: data.filter(p => p.status === 'IN_PROGRESS').length,
