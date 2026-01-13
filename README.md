@@ -1,1 +1,0 @@
-# Esthetic Insights Admin Tool User Interface

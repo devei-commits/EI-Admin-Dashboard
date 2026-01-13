@@ -15,6 +15,7 @@ import ContactEnquiry from './pages/ContactEnquiry'
 import NewDevelopments from './pages/NewDevelopments'
 import ProductSamples from './pages/ProductSamples'
 import Sidebar from "./components/sidebar/sidebar"
+import PIS from './pages/PIS'
 
 const App = () => {
   return (
@@ -26,6 +27,7 @@ const App = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/role-management" element={<RoleManagement />} />
             <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/pis" element={<PIS />} />
             <Route path="/order-management" element={<OrderManagement />} />
             <Route path="/order-list" element={<OrderList />} />
             <Route path="/coupon-management" element={<CouponManagement />} />
