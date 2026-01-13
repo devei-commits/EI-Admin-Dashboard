@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Badge } from '../ui/badge';
-import { Logo } from './Logo';
 
 interface HeaderProps {
   currentRole: UserRole;
@@ -61,11 +60,9 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
           <Menu className="h-5 w-5" />
         </Button>
         <div className="flex items-center gap-4">
-          <Logo />
-          <div className="hidden sm:block">
-            <h1 className="text-sm font-semibold text-gray-800">PIS Workflow</h1>
-            <p className="text-[11px] text-gray-500">Management System</p>
-          </div>
+          <h1 className="text-lg sm:text-xl font-semibold text-gray-800" style={{ fontFamily: '"Red Hat Mono", monospace' }}>
+            PIS Management System
+          </h1>
         </div>
       </div>
       
