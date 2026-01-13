@@ -60,7 +60,7 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
           <Menu className="h-5 w-5" />
         </Button>
         <div className="flex items-center gap-4">
-          <h1 className="text-lg sm:text-xl font-semibold text-gray-800" style={{ fontFamily: '"Red Hat Mono", monospace' }}>
+          <h1 className="text-lg sm:text-xl font-semibold text-gray-800" style={{ fontFamily: '"Archivo", sans-serif' }}>
             PIS Management System
           </h1>
         </div>
