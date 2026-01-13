@@ -73,33 +73,33 @@ export function AdvancedFilters({ filters, onFilterChange, customers, currentRol
   }).length;
 
   return (
-    <Card className="p-4">
+    <Card className="p-3 sm:p-4">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
           <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="h-5 w-5 text-gray-600" />
-            <h3 className="font-medium">Advanced Filters</h3>
+            <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+            <h3 className="font-medium text-sm sm:text-base">Advanced Filters</h3>
             {activeFilterCount > 0 && (
-              <Badge variant="secondary">{activeFilterCount} active</Badge>
+              <Badge variant="secondary" className="text-xs">{activeFilterCount} active</Badge>
             )}
           </div>
           <div className="flex items-center gap-2 justify-between sm:justify-end">
             {activeFilterCount > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4 mr-1" />
-                Clear All
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs sm:text-sm h-8">
+                <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                Clear
               </Button>
             )}
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="h-8">
                 {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
             </CollapsibleTrigger>
           </div>
         </div>
 
-        <CollapsibleContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <CollapsibleContent className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label>Stage</Label>
               <Select value={filters.stage} onValueChange={(value) => updateFilter('stage', value)}>

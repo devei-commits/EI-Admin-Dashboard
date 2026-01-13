@@ -1,30 +1,14 @@
 import React, { useState, useEffect } from 'react';
-
-interface Role {
-  id: string;
-  roleName: string;
-  roleLevel: string;
-  roleStatus: 'active' | 'inactive';
-  roleCreatedAt: string;
-  roleUpdatedAt: string;
-  description: string;
-}
-
-interface RoleUser {
-  id: string;
-  email: string;
-  password: string;
-  name: string;
-  addedAt: string;
-}
+import type { Role, RoleUser } from './ViewRoles';
 
 interface EditRoleFullPageProps {
   role: Role;
+  users?: RoleUser[];
   onClose: () => void;
   onSave: (updatedRole: Role, users: RoleUser[]) => void;
 }
 
-const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, onClose, onSave }) => {
+const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClose, onSave }) => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
   const [editedRole, setEditedRole] = useState<Role>({ ...role });
@@ -33,31 +17,36 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, onClose, onSa
   const [newUserName, setNewUserName] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
-
-  // Mock users data for this role - in production, this would come from an API
-  const [roleUsers, setRoleUsers] = useState<RoleUser[]>([
-    {
-      id: 'USR001',
-      email: 'john.doe@eisthetic.com',
-      password: 'SecurePass123!',
-      name: 'John Doe',
-      addedAt: '2024-01-15'
-    },
-    {
-      id: 'USR002',
-      email: 'jane.smith@eisthetic.com',
-      password: 'JaneSecure456@',
-      name: 'Jane Smith',
-      addedAt: '2024-01-20'
-    },
-    {
-      id: 'USR003',
-      email: 'mike.wilson@eisthetic.com',
-      password: 'MikePass789#',
-      name: 'Mike Wilson',
-      addedAt: '2024-02-01'
+  // Users assigned to this role (loaded from parent/localStorage or fallback to mock data)
+  const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => {
+    if (users && users.length > 0) {
+      return users;
     }
-  ]);
+    // Default sample users when none are stored yet
+    return [
+      {
+        id: 'USR001',
+        email: 'john.doe@eisthetic.com',
+        password: 'SecurePass123!',
+        name: 'John Doe',
+        addedAt: '2024-01-15',
+      },
+      {
+        id: 'USR002',
+        email: 'jane.smith@eisthetic.com',
+        password: 'JaneSecure456@',
+        name: 'Jane Smith',
+        addedAt: '2024-01-20',
+      },
+      {
+        id: 'USR003',
+        email: 'mike.wilson@eisthetic.com',
+        password: 'MikePass789#',
+        name: 'Mike Wilson',
+        addedAt: '2024-02-01',
+      },
+    ];
+  });
 
   const roleLevels = ['admin', 'manager', 'staff', 'client'];
   const statusOptions: ('active' | 'inactive')[] = ['active', 'inactive'];

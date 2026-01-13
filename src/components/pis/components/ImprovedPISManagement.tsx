@@ -341,48 +341,48 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
         </div>
       ) : (
         /* Normal Table View */
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
             <div>
-              <h2 className="text-2xl sm:text-3xl mb-2">PIS Management</h2>
-              <p className="text-gray-600">
-                Comprehensive view and management of Product Information Sheets across all workflow stages
+              <h2 className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2">PIS Management</h2>
+              <p className="text-sm sm:text-base text-gray-600">
+                Comprehensive view and management of Product Information Sheets
               </p>
             </div>
             {permissions.canCreatePIS && (
               <Button onClick={() => setIsCreateOpen(true)} className="gap-2 shadow-lg w-full sm:w-auto">
                 <Plus className="h-4 w-4" />
-                Create New PIS
+                <span className="sm:inline">Create New PIS</span>
               </Button>
             )}
           </div>
 
           {/* Tabs for quick filtering */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full max-w-2xl grid-cols-4">
-              <TabsTrigger value="all" className="gap-2">
-                <FileText className="h-4 w-4" />
-                All PIS
-                <Badge variant="secondary">{roleScopedPISRecords.length}</Badge>
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 max-w-2xl gap-1">
+              <TabsTrigger value="all" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+                <FileText className="h-3 w-3 sm:h-4 sm:w-4 hidden xs:block" />
+                <span>All</span>
+                <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5">{roleScopedPISRecords.length}</Badge>
               </TabsTrigger>
-              <TabsTrigger value="active" className="gap-2">
-                <FileText className="h-4 w-4" />
-                Active
-                <Badge variant="secondary">{activePISCount}</Badge>
+              <TabsTrigger value="active" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+                <FileText className="h-3 w-3 sm:h-4 sm:w-4 hidden xs:block" />
+                <span>Active</span>
+                <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5">{activePISCount}</Badge>
               </TabsTrigger>
-              <TabsTrigger value="completed" className="gap-2">
-                <CheckCircle className="h-4 w-4" />
-                Completed
-                <Badge variant="secondary">{completedPISCount}</Badge>
+              <TabsTrigger value="completed" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 hidden xs:block" />
+                <span>Done</span>
+                <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5">{completedPISCount}</Badge>
               </TabsTrigger>
-              <TabsTrigger value="terminated" className="gap-2">
-                <XCircle className="h-4 w-4" />
-                Terminated
-                <Badge variant="secondary">{terminatedPISCount}</Badge>
+              <TabsTrigger value="terminated" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+                <XCircle className="h-3 w-3 sm:h-4 sm:w-4 hidden xs:block" />
+                <span>Ended</span>
+                <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5">{terminatedPISCount}</Badge>
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value={activeTab} className="space-y-4">
+            <TabsContent value={activeTab} className="space-y-3 sm:space-y-4">
               {/* Advanced Filters */}
               <AdvancedFilters
                 filters={filters}

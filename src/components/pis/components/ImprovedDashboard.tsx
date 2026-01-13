@@ -326,10 +326,10 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h2 className="text-3xl mb-2">Dashboard</h2>
-        <p className="text-gray-600">Overview of PIS workflow status and key metrics</p>
+        <h2 className="text-2xl sm:text-3xl mb-1 sm:mb-2">Dashboard</h2>
+        <p className="text-sm sm:text-base text-gray-600">Overview of PIS workflow status and key metrics</p>
       </div>
 
       {/* Stats Cards */}
@@ -342,21 +342,21 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
 
       {/* Alerts */}
       {(pendingActions.length > 0 || overdueItems.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           {pendingActions.length > 0 && (
-            <Card className="p-4 border-l-4 border-blue-500 bg-blue-50/50">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <Clock className="h-8 w-8 text-blue-600" />
+            <Card className="p-3 sm:p-4 border-l-4 border-blue-500 bg-blue-50/50">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
                 <div className="flex-1">
-                  <h3 className="font-medium text-blue-900">Pending Your Action</h3>
-                  <p className="text-sm text-blue-700">
+                  <h3 className="font-medium text-blue-900 text-sm sm:text-base">Pending Your Action</h3>
+                  <p className="text-xs sm:text-sm text-blue-700">
                     You have {pendingActions.length} PIS waiting for your review
                   </p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white w-full sm:w-auto"
+                  className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white w-full sm:w-auto text-xs sm:text-sm"
                   onClick={handlePendingClick}
                 >
                   View All
@@ -366,19 +366,19 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
           )}
 
           {overdueItems.length > 0 && (
-            <Card className="p-4 border-l-4 border-red-500 bg-red-50/50">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
+            <Card className="p-3 sm:p-4 border-l-4 border-red-500 bg-red-50/50">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-red-600" />
                 <div className="flex-1">
-                  <h3 className="font-medium text-red-900">Overdue Items</h3>
-                  <p className="text-sm text-red-700">
+                  <h3 className="font-medium text-red-900 text-sm sm:text-base">Overdue Items</h3>
+                  <p className="text-xs sm:text-sm text-red-700">
                     {overdueItems.length} PIS have been idle for over 30 days
                   </p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-red-600 text-red-600 hover:bg-red-600 hover:text-white w-full sm:w-auto"
+                  className="border-red-600 text-red-600 hover:bg-red-600 hover:text-white w-full sm:w-auto text-xs sm:text-sm"
                   onClick={() => onNavigate?.('pis')}
                 >
                   Review
@@ -391,11 +391,11 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
 
       {/* SLA / Workflow summary from backend */}
       {workflow && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="p-6 shadow-md lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium">Upcoming Deadlines</h3>
-              <Button variant="outline" size="sm" onClick={() => refreshDashboardStats()}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <Card className="p-4 sm:p-6 shadow-md lg:col-span-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0 mb-4">
+              <h3 className="text-base sm:text-lg font-medium">Upcoming Deadlines</h3>
+              <Button variant="outline" size="sm" onClick={() => refreshDashboardStats()} className="w-full sm:w-auto">
                 Refresh
               </Button>
             </div>
@@ -408,18 +408,18 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
                   const dueAt = d?.dueAt ? new Date(String(d.dueAt)) : null;
                   const isOverdue = Boolean(d?.isOverdue);
                   return (
-                    <div key={d.id} className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-white">
+                    <div key={d.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 p-3 border rounded-lg bg-white">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{d.pisCode || d.id}</p>
+                        <p className="font-medium truncate text-sm sm:text-base">{d.pisCode || d.id}</p>
                         <p className="text-xs text-gray-500 truncate">
                           {d.customer || '—'} • {getStageLabel(String(d.stage || ''))}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
                         {isOverdue ? (
-                          <Badge className="bg-red-100 text-red-700 border-0">Overdue</Badge>
+                          <Badge className="bg-red-100 text-red-700 border-0 text-xs">Overdue</Badge>
                         ) : (
-                          <Badge className="bg-amber-100 text-amber-700 border-0">Due</Badge>
+                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">Due</Badge>
                         )}
                         <span className="text-xs text-gray-500 whitespace-nowrap">
                           {dueAt && !Number.isNaN(dueAt.getTime()) ? dueAt.toLocaleDateString() : '—'}
@@ -432,8 +432,8 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             )}
           </Card>
 
-          <Card className="p-6 shadow-md">
-            <h3 className="text-lg font-medium mb-4">Workflow Funnel</h3>
+          <Card className="p-4 sm:p-6 shadow-md">
+            <h3 className="text-base sm:text-lg font-medium mb-4">Workflow Funnel</h3>
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">New / Pending</span>
@@ -701,30 +701,32 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       {/* Charts */}
       {isManagerRole(currentRole) && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6 shadow-md">
-              <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-blue-600" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <Card className="p-4 sm:p-6 shadow-md">
+              <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 PIS by Stage
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                 <BarChart data={stageData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
                     dataKey="stage" 
                     angle={-45} 
                     textAnchor="end" 
-                    height={120} 
-                    fontSize={11}
+                    height={100} 
+                    fontSize={10}
                     tick={{ fill: '#6b7280' }}
+                    interval={0}
                   />
-                  <YAxis tick={{ fill: '#6b7280' }} />
+                  <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: '#fff', 
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      fontSize: '12px'
                     }} 
                   />
                   <Bar dataKey="count" fill="#3B82F6" radius={[8, 8, 0, 0]} />
@@ -732,9 +734,9 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
               </ResponsiveContainer>
             </Card>
 
-            <Card className="p-6 shadow-md">
-              <h3 className="text-lg font-medium mb-4">Status Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
+            <Card className="p-4 sm:p-6 shadow-md">
+              <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">Status Distribution</h3>
+              <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                 <PieChart>
                   <Pie
                     data={statusData}
@@ -742,7 +744,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
                     cy="50%"
                     labelLine={false}
                     label={({ status, percent }) => `${status}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={100}
+                    outerRadius={80}
                     fill="#8884d8"
                     dataKey="count"
                   >
@@ -755,29 +757,30 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
               </ResponsiveContainer>
             </Card>
 
-            <Card className="p-6 shadow-md lg:col-span-2">
-              <h3 className="text-lg font-medium mb-4">7-Day Activity Trend</h3>
-              <ResponsiveContainer width="100%" height={300}>
+            <Card className="p-4 sm:p-6 shadow-md lg:col-span-2">
+              <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">7-Day Activity Trend</h3>
+              <ResponsiveContainer width="100%" height={220} className="sm:h-[300px]">
                 <LineChart data={timelineData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" tick={{ fill: '#6b7280' }} />
-                  <YAxis tick={{ fill: '#6b7280' }} />
+                  <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
+                  <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: '#fff', 
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      fontSize: '12px'
                     }} 
                   />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Line 
                     type="monotone" 
                     dataKey="created" 
                     stroke="#3B82F6" 
                     strokeWidth={2} 
                     name="Created"
-                    dot={{ r: 4 }}
+                    dot={{ r: 3 }}
                   />
                   <Line 
                     type="monotone" 
@@ -785,7 +788,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
                     stroke="#10B981" 
                     strokeWidth={2} 
                     name="Completed"
-                    dot={{ r: 4 }}
+                    dot={{ r: 3 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -793,35 +796,35 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
           </div>
 
           {/* Recent Activity */}
-          <Card className="p-6 shadow-md">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium">Recent Activity</h3>
-              <Button variant="ghost" size="sm" className="gap-1">
+          <Card className="p-4 sm:p-6 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+              <h3 className="text-base sm:text-lg font-medium">Recent Activity</h3>
+              <Button variant="ghost" size="sm" className="gap-1 w-full sm:w-auto">
                 View All <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
               {recentActivity.map((pis) => (
                 <div 
                   key={pis.id} 
-                  className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border hover:shadow-md transition-all cursor-pointer group"
+                  className="flex items-center justify-between p-3 sm:p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border hover:shadow-md transition-all cursor-pointer group"
                   onClick={() => handleOpenDetails(pis)}
                 >
-                  <div className="flex-1">
-                    <p className="font-medium text-blue-600 group-hover:text-blue-700 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-blue-600 group-hover:text-blue-700 transition-colors text-sm sm:text-base truncate">
                       {pis.pisCode}
                     </p>
-                    <p className="text-sm text-gray-600">{pis.customer}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">{pis.customer}</p>
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
+                      <Badge variant="outline" className="text-[10px] sm:text-xs">
                         {getStageLabel(pis.stage)}
                       </Badge>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-[10px] sm:text-xs text-gray-400">
                         {pis.updatedAt.toLocaleDateString()}
                       </span>
                     </div>
                   </div>
-                  <ArrowRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
                 </div>
               ))}
             </div>

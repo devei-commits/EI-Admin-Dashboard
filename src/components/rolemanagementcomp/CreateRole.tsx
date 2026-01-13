@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { Role, loadRolesFromStorage, saveRolesToStorage } from './ViewRoles';
 
 const CreateRole: React.FC = () => {
   const [formData, setFormData] = useState({
     roleName: '',
     roleLevel: '',
-    roleStatus: 'active',
+    roleStatus: 'active' as 'active' | 'inactive',
     description: ''
   });
 
@@ -27,15 +28,57 @@ const CreateRole: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Role data:', formData);
+    
+    // Load existing roles from localStorage
+    const existingRoles = loadRolesFromStorage();
+    
+    // Check if role with same name already exists
+    const roleExists = existingRoles.some(
+      (role) => role.roleName.toLowerCase() === formData.roleName.toLowerCase()
+    );
+    
+    if (roleExists) {
+      alert('A role with this name already exists!');
+      return;
+    }
+    
+    // Generate new role ID
+    const maxId = existingRoles.reduce((max, role) => {
+      const num = parseInt(role.id.replace('ROLE', ''));
+      return num > max ? num : max;
+    }, 0);
+    const newId = `ROLE${String(maxId + 1).padStart(3, '0')}`;
+    
+    // Create new role object
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const dateTimeStr = now.toISOString().replace('T', ' ').slice(0, 19);
+    
+    const newRole: Role = {
+      id: newId,
+      roleName: formData.roleName,
+      roleLevel: formData.roleLevel,
+      roleStatus: formData.roleStatus,
+      roleCreatedAt: dateStr,
+      roleUpdatedAt: dateTimeStr,
+      description: formData.description || `${formData.roleName} role`
+    };
+    
+    // Save to localStorage
+    const updatedRoles = [...existingRoles, newRole];
+    saveRolesToStorage(updatedRoles);
+    
+    console.log('Role created:', newRole);
+    
     // Reset form
     setFormData({
       roleName: '',
       roleLevel: '',
-      roleStatus: 'Active',
+      roleStatus: 'active',
       description: ''
     });
-    alert('Role created successfully!');
+    
+    alert('Role created successfully! View it in the "View Roles" tab.');
   };
 
   const getAvailableRoles = () => {

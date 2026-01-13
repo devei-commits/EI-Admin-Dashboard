@@ -299,7 +299,7 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
       {(isManagerRole(currentRole)
         ? stats
         : stats.filter((stat) =>
@@ -316,16 +316,16 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
         return (
           <Card
             key={stat.title}
-            className={`p-6 hover:shadow-lg transition-shadow ${clickable ? 'cursor-pointer' : ''}`}
+            className={`p-3 sm:p-4 md:p-6 hover:shadow-lg transition-shadow ${clickable ? 'cursor-pointer' : ''}`}
             onClick={clickable ? stat.action : undefined}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">{stat.title}</p>
-                <p className={`text-3xl ${stat.textColor}`}>{stat.value}</p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1 truncate">{stat.title}</p>
+                <p className={`text-xl sm:text-2xl md:text-3xl font-semibold ${stat.textColor}`}>{stat.value}</p>
               </div>
-              <div className={`${stat.color} p-3 rounded-lg`}>
-                <Icon className="h-6 w-6 text-white" />
+              <div className={`${stat.color} p-2 sm:p-2.5 md:p-3 rounded-lg shrink-0`}>
+                <Icon className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-white" />
               </div>
             </div>
           </Card>

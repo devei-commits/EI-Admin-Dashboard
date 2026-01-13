@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
 import EditRoleFullPage from './EditRoleFullPage.tsx';
 
-interface Role {
+export interface Role {
   id: string;
   roleName: string;
   roleLevel: string;
@@ -12,7 +12,7 @@ interface Role {
   description: string;
 }
 
-interface RoleUser {
+export interface RoleUser {
   id: string;
   email: string;
   password: string;
@@ -20,11 +20,18 @@ interface RoleUser {
   addedAt: string;
 }
 
-const ViewRoles: React.FC = () => {
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
-  const [isEditFullPageOpen, setIsEditFullPageOpen] = useState(false);
-  const [roles, setRoles] = useState<Role[]>([
+// LocalStorage key for roles
+const ROLES_STORAGE_KEY = 'eisthetic_roles';
+
+// LocalStorage key for role users
+const ROLE_USERS_STORAGE_KEY = 'eisthetic_role_users';
+
+type RoleUsersMap = {
+  [roleId: string]: RoleUser[];
+};
+
+// Default roles data
+const defaultRoles: Role[] = [
     {
       id: 'ROLE001',
       roleName: 'Super Admin',
@@ -160,7 +167,70 @@ const ViewRoles: React.FC = () => {
       roleUpdatedAt: '2024-02-28 14:50:00',
       description: 'Customer client access to platform services'
     }
-  ]);
+  ];
+
+// Helper functions for localStorage
+export const loadRolesFromStorage = (): Role[] => {
+  try {
+    const stored = localStorage.getItem(ROLES_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading roles from localStorage:', error);
+  }
+  return defaultRoles;
+};
+
+export const saveRolesToStorage = (roles: Role[]): void => {
+  try {
+    localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(roles));
+  } catch (error) {
+    console.error('Error saving roles to localStorage:', error);
+  }
+};
+
+// Helper functions for role users localStorage
+export const loadRoleUsersMapFromStorage = (): RoleUsersMap => {
+  try {
+    const stored = localStorage.getItem(ROLE_USERS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as RoleUsersMap;
+    }
+  } catch (error) {
+    console.error('Error loading role users from localStorage:', error);
+  }
+  return {};
+};
+
+export const saveRoleUsersMapToStorage = (roleUsersMap: RoleUsersMap): void => {
+  try {
+    localStorage.setItem(ROLE_USERS_STORAGE_KEY, JSON.stringify(roleUsersMap));
+  } catch (error) {
+    console.error('Error saving role users to localStorage:', error);
+  }
+};
+
+const ViewRoles: React.FC = () => {
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
+  const [isEditFullPageOpen, setIsEditFullPageOpen] = useState(false);
+  
+  // Load roles from localStorage on mount
+  const [roles, setRoles] = useState<Role[]>(() => loadRolesFromStorage());
+
+  // Load role users map from localStorage on mount
+  const [roleUsersMap, setRoleUsersMap] = useState<RoleUsersMap>(() => loadRoleUsersMapFromStorage());
+
+  // Save to localStorage whenever roles change
+  useEffect(() => {
+    saveRolesToStorage(roles);
+  }, [roles]);
+
+  // Save role users map whenever it changes
+  useEffect(() => {
+    saveRoleUsersMapToStorage(roleUsersMap);
+  }, [roleUsersMap]);
 
   const handleViewRole = (role: Role) => {
     setSelectedRole(role);
@@ -175,6 +245,11 @@ const ViewRoles: React.FC = () => {
   const handleDeleteRole = (roleId: string) => {
     if (window.confirm('Are you sure you want to delete this role?')) {
       setRoles(prevRoles => prevRoles.filter(role => role.id !== roleId));
+      // Also remove any stored users for this role
+      setRoleUsersMap(prev => {
+        const { [roleId]: _removed, ...rest } = prev;
+        return rest;
+      });
       alert('Role deleted successfully!');
     }
   };
@@ -185,9 +260,12 @@ const ViewRoles: React.FC = () => {
         role.id === updatedRole.id ? updatedRole : role
       )
     );
-    // In production, you would also save the users to your backend
+    // Persist users for this role if provided
     if (users) {
-      console.log('Users for role:', users);
+      setRoleUsersMap(prev => ({
+        ...prev,
+        [updatedRole.id]: users,
+      }));
     }
   };
 
@@ -357,6 +435,7 @@ const ViewRoles: React.FC = () => {
       {isEditFullPageOpen && selectedRole && (
         <EditRoleFullPage
           role={selectedRole}
+          users={roleUsersMap[selectedRole.id] || []}
           onClose={handleCloseEditFullPage}
           onSave={handleSaveRole}
         />
