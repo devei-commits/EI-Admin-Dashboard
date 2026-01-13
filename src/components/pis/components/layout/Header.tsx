@@ -37,6 +37,21 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
     logout();
   };
 
+  // Format time ago helper function - MUST BE DEFINED BEFORE USEMEMO
+  const formatTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - new Date(date).getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(date).toLocaleDateString();
+  };
+
   // Generate real notifications from PIS records
   const notifications = useMemo((): Notification[] => {
     const notifs: Notification[] = [];
@@ -90,19 +105,6 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
 
     return notifs.slice(0, 6);
   }, [pisRecords]);
-
-  const formatTimeAgo = (date: Date): string => {
-    const now = new Date();
-    const diffMs = now.getTime() - new Date(date).getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return new Date(date).toLocaleDateString();
-  };
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {

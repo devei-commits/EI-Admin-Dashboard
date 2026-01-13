@@ -4,6 +4,7 @@ import RoleManagement from './pages/RoleManagement'
 import UserManagement from './pages/UserManagement'
 import OrderManagement from './pages/OrderManagement'
 import OrderList from './pages/OrderList'
+import OrderHub from './pages/OrderHub'
 import CouponManagement from './pages/CouponManagement'
 import DiscountManagement from './pages/DiscountManagement'
 import CatalogueManagement from './pages/CatalogueManagement'
@@ -42,6 +43,7 @@ const AppLayout = () => {
           <Route path="/user-management" element={<UserManagement />} />
           <Route path="/order-management" element={<OrderManagement />} />
           <Route path="/order-list" element={<OrderList />} />
+          <Route path="/order-hub" element={<OrderHub />} />
           <Route path="/coupon-management" element={<CouponManagement />} />
           <Route path="/discount-management" element={<DiscountManagement />} />
           <Route path="/catalogue-management" element={<CatalogueManagement />} />
