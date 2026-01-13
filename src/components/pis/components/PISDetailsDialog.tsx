@@ -26,7 +26,7 @@ import {
 import { Checkbox } from './ui/checkbox';
 import { StageTemplatesForm } from './StageTemplatesForm';
 import { PISChat } from './PISChat';
-import { getServerBaseUrl, pisApi } from '../utils/api';
+import { getServerBaseUrl, pisApi, USE_MOCK_DATA } from '../utils/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 
@@ -132,6 +132,12 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
   }, [pis.id]);
 
   const fetchAttachments = async () => {
+    // Skip API call in mock data mode
+    if (USE_MOCK_DATA) {
+      setAttachments([]);
+      return;
+    }
+    
     try {
       setIsAttachmentsLoading(true);
       const resp = await pisApi.listAttachments(pis.id);

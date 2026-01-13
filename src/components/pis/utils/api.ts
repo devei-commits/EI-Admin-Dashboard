@@ -1,4 +1,7 @@
 // API Configuration
+// Set USE_MOCK_DATA to true to use mock data only (no API calls)
+export const USE_MOCK_DATA = true;
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
 
 export function getApiBaseUrl(): string {

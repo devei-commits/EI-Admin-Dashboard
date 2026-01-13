@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { PISRecord, UserRole, SystemUser, UserPermissions, UserStatus, PISHistoryEntry, Customer, Product } from '../types/pis';
-import { pisApi, customersApi, productsApi, usersApi, dashboardApi, authApi, convertApiPISToFrontend, convertFrontendPISToApi, getAccessToken, getRefreshToken, clearTokens } from '../utils/api';
+import { pisApi, customersApi, productsApi, usersApi, dashboardApi, authApi, convertApiPISToFrontend, convertFrontendPISToApi, getAccessToken, getRefreshToken, clearTokens, USE_MOCK_DATA } from '../utils/api';
 import { mockPISData } from '../data/mockPISData';
 import { mockCustomersData } from '../data/mockCustomersData';
 import { mockProductsData } from '../data/mockProductsData';
@@ -936,6 +936,16 @@ export function PISProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
 
+      // If USE_MOCK_DATA is true, skip API calls and use mock data directly
+      if (USE_MOCK_DATA) {
+        console.log('📦 Using mock data mode (API calls disabled)');
+        setPisRecords(mockPISData);
+        setCustomers(mockCustomersData);
+        setProducts(mockProductsData);
+        setIsLoading(false);
+        return;
+      }
+
       // Fetch PIS records - fetch all records without pagination limit
       try {
         // Request a high limit to get all records, or fetch paginated if needed
@@ -1444,6 +1454,11 @@ export function PISProvider({ children }: { children: ReactNode }) {
   };
 
   const getPISById = async (id: string): Promise<PISRecord | undefined> => {
+    // If USE_MOCK_DATA is true, just use local state
+    if (USE_MOCK_DATA) {
+      return pisRecords.find(pis => pis.id === id);
+    }
+    
     try {
       const response = await pisApi.getById(id);
       if (response.success && response.data) {
