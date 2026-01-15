@@ -1,5 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
 
+// ==================== CUSTOM HOOKS ====================
+/**
+ * useOutsideClick - Auto-closes dropdown on outside click
+ * @param isOpen - Whether the dropdown is currently open
+ * @param onClose - Callback to close the dropdown
+ * @param triggerSelector - Optional CSS selector to exclude from outside-click detection
+ */
+const useOutsideClick = (
+  isOpen: boolean,
+  onClose: () => void,
+  triggerSelector?: string
+) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Check if click is inside dropdown
+      if (dropdownRef.current?.contains(target)) {
+        return;
+      }
+
+      // Check if click is on trigger element (if selector provided)
+      if (triggerSelector && target.closest(triggerSelector)) {
+        return;
+      }
+
+      onClose();
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onClose, triggerSelector]);
+
+  return dropdownRef;
+};
+
 // ==================== TYPES ====================
 interface Order {
   id: string;
@@ -154,7 +194,55 @@ const MOCK_ORDERS: Order[] = [
     currentStatus: 'UNDER SCHEDULE',
     pocForCurrentStatus: '*#S3 COMPLETED*',
     comments: '-'
-  }
+  },
+  ...Array.from({ length: 55 }, (_, i) => {
+    const idx = i + 1;
+    const id = String(100 + idx);
+    const orderNo = `SO-${String(30000 + idx).padStart(5, '0')}`;
+    const orderType = (['NEW ORDER', 'REORDER', 'MODIFIED'] as const)[idx % 3];
+    const skuPrefixes = ['SK2109', 'SK2202', 'PR000', 'SK2110', 'SK2108'] as const;
+    const sku = `${skuPrefixes[idx % skuPrefixes.length]}${String(1000 + (idx * 37) % 9000)}`;
+    const names = [
+      'SKINKRAFT ULTRA SMOOTH FACE CLEANSER FOR SENSITIVE SKIN 60ML',
+      'SKINKRAFT FOR MEN SEBUM CONTROL FACE CLEANSER FOR OILY SKIN 60ML',
+      'SKINKRAFT BARRIER REPAIR CREAM FOR DRY SKIN 45ML',
+      'SKINKRAFT BRIGHTSIDE FACIAL SERUM FOR DULL SKIN 30ML',
+      'MAKEO ACNE AWAY PORE PERFECTING TONER 100ML'
+    ] as const;
+    const itemName = names[idx % names.length];
+    const qtyOptions = [1000, 2000, 3000, 5000, 6000, 8000, 10000, 15000, 20000] as const;
+    const qty = qtyOptions[idx % qtyOptions.length];
+
+    const unitRate = (30 + ((idx * 173) % 120) + ((idx * 7) % 100) / 100).toFixed(2);
+
+    const month = 8 + (idx % 5); // Aug..Dec
+    const day = 1 + (idx % 28);
+    const odrDate = `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const estDelDate = `2025-${String(Math.min(month + 1, 12)).padStart(2, '0')}-${String(Math.min(day + 7, 28)).padStart(2, '0')}`;
+    const comDate = 'CDD';
+
+    const licenseArch = idx % 4 === 0 ? 'no' : 'yes';
+    const licenseEI = idx % 6 === 0 ? 'no' : 'yes';
+
+    return {
+      id,
+      orderNo,
+      orderType,
+      sku,
+      itemName,
+      qty,
+      unitRate,
+      odrDate,
+      estDelDate,
+      comDate,
+      licenseArch,
+      licenseEI,
+      stage: 'PURCHASE PLAN',
+      currentStatus: 'UNDER PLANNING',
+      pocForCurrentStatus: '*#S2 COMPLETED*',
+      comments: '-'
+    };
+  })
 ];
 
 // ==================== API FUNCTIONS (To be implemented with backend) ====================
@@ -192,13 +280,51 @@ const updateOrderType = async (orderId: string, newType: string): Promise<void> 
 const ORDER_TYPE_OPTIONS = ['NEW ORDER', 'REORDER', 'MODIFIED'] as const;
 
 const OrderHub = () => {
-  const [activeTab, setActiveTab] = useState('orders-tracker');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('orderHubActiveTab') || 'orders-tracker';
+    }
+    return 'orders-tracker';
+  });
+  const [purchasePlanSubTab, setPurchasePlanSubTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('purchasePlanSubTab') || 'po-plan';
+    }
+    return 'po-plan';
+  });
   const [orders, setOrders] = useState<Order[]>([]);
   const [reviewOrders, setReviewOrders] = useState<OrderReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [openOrderTypeDropdown, setOpenOrderTypeDropdown] = useState<string | null>(null);
+  const [openLicenseDropdown, setOpenLicenseDropdown] = useState<{
+    orderId: string;
+    type: 'arch' | 'ei';
+  } | null>(null);
+  const [openHmgDropdown, setOpenHmgDropdown] = useState<string | null>(null);
+  const [openMrpDropdown, setOpenMrpDropdown] = useState<string | null>(null);
+  const [licenseEdits, setLicenseEdits] = useState<Record<string, {
+    mfgUnit: string;
+    licenseNo: string;
+    status: 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS';
+  }>>({});
+  const [hmgEdits, setHmgEdits] = useState<Record<string, {
+    status: 'YES' | 'NO';
+  }>>({});
+  const [mrpEdits, setMrpEdits] = useState<Record<string, {
+    status: 'MRP REV' | 'PO PLAN';
+  }>>({});
+  const [commentEdits, setCommentEdits] = useState<Record<string, string>>({});
+  const [openCommentModal, setOpenCommentModal] = useState<string | null>(null);
+    const [openPocModal, setOpenPocModal] = useState<string | null>(null);
+    const [pocModalOrder, setPocModalOrder] = useState<any>(null);
+  const [commentModalText, setCommentModalText] = useState('');
+  const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const licenseDropdownRef = useRef<HTMLDivElement>(null);
+  const hmgDropdownRef = useRef<HTMLDivElement>(null);
+  const mrpDropdownRef = useRef<HTMLDivElement>(null);
+  const commentModalRef = useRef<HTMLDivElement>(null);
   
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -206,17 +332,65 @@ const OrderHub = () => {
   const [viewHistoryOrderId, setViewHistoryOrderId] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
-  // ==================== CLICK OUTSIDE HANDLER ====================
+  // Connectivity Tracker states
+  const [connectivityRecords, setConnectivityRecords] = useState<Record<string, any>>({});
+  const [showAddConnectivityRow, setShowAddConnectivityRow] = useState(false);
+  const [newConnectivityRecord, setNewConnectivityRecord] = useState<any>(null);
+
+  // Production Planner states
+  const [warehouseFilter, setWarehouseFilter] = useState('ALL');
+  const [productionPlannerMfgUnits, setProductionPlannerMfgUnits] = useState<Record<string, string>>({});
+  const [rmReqDates, setRmReqDates] = useState<Record<string, string>>({});
+  const [pmReqDates, setPmReqDates] = useState<Record<string, string>>({});
+  const [bundleModalOpen, setBundleModalOpen] = useState<string | null>(null);
+  const [bundleQty, setBundleQty] = useState('');
+  
+  // Production Tracker states
+  const [trackerWarehouseFilter, setTrackerWarehouseFilter] = useState('ALL');
+  const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
+
+  // ==================== OUTSIDE-CLICK HANDLERS ====================
+  // Only handle order type dropdown (the main one)
+  useOutsideClick(!!openOrderTypeDropdown, () => setOpenOrderTypeDropdown(null));
+  
+  // Manual outside-click handlers for other dropdowns
   useEffect(() => {
+    if (!openLicenseDropdown && !openHmgDropdown && !openMrpDropdown) return;
+
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpenOrderTypeDropdown(null);
+      const target = event.target as HTMLElement;
+      
+      // Check if click is on a trigger or inside a dropdown
+      if (target.closest('[data-license-trigger="true"]') || 
+          target.closest('[data-license-dropdown="true"]')) {
+        return;
       }
+      if (target.closest('[data-hmg-trigger="true"]') || 
+          target.closest('[data-hmg-dropdown="true"]')) {
+        return;
+      }
+      if (target.closest('[data-mrp-trigger="true"]') || 
+          target.closest('[data-mrp-dropdown="true"]')) {
+        return;
+      }
+      
+      // Close all dropdowns
+      setOpenLicenseDropdown(null);
+      setOpenHmgDropdown(null);
+      setOpenMrpDropdown(null);
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [openLicenseDropdown, openHmgDropdown, openMrpDropdown]);
+
+  useEffect(() => {
+    localStorage.setItem('orderHubActiveTab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    localStorage.setItem('purchasePlanSubTab', purchasePlanSubTab);
+  }, [purchasePlanSubTab]);
 
   // ==================== DATA FETCHING ====================
   useEffect(() => {
@@ -354,6 +528,85 @@ const OrderHub = () => {
     return { days, hours, minutes };
   };
 
+  const getMfgProcess = (order: Order) => {
+    const seed = order.sku.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return seed % 2 === 0 ? 'HOT' : 'COLD';
+  };
+
+  const getTransitionDate = (estDate: string) => {
+    const parsed = new Date(estDate);
+    if (Number.isNaN(parsed.getTime())) return '-';
+    const transition = new Date(parsed);
+    transition.setMonth(transition.getMonth() + 2);
+    const yyyy = transition.getFullYear();
+    const mm = String(transition.getMonth() + 1).padStart(2, '0');
+    const dd = String(transition.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const openHmgEditor = (orderId: string) => {
+    if (!hmgEdits[orderId]) {
+      setHmgEdits((prev) => ({
+        ...prev,
+        [orderId]: { status: 'YES' }
+      }));
+    }
+    setOpenHmgDropdown(orderId);
+  };
+
+  const openMrpEditor = (orderId: string) => {
+    if (!mrpEdits[orderId]) {
+      setMrpEdits((prev) => ({
+        ...prev,
+        [orderId]: { status: 'MRP REV' }
+      }));
+    }
+    setOpenMrpDropdown(orderId);
+  };
+
+  const updateHmgEdit = (orderId: string, updates: Partial<{ status: 'YES' | 'NO'; }>) => {
+    setHmgEdits((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], ...updates }
+    }));
+    updateLastModified(orderId);
+  };
+
+  const updateMrpEdit = (orderId: string, updates: Partial<{ status: 'MRP REV' | 'PO PLAN'; }>) => {
+    setMrpEdits((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], ...updates }
+    }));
+    updateLastModified(orderId);
+  };
+
+  const getHmgStatusLabel = (orderId: string) => hmgEdits[orderId]?.status || 'YES';
+  const getMrpStatusLabel = (orderId: string) => mrpEdits[orderId]?.status || 'MRP REV';
+
+  const updateLastModified = (orderId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    setLastUpdatedDates((prev) => ({
+      ...prev,
+      [orderId]: today
+    }));
+  };
+
+  const openCommentEditor = (orderId: string) => {
+    const currentComment = commentEdits[orderId] ?? '';
+    setCommentModalText(currentComment);
+    setOpenCommentModal(orderId);
+  };
+
+  const saveComment = (orderId: string) => {
+    setCommentEdits((prev) => ({
+      ...prev,
+      [orderId]: commentModalText
+    }));
+    updateLastModified(orderId);
+    setOpenCommentModal(null);
+    setCommentModalText('');
+  };
+
   const handleDateChange = async (orderId: string, newDate: string) => {
     // Optimistically update UI
     setOrders(orders.map(order => 
@@ -367,6 +620,65 @@ const OrderHub = () => {
       console.error('Failed to update date:', error);
       // Revert on error
       loadOrders();
+    }
+  };
+
+  const getLicenseKey = (orderId: string, type: 'arch' | 'ei') => `${orderId}-${type}`;
+
+  const openLicenseEditor = (orderId: string, type: 'arch' | 'ei') => {
+    const key = getLicenseKey(orderId, type);
+    const order = orders.find((o) => o.id === orderId);
+    if (!licenseEdits[key]) {
+      setLicenseEdits((prev) => ({
+        ...prev,
+        [key]: {
+          mfgUnit: type === 'arch' ? 'ARCHEESH LAB' : 'EI FACTORY',
+          licenseNo: '',
+          status: (order?.[type === 'arch' ? 'licenseArch' : 'licenseEI'] === 'yes') ? 'YES' : 'NO'
+        }
+      }));
+    }
+    setOpenLicenseDropdown({ orderId, type });
+  };
+
+  const updateLicenseEdit = (key: string, updates: Partial<{ mfgUnit: string; licenseNo: string; status: 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS'; }>) => {
+    setLicenseEdits((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...updates }
+    }));
+    updateLastModified(key);
+  };
+
+  const applyLicenseStatus = (orderId: string, type: 'arch' | 'ei', status: 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS') => {
+    setOrders((prev) => prev.map((order) => {
+      if (order.id !== orderId) return order;
+      return {
+        ...order,
+        licenseArch: type === 'arch' ? (status === 'YES' ? 'yes' : 'no') : order.licenseArch,
+        licenseEI: type === 'ei' ? (status === 'YES' ? 'yes' : 'no') : order.licenseEI
+      };
+    }));
+  };
+
+  const getLicenseStatusLabel = (orderId: string, type: 'arch' | 'ei', fallback: string) => {
+    const key = getLicenseKey(orderId, type);
+    const status = licenseEdits[key]?.status;
+    if (status) return status;
+    return fallback === 'yes' ? 'YES' : 'NO';
+  };
+
+  const getLicenseStatusClass = (status: string) => {
+    switch (status) {
+      case 'YES':
+        return 'bg-green-100 text-green-700 border-green-200';
+      case 'NO':
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+      case 'APPLIED':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'IN PROCESS':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+      default:
+        return 'bg-gray-100 text-gray-600 border-gray-200';
     }
   };
 
@@ -394,11 +706,62 @@ const OrderHub = () => {
     }
   };
 
+  // ==================== CONNECTIVITY TRACKER FUNCTIONS ====================
+  const getConnectivityTrackerOrders = () => {
+    // Get ALL orders from all stages for connectivity tracking
+    return orders;
+  };
+
+  const updateConnectivityRecord = (orderId: string, field: string, value: any) => {
+    setConnectivityRecords((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [field]: value
+      }
+    }));
+    updateLastModified(orderId);
+  };
+
+  const addNewConnectivityRecord = () => {
+    if (!newConnectivityRecord) {
+      setNewConnectivityRecord({
+        id: `new-${Date.now()}`,
+        orderNo: '',
+        sku: '',
+        itemName: '',
+        qty: 0,
+        sourceStage: 'MANUAL',
+        startDate: new Date().toISOString().split('T')[0],
+        estimatedCompletionDate: '',
+        status: 'IN PROGRESS',
+        remarks: ''
+      });
+    }
+    setShowAddConnectivityRow(true);
+  };
+
+  const saveNewConnectivityRecord = () => {
+    if (newConnectivityRecord) {
+      setConnectivityRecords((prev) => ({
+        ...prev,
+        [newConnectivityRecord.id]: newConnectivityRecord
+      }));
+      setNewConnectivityRecord(null);
+      setShowAddConnectivityRow(false);
+    }
+  };
+
+  const cancelNewConnectivityRecord = () => {
+    setNewConnectivityRecord(null);
+    setShowAddConnectivityRow(false);
+  };
+
   const tabs = [
     { id: 'orders-tracker', label: 'Orders Tracker' },
     { id: 'orders-review', label: '#1 Orders Review' },
     { id: 'purchase-plan', label: '#2 Purchase Plan' },
-    { id: 'purchase-planner', label: '#3 Purchase Planner' },
+    { id: 'purchase-planner', label: '#3 Connectivity Tracker' },
     { id: 'production-planner', label: '#4 Production Planner' },
     { id: 'production-tracker', label: '#5 Production Tracker' },
     { id: 'order-closure', label: '#6 Order Closure' },
@@ -418,6 +781,8 @@ const OrderHub = () => {
     
     return matchesSearch && matchesStatus;
   });
+
+  const poPlanOrders = filteredOrders.filter((order) => order.stage === 'PURCHASE PLAN');
 
   // Filter review orders based on search query and status filter
   const filteredReviewOrders = reviewOrders.filter(order => {
@@ -529,6 +894,32 @@ const OrderHub = () => {
                     </tr>
                   </thead>
                   <tbody>
+                    {openPocModal && pocModalOrder && (
+                      <div className="fixed inset-0 z-50 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setOpenPocModal(null)}>
+                        <div 
+                          className="bg-white rounded-lg shadow-lg p-6 max-w-3xl w-full mx-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <h3 className="text-lg font-semibold text-gray-800 mb-4">POC Details</h3>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div><span className="font-bold">POC_CM_TEAM:</span> {pocModalOrder.pocCmtTeam || '-'}</div>
+                            <div><span className="font-bold">POC_R&D PRODUCT:</span> {pocModalOrder.pocRead || '-'}</div>
+                            <div><span className="font-bold">POC_PACKING:</span> {pocModalOrder.pocPacking || '-'}</div>
+                            <div><span className="font-bold">POC_QUALITY_PRODUCT:</span> {pocModalOrder.pocQuality || '-'}</div>
+                            <div><span className="font-bold">POC_QUALITY_COMPLIANCE:</span> {pocModalOrder.pocQualityCompliance || '-'}</div>
+                            <div><span className="font-bold">POC_LABEL_DESIGN:</span> {pocModalOrder.pocLabel || '-'}</div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-6">
+                            <button
+                              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                              onClick={() => setOpenPocModal(null)}
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {filteredOrders.map((order, index) => {
                       const elapsed = calculateTimeElapsed(order.odrDate);
                       return (
@@ -597,7 +988,14 @@ const OrderHub = () => {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.pocForCurrentStatus}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 flex items-center gap-2">
+                            {order.pocForCurrentStatus}
+                            <button onClick={() => { setOpenPocModal(order.id); setPocModalOrder(order); }} className="ml-2 p-1 rounded hover:bg-gray-200" title="View POC Details">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h5.25m5.25-.75L17.25 9m0 0L21 12.75M17.25 9v12" />
+                              </svg>
+                            </button>
+                          </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-600 max-w-[150px] truncate" title={order.comments}>{order.comments}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -805,7 +1203,9 @@ const OrderHub = () => {
                             <button className="text-blue-600 hover:underline">{order.licenseEI}</button>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button className="text-blue-600 hover:underline">{order.mfgProcess}</button>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${order.mfgProcess === 'HOT' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {order.mfgProcess || '-'}
+                            </span>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <button className="text-blue-600 hover:underline">{order.homogenizerProcess}</button>
@@ -906,10 +1306,1580 @@ const OrderHub = () => {
             </div>
           </div>
         )}
-        {activeTab === 'purchase-plan' && <div className="p-6">#2 Purchase Plan Content</div>}
-        {activeTab === 'purchase-planner' && <div className="p-6">#3 Purchase Planner Content</div>}
-        {activeTab === 'production-planner' && <div className="p-6">#4 Production Planner Content</div>}
-        {activeTab === 'production-tracker' && <div className="p-6">#5 Production Tracker Content</div>}
+        {activeTab === 'purchase-plan' && (
+          <div>
+            {/* Sub-tabs for Purchase Plan */}
+            <div className="flex border-b border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setPurchasePlanSubTab('po-plan')}
+                className={`px-6 py-3 text-sm font-medium transition-all ${
+                  purchasePlanSubTab === 'po-plan'
+                    ? 'border-b-2 border-amber-500 text-amber-600 bg-white'
+                    : 'text-gray-600 hover:text-amber-600'
+                }`}
+              >
+                PO Plan
+              </button>
+              <button
+                onClick={() => setPurchasePlanSubTab('rev-1')}
+                className={`px-6 py-3 text-sm font-medium transition-all ${
+                  purchasePlanSubTab === 'rev-1'
+                    ? 'border-b-2 border-amber-500 text-amber-600 bg-white'
+                    : 'text-gray-600 hover:text-amber-600'
+                }`}
+              >
+                Rev 1
+              </button>
+            </div>
+
+            {/* Sub-tab Content */}
+            <div className="p-6">
+              {purchasePlanSubTab === 'po-plan' && (
+                <div>
+                  <div className="mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800">PO Plan</h2>
+                    <p className="text-sm text-gray-600">Purchase Order Plan</p>
+                  </div>
+
+                  {/* Search and Filter Bar (reuse existing controls) */}
+                  <div className="p-4 border border-gray-100 rounded-xl bg-white flex items-center gap-4 mb-4">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Search by Item SKU</label>
+                      <input
+                        type="text"
+                        placeholder="Search..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="w-64">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Status</label>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+                      >
+                        <option value="ALL">ALL ORDERS</option>
+                        <option value="OPEN">OPEN ORDERS</option>
+                        <option value="IN_PROGRESS">IN PROGRESS</option>
+                        <option value="COMPLETED">COMPLETED</option>
+                        <option value="PENDING">PENDING</option>
+                      </select>
+                    </div>
+                    <div className="pt-5">
+                      <button className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        Filter Items
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-gray-100 rounded-xl bg-white relative z-0">
+                    {loading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
+                      </div>
+                    ) : (
+                      <table className="w-full relative" style={{ borderCollapse: 'collapse', position: 'relative' }}>
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-0 z-40 bg-white">
+                              <input type="checkbox" className="rounded border-gray-300 w-4 h-4" />
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-12 z-40 bg-white">ID</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-28 z-40 bg-white">Order No</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-64 z-20 bg-white">SKU</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-80 z-20 bg-white">Item Name</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Qty</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Rate</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Req</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">ODR_Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">EST_Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">COM_Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">#SYNC</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">INV PLAN</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Transition Date</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">License ARCH Status</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">License EI Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">MFG Process</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">HMG Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">MRP_Status</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">#POC</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">#Comments</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Updated_Dt</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {poPlanOrders.map((order) => (
+                            <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3.5 sticky left-0 z-30 bg-white hover:bg-gray-50">
+                                <input type="checkbox" className="rounded border-gray-300 w-4 h-4" />
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-12 z-10 bg-white hover:bg-gray-50">{order.id}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-28 z-10 bg-white hover:bg-gray-50">{order.orderNo}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-64 z-10 bg-white hover:bg-gray-50">{order.sku}</td>
+                              <td className="px-4 py-3.5 text-sm text-gray-900 min-w-[300px] sticky left-80 z-10 bg-white hover:bg-gray-50">{order.itemName}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.qty}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.unitRate}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">
+                                -
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.estDelDate}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.comDate}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <button className="text-blue-600 hover:underline text-sm">sync</button>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">
+                                {(() => {
+                                  const mfg = getMfgProcess(order);
+                                  return (
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${mfg === 'HOT' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                      {mfg}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">
+                                -
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    data-license-trigger="true"
+                                    onClick={() => openLicenseEditor(order.id, 'arch')}
+                                    className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-full text-xs border hover:shadow-sm transition ${getLicenseStatusClass(getLicenseStatusLabel(order.id, 'arch', order.licenseArch) as string)}`}
+                                  >
+                                    {getLicenseStatusLabel(order.id, 'arch', order.licenseArch)}
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </button>
+                                  {openLicenseDropdown?.orderId === order.id && openLicenseDropdown?.type === 'arch' && (
+                                    <div ref={licenseDropdownRef} data-license-dropdown="true" className="absolute z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                                      <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Select License Status..</p>
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[11px] text-gray-500">MFG Unit</label>
+                                          <select
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            value={licenseEdits[getLicenseKey(order.id, 'arch')]?.mfgUnit || 'ARCHEESH LAB'}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'arch'), { mfgUnit: e.target.value })}
+                                          >
+                                            <option>ARCHEESH LAB</option>
+                                            <option>EI FACTORY</option>
+                                          </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[11px] text-gray-500">LDIS.No</label>
+                                          <input
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            placeholder="LDIS.No"
+                                            value={licenseEdits[getLicenseKey(order.id, 'arch')]?.licenseNo || ''}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'arch'), { licenseNo: e.target.value })}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <select
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            value={licenseEdits[getLicenseKey(order.id, 'arch')]?.status || 'YES'}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'arch'), { status: e.target.value as 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS' })}
+                                          >
+                                            <option value="YES">YES</option>
+                                            <option value="NO">NO</option>
+                                            <option value="APPLIED">APPLIED</option>
+                                            <option value="IN PROCESS">IN PROCESS</option>
+                                          </select>
+                                          <button
+                                            className="p-1.5 bg-blue-600 text-white rounded"
+                                            title="Save"
+                                            onClick={() => {
+                                              const key = getLicenseKey(order.id, 'arch');
+                                              const status = (licenseEdits[key]?.status || 'YES') as 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS';
+                                              applyLicenseStatus(order.id, 'arch', status);
+                                              setOpenLicenseDropdown(null);
+                                            }}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            className="p-1.5 text-gray-500 hover:text-gray-700"
+                                            title="Close"
+                                            onClick={() => setOpenLicenseDropdown(null)}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    data-license-trigger="true"
+                                    onClick={() => openLicenseEditor(order.id, 'ei')}
+                                    className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-full text-xs border hover:shadow-sm transition ${getLicenseStatusClass(getLicenseStatusLabel(order.id, 'ei', order.licenseEI) as string)}`}
+                                  >
+                                    {getLicenseStatusLabel(order.id, 'ei', order.licenseEI)}
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </button>
+                                  {openLicenseDropdown?.orderId === order.id && openLicenseDropdown?.type === 'ei' && (
+                                    <div ref={licenseDropdownRef} data-license-dropdown="true" className="absolute z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                                      <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Select License EI Status..</p>
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[11px] text-gray-500">MFG Unit</label>
+                                          <select
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            value={licenseEdits[getLicenseKey(order.id, 'ei')]?.mfgUnit || 'EI FACTORY'}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'ei'), { mfgUnit: e.target.value })}
+                                          >
+                                            <option>EI FACTORY</option>
+                                            <option>ARCHEESH LAB</option>
+                                          </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[11px] text-gray-500">License No.</label>
+                                          <input
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            placeholder="License No"
+                                            value={licenseEdits[getLicenseKey(order.id, 'ei')]?.licenseNo || ''}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'ei'), { licenseNo: e.target.value })}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <select
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                            value={licenseEdits[getLicenseKey(order.id, 'ei')]?.status || 'YES'}
+                                            onChange={(e) => updateLicenseEdit(getLicenseKey(order.id, 'ei'), { status: e.target.value as 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS' })}
+                                          >
+                                            <option value="YES">YES</option>
+                                            <option value="NO">NO</option>
+                                            <option value="APPLIED">APPLIED</option>
+                                            <option value="IN PROCESS">IN PROCESS</option>
+                                          </select>
+                                          <button
+                                            className="p-1.5 bg-blue-600 text-white rounded"
+                                            title="Save"
+                                            onClick={() => {
+                                              const key = getLicenseKey(order.id, 'ei');
+                                              const status = (licenseEdits[key]?.status || 'YES') as 'YES' | 'NO' | 'APPLIED' | 'IN PROCESS';
+                                              applyLicenseStatus(order.id, 'ei', status);
+                                              setOpenLicenseDropdown(null);
+                                            }}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            className="p-1.5 text-gray-500 hover:text-gray-700"
+                                            title="Close"
+                                            onClick={() => setOpenLicenseDropdown(null)}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    data-hmg-trigger="true"
+                                    onClick={() => openHmgEditor(order.id)}
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm"
+                                  >
+                                    {getHmgStatusLabel(order.id)}
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </button>
+                                  {openHmgDropdown === order.id && (
+                                    <div ref={hmgDropdownRef} data-hmg-dropdown="true" className="absolute z-50 mt-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                                      <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Select HMG Status</p>
+                                      <select
+                                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-3"
+                                        value={hmgEdits[order.id]?.status || 'YES'}
+                                        onChange={(e) => updateHmgEdit(order.id, { status: e.target.value as 'YES' | 'NO' })}
+                                      >
+                                        <option value="YES">YES</option>
+                                        <option value="NO">NO</option>
+                                      </select>
+                                      <div className="flex items-center gap-2 mt-3">
+                                        <button
+                                          className="p-1.5 bg-blue-600 text-white rounded"
+                                          title="Save"
+                                          onClick={() => setOpenHmgDropdown(null)}
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          className="p-1.5 text-gray-500 hover:text-gray-700"
+                                          title="Close"
+                                          onClick={() => setOpenHmgDropdown(null)}
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    data-mrp-trigger="true"
+                                    onClick={() => openMrpEditor(order.id)}
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm"
+                                  >
+                                    {getMrpStatusLabel(order.id)}
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </button>
+                                  {openMrpDropdown === order.id && (
+                                    <div ref={mrpDropdownRef} data-mrp-dropdown="true" className="absolute z-50 mt-2 w-48 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                                      <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Select MRP Review Status</p>
+                                      <select
+                                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                                        value={mrpEdits[order.id]?.status || 'MRP REV'}
+                                        onChange={(e) => updateMrpEdit(order.id, { status: e.target.value as 'MRP REV' | 'PO PLAN' })}
+                                      >
+                                        <option value="MRP REV">MRP REV</option>
+                                        <option value="PO PLAN">PO PLAN</option>
+                                      </select>
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <button
+                                          className="p-1.5 bg-blue-600 text-white rounded"
+                                          title="Save"
+                                          onClick={() => setOpenMrpDropdown(null)}
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          className="p-1.5 text-gray-500 hover:text-gray-700"
+                                          title="Close"
+                                          onClick={() => setOpenMrpDropdown(null)}
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                                <button
+                                  className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                  title="POC"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h10" />
+                                  </svg>
+                                </button>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <button
+                                  data-comment-trigger="true"
+                                  onClick={() => openCommentEditor(order.id)}
+                                  className="text-blue-600 hover:underline text-sm"
+                                >
+                                  {commentEdits[order.id]?.trim() ? commentEdits[order.id] : 'Add'}
+                                </button>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-600">
+                                {lastUpdatedDates[order.id] || '-'}
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                                <button
+                                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                                  title="Action"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                                  </svg>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {/* Comment Modal */}
+                          {openCommentModal && (
+                            <tr>
+                              <td colSpan={24} className="px-0 py-0">
+                                <div className="fixed inset-0 z-50 bg-transparent flex items-center justify-center" onClick={() => setOpenCommentModal(null)}>
+                                  <div 
+                                    ref={commentModalRef}
+                                    data-comment-modal="true"
+                                    className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Edit Comment</h3>
+                                    <textarea
+                                      autoFocus
+                                      value={commentModalText}
+                                      onChange={(e) => setCommentModalText(e.target.value)}
+                                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                      rows={4}
+                                      placeholder="Enter your comment here..."
+                                    />
+                                    <div className="flex items-center gap-2 mt-4">
+                                      <button
+                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                                        onClick={() => saveComment(openCommentModal)}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition font-medium"
+                                        onClick={() => setOpenCommentModal(null)}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {!poPlanOrders.length && (
+                            <tr>
+                              <td className="px-4 py-10 text-center text-sm text-gray-500" colSpan={24}>
+                                No orders found in PURCHASE PLAN.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              )}
+              {purchasePlanSubTab === 'rev-1' && (
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Rev 1</h2>
+                  <p className="text-gray-600">Revision 1 content will be displayed here.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {activeTab === 'purchase-planner' && (
+          <div>
+            {/* Header */}
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">#3 Connectivity Tracker</h2>
+              <button
+                onClick={addNewConnectivityRecord}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                + Add New Record
+              </button>
+            </div>
+
+            {/* Connectivity Tracker Table */}
+            <div className="overflow-x-auto">
+              {getConnectivityTrackerOrders().length === 0 && !showAddConnectivityRow ? (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-gray-500 text-sm">No records available. Add new records or create manually.</p>
+                </div>
+              ) : (
+                  <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-0 z-20 bg-gray-50">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-12 z-20 bg-gray-50">Order No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-28 z-20 bg-gray-50">SKU</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-48 z-20 bg-gray-50">Item Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Qty</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Rate</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Req</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">ODR Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST. Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">COM Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">INV. Can_di</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Transition</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_Loc</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">License ARCH</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">License EI</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">HMG Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FG_PLAN_QTY</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_UNIT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_MFG DATE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">TANK_CODE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FILLING_UNI_CDE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_FILLING_UNIT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*POC_</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*Comments</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Comment Modal */}
+                    {openCommentModal && (
+                      <tr>
+                        <td colSpan={26} className="px-0 py-0">
+                          <div className="fixed inset-0 z-50 bg-transparent flex items-center justify-center" onClick={() => setOpenCommentModal(null)}>
+                            <div 
+                              ref={commentModalRef}
+                              data-comment-modal="true"
+                              className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <h3 className="text-lg font-semibold text-gray-800 mb-4">Edit Comment</h3>
+                              <textarea
+                                autoFocus
+                                value={commentModalText}
+                                onChange={(e) => setCommentModalText(e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                rows={4}
+                                placeholder="Enter your comment here..."
+                              />
+                              <div className="flex items-center gap-2 mt-4">
+                                <button
+                                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                                  onClick={() => saveComment(openCommentModal)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition font-medium"
+                                  onClick={() => setOpenCommentModal(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {/* All Order Records */}
+                    {getConnectivityTrackerOrders().map((order) => {
+                      const recordData = connectivityRecords[order.id] || {};
+                      const mfgProcess = getMfgProcess(order);
+                      const transitionDate = getTransitionDate(order.estDelDate);
+                      
+                      return (
+                        <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-gray-50">{order.id}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-12 z-10 bg-white hover:bg-gray-50">{order.orderNo}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-28 z-10 bg-white hover:bg-gray-50">{order.sku}</td>
+                          <td className="px-4 py-3.5 text-sm text-gray-700 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-gray-50">{order.itemName}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.qty}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">₹{order.unitRate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <input
+                              type="text"
+                              defaultValue={recordData.req || '-'}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'req', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.estDelDate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.comDate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <input
+                              type="text"
+                              defaultValue={recordData.invCandi || '-'}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'invCandi', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{transitionDate}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <select
+                              defaultValue={recordData.mfgLoc || 'ARCHEESH LAB'}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'mfgLoc', e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            >
+                              <option value="ARCHEESH LAB">ARCHEESH LAB</option>
+                              <option value="EI FACTORY">EI FACTORY</option>
+                              <option value="OTHER">OTHER</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${order.licenseArch === 'yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {order.licenseArch}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${order.licenseEI === 'yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {order.licenseEI}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">{mfgProcess}</span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <span 
+                              onClick={() => openHmgEditor(order.id)}
+                              className="inline-block px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-700 cursor-pointer hover:bg-amber-200"
+                            >
+                              {getHmgStatusLabel(order.id)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">
+                            <input
+                              type="number"
+                              defaultValue={recordData.fgPlanQty || order.qty}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'fgPlanQty', parseInt(e.target.value) || 0)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <select
+                              defaultValue={recordData.mfgUnit || ''}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'mfgUnit', e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            >
+                              <option value="">SELECT MFG UNIT</option>
+                              <optgroup label="Select MFG Location">
+                                <option value="ARCHEESH LAB (MFG 1)">ARCHEESH LAB (MFG 1)</option>
+                                <option value="EI FACTORY (MFG 2)">EI FACTORY (MFG 2)</option>
+                              </optgroup>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <input
+                              type="date"
+                              defaultValue={recordData.estMfgDate || order.estDelDate}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'estMfgDate', e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <select
+                              defaultValue={recordData.tankCode || ''}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'tankCode', e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            >
+                              <option value="">SELECT TANK CODE</option>
+                              <option value="MANUAL">MANUAL</option>
+                              <option value="10 KG">10 KG</option>
+                              <option value="100 KG">100 KG</option>
+                              <option value="150 KG">150 KG</option>
+                              <option value="300 KG">300 KG</option>
+                              <option value="750 KL WITH HMZ">750 KL WITH HMZ</option>
+                              <option value="1 KL WITH HMZ">1 KL WITH HMZ</option>
+                              <option value="1 KL WITHOUT HMZ">1 KL WITHOUT HMZ</option>
+                              <option value="2 KL WITH HMZ">2 KL WITH HMZ</option>
+                              <option value="2 KL WITHOUT HMZ">2 KL WITHOUT HMZ</option>
+                              <option value="3 KL WITH HMZ">3 KL WITH HMZ</option>
+                              <option value="3 KL WITHOUT HMZ">3 KL WITHOUT HMZ</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                            <input
+                              type="text"
+                              defaultValue={recordData.fillingUniCde || '-'}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'fillingUniCde', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              placeholder="Code"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <input
+                              type="date"
+                              defaultValue={recordData.estFillingUnit || order.estDelDate}
+                              onChange={(e) => updateConnectivityRecord(order.id, 'estFillingUnit', e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 text-sm relative">
+                            <div className="relative inline-block text-left">
+                              <button
+                                onClick={() => {
+                                  if (openPocModal === order.id) {
+                                    setOpenPocModal(null);
+                                    return;
+                                  }
+                                  setPocModalOrder(order);
+                                  setOpenPocModal(order.id);
+                                }}
+                                className="px-2 py-1 text-blue-600 hover:text-blue-900 hover:bg-blue-100 rounded transition-colors font-medium"
+                              >
+                                View POC
+                              </button>
+                              {openPocModal === order.id && pocModalOrder && (
+                                <div className="absolute z-50 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 right-0">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-xs font-semibold text-gray-800">POC USERS</h3>
+                                    <button
+                                      onClick={() => setOpenPocModal(null)}
+                                      className="text-gray-400 hover:text-gray-600"
+                                    >
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth="1.5"
+                                        stroke="currentColor"
+                                        className="w-4 h-4"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                  <ul className="space-y-2 text-[11px]">
+                                    <li>
+                                      <span className="font-medium text-gray-700">CM_TEAM: </span>
+                                      <span className="text-gray-600">TEJA</span>
+                                    </li>
+                                    <li>
+                                      <span className="font-medium text-gray-700">R&D PRODUCT: </span>
+                                      <span className="text-gray-600">(id: 12, name: "BHAVYA")</span>
+                                    </li>
+                                    <li>
+                                      <span className="font-medium text-gray-700">PACKING: </span>
+                                      <span className="text-gray-600">-</span>
+                                    </li>
+                                    <li>
+                                      <span className="font-medium text-gray-700">QUALITY PRODUCT: </span>
+                                      <span className="text-gray-600">(id: 57, name: "SHIVA KUMAR")</span>
+                                    </li>
+                                    <li>
+                                      <span className="font-medium text-gray-700">QUALITY COMPLIANCE: </span>
+                                      <span className="text-gray-600">-</span>
+                                    </li>
+                                    <li>
+                                      <span className="font-medium text-gray-700">LABEL DESIGN: </span>
+                                      <span className="text-gray-600">TARUN</span>
+                                    </li>
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-sm">
+                            <button
+                              onClick={() => openCommentEditor(order.id)}
+                              className="px-2 py-1 text-amber-600 hover:text-amber-900 hover:bg-amber-100 rounded transition-colors font-medium"
+                            >
+                              {commentEdits[order.id] ? 'Edit' : 'Add'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                            <button
+                              className="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-100 rounded transition-colors"
+                              title="Action"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.867 19.125h.008v.008h-.008v-.008Z" />
+                              </svg>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* New Record Row (if adding) */}
+                    {showAddConnectivityRow && newConnectivityRecord && (
+                      <tr className="border-b border-gray-100 bg-green-50 hover:bg-green-50 transition-colors">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm sticky left-0 z-10 bg-green-50">AUTO</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm sticky left-12 z-10 bg-green-50">
+                          <input
+                            type="text"
+                            value={newConnectivityRecord.orderNo}
+                            onChange={(e) => setNewConnectivityRecord({ ...newConnectivityRecord, orderNo: e.target.value })}
+                            placeholder="Order No"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td colSpan={24} className="px-4 py-3.5 text-center text-sm text-gray-600">
+                          [New record row - Fill all fields and click Save]
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Summary Section */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50">
+              <div className="grid grid-cols-5 gap-4">
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 uppercase font-semibold">Total Records</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">{getConnectivityTrackerOrders().length}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 uppercase font-semibold">Total Qty</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-2">{getConnectivityTrackerOrders().reduce((sum, o) => sum + o.qty, 0)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 uppercase font-semibold">Total Value</p>
+                  <p className="text-2xl font-bold text-green-600 mt-2">₹{(getConnectivityTrackerOrders().reduce((sum, o) => sum + (o.qty * parseFloat(o.unitRate || '0')), 0) / 100000).toFixed(2)}L</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 uppercase font-semibold">License ARCH</p>
+                  <p className="text-2xl font-bold text-purple-600 mt-2">{getConnectivityTrackerOrders().filter(o => o.licenseArch === 'yes').length}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 uppercase font-semibold">License EI</p>
+                  <p className="text-2xl font-bold text-orange-600 mt-2">{getConnectivityTrackerOrders().filter(o => o.licenseEI === 'yes').length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === 'production-planner' && (
+          <div>
+            {/* Header */}
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">#4 Production Planner</h2>
+              <button
+                onClick={() => console.log('Add new record')}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                + Add New Record
+              </button>
+            </div>
+
+            {/* Warehouse Filter */}
+            <div className="p-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-6">
+                <span className="text-sm font-semibold text-gray-700">WAREHOUSE:</span>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="warehouse"
+                      value="ALL"
+                      checked={warehouseFilter === 'ALL'}
+                      onChange={(e) => setWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">All</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="warehouse"
+                      value="ARCHEESH LAB"
+                      checked={warehouseFilter === 'ARCHEESH LAB'}
+                      onChange={(e) => setWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">ARCHEESH LAB</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="warehouse"
+                      value="EI FACTORY"
+                      checked={warehouseFilter === 'EI FACTORY'}
+                      onChange={(e) => setWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">EI FACTORY</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Production Planner Table */}
+            <div className="overflow-x-auto">
+              {orders.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-gray-500 text-sm">No records available.</p>
+                </div>
+              ) : (
+                <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-0 z-20 bg-gray-50">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-12 z-20 bg-gray-50">Order No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-28 z-20 bg-gray-50">Item SKU</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-48 z-20 bg-gray-50">Item Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Order Qty</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Order Rate</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Req</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Material Request</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">ODR_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">COM_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Transition_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FG_PLAN_QTY</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">License ARCH</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">License EI</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">HMG Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PRODUCT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PACKING</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_UNIT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_MFG</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">TANK_CODE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FILLING *line code*</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_FILLING DATE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">RM_T Req_dt</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PM_T Req_dt</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Disp_sheet</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*Comments</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*POC</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.filter((order) => {
+                      if (warehouseFilter === 'ALL') return true;
+                      const mfgUnit = productionPlannerMfgUnits[order.id];
+                      if (warehouseFilter === 'ARCHEESH LAB') return mfgUnit === 'ARCHEESH LAB (MFG 1)';
+                      if (warehouseFilter === 'EI FACTORY') return mfgUnit === 'EI FACTORY (MFG 2)';
+                      return false;
+                    }).map((order) => (
+                      <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-gray-50">{order.id}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-12 z-10 bg-white hover:bg-gray-50">{order.orderNo}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-28 z-10 bg-white hover:bg-gray-50">{order.sku}</td>
+                        <td className="px-4 py-3.5 text-sm text-gray-700 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-gray-50">{order.itemName}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.qty}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.unitRate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">CRD</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.estDelDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.comDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <input
+                            type="number"
+                            defaultValue={order.qty}
+                            placeholder="Enter QTY"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue={order.licenseArch === 'yes' ? 'YES' : 'NO'}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="YES">YES</option>
+                            <option value="NO">NO</option>
+                            <option value="APPLIED">APPLIED</option>
+                            <option value="IN PROCESS">IN PROCESS</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue={order.licenseEI === 'yes' ? 'YES' : 'NO'}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="YES">YES</option>
+                            <option value="NO">NO</option>
+                            <option value="APPLIED">APPLIED</option>
+                            <option value="IN PROCESS">IN PROCESS</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">HOT</span>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">YES</span>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="">Select Production Incharge</option>
+                            <option value="PROD EXE 1">PROD EXE 1</option>
+                            <option value="PROD EXE 2">PROD EXE 2</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="">Select Package Incharge</option>
+                            <option value="PACK EXE 1">PACK EXE 1</option>
+                            <option value="PACK EXE 2">PACK EXE 2</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            value={productionPlannerMfgUnits[order.id] || ''}
+                            onChange={(e) => setProductionPlannerMfgUnits({ ...productionPlannerMfgUnits, [order.id]: e.target.value })}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">SELECT MFG UNIT</option>
+                            <option value="ARCHEESH LAB (MFG 1)">ARCHEESH LAB (MFG 1)</option>
+                            <option value="EI FACTORY (MFG 2)">EI FACTORY (MFG 2)</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            defaultValue={order.estDelDate}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">SELECT TANK CODE</option>
+                            <option value="MANUAL">MANUAL</option>
+                            <option value="10 KG">10 KG</option>
+                            <option value="100 KG">100 KG</option>
+                            <option value="750 KL WITH HMZ">750 KL WITH HMZ</option>
+                            <option value="1 KL WITH HMZ">1 KL WITH HMZ</option>
+                            <option value="2 KL WITH HMZ">2 KL WITH HMZ</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="">Select Filling Line Code</option>
+                            <option value="TWO HEAD">TWO HEAD</option>
+                            <option value="MANUAL LINE 1">MANUAL LINE 1</option>
+                            <option value="MANUAL LINE 2">MANUAL LINE 2</option>
+                            <option value="SINGLE HEAD 1">SINGLE HEAD 1</option>
+                            <option value="SINGLE HEAD 2">SINGLE HEAD 2</option>
+                            <option value="FOUR HEAD 1">FOUR HEAD 1</option>
+                            <option value="FOUR HEAD 2">FOUR HEAD 2</option>
+                            <option value="SIX HEAD">SIX HEAD</option>
+                            <option value="TUBE LINE 1">TUBE LINE 1</option>
+                            <option value="TUBE LINE 2">TUBE LINE 2</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            defaultValue={order.estDelDate}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            value={rmReqDates[order.id] || ''}
+                            onChange={(e) => setRmReqDates({ ...rmReqDates, [order.id]: e.target.value })}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            value={pmReqDates[order.id] || ''}
+                            onChange={(e) => setPmReqDates({ ...pmReqDates, [order.id]: e.target.value })}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                        <td className="px-4 py-3.5 text-sm">
+                          <button
+                            onClick={() => openCommentEditor(order.id)}
+                            className="px-2 py-1 text-amber-600 hover:text-amber-900 hover:bg-amber-100 rounded transition-colors font-medium"
+                          >
+                            {commentEdits[order.id] ? 'Edit' : 'Add'}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3.5 text-sm relative">
+                          <div className="relative inline-block text-left">
+                            <button
+                              onClick={() => {
+                                if (openPocModal === order.id) {
+                                  setOpenPocModal(null);
+                                  return;
+                                }
+                                setPocModalOrder(order);
+                                setOpenPocModal(order.id);
+                              }}
+                              className="px-2 py-1 text-blue-600 hover:text-blue-900 hover:bg-blue-100 rounded transition-colors font-medium"
+                            >
+                              View POC
+                            </button>
+                            {openPocModal === order.id && pocModalOrder && (
+                              <div className="absolute z-50 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 right-0">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="text-xs font-semibold text-gray-800">POC USERS</h3>
+                                  <button
+                                    onClick={() => setOpenPocModal(null)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth="1.5"
+                                      stroke="currentColor"
+                                      className="w-4 h-4"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <ul className="space-y-2 text-[11px]">
+                                  <li>
+                                    <span className="font-medium text-gray-700">CM_TEAM: </span>
+                                    <span className="text-gray-600">TEJA</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">R&D PRODUCT: </span>
+                                    <span className="text-gray-600">(id: 12, name: "BHAVYA")</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">PACKING: </span>
+                                    <span className="text-gray-600">-</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">QUALITY PRODUCT: </span>
+                                    <span className="text-gray-600">(id: 57, name: "SHIVA KUMAR")</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">QUALITY COMPLIANCE: </span>
+                                    <span className="text-gray-600">-</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">LABEL DESIGN: </span>
+                                    <span className="text-gray-600">TARUN</span>
+                                  </li>
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                          <button
+                            className="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-100 rounded transition-colors"
+                            title="Action"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.867 19.125h.008v.008h-.008v-.008Z" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+        {activeTab === 'production-tracker' && (
+          <div>
+            {/* Header */}
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">#5 Production Tracker</h2>
+              <button
+                onClick={() => console.log('Add new record')}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                + Add New Record
+              </button>
+            </div>
+
+            {/* Warehouse Filter and Search */}
+            <div className="p-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-6 mb-4">
+                <span className="text-sm font-semibold text-gray-700">WAREHOUSE:</span>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tracker-warehouse"
+                      value="ALL"
+                      checked={trackerWarehouseFilter === 'ALL'}
+                      onChange={(e) => setTrackerWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">All</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tracker-warehouse"
+                      value="ARCHEESH LAB"
+                      checked={trackerWarehouseFilter === 'ARCHEESH LAB'}
+                      onChange={(e) => setTrackerWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">ARCHEESH LAB</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tracker-warehouse"
+                      value="EI FACTORY"
+                      checked={trackerWarehouseFilter === 'EI FACTORY'}
+                      onChange={(e) => setTrackerWarehouseFilter(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">EI FACTORY</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={trackerSearchQuery}
+                  onChange={(e) => setTrackerSearchQuery(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-64"
+                />
+              </div>
+            </div>
+
+            {/* Production Tracker Table */}
+            <div className="overflow-x-auto">
+              {orders.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <p className="text-gray-500 text-sm">No records available.</p>
+                </div>
+              ) : (
+                <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-0 z-20 bg-gray-50">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-12 z-20 bg-gray-50">Order No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-28 z-20 bg-gray-50">Item SKU</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-48 z-20 bg-gray-50">Item Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Qty</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Order Rate</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Req</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Material Request</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">ODR_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">COM_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Transition_Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">HMG Process</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PRODUCT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PACKING</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FG_PLAN_QTY</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">MFG_UNIT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_MFG</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">TANK_CODE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">FILLING *line code*</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">EST_FILLING DATE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">RM_T Req_dt</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PM_T Req_dt</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">PM_DISPENSE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">RM_DISPENSE</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">BUNDLE_NO</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">BUNDLE_QTY</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*POC</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Disp_sheet</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">*Comments</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Complete Order</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders
+                      .filter((order) => {
+                        // Filter by warehouse
+                        if (trackerWarehouseFilter !== 'ALL') {
+                          const mfgUnit = productionPlannerMfgUnits[order.id];
+                          if (trackerWarehouseFilter === 'ARCHEESH LAB' && mfgUnit !== 'ARCHEESH LAB (MFG 1)') {
+                            return false;
+                          }
+                          if (trackerWarehouseFilter === 'EI FACTORY' && mfgUnit !== 'EI FACTORY (MFG 2)') {
+                            return false;
+                          }
+                        }
+                        
+                        // Filter by search query
+                        if (trackerSearchQuery) {
+                          const searchLower = trackerSearchQuery.toLowerCase();
+                          return (
+                            order.orderNo.toLowerCase().includes(searchLower) ||
+                            order.itemName.toLowerCase().includes(searchLower) ||
+                            order.sku.toLowerCase().includes(searchLower)
+                          );
+                        }
+                        
+                        return true;
+                      })
+                      .map((order) => (
+                      <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-gray-50">{order.id}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-12 z-10 bg-white hover:bg-gray-50">{order.orderNo}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-28 z-10 bg-white hover:bg-gray-50">{order.sku}</td>
+                        <td className="px-4 py-3.5 text-sm text-gray-700 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-gray-50">{order.itemName}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.qty}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.unitRate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">CRD</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.estDelDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.comDate}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-blue-600">HOT</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-yellow-600">YES</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-blue-600">ADD</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm text-blue-600">ADD</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <input
+                            type="number"
+                            defaultValue={order.qty}
+                            placeholder="Enter QTY"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">SELECT MFG UNIT</option>
+                            <option value="ARCHEESH LAB (MFG 1)">ARCHEESH LAB (MFG 1)</option>
+                            <option value="EI FACTORY (MFG 2)">EI FACTORY (MFG 2)</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            defaultValue={order.estDelDate}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">SELECT TANK CODE</option>
+                            <option value="MANUAL">MANUAL</option>
+                            <option value="10 KG">10 KG</option>
+                            <option value="100 KG">100 KG</option>
+                            <option value="750 KL WITH HMZ">750 KL WITH HMZ</option>
+                            <option value="1 KL WITH HMZ">1 KL WITH HMZ</option>
+                            <option value="2 KL WITH HMZ">2 KL WITH HMZ</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <select
+                            defaultValue=""
+                            className="px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                          >
+                            <option value="">Select Filling Line Code</option>
+                            <option value="TWO HEAD">TWO HEAD</option>
+                            <option value="MANUAL LINE 1">MANUAL LINE 1</option>
+                            <option value="MANUAL LINE 2">MANUAL LINE 2</option>
+                            <option value="SINGLE HEAD 1">SINGLE HEAD 1</option>
+                            <option value="SINGLE HEAD 2">SINGLE HEAD 2</option>
+                            <option value="FOUR HEAD 1">FOUR HEAD 1</option>
+                            <option value="FOUR HEAD 2">FOUR HEAD 2</option>
+                            <option value="SIX HEAD">SIX HEAD</option>
+                            <option value="TUBE LINE 1">TUBE LINE 1</option>
+                            <option value="TUBE LINE 2">TUBE LINE 2</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            defaultValue={order.estDelDate}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <input
+                            type="text"
+                            placeholder="BUNDLE NO"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-sm">
+                          <input
+                            type="number"
+                            placeholder="QTY"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 text-sm relative">
+                          <div className="relative inline-block text-left">
+                            <button
+                              onClick={() => {
+                                if (openPocModal === order.id) {
+                                  setOpenPocModal(null);
+                                  return;
+                                }
+                                setPocModalOrder(order);
+                                setOpenPocModal(order.id);
+                              }}
+                              className="px-2 py-1 text-blue-600 hover:text-blue-900 hover:bg-blue-100 rounded transition-colors font-medium"
+                            >
+                              View POC
+                            </button>
+                            {openPocModal === order.id && pocModalOrder && (
+                              <div className="absolute z-50 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-4 right-0">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="text-xs font-semibold text-gray-800">POC USERS</h3>
+                                  <button
+                                    onClick={() => setOpenPocModal(null)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth="1.5"
+                                      stroke="currentColor"
+                                      className="w-4 h-4"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <ul className="space-y-2 text-[11px]">
+                                  <li>
+                                    <span className="font-medium text-gray-700">CM_TEAM: </span>
+                                    <span className="text-gray-600">TEJA</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">R&D PRODUCT: </span>
+                                    <span className="text-gray-600">(id: 12, name: "BHAVYA")</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">PACKING: </span>
+                                    <span className="text-gray-600">-</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">QUALITY PRODUCT: </span>
+                                    <span className="text-gray-600">(id: 57, name: "SHIVA KUMAR")</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">QUALITY COMPLIANCE: </span>
+                                    <span className="text-gray-600">-</span>
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-gray-700">LABEL DESIGN: </span>
+                                    <span className="text-gray-600">TARUN</span>
+                                  </li>
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 text-sm">
+                          <input
+                            type="text"
+                            placeholder="Select"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 text-sm">
+                          <button
+                            onClick={() => openCommentEditor(order.id)}
+                            className="px-2 py-1 text-amber-600 hover:text-amber-900 hover:bg-amber-100 rounded transition-colors font-medium"
+                          >
+                            {commentEdits[order.id] ? 'Edit' : 'Add'}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                          <button
+                            onClick={() => {
+                              setBundleModalOpen(order.id);
+                              setBundleQty('');
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
+                          >
+                            Bundle
+                          </button>
+                          {bundleModalOpen === order.id && (
+                            <div className="fixed inset-0 z-50 bg-transparent flex items-center justify-center" onClick={() => setBundleModalOpen(null)}>
+                              <div 
+                                className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Bundle Order - Planned Qty:</h3>
+                                <p className="text-2xl font-bold text-gray-900 mb-4">{order.qty}.00</p>
+                                <input
+                                  type="number"
+                                  value={bundleQty}
+                                  onChange={(e) => setBundleQty(e.target.value)}
+                                  placeholder="Enter quantity"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                />
+                                <div className="flex gap-3">
+                                  <button
+                                    onClick={() => {
+                                      console.log('Bundle submitted with qty:', bundleQty);
+                                      setBundleModalOpen(null);
+                                      setBundleQty('');
+                                    }}
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-medium"
+                                  >
+                                    Submit
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setBundleModalOpen(null);
+                                      setBundleQty('');
+                                    }}
+                                    className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors font-medium"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
         {activeTab === 'order-closure' && <div className="p-6">#6 Order Closure Content</div>}
       </div>
     </div>
