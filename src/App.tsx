@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { ItemsProvider } from './context/ItemsContext'
 import Dashboard from './pages/Dashboard'
 import RoleManagement from './pages/RoleManagement'
 import UserManagement from './pages/UserManagement'
@@ -15,6 +16,11 @@ import DoctorAppointments from './pages/DoctorAppointments'
 import ContactEnquiry from './pages/ContactEnquiry'
 import NewDevelopments from './pages/NewDevelopments'
 import ProductSamples from './pages/ProductSamples'
+import Customisation from './pages/Customisation'
+import Packaging from './pages/Packaging'
+import RawMaterial from './pages/RawMaterial'
+import BOM from './pages/BOM'
+import ItemsMaster from './pages/ItemsMaster'
 import Sidebar from "./components/sidebar/sidebar"
 import PIS from './pages/PIS'
 
@@ -54,6 +60,11 @@ const AppLayout = () => {
           <Route path="/contact-enquiry" element={<ContactEnquiry />} />
           <Route path="/new-developments" element={<NewDevelopments />} />
           <Route path="/product-samples" element={<ProductSamples />} />
+          <Route path="/customisation" element={<Customisation />} />
+          <Route path="/packaging" element={<Packaging />} />
+          <Route path="/raw-material" element={<RawMaterial />} />
+          <Route path="/bom" element={<BOM />} />
+          <Route path="/items-master" element={<ItemsMaster />} />
         </Routes>
       </div>
     </div>
@@ -63,7 +74,9 @@ const AppLayout = () => {
 const App = () => {
   return (
     <BrowserRouter>
-      <AppLayout />
+      <ItemsProvider>
+        <AppLayout />
+      </ItemsProvider>
     </BrowserRouter>
   )
 }

@@ -7,6 +7,7 @@ const Sidebar = () => {
     const [enquiryOpen, setEnquiryOpen] = useState(false);
     const [orderOpen, setOrderOpen] = useState(false);
     const [productOpen, setProductOpen] = useState(false);
+    const [mastersOpen, setMastersOpen] = useState(false);
     const location = useLocation();
 
     // Check if any enquiry submenu item is active
@@ -31,6 +32,14 @@ const Sidebar = () => {
         '/catalogue-management',
         '/packaging-management',
         '/active-ingredients'
+    ].includes(location.pathname);
+
+    // Check if any masters submenu item is active
+    const isMastersActive = [
+        '/packaging',
+        '/raw-material',
+        '/bom',
+        '/items-master'
     ].includes(location.pathname);
 
     // Auto-open dropdown when navigating to enquiry pages, close when navigating away
@@ -59,6 +68,14 @@ const Sidebar = () => {
             setProductOpen(false);
         }
     }, [location.pathname, isProductActive, productOpen]);
+
+    // Auto-open Masters when navigating to a Masters page.
+    // Do not auto-close when not on a Masters page, otherwise manual toggling would close immediately.
+    useEffect(() => {
+        if (isMastersActive) {
+            setMastersOpen(true);
+        }
+    }, [isMastersActive]);
 
     const linkClass = ({ isActive }: { isActive: boolean }) =>
         `flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
@@ -363,6 +380,113 @@ const Sidebar = () => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                                             </svg>
                                             <span>Active Ingredients</span>
+                                        </NavLink>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li>
+                            <div className={`rounded-lg transition-all duration-200 ${
+                                isMastersActive || mastersOpen
+                                    ? "bg-amber-50 text-amber-700 font-semibold border-l-4 border-amber-500"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMastersOpen(!mastersOpen)}
+                                        className="flex-1 flex items-center px-4 py-3 text-left cursor-pointer"
+                                    >
+                                        <svg className="w-5 h-5 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z" />
+                                        </svg>
+                                        <span className="font-medium">Masters</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMastersOpen(!mastersOpen)}
+                                        className="p-2 rounded hover:bg-amber-100 transition-colors flex-shrink-0"
+                                    >
+                                        <svg
+                                            className={`w-5 h-5 transition-transform duration-300 ease-in-out ${mastersOpen ? "rotate-180" : ""}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Submenu with smooth animation */}
+                            <div
+                                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                                    mastersOpen ? "max-h-96" : "max-h-0"
+                                }`}
+                            >
+                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    <li>
+                                        <NavLink
+                                            to="/packaging"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                            </svg>
+                                            <span>Packaging</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/raw-material"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                                            </svg>
+                                            <span>Raw Material</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/bom"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                                            </svg>
+                                            <span>BOM</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/items-master"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                            </svg>
+                                            <span>Items Master</span>
                                         </NavLink>
                                     </li>
                                 </ul>
