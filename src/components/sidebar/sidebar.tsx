@@ -39,7 +39,8 @@ const Sidebar = () => {
         '/packaging',
         '/raw-material',
         '/bom',
-        '/items-master'
+        '/items-master',
+        '/vendor-client'
     ].includes(location.pathname);
 
     // Auto-open dropdown when navigating to enquiry pages, close when navigating away
@@ -487,6 +488,22 @@ const Sidebar = () => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                                             </svg>
                                             <span>Items Master</span>
+                                        </NavLink>
+                                    </li>
+                                    <li>
+                                        <NavLink
+                                            to="/vendor-client"
+                                            className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${
+                                                isActive
+                                                    ? "bg-amber-100 text-amber-700 font-semibold"
+                                                    : "text-gray-600 hover:bg-white hover:text-amber-700"
+                                            }`}
+                                            onClick={handleLinkClick}
+                                        >
+                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.697M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <span>Vendor & Client</span>
                                         </NavLink>
                                     </li>
                                 </ul>

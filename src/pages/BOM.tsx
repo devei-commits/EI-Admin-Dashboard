@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useItems } from '../context/ItemsContext';
+import { useToast } from '../context/ToastContext';
 
 const BOM: React.FC = () => {
   const { addItem } = useItems();
+  const { addToast } = useToast();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState({
     bomCode: '',
@@ -66,6 +70,26 @@ const BOM: React.FC = () => {
     notes: '',
   });
 
+  // Auto-save draft every 30 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Object.values(formData).some(v => Boolean(v))) {
+        localStorage.setItem('bom_draft', JSON.stringify(formData));
+        addToast('info', 'BOM draft auto-saved');
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [formData, addToast]);
+
+  // Load draft on mount
+  useEffect(() => {
+    const draft = localStorage.getItem('bom_draft');
+    if (draft) {
+      setFormData(JSON.parse(draft));
+      addToast('info', 'BOM draft loaded');
+    }
+  }, []);
+
   const stages = [
     'BOM Setup & Coding',
     'Header Details',
@@ -85,11 +109,13 @@ const BOM: React.FC = () => {
 
   const handleAddRM = () => {
     if (!formData.rmName.trim()) {
-      alert('RM Name is required');
+      setErrors(prev => ({ ...prev, rmName: 'RM Name is required' }));
+      addToast('error', 'RM Name is required');
       return;
     }
     if (!formData.rmPct || Number(formData.rmPct) <= 0) {
-      alert('Enter % w/w');
+      setErrors(prev => ({ ...prev, rmPct: 'Enter % w/w' }));
+      addToast('error', 'Enter % w/w');
       return;
     }
 
@@ -127,15 +153,17 @@ const BOM: React.FC = () => {
 
   const handleAddPM = () => {
     if (formData.type !== 'FG') {
-      alert('PM lines only for FG BOM');
+      addToast('error', 'PM lines only for FG BOM');
       return;
     }
     if (!formData.pmName.trim()) {
-      alert('PM Name is required');
+      setErrors(prev => ({ ...prev, pmName: 'PM Name is required' }));
+      addToast('error', 'PM Name is required');
       return;
     }
     if (!formData.pmQty || Number(formData.pmQty) <= 0) {
-      alert('Enter Qty per FG');
+      setErrors(prev => ({ ...prev, pmQty: 'Enter Qty per FG' }));
+      addToast('error', 'Enter Qty per FG');
       return;
     }
 
@@ -190,7 +218,7 @@ const BOM: React.FC = () => {
       data: formData,
     };
     addItem(newItem);
-    alert('BOM saved successfully!');
+    addToast('success', 'BOM saved successfully!');
   };
 
   const rmTotal = formData.rmLines.reduce((sum, rm) => sum + (rm.pct || 0), 0);

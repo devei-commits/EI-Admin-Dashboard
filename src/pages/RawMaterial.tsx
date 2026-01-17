@@ -1,8 +1,12 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useItems } from '../context/ItemsContext'
+import { useToast } from '../context/ToastContext'
 
 const RawMaterial = () => {
     const { addItem } = useItems()
+    const { addToast } = useToast()
+    const [errors, setErrors] = useState<Record<string, string>>({})
+    const [isSaving, setIsSaving] = useState(false)
     const [currentStage, setCurrentStage] = useState(0)
     const [status, setStatus] = useState('Draft')
     
@@ -99,6 +103,26 @@ const RawMaterial = () => {
         handlingNotes: ''
     })
 
+    // Auto-save draft every 30 seconds
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (Object.values(formData).some(v => Boolean(v))) {
+                localStorage.setItem('raw_material_draft', JSON.stringify(formData))
+                addToast('info', 'Raw Material draft auto-saved')
+            }
+        }, 30000)
+        return () => clearInterval(timer)
+    }, [formData, addToast])
+
+    // Load draft on mount
+    useEffect(() => {
+        const draft = localStorage.getItem('raw_material_draft')
+        if (draft) {
+            setFormData(JSON.parse(draft))
+            addToast('info', 'Raw Material draft loaded')
+        }
+    }, [])
+
     const stages = [
         'QC Categorisation & Coding',
         'Identity',
@@ -122,7 +146,8 @@ const RawMaterial = () => {
 
     const handleAddVendor = () => {
         if (!formData.vendorName.trim()) {
-            alert('Vendor name is required')
+            setErrors(prev => ({ ...prev, vendorName: 'Vendor name is required' }))
+            addToast('error', 'Vendor name is required')
             return
         }
         const newVendor = {
@@ -157,7 +182,8 @@ const RawMaterial = () => {
 
     const handleAddDocument = () => {
         if (!formData.documentType || !formData.documentLink.trim()) {
-            alert('Document type and link are required')
+            setErrors(prev => ({ ...prev, documentType: 'Document type and link are required' }))
+            addToast('error', 'Document type and link are required')
             return
         }
         const newDoc = {
@@ -184,7 +210,8 @@ const RawMaterial = () => {
 
     const handleAddTest = () => {
         if (!formData.testName || !formData.testResult) {
-            alert('Test name and result are required')
+            setErrors(prev => ({ ...prev, testName: 'Test name and result are required' }))
+            addToast('error', 'Test name and result are required')
             return
         }
         const newTest = {
@@ -237,7 +264,7 @@ const RawMaterial = () => {
             data: formData,
         };
         addItem(newItem);
-        alert('Raw Material saved successfully!');
+        addToast('success', 'Raw Material saved successfully!');
     }
 
     return (

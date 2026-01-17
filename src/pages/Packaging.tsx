@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useItems } from '../context/ItemsContext';
+import { useToast } from '../context/ToastContext';
 
 const Packaging: React.FC = () => {
   const { addItem } = useItems();
+  const { addToast } = useToast();
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSaving, setIsSaving] = useState(false)
   const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState({
     // Meta
@@ -165,6 +169,26 @@ const Packaging: React.FC = () => {
     catWebImages: '',
   });
 
+  // Auto-save draft every 30 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Object.values(formData).some(v => Boolean(v))) {
+        localStorage.setItem('packaging_draft', JSON.stringify(formData));
+        addToast('info', 'Packaging draft auto-saved');
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [formData, addToast]);
+
+  // Load draft on mount
+  useEffect(() => {
+    const draft = localStorage.getItem('packaging_draft');
+    if (draft) {
+      setFormData(JSON.parse(draft));
+      addToast('info', 'Packaging draft loaded');
+    }
+  }, []);
+
   const stages = [
     'QC / PM Categorisation',
     'Identity',
@@ -190,7 +214,8 @@ const Packaging: React.FC = () => {
 
   const handleAddVariant = () => {
     if (!formData.varVolume || Number(formData.varVolume) <= 0) {
-      alert('Fill volume is required');
+      setErrors(prev => ({ ...prev, varVolume: 'Fill volume is required' }));
+      addToast('error', 'Fill volume is required');
       return;
     }
 
@@ -223,7 +248,8 @@ const Packaging: React.FC = () => {
 
   const handleAddVendor = () => {
     if (!formData.venName.trim()) {
-      alert('Vendor name required');
+      setErrors(prev => ({ ...prev, venName: 'Vendor name required' }));
+      addToast('error', 'Vendor name required');
       return;
     }
 
@@ -264,7 +290,8 @@ const Packaging: React.FC = () => {
 
   const handleAddTest = () => {
     if (!formData.testName || !formData.testResult) {
-      alert('Select test + result');
+      setErrors(prev => ({ ...prev, testName: 'Select test + result' }));
+      addToast('error', 'Select test + result');
       return;
     }
 
@@ -318,7 +345,7 @@ const Packaging: React.FC = () => {
       data: formData,
     };
     addItem(newItem);
-    alert('Packaging saved successfully!');
+    addToast('success', 'Packaging saved successfully!');
   };
 
   return (

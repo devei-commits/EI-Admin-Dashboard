@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ItemsProvider } from './context/ItemsContext'
+import { ToastProvider } from './context/ToastContext'
+import { VendorClientProvider } from './context/VendorClientContext'
 import Dashboard from './pages/Dashboard'
 import RoleManagement from './pages/RoleManagement'
 import UserManagement from './pages/UserManagement'
@@ -21,6 +23,7 @@ import Packaging from './pages/Packaging'
 import RawMaterial from './pages/RawMaterial'
 import BOM from './pages/BOM'
 import ItemsMaster from './pages/ItemsMaster'
+import VendorClient from './pages/VendorClient'
 import Sidebar from "./components/sidebar/sidebar"
 import PIS from './pages/PIS'
 
@@ -65,6 +68,7 @@ const AppLayout = () => {
           <Route path="/raw-material" element={<RawMaterial />} />
           <Route path="/bom" element={<BOM />} />
           <Route path="/items-master" element={<ItemsMaster />} />
+          <Route path="/vendor-client" element={<VendorClient />} />
         </Routes>
       </div>
     </div>
@@ -74,9 +78,13 @@ const AppLayout = () => {
 const App = () => {
   return (
     <BrowserRouter>
-      <ItemsProvider>
-        <AppLayout />
-      </ItemsProvider>
+      <ToastProvider>
+        <VendorClientProvider>
+          <ItemsProvider>
+            <AppLayout />
+          </ItemsProvider>
+        </VendorClientProvider>
+      </ToastProvider>
     </BrowserRouter>
   )
 }
