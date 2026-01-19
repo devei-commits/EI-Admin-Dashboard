@@ -101,7 +101,6 @@ const BOM: React.FC = () => {
     const draft = localStorage.getItem('bom_draft');
     if (draft) {
       setFormData(JSON.parse(draft));
-      addToast('info', 'BOM draft loaded');
     }
   }, []);
 

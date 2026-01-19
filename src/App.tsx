@@ -32,12 +32,22 @@ import PIS from './pages/PIS'
 const AppLayout = () => {
   const location = useLocation();
   const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
+  const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
 
   // If it's a PIS route, render PIS standalone without admin sidebar
   if (isPISRoute) {
     return (
       <Routes>
         <Route path="/pis/*" element={<PIS />} />
+      </Routes>
+    );
+  }
+
+  // If it's a Treasury route, render Treasury standalone without admin sidebar
+  if (isTreasuryRoute) {
+    return (
+      <Routes>
+        <Route path="/treasury/*" element={<Treasury />} />
       </Routes>
     );
   }
