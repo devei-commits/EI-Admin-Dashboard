@@ -19,6 +19,7 @@ import ContactEnquiry from './pages/ContactEnquiry'
 import NewDevelopments from './pages/NewDevelopments'
 import ProductSamples from './pages/ProductSamples'
 import Customisation from './pages/Customisation'
+import Treasury from './pages/Treasury'
 import Packaging from './pages/Packaging'
 import RawMaterial from './pages/RawMaterial'
 import BOM from './pages/BOM'
@@ -64,6 +65,7 @@ const AppLayout = () => {
           <Route path="/new-developments" element={<NewDevelopments />} />
           <Route path="/product-samples" element={<ProductSamples />} />
           <Route path="/customisation" element={<Customisation />} />
+          <Route path="/treasury" element={<Treasury />} />
           <Route path="/packaging" element={<Packaging />} />
           <Route path="/raw-material" element={<RawMaterial />} />
           <Route path="/bom" element={<BOM />} />
