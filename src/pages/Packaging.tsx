@@ -14,6 +14,14 @@ const Packaging: React.FC = () => {
     status: 'Draft',
     version: 'v1.0',
 
+    // Primary Info
+    pkgSku: '',
+    pkgUnit: 'PCS',
+    pkgHsn: '',
+    pkgTaxPreference: 'Taxable',
+    pkgReturnable: false,
+    pkgAssociateItems: '',
+
     // Categorisation
     pmCategory: '',
     qcGroup: '',
@@ -362,7 +370,7 @@ const Packaging: React.FC = () => {
                 id="status"
                 value={formData.status}
                 onChange={handleInputChange}
-                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option>Draft</option>
                 <option>Under Review</option>
@@ -372,7 +380,7 @@ const Packaging: React.FC = () => {
             </div>
             
             <div className="flex gap-2">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition">
+              <button className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition">
                 Save
               </button>
             </div>
@@ -424,125 +432,226 @@ const Packaging: React.FC = () => {
                 {currentStage === 12 && 'Backend-friendly JSON view + import.'}
               </p>
 
-              {/* Stage 0: QC / PM Categorisation */}
+              {/* Stage 0: Primary Info + QC / PM Categorisation */}
               {currentStage === 0 && (
                 <div>
-                <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">PM CATEGORY</h3>
-                
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      PM Category (QC)
-                    </label>
-                    <select
-                      id="pmCategory"
-                      value={formData.pmCategory}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select</option>
-                      <option value="PRIMARY">Primary (Container/Closure)</option>
-                      <option value="SECONDARY_LABEL">Secondary – Label</option>
-                      <option value="SECONDARY_MONOCARTON">Secondary – Monocarton</option>
-                      <option value="SLEEVE">Sleeve / Shrink Sleeve</option>
-                      <option value="TERTIARY_SHIPPER">Tertiary – Shipper / Outer Carton</option>
-                      <option value="TERTIARY_INNER">Tertiary – Inner Box / Divider</option>
-                      <option value="INSERT">Leaflet / Insert / Tag</option>
-                      <option value="TAMPER">Tamper Evident (Seal / Shrink / Hologram)</option>
-                      <option value="ACCESSORY">Accessory (Spatula / Pump / Dropper / Wiper etc.)</option>
-                      <option value="OTHER">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      QC Inspection Group
-                    </label>
-                    <select
-                      id="qcGroup"
-                      value={formData.qcGroup}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select</option>
-                      <option>Visual + Dimensional</option>
-                      <option>Functional (Pump/Dispense)</option>
-                      <option>Artwork / Print / Shade</option>
-                      <option>Material Declaration / CoA</option>
-                      <option>Transit / Drop / Compression</option>
-                      <option>Other</option>
-                    </select>
-                  </div>
-                </div>
+                  {/* Primary Info */}
+                  <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Primary Information</h3>
 
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Sub-Category (optional)
-                    </label>
-                    <input
-                      type="text"
-                      id="subCategory"
-                      placeholder="e.g., Airless bottle / Flip-top cap"
-                      value={formData.subCategory}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Item Code *</label>
+                      <input
+                        type="text"
+                        id="itemCode"
+                        placeholder="e.g., EI-PM-00001"
+                        value={formData.itemCode}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">SKU / Internal Code</label>
+                      <input
+                        type="text"
+                        id="pkgSku"
+                        placeholder="e.g., PKG-SKU-001"
+                        value={formData.pkgSku}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Unit of Measure *</label>
+                      <select
+                        id="pkgUnit"
+                        value={formData.pkgUnit}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="PCS">Pieces (PCS)</option>
+                        <option value="GM">Grams (GM)</option>
+                        <option value="ML">Milliliters (ML)</option>
+                        <option value="L">Liters (L)</option>
+                        <option value="KG">Kilograms (KG)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">HSN Code</label>
+                      <input
+                        type="text"
+                        id="pkgHsn"
+                        placeholder="e.g., 3923"
+                        value={formData.pkgHsn}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Tax Preference</label>
+                      <select
+                        id="pkgTaxPreference"
+                        value={formData.pkgTaxPreference}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="Taxable">Taxable</option>
+                        <option value="ExemptedGoods">Exempted Goods</option>
+                        <option value="ExemptedServices">Exempted Services</option>
+                        <option value="NonGST">Non-GST</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center mt-7">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="pkgReturnable"
+                          checked={formData.pkgReturnable}
+                          onChange={(e) =>
+                            setFormData(prev => ({ ...prev, pkgReturnable: e.target.checked }))
+                          }
+                          className="w-4 h-4 text-amber-600 rounded focus:ring-2 focus:ring-amber-500"
+                        />
+                        <span className="ml-2 text-sm font-semibold text-gray-700">Returnable Item</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="mb-8">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Associate Items</label>
+                    <textarea
+                      id="pkgAssociateItems"
+                      placeholder="Enter associated item codes/names, comma-separated"
+                      value={formData.pkgAssociateItems}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      rows={3}
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Hazard Handling Class
-                    </label>
-                    <select
-                      id="hazardClass"
-                      value={formData.hazardClass || ''}
-                      onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select</option>
-                      <option>Standard</option>
-                      <option>Fragile</option>
-                      <option>Controlled Temperature</option>
-                      <option>Special Handling</option>
-                    </select>
-                  </div>
-                </div>
 
-                {/* CODE SERIES PREVIEW */}
-                <div className="bg-gray-50 border border-gray-200 p-4 rounded mt-8">
-                  <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">CODE SERIES PREVIEW</h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  {/* QC / PM Categorisation */}
+                  <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">PM CATEGORY</h3>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-6">
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Series Prefix</p>
-                      <div className="bg-white border border-gray-300 rounded p-2 text-sm font-mono">
-                        {formData.pmCategory === 'PRIMARY' ? 'EI-PM-PRI-' : 
-                         formData.pmCategory === 'SECONDARY_LABEL' ? 'EI-PM-SLBL-' :
-                         formData.pmCategory === 'SECONDARY_MONOCARTON' ? 'EI-PM-SMCN-' :
-                         formData.pmCategory === 'TERTIARY_SHIPPER' ? 'EI-PM-TSHP-' :
-                         formData.pmCategory ? 'EI-PM-' : '—'}
-                      </div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        PM Category (QC)
+                      </label>
+                      <select
+                        id="pmCategory"
+                        value={formData.pmCategory}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Select</option>
+                        <option value="PRIMARY">Primary (Container/Closure)</option>
+                        <option value="SECONDARY_LABEL">Secondary – Label</option>
+                        <option value="SECONDARY_MONOCARTON">Secondary – Monocarton</option>
+                        <option value="SLEEVE">Sleeve / Shrink Sleeve</option>
+                        <option value="TERTIARY_SHIPPER">Tertiary – Shipper / Outer Carton</option>
+                        <option value="TERTIARY_INNER">Tertiary – Inner Box / Divider</option>
+                        <option value="INSERT">Leaflet / Insert / Tag</option>
+                        <option value="TAMPER">Tamper Evident (Seal / Shrink / Hologram)</option>
+                        <option value="ACCESSORY">Accessory (Spatula / Pump / Dropper / Wiper etc.)</option>
+                        <option value="OTHER">Other</option>
+                      </select>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600 mb-1">Next Code (preview)</p>
-                      <div className="bg-white border border-gray-300 rounded p-2 text-sm font-mono">
-                        {formData.pmCategory === 'PRIMARY' ? 'EI-PM-PRI-00001' : 
-                         formData.pmCategory === 'SECONDARY_LABEL' ? 'EI-PM-SLBL-00001' :
-                         formData.pmCategory === 'SECONDARY_MONOCARTON' ? 'EI-PM-SMCN-00001' :
-                         formData.pmCategory === 'TERTIARY_SHIPPER' ? 'EI-PM-TSHP-00001' :
-                         formData.pmCategory ? 'EI-PM-00001' : '—'}
-                      </div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        QC Inspection Group
+                      </label>
+                      <select
+                        id="qcGroup"
+                        value={formData.qcGroup}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Select</option>
+                        <option>Visual + Dimensional</option>
+                        <option>Functional (Pump/Dispense)</option>
+                        <option>Artwork / Print / Shade</option>
+                        <option>Material Declaration / CoA</option>
+                        <option>Transit / Drop / Compression</option>
+                        <option>Other</option>
+                      </select>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition">
-                      Generate Code Now
-                    </button>
-                    <button className="px-3 py-2 bg-red-100 text-red-700 border border-red-300 rounded text-sm hover:bg-red-200 transition">
-                      Regenerate
-                    </button>
+
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Sub-Category (optional)
+                      </label>
+                      <input
+                        type="text"
+                        id="subCategory"
+                        placeholder="e.g., Airless bottle / Flip-top cap"
+                        value={formData.subCategory}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Hazard Handling Class
+                      </label>
+                      <select
+                        id="hazardClass"
+                        value={formData.hazardClass || ''}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Select</option>
+                        <option>Standard</option>
+                        <option>Fragile</option>
+                        <option>Controlled Temperature</option>
+                        <option>Special Handling</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* CODE SERIES PREVIEW */}
+                  <div className="bg-gray-50 border border-gray-200 p-4 rounded mt-8">
+                    <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">CODE SERIES PREVIEW</h4>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Series Prefix</p>
+                        <div className="bg-white border border-gray-300 rounded p-2 text-sm font-mono">
+                          {formData.pmCategory === 'PRIMARY' ? 'EI-PM-PRI-' : 
+                           formData.pmCategory === 'SECONDARY_LABEL' ? 'EI-PM-SLBL-' :
+                           formData.pmCategory === 'SECONDARY_MONOCARTON' ? 'EI-PM-SMCN-' :
+                           formData.pmCategory === 'TERTIARY_SHIPPER' ? 'EI-PM-TSHP-' :
+                           formData.pmCategory ? 'EI-PM-' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600 mb-1">Next Code (preview)</p>
+                        <div className="bg-white border border-gray-300 rounded p-2 text-sm font-mono">
+                          {formData.pmCategory === 'PRIMARY' ? 'EI-PM-PRI-00001' : 
+                           formData.pmCategory === 'SECONDARY_LABEL' ? 'EI-PM-SLBL-00001' :
+                           formData.pmCategory === 'SECONDARY_MONOCARTON' ? 'EI-PM-SMCN-00001' :
+                           formData.pmCategory === 'TERTIARY_SHIPPER' ? 'EI-PM-TSHP-00001' :
+                           formData.pmCategory ? 'EI-PM-00001' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="px-3 py-2 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 transition">
+                        Generate Code Now
+                      </button>
+                      <button className="px-3 py-2 bg-red-100 text-red-700 border border-red-300 rounded text-sm hover:bg-red-200 transition">
+                        Regenerate
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Stage 1: Identity */}
               {currentStage === 1 && (
@@ -614,7 +723,7 @@ const Packaging: React.FC = () => {
                         placeholder="Face, Body, Hair (comma separated)"
                         value={formData.intendedUse}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -629,7 +738,7 @@ const Packaging: React.FC = () => {
                       placeholder="Serum, Lotion, Cream, Oil, etc."
                       value={formData.expectedProductTypes}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
 
@@ -642,7 +751,7 @@ const Packaging: React.FC = () => {
                         id="reusability"
                         value={formData.reusability}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>Single use</option>
@@ -657,7 +766,7 @@ const Packaging: React.FC = () => {
                         id="regulatory"
                         value={formData.regulatory}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>No</option>
@@ -674,7 +783,7 @@ const Packaging: React.FC = () => {
                       id="identityNotes"
                       value={formData.identityNotes}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
                 </div>
@@ -694,7 +803,7 @@ const Packaging: React.FC = () => {
                         id="matBody"
                         value={formData.matBody}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>PET</option>
@@ -713,7 +822,7 @@ const Packaging: React.FC = () => {
                         id="matClosure"
                         value={formData.matClosure}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>PP</option>
@@ -736,7 +845,7 @@ const Packaging: React.FC = () => {
                         placeholder="Spring, Ball, Gasket..."
                         value={formData.matInner}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -749,7 +858,7 @@ const Packaging: React.FC = () => {
                         placeholder="e.g., 1 PET, 2 HDPE, 5 PP"
                         value={formData.matRecycle}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -763,7 +872,7 @@ const Packaging: React.FC = () => {
                         id="matBpa"
                         value={formData.matBpa}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>Yes</option>
@@ -778,7 +887,7 @@ const Packaging: React.FC = () => {
                         id="matGrade"
                         value={formData.matGrade}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>Yes</option>
@@ -800,7 +909,7 @@ const Packaging: React.FC = () => {
                         step="0.01"
                         value={formData.specNominal}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>

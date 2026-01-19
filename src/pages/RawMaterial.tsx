@@ -11,6 +11,12 @@ const RawMaterial = () => {
     const [status, setStatus] = useState('Draft')
     
     const [formData, setFormData] = useState({
+        // Primary Info
+        rmSku: '',
+        rmTaxPreference: 'Taxable',
+        rmReturnable: false,
+        rmAssociateItems: '',
+
         // QC Categorisation & Coding
         rmCategory: '',
         qcInspectionGroup: '',
@@ -124,6 +130,7 @@ const RawMaterial = () => {
     }, [])
 
     const stages = [
+        'Primary Info',
         'QC Categorisation & Coding',
         'Identity',
         'Units, Tax & Procurement Basics',
@@ -321,8 +328,78 @@ const RawMaterial = () => {
                         <p className="text-center text-sm font-semibold text-gray-700">{stages[currentStage]}</p>
                     </div>
 
-                    {/* Stage 1: QC Categorisation & Coding */}
+                    {/* Stage 0: Primary Info */}
                     {currentStage === 0 && (
+                        <div className="space-y-6">
+                            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
+                                Primary Information
+                            </h2>
+
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        RM Code / SKU
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="rmSku"
+                                        value={formData.rmSku}
+                                        onChange={handleInputChange}
+                                        placeholder="e.g. EI-RM-00001 or supplier SKU"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Tax Preference
+                                    </label>
+                                    <select
+                                        name="rmTaxPreference"
+                                        value={formData.rmTaxPreference}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                    >
+                                        <option value="Taxable">Taxable</option>
+                                        <option value="ExemptedGoods">Exempted Goods</option>
+                                        <option value="ExemptedServices">Exempted Services</option>
+                                        <option value="NonGST">Non-GST</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        name="rmReturnable"
+                                        checked={formData.rmReturnable}
+                                        onChange={(e) =>
+                                            setFormData(prev => ({ ...prev, rmReturnable: e.target.checked }))
+                                        }
+                                        className="w-4 h-4 text-amber-600 rounded focus:ring-2 focus:ring-amber-500"
+                                    />
+                                    <span className="ml-2 text-sm font-semibold text-gray-700">Returnable Item</span>
+                                </label>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Associate Items
+                                </label>
+                                <textarea
+                                    name="rmAssociateItems"
+                                    value={formData.rmAssociateItems}
+                                    onChange={handleInputChange}
+                                    rows={3}
+                                    placeholder="Enter associated item codes/names, comma-separated"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stage 1: QC Categorisation & Coding */}
+                    {currentStage === 1 && (
                         <div className="space-y-6">
                             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
                                 RM Category
@@ -438,7 +515,7 @@ const RawMaterial = () => {
                                 <div className="flex gap-4 mt-4">
                                     <button
                                         type="button"
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                                        className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
                                     >
                                         Generate Code Now
                                     </button>
@@ -454,7 +531,7 @@ const RawMaterial = () => {
                     )}
 
                     {/* Stage 2: Identity */}
-                    {currentStage === 1 && (
+                    {currentStage === 2 && (
                         <div className="space-y-6">
                             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
                                 Identity
@@ -608,7 +685,7 @@ const RawMaterial = () => {
                     )}
 
                     {/* Stage 3: Units, Tax & Procurement Basics */}
-                    {currentStage === 2 && (
+                    {currentStage === 3 && (
                         <div className="space-y-6">
                             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
                                 Units, Tax & Procurement Basics
@@ -760,8 +837,8 @@ const RawMaterial = () => {
                         </div>
                     )}
 
-                    {/* Stage 3: Technical & Regulatory */}
-                    {currentStage === 3 && (
+                    {/* Stage 4: Technical & Regulatory */}
+                    {currentStage === 4 && (
                         <div className="space-y-6">
                             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
                                 Technical & Regulatory
@@ -883,8 +960,8 @@ const RawMaterial = () => {
                         </div>
                     )}
 
-                    {/* Stage 4: Quality Specifications */}
-                    {currentStage === 4 && (
+                    {/* Stage 5: Quality Specifications */}
+                    {currentStage === 5 && (
                         <div className="space-y-6">
                             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-6">
                                 Quality Specifications (QC)
@@ -1230,7 +1307,7 @@ const RawMaterial = () => {
                             <button
                                 type="button"
                                 onClick={handleAddVendor}
-                                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                                className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
                             >
                                 + Add Vendor
                             </button>
@@ -1355,7 +1432,7 @@ const RawMaterial = () => {
                                     <button
                                         type="button"
                                         onClick={handleAddDocument}
-                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                                        className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
                                     >
                                         + Add Document
                                     </button>
@@ -1395,8 +1472,8 @@ const RawMaterial = () => {
                                 </div>
                             )}
 
-                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mt-8">
-                                <h3 className="font-semibold text-blue-900 mb-2">QC Test Log</h3>
+                            <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 mt-8">
+                                <h3 className="font-semibold text-amber-900 mb-2">QC Test Log</h3>
                             </div>
 
                             <div className="grid grid-cols-2 gap-6">
@@ -1486,7 +1563,7 @@ const RawMaterial = () => {
                                     <button
                                         type="button"
                                         onClick={handleAddTest}
-                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                                        className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
                                     >
                                         + Log Test
                                     </button>
@@ -1691,7 +1768,7 @@ const RawMaterial = () => {
                             <button
                                 type="button"
                                 onClick={() => console.log(JSON.stringify(formData, null, 2))}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+                                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
                             >
                                 Copy JSON to Console
                             </button>

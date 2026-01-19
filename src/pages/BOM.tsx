@@ -9,7 +9,17 @@ const BOM: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState({
+    // Primary Info
     bomCode: '',
+    bomSku: '',
+    bomCategory: '',
+    bomUnit: 'GM',
+    bomHsn: '',
+    bomTaxPreference: 'Taxable',
+    bomReturnable: false,
+    bomAssociateItems: '',
+    
+    // BOM Setup & Coding
     type: 'BULK',
     status: 'Draft',
     version: 'v1.0',
@@ -68,6 +78,11 @@ const BOM: React.FC = () => {
     overage: '',
     line: '',
     notes: '',
+
+    // Header / regulatory extras
+    regulatory: '',
+    phRange: '',
+    description: '',
   });
 
   // Auto-save draft every 30 seconds
@@ -91,6 +106,7 @@ const BOM: React.FC = () => {
   }, []);
 
   const stages = [
+    'Primary Info',
     'BOM Setup & Coding',
     'Header Details',
     'Formulation (Bulk RM Items)',
@@ -237,7 +253,7 @@ const BOM: React.FC = () => {
                 id="status"
                 value={formData.status}
                 onChange={handleInputChange}
-                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option>Draft</option>
                 <option>Under Review</option>
@@ -247,7 +263,7 @@ const BOM: React.FC = () => {
             </div>
             
             <div className="flex gap-2">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition">
+              <button className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition">
                 Save
               </button>
             </div>
@@ -283,8 +299,125 @@ const BOM: React.FC = () => {
 
         {/* Content */}
         <div className="bg-white rounded-lg shadow-sm p-6">
-          {/* Stage 0: BOM Setup & Coding */}
-              {currentStage === 0 && (
+          {/* Stage 0: Primary Info */}
+          {currentStage === 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4">Primary Information</h3>
+              
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">BOM Code *</label>
+                  <input
+                    type="text"
+                    id="bomCode"
+                    placeholder="e.g., EI-BOM-001"
+                    value={formData.bomCode}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">SKU</label>
+                  <input
+                    type="text"
+                    id="bomSku"
+                    placeholder="e.g., SKU-12345"
+                    value={formData.bomSku}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+                  <select
+                    id="bomCategory"
+                    value={formData.bomCategory}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">Select Category</option>
+                    <option value="Formulation">Formulation</option>
+                    <option value="Packaging">Packaging</option>
+                    <option value="Finish">Finish Good</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Unit of Measure *</label>
+                  <select
+                    id="bomUnit"
+                    value={formData.bomUnit}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="GM">Grams (GM)</option>
+                    <option value="ML">Milliliters (ML)</option>
+                    <option value="PCS">Pieces (PCS)</option>
+                    <option value="L">Liters (L)</option>
+                    <option value="KG">Kilograms (KG)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">HSN Code</label>
+                  <input
+                    type="text"
+                    id="bomHsn"
+                    placeholder="e.g., 3304"
+                    value={formData.bomHsn}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Tax Preference</label>
+                  <select
+                    id="bomTaxPreference"
+                    value={formData.bomTaxPreference}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="Taxable">Taxable</option>
+                    <option value="ExemptedGoods">Exempted Goods</option>
+                    <option value="ExemptedServices">Exempted Services</option>
+                    <option value="NonGST">Non-GST</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="bomReturnable"
+                    checked={formData.bomReturnable}
+                    onChange={(e) => setFormData(prev => ({ ...prev, bomReturnable: e.target.checked }))}
+                    className="w-4 h-4 text-amber-600 rounded focus:ring-2 focus:ring-amber-500"
+                  />
+                  <span className="ml-2 text-sm font-semibold text-gray-700">Returnable Item</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Associate Items</label>
+                <textarea
+                  id="bomAssociateItems"
+                  placeholder="Enter associated item codes/names, comma-separated"
+                  value={formData.bomAssociateItems}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Stage 1: BOM Setup & Coding */}
+              {currentStage === 1 && (
                 <div>
                   <div className="mb-6">
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -294,7 +427,7 @@ const BOM: React.FC = () => {
                       id="type"
                       value={formData.type}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
                       <option value="BULK">Bulk BOM (Internal)</option>
                       <option value="FG">FG BOM (Client)</option>
@@ -312,7 +445,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Emcure / Aqua Oat"
                         value={formData.client}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   )}
@@ -328,7 +461,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Aqua Oat Face Cleanser"
                         value={formData.name}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -339,7 +472,7 @@ const BOM: React.FC = () => {
                         id="dosage"
                         value={formData.dosage}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>Cleanser / Face Wash</option>
@@ -367,7 +500,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 100 g / 200 ml"
                         value={formData.packSize}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -380,13 +513,13 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Hyderabad"
                         value={formData.site}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded mb-6">
-                    <p className="text-sm text-blue-900">
+                  <div className="bg-amber-50 border-l-4 border-amber-600 p-4 rounded mb-6">
+                    <p className="text-sm text-amber-900">
                       <span className="font-mono font-bold">Bulk:</span> EI-BOM-BULK-00001 |{' '}
                       <span className="font-mono font-bold">FG:</span> EI-BOM-FG-00001
                     </p>
@@ -408,8 +541,8 @@ const BOM: React.FC = () => {
                 </div>
               )}
 
-              {/* Stage 1: Header Details */}
-              {currentStage === 1 && (
+              {/* Stage 2: Header Details */}
+              {currentStage === 2 && (
                 <div>
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div>
@@ -422,7 +555,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Skin Care / Hair Care"
                         value={formData.category}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -435,7 +568,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Brightening / Anti-acne"
                         value={formData.claims}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -451,7 +584,7 @@ const BOM: React.FC = () => {
                         placeholder="Internal project / PIS ID"
                         value={formData.project}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -462,7 +595,7 @@ const BOM: React.FC = () => {
                         id="market"
                         value={formData.market}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>India</option>
@@ -485,7 +618,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., BIS, FDA, EU cosmetics"
                         value={formData.regulatory}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -498,7 +631,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 5.0 - 6.0"
                         value={formData.phRange}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -512,7 +645,7 @@ const BOM: React.FC = () => {
                       value={formData.description}
                       onChange={handleInputChange}
                       placeholder="Brief description of formulation, key features, etc."
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -526,7 +659,7 @@ const BOM: React.FC = () => {
                         id="createdBy"
                         value={formData.createdBy}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -538,7 +671,7 @@ const BOM: React.FC = () => {
                         id="reviewedBy"
                         value={formData.reviewedBy}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -552,7 +685,7 @@ const BOM: React.FC = () => {
                       placeholder="What this BOM is for…"
                       value={formData.desc}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
                 </div>
@@ -572,7 +705,7 @@ const BOM: React.FC = () => {
                         placeholder="EI-RM-XXX-00001"
                         value={formData.rmCode}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -585,7 +718,7 @@ const BOM: React.FC = () => {
                         placeholder="INCI / Trade name"
                         value={formData.rmName}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -599,7 +732,7 @@ const BOM: React.FC = () => {
                         id="rmPhase"
                         value={formData.rmPhase}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>A (Water phase)</option>
@@ -619,7 +752,7 @@ const BOM: React.FC = () => {
                         placeholder="Humectant / Emollient / Active"
                         value={formData.rmFunc}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -636,7 +769,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 2.5"
                         value={formData.rmPct}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -647,7 +780,7 @@ const BOM: React.FC = () => {
                         id="rmUom"
                         value={formData.rmUom}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option>GM</option>
                         <option>KG</option>
@@ -669,7 +802,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., Cosmetic grade / assay"
                         value={formData.rmSpec}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -682,7 +815,7 @@ const BOM: React.FC = () => {
                         placeholder="Any constraints"
                         value={formData.rmNotes}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -741,7 +874,7 @@ const BOM: React.FC = () => {
               {/* Stage 3: Packaging PM Lines */}
               {currentStage === 3 && (
                 <div>
-                  <p className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded mb-6 text-sm text-blue-900">
+                  <p className="bg-amber-50 border-l-4 border-amber-600 p-4 rounded mb-6 text-sm text-amber-900">
                     PM lines are required only for FG BOM. This stage is hidden for Bulk BOM.
                   </p>
 
@@ -756,7 +889,7 @@ const BOM: React.FC = () => {
                         placeholder="EI-PM-PRI-00001"
                         value={formData.pmCode}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -769,7 +902,7 @@ const BOM: React.FC = () => {
                         placeholder="Bottle / Tube / Cap / Label"
                         value={formData.pmName}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -783,7 +916,7 @@ const BOM: React.FC = () => {
                         id="pmCat"
                         value={formData.pmCat}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option value="">Select</option>
                         <option>Primary</option>
@@ -806,7 +939,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 1"
                         value={formData.pmQty}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -820,7 +953,7 @@ const BOM: React.FC = () => {
                         id="pmUom"
                         value={formData.pmUom}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       >
                         <option>PCS</option>
                         <option>SET</option>
@@ -838,7 +971,7 @@ const BOM: React.FC = () => {
                         placeholder="Artwork / GSM / finish"
                         value={formData.pmNotes}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -900,7 +1033,7 @@ const BOM: React.FC = () => {
                       placeholder="Appearance, pH, viscosity range, density, odor, color, micro limits, assay (if any)"
                       value={formData.specBulk}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -913,7 +1046,7 @@ const BOM: React.FC = () => {
                       placeholder="Heating temp, mixing rpm, hold time, cool down additions, order of addition"
                       value={formData.specProcess}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -926,7 +1059,7 @@ const BOM: React.FC = () => {
                       placeholder="Final appearance, pH, viscosity, SPF/PA (if sunscreen), fill weight/volume tolerance, microbial limits, stability conditions"
                       value={formData.specFg}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -939,7 +1072,7 @@ const BOM: React.FC = () => {
                       placeholder="Artwork version, barcode, label text, claims, shelf life, storage, carton spec"
                       value={formData.specPack}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -952,7 +1085,7 @@ const BOM: React.FC = () => {
                       placeholder="Incoming QC, in-process, finished goods testing: pH, viscosity, micro, SPF etc."
                       value={formData.specTests}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
 
@@ -965,7 +1098,7 @@ const BOM: React.FC = () => {
                       placeholder="Release parameters and limits."
                       value={formData.specRelease}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
                 </div>
@@ -985,7 +1118,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 100 KG"
                         value={formData.batch}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -999,7 +1132,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 98"
                         value={formData.yield}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -1016,7 +1149,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., 2"
                         value={formData.overage}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -1029,7 +1162,7 @@ const BOM: React.FC = () => {
                         placeholder="e.g., vacuum emulsifier, 1T tank"
                         value={formData.line}
                         onChange={handleInputChange}
-                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
                   </div>
@@ -1043,7 +1176,7 @@ const BOM: React.FC = () => {
                       placeholder="Version changes, reason for change"
                       value={formData.notes}
                       onChange={handleInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
                 </div>
@@ -1066,7 +1199,7 @@ const BOM: React.FC = () => {
                     </label>
                     <textarea
                       placeholder='{"meta":{...}}'
-                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
                     />
                   </div>
                 </div>
