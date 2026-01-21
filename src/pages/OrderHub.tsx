@@ -449,6 +449,7 @@ const OrderHub = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [viewHistoryOrderId, setViewHistoryOrderId] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
 
   // Connectivity Tracker states
   const [connectivityRecords, setConnectivityRecords] = useState<Record<string, any>>({});
@@ -1099,6 +1100,7 @@ const OrderHub = () => {
                           </button>
                         )}
                         <button
+                          onClick={() => setSelectedOrderDetails(order)}
                           className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors"
                         >
                           View Details
@@ -1382,6 +1384,127 @@ const OrderHub = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Order Details Modal */}
+            {selectedOrderDetails && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setSelectedOrderDetails(null)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-4xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
+                      <p className="text-sm text-gray-600 mt-1">Order No: {selectedOrderDetails.orderNo}</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedOrderDetails(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* Left Column */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order No</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.orderNo}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Type</label>
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            selectedOrderDetails.orderType === 'SO' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {selectedOrderDetails.orderType}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">SKU</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.sku}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Item Name</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.itemName}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Quantity</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.qty}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Unit Rate</label>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedOrderDetails.unitRate}</p>
+                        </div>
+                      </div>
+
+                      {/* Right Column */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Date</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.odrDate}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Est. Delivery Date</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.estDelDate}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Stage</label>
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                            Stage {selectedOrderDetails.currentStage}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Status</label>
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            selectedOrderDetails.currentStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                            selectedOrderDetails.currentStatus === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {selectedOrderDetails.currentStatus}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - EI</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseEI}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - Architecture</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseArch}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Comments Section */}
+                    {selectedOrderDetails.comments && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Comments</label>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <p className="text-sm text-gray-700">{selectedOrderDetails.comments}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* POC for Current Status */}
+                    {selectedOrderDetails.pocForCurrentStatus && (
+                      <div className="mt-4">
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">POC for Current Status</label>
+                        <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.pocForCurrentStatus}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setSelectedOrderDetails(null)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               </div>
