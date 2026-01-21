@@ -81,7 +81,9 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId 
                   <td className="py-4 px-5 font-medium text-gray-800 leading-relaxed">{module.moduleName}</td>
                   {Object.entries(module.permissions).map(([permissionType, value]) => (
                     <td key={permissionType} className="text-center py-4 px-5 leading-relaxed">
-                      {getPermissionBadge(value)}
+                      <UnifiedBadge variant={getPermissionBadgeColor(value)}>
+                        {value ? '✓' : '✗'}
+                      </UnifiedBadge>
                     </td>
                   ))}
                 </tr>

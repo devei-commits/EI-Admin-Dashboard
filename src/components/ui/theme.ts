@@ -175,50 +175,51 @@ export const INPUT_VARIANTS = {
   error: 'w-full px-5 py-3 border-2 border-red-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-red-50 transition-all',
 };
 
+// Badge Variant Types
+export type BadgeVariant = 'primary' | 'success' | 'warning' | 'error' | 'info' | 'outline';
+
 // Selector/Status Color Functions
-export const getStatusBadgeColor = (status: string): string => {
-  const statusMap: Record<string, string> = {
+export const getStatusBadgeColor = (status: string): BadgeVariant => {
+  const statusMap: Record<string, BadgeVariant> = {
     // Active/Inactive
-    'active': COLORS.success.badge,
-    'inactive': COLORS.gray[100] + ' text-gray-600 border border-gray-200',
-    'deactive': COLORS.gray[100] + ' text-gray-600 border border-gray-200',
+    'active': 'success',
+    'inactive': 'outline',
+    'deactive': 'outline',
     
     // Suspended/On Hold
-    'suspended': COLORS.warning.badge,
-    'on_hold': COLORS.warning.badge,
+    'suspended': 'warning',
+    'on_hold': 'warning',
     
     // Processing
-    'pending': COLORS.info.badge,
-    'processing': COLORS.info.badge,
-    'in_progress': COLORS.info.badge,
+    'pending': 'info',
+    'processing': 'info',
+    'in_progress': 'info',
     
     // Completion
-    'completed': COLORS.success.badge,
-    'approved': COLORS.success.badge,
-    'shipped': COLORS.success.badge,
+    'completed': 'success',
+    'approved': 'success',
+    'shipped': 'success',
     
     // Error
-    'rejected': COLORS.error.badge,
-    'failed': COLORS.error.badge,
-    'terminated': COLORS.error.badge,
+    'rejected': 'error',
+    'failed': 'error',
+    'terminated': 'error',
   };
   
-  return statusMap[status.toLowerCase()] || COLORS.gray[100] + ' text-gray-600 border border-gray-200';
+  return statusMap[status.toLowerCase()] || 'outline';
 };
 
-export const getRoleLevelBadgeColor = (level: string): string => {
-  const levelMap: Record<string, string> = {
-    'admin': COLORS.admin.badge,
-    'manager': COLORS.manager.badge,
-    'staff': COLORS.staff.badge,
-    'client': COLORS.client.badge,
+export const getRoleLevelBadgeColor = (level: string): BadgeVariant => {
+  const levelMap: Record<string, BadgeVariant> = {
+    'admin': 'primary',
+    'manager': 'warning',
+    'staff': 'info',
+    'client': 'outline',
   };
   
-  return levelMap[level.toLowerCase()] || COLORS.client.badge;
+  return levelMap[level.toLowerCase()] || 'outline';
 };
 
-export const getPermissionBadgeColor = (hasPermission: boolean): string => {
-  return hasPermission 
-    ? 'w-5 h-5 bg-green-500 rounded-full shadow-sm' 
-    : 'w-5 h-5 bg-gray-300 rounded-full shadow-sm';
+export const getPermissionBadgeColor = (hasPermission: boolean): BadgeVariant => {
+  return hasPermission ? 'success' : 'error';
 };
