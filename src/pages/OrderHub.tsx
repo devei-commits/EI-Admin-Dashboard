@@ -58,6 +58,8 @@ interface Order {
   currentStatus: string;
   pocForCurrentStatus: string;
   comments: string;
+  currentStage: number; // 1-6 for stages, 7 for closed
+  stageProgress: Record<number, 'pending' | 'in-progress' | 'completed'>; // Track status of each stage
 }
 
 interface OrderReview {
@@ -121,7 +123,9 @@ const MOCK_ORDERS: Order[] = [
     stage: 'ORDERS REVIEW',
     currentStatus: 'UNDER REVIEW',
     pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-'
+    comments: '-',
+    currentStage: 1,
+    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
   },
   {
     id: '2',
@@ -139,7 +143,9 @@ const MOCK_ORDERS: Order[] = [
     stage: 'ORDERS REVIEW',
     currentStatus: 'UNDER REVIEW',
     pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-'
+    comments: '-',
+    currentStage: 1,
+    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
   },
   {
     id: '3',
@@ -157,7 +163,9 @@ const MOCK_ORDERS: Order[] = [
     stage: 'ORDERS REVIEW',
     currentStatus: 'UNDER REVIEW',
     pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-'
+    comments: '-',
+    currentStage: 1,
+    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
   },
   {
     id: '4',
@@ -175,7 +183,9 @@ const MOCK_ORDERS: Order[] = [
     stage: 'PURCHASE PLAN',
     currentStatus: 'UNDER PLANNING',
     pocForCurrentStatus: '*#S2 COMPLETED*',
-    comments: '-'
+    comments: '-',
+    currentStage: 2,
+    stageProgress: { 1: 'completed', 2: 'in-progress', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
   },
   {
     id: '5',
@@ -193,7 +203,9 @@ const MOCK_ORDERS: Order[] = [
     stage: 'CONNECTIVITY TRACKER',
     currentStatus: 'UNDER SCHEDULE',
     pocForCurrentStatus: '*#S3 COMPLETED*',
-    comments: '-'
+    comments: '-',
+    currentStage: 3,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'in-progress', 4: 'pending', 5: 'pending', 6: 'pending' }
   },
   ...Array.from({ length: 55 }, (_, i) => {
     const idx = i + 1;
@@ -224,6 +236,15 @@ const MOCK_ORDERS: Order[] = [
     const licenseArch = idx % 4 === 0 ? 'no' : 'yes';
     const licenseEI = idx % 6 === 0 ? 'no' : 'yes';
 
+    // Distribute stages across mock orders
+    const currentStage = 1 + (idx % 6);
+    const stageProgress: Record<number, 'pending' | 'in-progress' | 'completed'> = {};
+    for (let s = 1; s <= 6; s++) {
+      if (s < currentStage) stageProgress[s] = 'completed';
+      else if (s === currentStage) stageProgress[s] = 'in-progress';
+      else stageProgress[s] = 'pending';
+    }
+
     return {
       id,
       orderNo,
@@ -240,7 +261,9 @@ const MOCK_ORDERS: Order[] = [
       stage: 'PURCHASE PLAN',
       currentStatus: 'UNDER PLANNING',
       pocForCurrentStatus: '*#S2 COMPLETED*',
-      comments: '-'
+      comments: '-',
+      currentStage,
+      stageProgress
     };
   })
 ];
@@ -251,9 +274,9 @@ const fetchOrders = async (): Promise<Order[]> => {
   // Example: const response = await fetch('/api/orders');
   // return response.json();
   
-  // For now, return mock data
+  // For now, return mock data with stages initialized
   return new Promise((resolve) => {
-    setTimeout(() => resolve(MOCK_ORDERS), 500);
+    setTimeout(() => resolve(initializeOrderStages(MOCK_ORDERS)), 500);
   });
 };
 
@@ -278,6 +301,90 @@ const updateOrderType = async (orderId: string, newType: string): Promise<void> 
 };
 
 const ORDER_TYPE_OPTIONS = ['NEW ORDER', 'REORDER', 'MODIFIED'] as const;
+
+// ==================== STAGE MANAGEMENT FUNCTIONS ====================
+const STAGES = [
+  { id: 1, name: 'Orders Review', tabId: 'orders-review' },
+  { id: 2, name: 'Purchase Plan', tabId: 'purchase-plan' },
+  { id: 3, name: 'Connectivity Tracker', tabId: 'purchase-planner' },
+  { id: 4, name: 'Production Planner', tabId: 'production-planner' },
+  { id: 5, name: 'Production Tracker', tabId: 'production-tracker' },
+  { id: 6, name: 'Order Closure', tabId: 'order-closure' },
+];
+
+const initializeOrderStages = (orders: Order[]): Order[] => {
+  return orders.map(order => {
+    if (!order.currentStage) {
+      // Determine stage from legacy 'stage' field
+      let currentStage = 1;
+      if (order.stage === 'PURCHASE PLAN') currentStage = 2;
+      else if (order.stage === 'CONNECTIVITY TRACKER') currentStage = 3;
+      else if (order.stage === 'PRODUCTION PLANNER') currentStage = 4;
+      else if (order.stage === 'PRODUCTION TRACKER') currentStage = 5;
+      else if (order.stage === 'ORDER CLOSURE') currentStage = 6;
+
+      return {
+        ...order,
+        currentStage,
+        stageProgress: {
+          1: currentStage > 1 ? 'completed' : 'in-progress',
+          2: currentStage > 2 ? 'completed' : currentStage === 2 ? 'in-progress' : 'pending',
+          3: currentStage > 3 ? 'completed' : currentStage === 3 ? 'in-progress' : 'pending',
+          4: currentStage > 4 ? 'completed' : currentStage === 4 ? 'in-progress' : 'pending',
+          5: currentStage > 5 ? 'completed' : currentStage === 5 ? 'in-progress' : 'pending',
+          6: currentStage > 6 ? 'completed' : currentStage === 6 ? 'in-progress' : 'pending',
+        },
+      };
+    }
+    return order;
+  });
+};
+
+const moveOrderToNextStage = (order: Order): Order => {
+  if (order.currentStage >= 6) {
+    return { ...order, currentStage: 7, stage: 'ORDER CLOSED' }; // Final stage
+  }
+
+  const nextStage = order.currentStage + 1;
+  const stageNames = ['ORDERS REVIEW', 'PURCHASE PLAN', 'CONNECTIVITY TRACKER', 'PRODUCTION PLANNER', 'PRODUCTION TRACKER', 'ORDER CLOSURE'];
+  
+  return {
+    ...order,
+    currentStage: nextStage,
+    stage: stageNames[nextStage - 1] || 'ORDER CLOSED',
+    stageProgress: {
+      ...order.stageProgress,
+      [order.currentStage]: 'completed',
+      [nextStage]: 'in-progress',
+    },
+  };
+};
+
+const getStageStatusColor = (stageStatus: 'pending' | 'in-progress' | 'completed'): string => {
+  switch (stageStatus) {
+    case 'completed':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+    case 'in-progress':
+      return 'bg-blue-100 text-blue-700 border-blue-300';
+    case 'pending':
+      return 'bg-gray-100 text-gray-600 border-gray-300';
+    default:
+      return 'bg-gray-100 text-gray-600 border-gray-300';
+  }
+};
+
+const getStageStatusIcon = (stageStatus: 'pending' | 'in-progress' | 'completed'): string => {
+  switch (stageStatus) {
+    case 'completed':
+      return '✓';
+    case 'in-progress':
+      return '⚙';
+    case 'pending':
+      return '○';
+    default:
+      return '○';
+  }
+};
 
 const OrderHub = () => {
   const [activeTab, setActiveTab] = useState(() => {
@@ -826,111 +933,71 @@ const OrderHub = () => {
       {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {activeTab === 'orders-tracker' && (
-          <div>
-            {/* Search and Filter Bar */}
-            <div className="p-4 border-b border-gray-100 flex items-center gap-4">
+          <div className="space-y-4 p-4">
+            {/* Header with Statistics */}
+            <div className="grid grid-cols-6 gap-4">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div className="text-2xl font-bold text-blue-700">{orders.length}</div>
+                <div className="text-xs text-blue-600 font-medium mt-1">Total Orders</div>
+              </div>
+              {STAGES.map((stage) => {
+                const count = orders.filter(o => o.currentStage === stage.id).length;
+                return (
+                  <div key={stage.id} className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
+                    <div className="text-2xl font-bold text-amber-700">{count}</div>
+                    <div className="text-xs text-amber-600 font-medium mt-1">Stage {stage.id}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Search by Item SKU</label>
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder="Search by Order No, SKU, or Item Name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                 />
               </div>
-              <div className="w-64">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
-                >
-                  <option value="ALL">ALL ORDERS</option>
-                  <option value="OPEN">OPEN ORDERS</option>
-                  <option value="IN_PROGRESS">IN PROGRESS</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="PENDING">PENDING</option>
-                </select>
-              </div>
-              <div className="pt-5">
-                <button className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
-                  Filter Items
-                </button>
-              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+              >
+                <option value="ALL">All Stages</option>
+                {STAGES.map(s => (
+                  <option key={s.id} value={s.id}>Stage {s.id}</option>
+                ))}
+              </select>
             </div>
-            
-            <div className="overflow-x-auto">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
-                </div>
-              ) : (
-                <div className="">
-                  <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-                    <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-0 z-20 bg-white">
-                        <input type="checkbox" className="rounded border-gray-300 w-4 h-4" />
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-12 z-20 bg-white">ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-28 z-20 bg-white">Order No</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-48 z-20 bg-white">Order Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-64 z-20 bg-white">SKU</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap sticky left-80 z-20 bg-white">Item Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Qty</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Unit Rate</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">ODR Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">EST DEL Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">COM Date</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">License ARCH</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">License EI</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Stage</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Status</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Time Elapsed</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">POC</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Comments</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openPocModal && pocModalOrder && (
-                      <div className="fixed inset-0 z-50 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setOpenPocModal(null)}>
-                        <div 
-                          className="bg-white rounded-lg shadow-lg p-6 max-w-3xl w-full mx-4"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <h3 className="text-lg font-semibold text-gray-800 mb-4">POC Details</h3>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div><span className="font-bold">POC_CM_TEAM:</span> {pocModalOrder.pocCmtTeam || '-'}</div>
-                            <div><span className="font-bold">POC_R&D PRODUCT:</span> {pocModalOrder.pocRead || '-'}</div>
-                            <div><span className="font-bold">POC_PACKING:</span> {pocModalOrder.pocPacking || '-'}</div>
-                            <div><span className="font-bold">POC_QUALITY_PRODUCT:</span> {pocModalOrder.pocQuality || '-'}</div>
-                            <div><span className="font-bold">POC_QUALITY_COMPLIANCE:</span> {pocModalOrder.pocQualityCompliance || '-'}</div>
-                            <div><span className="font-bold">POC_LABEL_DESIGN:</span> {pocModalOrder.pocLabel || '-'}</div>
-                          </div>
-                          <div className="flex items-center gap-2 mt-6">
-                            <button
-                              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
-                              onClick={() => setOpenPocModal(null)}
-                            >
-                              Close
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {filteredOrders.map((order, index) => {
-                      const elapsed = calculateTimeElapsed(order.odrDate);
-                      return (
-                        <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3.5 sticky left-0 z-10 bg-white hover:bg-gray-50">
-                            <input type="checkbox" className="rounded border-gray-300 w-4 h-4" />
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-12 z-10 bg-white hover:bg-gray-50">{order.id}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-28 z-10 bg-white hover:bg-gray-50">{order.orderNo}</td>
-                          <td className="px-4 py-3.5 sticky left-48 z-10 bg-white hover:bg-gray-50">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+
+            {/* Orders Grid */}
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {orders
+                  .filter(order => {
+                    const matchesSearch = !searchQuery || 
+                      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
+                    const matchesStage = statusFilter === 'ALL' || order.currentStage === parseInt(statusFilter);
+                    return matchesSearch && matchesStage;
+                  })
+                  .map(order => (
+                    <div key={order.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      {/* Order Header */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <h3 className="font-semibold text-gray-900">{order.orderNo}</h3>
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                               order.orderType === 'REORDER' 
                                 ? 'bg-blue-100 text-blue-700' 
                                 : order.orderType === 'NEW ORDER'
@@ -939,92 +1006,95 @@ const OrderHub = () => {
                             }`}>
                               {order.orderType}
                             </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 sticky left-64 z-10 bg-white hover:bg-gray-50">{order.sku}</td>
-                          <td className="px-4 py-3.5 text-sm text-gray-900 min-w-[300px] sticky left-80 z-10 bg-white hover:bg-gray-50">{order.itemName}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.qty}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">₹{order.unitRate}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <input
-                              type="date"
-                              value={order.estDelDate}
-                              onChange={(e) => handleDateChange(order.id, e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 hover:border-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer bg-white"
-                            />
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.comDate}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${order.licenseArch === 'yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {order.licenseArch}
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{order.itemName}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">SKU: {order.sku} • Qty: {order.qty}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-gray-700">Stage {order.currentStage}/6</div>
+                          <div className="text-xs text-gray-500 mt-1">{STAGES.find(s => s.id === order.currentStage)?.name}</div>
+                        </div>
+                      </div>
+
+                      {/* Stage Progress Bar */}
+                      <div className="mb-4">
+                        <div className="flex gap-1.5 items-center">
+                          {STAGES.map((stage) => {
+                            const status = order.stageProgress?.[stage.id] || 'pending';
+                            const isCurrentStage = stage.id === order.currentStage;
+                            return (
+                              <div
+                                key={stage.id}
+                                className={`flex-1 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-all ${
+                                  status === 'completed'
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                                    : isCurrentStage
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                                    : 'bg-gray-100 text-gray-500 border border-gray-300'
+                                }`}
+                                title={stage.name}
+                              >
+                                <span>{getStageStatusIcon(status)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500 mt-2 px-1">
+                          {STAGES.map((stage) => (
+                            <span key={stage.id} className="text-center" style={{ width: `calc(100% / 6)` }}>
+                              {stage.id}
                             </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${order.licenseEI === 'yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {order.licenseEI}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="inline-block px-2.5 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">{order.stage}</span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${
-                              order.currentStatus === 'In Progress' ? 'bg-yellow-100 text-yellow-700' :
-                              order.currentStatus === 'Completed' ? 'bg-green-100 text-green-700' :
-                              order.currentStatus === 'Pending' ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>{order.currentStatus}</span>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <div className="flex gap-1 justify-center">
-                              <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-medium" title="Days">
-                                {elapsed.days}d
-                              </span>
-                              <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-medium" title="Hours">
-                                {elapsed.hours}h
-                              </span>
-                              <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-medium" title="Minutes">
-                                {elapsed.minutes}m
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 flex items-center gap-2">
-                            {order.pocForCurrentStatus}
-                            <button onClick={() => { setOpenPocModal(order.id); setPocModalOrder(order); }} className="ml-2 p-1 rounded hover:bg-gray-200" title="View POC Details">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h5.25m5.25-.75L17.25 9m0 0L21 12.75M17.25 9v12" />
-                              </svg>
-                            </button>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-600 max-w-[150px] truncate" title={order.comments}>{order.comments}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="View Details">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
-                              <button className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors" title="Edit">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Delete">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Order Details Grid */}
+                      <div className="grid grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-200">
+                        <div>
+                          <span className="text-xs text-gray-500 font-medium">Order Date</span>
+                          <p className="text-sm text-gray-700 font-medium">{order.odrDate}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-500 font-medium">Est. Delivery</span>
+                          <p className="text-sm text-gray-700 font-medium">{order.estDelDate}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-500 font-medium">Unit Rate</span>
+                          <p className="text-sm text-gray-700 font-medium">₹{order.unitRate}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-500 font-medium">Status</span>
+                          <p className={`text-sm font-medium ${
+                            order.currentStatus === 'COMPLETED' ? 'text-green-600' :
+                            order.currentStatus === 'UNDER REVIEW' ? 'text-amber-600' :
+                            'text-blue-600'
+                          }`}>{order.currentStatus}</p>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2">
+                        {order.currentStage < 7 && (
+                          <button
+                            onClick={() => {
+                              const updatedOrder = moveOrderToNextStage(order);
+                              setOrders(orders.map(o => o.id === order.id ? updatedOrder : o));
+                            }}
+                            className="flex-1 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+                          >
+                            Move to Stage {order.currentStage + 1}
+                          </button>
+                        )}
+                        <button
+                          className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
-            </div>
           </div>
         )}
         {activeTab === 'orders-review' && (
