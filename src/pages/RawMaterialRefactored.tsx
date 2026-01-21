@@ -51,10 +51,10 @@ const RawMaterialRefactored: React.FC = () => {
     // Technical & Regulatory
     grade: '',
     compliance: '',
-    allergenRequired: '',
-    gmoRequired: '',
-    sdsAvailable: '',
-    coaAvailable: '',
+    allergenRequired: false,
+    gmoRequired: false,
+    sdsAvailable: false,
+    coaAvailable: false,
     regulatoryNotes: '',
     
     // Quality Specifications
@@ -343,10 +343,10 @@ const RawMaterialRefactored: React.FC = () => {
           <div className="space-y-4">
             <InputField label="Grade" id="grade" value={formData.grade} onChange={handleInputChange} />
             <InputField label="Compliance/Certificate" id="compliance" value={formData.compliance} onChange={handleInputChange} />
-            <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired === 'true'} onChange={handleInputChange} />
-            <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired === 'true'} onChange={handleInputChange} />
-            <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable === 'true'} onChange={handleInputChange} />
-            <CheckboxField label="CoA Available" id="coaAvailable" checked={formData.coaAvailable === 'true'} onChange={handleInputChange} />
+            <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
+            <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
+            <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable} onChange={handleInputChange} />
+            <CheckboxField label="CoA Available" id="coaAvailable" checked={formData.coaAvailable} onChange={handleInputChange} />
             <TextareaField label="Regulatory Notes" id="regulatoryNotes" value={formData.regulatoryNotes} onChange={handleInputChange} />
           </div>
         );

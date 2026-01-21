@@ -114,8 +114,7 @@ const BOMRefactored: React.FC = () => {
   const stages = [
     'Primary Info',
     'BOM Setup & Coding',
-    'Header Details',
-    'Formulation (Bulk RM Items)',
+    'Header Details & Formulation (RM Items)',
     'Packaging (FG PM Items)',
     'Specifications',
     'Yield, Batch & Notes',
@@ -261,45 +260,52 @@ const BOMRefactored: React.FC = () => {
           </div>
         );
 
-      case 2: // Header Details
+      case 2: // Header Details & Formulation (RM Items)
         return (
-          <div className="space-y-4">
-            <InputField label="Category (FMCG, Pharma, etc.)" id="category" value={formData.category} onChange={handleInputChange} />
-            <InputField label="Created By" id="createdBy" value={formData.createdBy} onChange={handleInputChange} />
-            <InputField label="Reviewed By" id="reviewedBy" value={formData.reviewedBy} onChange={handleInputChange} />
-            <TextareaField label="Description" id="desc" value={formData.desc} onChange={handleInputChange} />
-            <TextareaField label="Claims" id="claims" value={formData.claims} onChange={handleInputChange} />
-            <TextareaField label="Regulatory Notes" id="regulatory" value={formData.regulatory} onChange={handleInputChange} />
-            <InputField label="pH Range" id="phRange" value={formData.phRange} onChange={handleInputChange} />
+          <div className="space-y-6">
+            {/* Header Details Section */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Header Details</h3>
+              <div className="space-y-4">
+                <InputField label="Category (FMCG, Pharma, etc.)" id="category" value={formData.category} onChange={handleInputChange} />
+                <InputField label="Created By" id="createdBy" value={formData.createdBy} onChange={handleInputChange} />
+                <InputField label="Reviewed By" id="reviewedBy" value={formData.reviewedBy} onChange={handleInputChange} />
+                <TextareaField label="Description" id="desc" value={formData.desc} onChange={handleInputChange} />
+                <TextareaField label="Claims" id="claims" value={formData.claims} onChange={handleInputChange} />
+                <TextareaField label="Regulatory Notes" id="regulatory" value={formData.regulatory} onChange={handleInputChange} />
+                <InputField label="pH Range" id="phRange" value={formData.phRange} onChange={handleInputChange} />
+              </div>
+            </div>
+
+            {/* Formulation (RM Items) Section */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Formulation - Raw Materials</h3>
+              <ArrayItemManager
+                masterType="bom"
+                itemType="rmLine"
+                items={formData.rmLines}
+                tempFields={tempRMLine}
+                onTempFieldChange={(field, value) => setTempRMLine(prev => ({ ...prev, [field]: value }))}
+                onAdd={handleAddRMLine}
+                onRemove={handleRemoveRMLine}
+                errors={errors}
+                itemLabel="Raw Material Line"
+                columns={[
+                  { key: 'code', label: 'RM Code' },
+                  { key: 'name', label: 'RM Name' },
+                  { key: 'phase', label: 'Phase' },
+                  { key: 'func', label: 'Function' },
+                  { key: 'pct', label: '% w/w', type: 'number' },
+                  { key: 'uom', label: 'UoM' },
+                  { key: 'spec', label: 'Spec' },
+                  { key: 'notes', label: 'Notes' },
+                ]}
+              />
+            </div>
           </div>
         );
 
-      case 3: // Formulation (RM Items)
-        return (
-          <ArrayItemManager
-            masterType="bom"
-            itemType="rmLine"
-            items={formData.rmLines}
-            tempFields={tempRMLine}
-            onTempFieldChange={(field, value) => setTempRMLine(prev => ({ ...prev, [field]: value }))}
-            onAdd={handleAddRMLine}
-            onRemove={handleRemoveRMLine}
-            errors={errors}
-            itemLabel="Raw Material Line"
-            columns={[
-              { key: 'code', label: 'RM Code' },
-              { key: 'name', label: 'RM Name' },
-              { key: 'phase', label: 'Phase' },
-              { key: 'func', label: 'Function' },
-              { key: 'pct', label: '% w/w', type: 'number' },
-              { key: 'uom', label: 'UoM' },
-              { key: 'spec', label: 'Spec' },
-              { key: 'notes', label: 'Notes' },
-            ]}
-          />
-        );
-
-      case 4: // Packaging (PM Items)
+      case 3: // Packaging (PM Items) - renumbered from 4
         return (
           <ArrayItemManager
             masterType="bom"
@@ -322,7 +328,7 @@ const BOMRefactored: React.FC = () => {
           />
         );
 
-      case 5: // Specifications
+      case 4: // Specifications - renumbered from 5
         return (
           <div className="space-y-4">
             <TextareaField label="Bulk Specification" id="specBulk" value={formData.specBulk} onChange={handleInputChange} />
@@ -334,7 +340,7 @@ const BOMRefactored: React.FC = () => {
           </div>
         );
 
-      case 6: // Yield, Batch & Notes
+      case 5: // Yield, Batch & Notes - renumbered from 6
         return (
           <div className="space-y-4">
             <InputField label="Batch Lot Size" id="batch" value={formData.batch} onChange={handleInputChange} />
@@ -345,7 +351,7 @@ const BOMRefactored: React.FC = () => {
           </div>
         );
 
-      case 7: // Review / JSON
+      case 6: // Review / JSON - renumbered from 7
         return (
           <div>
             <h3 className="font-semibold text-gray-700 mb-4">Complete Form Data (JSON)</h3>

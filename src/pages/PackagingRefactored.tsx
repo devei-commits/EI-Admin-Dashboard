@@ -53,8 +53,8 @@ const PackagingRefactored: React.FC = () => {
     matBody: '',
     matClosure: '',
     matInner: '',
-    matRecycle: '',
-    matBpa: '',
+    matRecycle: false,
+    matBpa: false,
     matGrade: '',
     specNominal: '',
     specBrimful: '',
@@ -73,7 +73,7 @@ const PackagingRefactored: React.FC = () => {
     images: '',
 
     // Customization
-    cusCustomizable: '',
+    cusCustomizable: false,
     cusParams: '',
     cusStdMoq: '',
     cusCustomMoq: '',
@@ -85,14 +85,14 @@ const PackagingRefactored: React.FC = () => {
     cusRemarks: '',
 
     // Compatibility
-    compLow: '',
-    compMed: '',
-    compHigh: '',
-    compOil: '',
-    compAlc: '',
-    compAirless: '',
-    compPump: '',
-    compLeak: '',
+    compLow: false,
+    compMed: false,
+    compHigh: false,
+    compOil: false,
+    compAlc: false,
+    compAirless: false,
+    compPump: false,
+    compLeak: false,
     compActives: '',
     compRisk: '',
     compRemarks: '',
@@ -116,14 +116,14 @@ const PackagingRefactored: React.FC = () => {
     terNotes: '',
 
     // Approval flags
-    apprPack: '',
-    apprRd: '',
-    apprFin: '',
-    apprLock: '',
+    apprPack: false,
+    apprRd: false,
+    apprFin: false,
+    apprLock: false,
 
     // Catalogue
-    catVisible: '',
-    catShare: '',
+    catVisible: false,
+    catShare: false,
     catWebName: '',
     catTags: '',
     catRecoTypes: '',
@@ -382,8 +382,8 @@ const PackagingRefactored: React.FC = () => {
               <InputField label="Inner Material" id="matInner" value={formData.matInner} onChange={handleInputChange} />
               <InputField label="Grade" id="matGrade" value={formData.matGrade} onChange={handleInputChange} />
             </div>
-            <CheckboxField label="Recyclable" id="matRecycle" checked={formData.matRecycle === 'true'} onChange={handleInputChange} />
-            <CheckboxField label="BPA Free" id="matBpa" checked={formData.matBpa === 'true'} onChange={handleInputChange} />
+            <CheckboxField label="Recyclable" id="matRecycle" checked={formData.matRecycle} onChange={handleInputChange} />
+            <CheckboxField label="BPA Free" id="matBpa" checked={formData.matBpa} onChange={handleInputChange} />
             
             <h3 className="font-semibold text-gray-700 mt-6">Specifications</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -459,14 +459,14 @@ const PackagingRefactored: React.FC = () => {
             </div>
             <h3 className="font-semibold mt-4">Chemical Compatibility</h3>
             <div className="grid grid-cols-3 gap-4">
-              <CheckboxField label="Oil Compatible" id="compOil" checked={formData.compOil === 'true'} onChange={handleInputChange} />
-              <CheckboxField label="Alcohol Compatible" id="compAlc" checked={formData.compAlc === 'true'} onChange={handleInputChange} />
-              <CheckboxField label="Airless Compatible" id="compAirless" checked={formData.compAirless === 'true'} onChange={handleInputChange} />
+              <CheckboxField label="Oil Compatible" id="compOil" checked={formData.compOil} onChange={handleInputChange} />
+              <CheckboxField label="Alcohol Compatible" id="compAlc" checked={formData.compAlc} onChange={handleInputChange} />
+              <CheckboxField label="Airless Compatible" id="compAirless" checked={formData.compAirless} onChange={handleInputChange} />
             </div>
             <h3 className="font-semibold mt-4">Functional Compatibility</h3>
             <div className="grid grid-cols-2 gap-4">
-              <CheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump === 'true'} onChange={handleInputChange} />
-              <CheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak === 'true'} onChange={handleInputChange} />
+              <CheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump} onChange={handleInputChange} />
+              <CheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak} onChange={handleInputChange} />
               <InputField label="Actives Compatible" id="compActives" value={formData.compActives} onChange={handleInputChange} />
               <InputField label="Risk Level" id="compRisk" value={formData.compRisk} onChange={handleInputChange} />
             </div>
@@ -535,7 +535,7 @@ const PackagingRefactored: React.FC = () => {
                 <InputField label="Approved by Packaging" id="apprPack" value={formData.apprPack} onChange={handleInputChange} />
                 <InputField label="Approved by R&D" id="apprRd" value={formData.apprRd} onChange={handleInputChange} />
                 <InputField label="Approved by Finance" id="apprFin" value={formData.apprFin} onChange={handleInputChange} />
-                <CheckboxField label="Lock for Modification" id="apprLock" checked={formData.apprLock === 'true'} onChange={handleInputChange} />
+                <CheckboxField label="Lock for Modification" id="apprLock" checked={formData.apprLock} onChange={handleInputChange} />
               </div>
             </div>
             <ArrayItemManager
@@ -562,8 +562,8 @@ const PackagingRefactored: React.FC = () => {
       case 12: // Catalogue
         return (
           <div className="space-y-4">
-            <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible === 'true'} onChange={handleInputChange} />
-            <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare === 'true'} onChange={handleInputChange} />
+            <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible} onChange={handleInputChange} />
+            <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare} onChange={handleInputChange} />
             <InputField label="Web Display Name" id="catWebName" value={formData.catWebName} onChange={handleInputChange} />
             <InputField label="Tags (comma-separated)" id="catTags" value={formData.catTags} onChange={handleInputChange} />
             <InputField label="Recommended Product Types" id="catRecoTypes" value={formData.catRecoTypes} onChange={handleInputChange} />
