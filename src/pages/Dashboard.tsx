@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { UnifiedBadge, getStatusBadgeColor } from '../components/ui';
 
 interface StatCardProps {
   title: string;
@@ -116,21 +117,6 @@ const Dashboard = () => {
     { id: '5', action: 'Order shipped', user: 'Michael Brown', time: '3 hours ago' },
   ];
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'approved':
-      case 'shipped':
-        return 'bg-green-100 text-green-800';
-      case 'packaging':
-        return 'bg-blue-100 text-blue-800';
-      case 'review at bd':
-      case 'review at r&d':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   return (
     <div className="w-full min-h-screen bg-gray-50/50 p-4 md:p-8">
       <div className="mb-8">
@@ -160,9 +146,9 @@ const Dashboard = () => {
               <div key={order.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 hover:bg-gray-50 transition-colors">
                 <div className="flex justify-between items-start mb-2">
                   <span className="font-semibold text-gray-800">{order.id}</span>
-                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
+                  <UnifiedBadge variant={getStatusBadgeColor(order.status)}>
                     {order.status}
-                  </span>
+                  </UnifiedBadge>
                 </div>
                 <p className="text-sm text-gray-700 font-medium">{order.company}</p>
                 <p className="text-xs text-gray-400 mt-1">{order.date}</p>
@@ -187,9 +173,9 @@ const Dashboard = () => {
                     <td className="py-4 text-gray-800 font-semibold">{order.id}</td>
                     <td className="py-4 text-gray-700">{order.company}</td>
                     <td className="py-4">
-                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(order.status)}`}>
+                      <UnifiedBadge variant={getStatusBadgeColor(order.status)}>
                         {order.status}
-                      </span>
+                      </UnifiedBadge>
                     </td>
                     <td className="py-4 text-gray-400">{order.date}</td>
                   </tr>

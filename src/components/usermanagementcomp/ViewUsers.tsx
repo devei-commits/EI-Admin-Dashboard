@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import UserDetailPopup from './UserDetailPopup';
 import EditUserPopup from './EditUserPopup';
+import { UnifiedBadge, getStatusBadgeColor } from '../ui';
 
 interface User {
   id: string;
@@ -116,23 +117,9 @@ const ViewUsers: React.FC = () => {
     setIsViewPopupOpen(false);
     setSelectedUser(null);
   };
-
   const handleCloseEditPopup = () => {
     setIsEditPopupOpen(false);
     setSelectedUser(null);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'deactive':
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-      case 'suspended':
-        return 'bg-amber-50 text-amber-700 border border-amber-100';
-      default:
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-    }
   };
 
   return (
@@ -145,9 +132,9 @@ const ViewUsers: React.FC = () => {
           <div key={user.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
             <div className="flex justify-between items-start mb-4">
               <span className="font-semibold text-gray-800 leading-relaxed">{user.name}</span>
-              <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(user.status)} tracking-wider`}>
+              <UnifiedBadge variant={getStatusBadgeColor(user.status)}>
                 {user.status}
-              </span>
+              </UnifiedBadge>
             </div>
             <div className="space-y-3 text-sm mb-5">
               <p><span className="font-medium text-gray-600 tracking-wide">Email:</span> <span className="text-gray-700 leading-relaxed">{user.email}</span></p>
@@ -213,9 +200,9 @@ const ViewUsers: React.FC = () => {
                   {user.role}
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
-                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(user.status)} tracking-wider`}>
+                  <UnifiedBadge variant={getStatusBadgeColor(user.status)}>
                     {user.status}
-                  </span>
+                  </UnifiedBadge>
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
                   <div className="flex space-x-3">

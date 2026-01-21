@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { UnifiedBadge, getStatusBadgeColor } from '../ui';
 
 interface Product {
   id: string;
@@ -476,20 +477,6 @@ const OrderTable: React.FC = () => {
   const removeProduct = useCallback((id: string) => {
     setFormProducts(prev => prev.filter(p => p.id !== id));
   }, []);
-
-  const getStatusColor = (status: Order['orderStatus']) => {
-    const colors = {
-      'Pending': 'bg-yellow-100 text-yellow-800',
-      'Processing': 'bg-blue-100 text-blue-800',
-      'Approved': 'bg-green-100 text-green-800',
-      'Packaging': 'bg-purple-100 text-purple-800',
-      'Shipped': 'bg-indigo-100 text-indigo-800',
-      'Delivered': 'bg-green-200 text-green-900',
-      'Rejected': 'bg-red-100 text-red-800',
-      'Cancelled': 'bg-gray-100 text-gray-800'
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
 
   const getPriorityColor = (priority: Order['priority']) => {
     const colors = {
@@ -976,9 +963,9 @@ const OrderTable: React.FC = () => {
                   <div>
                     <label className="text-sm text-gray-500">Status</label>
                     <p>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedOrder.orderStatus)}`}>
+                      <UnifiedBadge variant={getStatusBadgeColor(selectedOrder.orderStatus)}>
                         {selectedOrder.orderStatus}
-                      </span>
+                      </UnifiedBadge>
                     </p>
                   </div>
                   <div>
@@ -1069,9 +1056,9 @@ const OrderTable: React.FC = () => {
                           </div>
                           <div className="flex-1 pb-4">
                             <div className="flex justify-between items-start">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(history.status as Order['orderStatus'])}`}>
+                              <UnifiedBadge variant={getStatusBadgeColor(history.status as Order['orderStatus'])}>
                                 {history.status}
-                              </span>
+                              </UnifiedBadge>
                               <span className="text-xs text-gray-500">{history.timestamp}</span>
                             </div>
                             <p className="text-sm text-gray-600 mt-1">Changed by: {history.changedBy}</p>
@@ -1528,9 +1515,9 @@ const OrderTable: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{order.dateRegistered}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
+                    <UnifiedBadge variant={getStatusBadgeColor(order.orderStatus)}>
                       {order.orderStatus}
-                    </span>
+                    </UnifiedBadge>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-center gap-2">
@@ -1581,9 +1568,9 @@ const OrderTable: React.FC = () => {
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-semibold text-gray-900">{order.orderId}</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
+                    <UnifiedBadge variant={getStatusBadgeColor(order.orderStatus)}>
                       {order.orderStatus}
-                    </span>
+                    </UnifiedBadge>
                   </div>
                   <div className="space-y-1 text-sm text-gray-700">
                     <div><strong>Company:</strong> {order.companyName}</div>

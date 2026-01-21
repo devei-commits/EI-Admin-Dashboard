@@ -1,4 +1,5 @@
 import React from 'react';
+import { UnifiedBadge, getStatusBadgeColor } from '../ui';
 
 interface User {
   id: string;
@@ -19,19 +20,6 @@ interface UserDetailPopupProps {
 }
 
 const UserDetailPopup: React.FC<UserDetailPopupProps> = ({ user, onClose }) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'deactive':
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-      case 'suspended':
-        return 'bg-amber-50 text-amber-700 border border-amber-100';
-      default:
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-auto">
@@ -71,9 +59,9 @@ const UserDetailPopup: React.FC<UserDetailPopupProps> = ({ user, onClose }) => {
             </div>
             <div className="space-y-1">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Status</p>
-              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(user.status)}`}>
+              <UnifiedBadge variant={getStatusBadgeColor(user.status)}>
                 {user.status}
-              </span>
+              </UnifiedBadge>
             </div>
           </div>
           
