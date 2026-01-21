@@ -11,7 +11,6 @@ import OrderHub from './pages/OrderHub'
 import CouponManagement from './pages/CouponManagement'
 import DiscountManagement from './pages/DiscountManagement'
 import CatalogueManagement from './pages/CatalogueManagement'
-import PackagingManagement from './pages/PackagingManagement'
 import ActiveIngredients from './pages/ActiveIngredients'
 import EnquiryManagement from './pages/EnquiryManagement'
 import DoctorAppointments from './pages/DoctorAppointments'
@@ -20,9 +19,9 @@ import NewDevelopments from './pages/NewDevelopments'
 import ProductSamples from './pages/ProductSamples'
 // ...existing code...
 import Treasury from './pages/Treasury'
-import Packaging from './pages/Packaging'
-import RawMaterial from './pages/RawMaterial'
-import BOM from './pages/BOM'
+import PackagingRefactored from './pages/PackagingRefactored'
+import RawMaterialRefactored from './pages/RawMaterialRefactored'
+import BOMRefactored from './pages/BOMRefactored'
 import ItemsMaster from './pages/ItemsMaster'
 import VendorClient from './pages/VendorClient'
 import SalesAndPurchase from './pages/SalesAndPurchase'
@@ -68,7 +67,6 @@ const AppLayout = () => {
           <Route path="/coupon-management" element={<CouponManagement />} />
           <Route path="/discount-management" element={<DiscountManagement />} />
           <Route path="/catalogue-management" element={<CatalogueManagement />} />
-          <Route path="/packaging-management" element={<PackagingManagement />} />
           <Route path="/active-ingredients" element={<ActiveIngredients />} />
           <Route path="/enquiry-management" element={<EnquiryManagement />} />
           <Route path="/doctor-appointments" element={<DoctorAppointments />} />
@@ -77,9 +75,9 @@ const AppLayout = () => {
           <Route path="/product-samples" element={<ProductSamples />} />
 // ...existing code...
           <Route path="/treasury" element={<Treasury />} />
-          <Route path="/packaging" element={<Packaging />} />
-          <Route path="/raw-material" element={<RawMaterial />} />
-          <Route path="/bom" element={<BOM />} />
+          <Route path="/packaging" element={<PackagingRefactored />} />
+          <Route path="/raw-material" element={<RawMaterialRefactored />} />
+          <Route path="/bom" element={<BOMRefactored />} />
           <Route path="/items-master" element={<ItemsMaster />} />
           <Route path="/vendor-client" element={<VendorClient />} />
           <Route path="/sales-and-purchase" element={<SalesAndPurchase />} />
