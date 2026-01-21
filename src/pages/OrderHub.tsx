@@ -888,6 +888,7 @@ const OrderHub = () => {
   // Filter orders based on search query and status filter
   const filteredOrders = orders.filter(order => {
     const matchesSearch = searchQuery === '' || 
+      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
     
@@ -905,6 +906,7 @@ const OrderHub = () => {
   // Filter review orders based on search query and status filter
   const filteredReviewOrders = reviewOrders.filter(order => {
     const matchesSearch = searchQuery === '' || 
+      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.productSku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.compatibleItem.toLowerCase().includes(searchQuery.toLowerCase());
     
