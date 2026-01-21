@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
 import EditRoleFullPage from './EditRoleFullPage.tsx';
 import PermissionsSummary from './PermissionsSummary.tsx';
+import { UnifiedButton, UnifiedBadge, UnifiedCard, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
 
 export interface Role {
   id: string;
@@ -280,32 +281,6 @@ const ViewRoles: React.FC = () => {
     setSelectedRole(null);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-    }
-  };
-
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'admin':
-        return 'bg-violet-50 text-violet-700 border border-violet-100';
-      case 'manager':
-        return 'bg-amber-50 text-amber-700 border border-amber-100';
-      case 'staff':
-        return 'bg-sky-50 text-sky-700 border border-sky-100';
-      case 'client':
-        return 'bg-gray-50 text-gray-600 border border-gray-200';
-      default:
-        return 'bg-gray-50 text-gray-600 border border-gray-200';
-    }
-  };
-
   return (
     <div className="w-full">
       <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
@@ -388,14 +363,14 @@ const ViewRoles: React.FC = () => {
                   {role.roleName}
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
-                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>
+                  <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>
                     {role.roleLevel}
-                  </span>
+                  </UnifiedBadge>
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
-                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
+                  <UnifiedBadge variant={getStatusBadgeColor(role.roleStatus)}>
                     {role.roleStatus}
-                  </span>
+                  </UnifiedBadge>
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
                   <PermissionsSummary roleId={role.id} />

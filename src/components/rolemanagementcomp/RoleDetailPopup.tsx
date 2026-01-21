@@ -1,5 +1,6 @@
 import React from 'react';
 import RolePermissionsDisplay from './RolePermissionsDisplay';
+import { UnifiedBadge, UnifiedModal, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
 
 interface Role {
   id: string;
@@ -17,32 +18,6 @@ interface RoleDetailPopupProps {
 }
 
 const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-600 border border-gray-200';
-    }
-  };
-
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'admin':
-        return 'bg-violet-50 text-violet-700 border border-violet-100';
-      case 'manager':
-        return 'bg-amber-50 text-amber-700 border border-amber-100';
-      case 'staff':
-        return 'bg-sky-50 text-sky-700 border border-sky-100';
-      case 'client':
-        return 'bg-gray-50 text-gray-600 border border-gray-200';
-      default:
-        return 'bg-gray-50 text-gray-600 border border-gray-200';
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
@@ -69,15 +44,15 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Role Level</p>
-                <span className={`inline-block px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>
+                <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>
                   {role.roleLevel}
-                </span>
+                </UnifiedBadge>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Status</p>
-                <span className={`inline-block px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
+                <UnifiedBadge variant={getStatusBadgeColor(role.roleStatus)}>
                   {role.roleStatus}
-                </span>
+                </UnifiedBadge>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Role ID</p>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { UnifiedBadge, getPermissionBadgeColor } from '../ui';
 
 interface Permission {
   moduleName: string;
@@ -55,14 +56,6 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId 
     );
   }
 
-  const getPermissionBadge = (hasPermission: boolean) => {
-    return hasPermission ? (
-      <span className="inline-block w-5 h-5 bg-green-500 rounded-full shadow-sm"></span>
-    ) : (
-      <span className="inline-block w-5 h-5 bg-gray-300 rounded-full shadow-sm"></span>
-    );
-  };
-
   return (
     <div className="space-y-8">
       {/* Module Permissions */}
@@ -104,7 +97,9 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-gray-50 p-6 rounded-lg border border-gray-200">
           {Object.entries(rolePermissions.globalSettings).map(([setting, value]) => (
             <div key={setting} className="flex items-center space-x-3">
-              {getPermissionBadge(value)}
+              <UnifiedBadge variant={getPermissionBadgeColor(value)}>
+                {value ? '✓' : '✗'}
+              </UnifiedBadge>
               <span className="text-sm text-gray-700 capitalize leading-relaxed tracking-wide">
                 {setting.replace(/([A-Z])/g, ' $1').toLowerCase()}
               </span>
