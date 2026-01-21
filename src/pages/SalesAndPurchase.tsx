@@ -41,6 +41,9 @@ const SalesAndPurchase: React.FC = () => {
     const [items, setItems] = useState<any[]>([]);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    const [selectedFilters, setSelectedFilters] = useState<string[]>(['All']);
+    const [customField, setCustomField] = useState('');
 
     // Load orders from localStorage on mount
     useEffect(() => {
@@ -262,8 +265,57 @@ const SalesAndPurchase: React.FC = () => {
         }
     };
 
+    const filterStatuses = [
+        'All',
+        'Draft',
+        'Pending approval',
+        'Approved',
+        'Confirmed',
+        'For packaging',
+        'To be shipped',
+        'Shipped',
+        'Fulfilled'
+    ];
+
+    const toggleFilter = (filter: string) => {
+        if (filter === 'All') {
+            setSelectedFilters(['All']);
+        } else {
+            let newFilters = selectedFilters.filter(f => f !== 'All');
+            if (newFilters.includes(filter)) {
+                newFilters = newFilters.filter(f => f !== filter);
+            } else {
+                newFilters.push(filter);
+            }
+            setSelectedFilters(newFilters.length === 0 ? ['All'] : newFilters);
+        }
+    };
+
+    const getFilteredOrders = (orderList: Order[]) => {
+        if (selectedFilters.includes('All')) return orderList;
+        
+        return orderList.filter(order => {
+            // Map status to filter options
+            const orderStatusMap: { [key: string]: string } = {
+                'Draft': 'Draft',
+                'Pending': 'Pending approval',
+                'Approved': 'Approved',
+                'Confirmed': 'Confirmed',
+                'Packaging': 'For packaging',
+                'ToShip': 'To be shipped',
+                'Shipped': 'Shipped',
+                'Fulfilled': 'Fulfilled'
+            };
+            
+            const mappedStatus = orderStatusMap[order.status] || order.status;
+            return selectedFilters.includes(mappedStatus) || selectedFilters.includes(order.status);
+        });
+    };
+
     const salesOrders = orders.filter(o => o.type === 'SO');
     const purchaseOrders = orders.filter(o => o.type === 'PO');
+    const filteredSalesOrders = getFilteredOrders(salesOrders);
+    const filteredPurchaseOrders = getFilteredOrders(purchaseOrders);
 
     return (
         <div className="space-y-6 p-6">
@@ -365,16 +417,76 @@ const SalesAndPurchase: React.FC = () => {
                         <div className="p-6">
                             {activeTab === 'sales' ? (
                                 <div>
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-semibold text-gray-800">Sales Orders ({salesOrders.length})</h2>
-                                        <button onClick={() => { setOrderType('SO'); setViewMode('form'); }} className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2 rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all flex items-center gap-2">
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                            </svg>
-                                            Create SO
-                                        </button>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-xl font-semibold text-gray-800">Sales Orders ({filteredSalesOrders.length})</h2>
+                                        <div className="flex gap-3">
+                                            {/* Filters Button */}
+                                            <div className="relative">
+                                                <button 
+                                                    onClick={() => setShowFilters(!showFilters)}
+                                                    className="bg-white text-gray-700 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-all flex items-center gap-2 font-medium"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                                    </svg>
+                                                    Filters
+                                                    {selectedFilters.length > 0 && selectedFilters[0] !== 'All' && (
+                                                        <span className="bg-amber-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{selectedFilters.length}</span>
+                                                    )}
+                                                </button>
+                                                
+                                                {/* Filter Dropdown */}
+                                                {showFilters && (
+                                                    <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-300 rounded-lg shadow-xl z-50 p-4">
+                                                        <div className="space-y-3 max-h-72 overflow-y-auto">
+                                                            {filterStatuses.map((status) => (
+                                                                <label key={status} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedFilters.includes(status)}
+                                                                        onChange={() => toggleFilter(status)}
+                                                                        className="w-4 h-4 text-amber-600 rounded cursor-pointer"
+                                                                    />
+                                                                    <span className="text-sm text-gray-700 font-medium">{status}</span>
+                                                                </label>
+                                                            ))}
+                                                            
+                                                            {/* Custom Field */}
+                                                            <div className="border-t border-gray-200 pt-3 mt-3">
+                                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">+ Custom Field</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Add custom filter..."
+                                                                    value={customField}
+                                                                    onChange={(e) => setCustomField(e.target.value)}
+                                                                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                                                />
+                                                                {customField && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedFilters([customField]);
+                                                                            setCustomField('');
+                                                                            setShowFilters(false);
+                                                                        }}
+                                                                        className="mt-2 w-full bg-amber-500 text-white text-xs py-1.5 rounded font-medium hover:bg-amber-600"
+                                                                    >
+                                                                        Apply Custom Filter
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button onClick={() => { setOrderType('SO'); setViewMode('form'); }} className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2 rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all flex items-center gap-2">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                Create SO
+                                            </button>
+                                        </div>
                                     </div>
-                                    {salesOrders.length === 0 ? (
+                                    {filteredSalesOrders.length === 0 ? (
                                         <div className="text-center py-12">
                                             <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -402,7 +514,7 @@ const SalesAndPurchase: React.FC = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {salesOrders.map((order) => (
+                                                    {filteredSalesOrders.map((order) => (
                                                         <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
                                                             <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
                                                             <td className="py-4 px-5 leading-relaxed">
@@ -478,16 +590,76 @@ const SalesAndPurchase: React.FC = () => {
                                 </div>
                             ) : (
                                 <div>
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-semibold text-gray-800">Purchase Orders ({purchaseOrders.length})</h2>
-                                        <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2">
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                            </svg>
-                                            Create PO
-                                        </button>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-xl font-semibold text-gray-800">Purchase Orders ({filteredPurchaseOrders.length})</h2>
+                                        <div className="flex gap-3">
+                                            {/* Filters Button */}
+                                            <div className="relative">
+                                                <button 
+                                                    onClick={() => setShowFilters(!showFilters)}
+                                                    className="bg-white text-gray-700 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-all flex items-center gap-2 font-medium"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                                                    </svg>
+                                                    Filters
+                                                    {selectedFilters.length > 0 && selectedFilters[0] !== 'All' && (
+                                                        <span className="bg-amber-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{selectedFilters.length}</span>
+                                                    )}
+                                                </button>
+                                                
+                                                {/* Filter Dropdown */}
+                                                {showFilters && (
+                                                    <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-300 rounded-lg shadow-xl z-50 p-4">
+                                                        <div className="space-y-3 max-h-72 overflow-y-auto">
+                                                            {filterStatuses.map((status) => (
+                                                                <label key={status} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedFilters.includes(status)}
+                                                                        onChange={() => toggleFilter(status)}
+                                                                        className="w-4 h-4 text-amber-600 rounded cursor-pointer"
+                                                                    />
+                                                                    <span className="text-sm text-gray-700 font-medium">{status}</span>
+                                                                </label>
+                                                            ))}
+                                                            
+                                                            {/* Custom Field */}
+                                                            <div className="border-t border-gray-200 pt-3 mt-3">
+                                                                <label className="text-xs font-semibold text-gray-600 mb-2 block">+ Custom Field</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Add custom filter..."
+                                                                    value={customField}
+                                                                    onChange={(e) => setCustomField(e.target.value)}
+                                                                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                                                />
+                                                                {customField && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedFilters([customField]);
+                                                                            setCustomField('');
+                                                                            setShowFilters(false);
+                                                                        }}
+                                                                        className="mt-2 w-full bg-amber-500 text-white text-xs py-1.5 rounded font-medium hover:bg-amber-600"
+                                                                    >
+                                                                        Apply Custom Filter
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center gap-2">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                </svg>
+                                                Create PO
+                                            </button>
+                                        </div>
                                     </div>
-                                    {purchaseOrders.length === 0 ? (
+                                    {filteredPurchaseOrders.length === 0 ? (
                                         <div className="text-center py-12">
                                             <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -515,7 +687,7 @@ const SalesAndPurchase: React.FC = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {purchaseOrders.map((order) => (
+                                                    {filteredPurchaseOrders.map((order) => (
                                                         <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
                                                             <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
                                                             <td className="py-4 px-5 leading-relaxed">
