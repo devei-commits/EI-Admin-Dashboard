@@ -137,33 +137,33 @@ const ViewUsers: React.FC = () => {
 
   return (
     <div className="w-full">
-      <h2 className="text-lg font-semibold text-gray-800 mb-5">View Users</h2>
+      <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Users</h2>
       
       {/* Mobile Card View */}
-      <div className="md:hidden space-y-4">
+      <div className="md:hidden space-y-5">
         {users.map((user) => (
-          <div key={user.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors">
-            <div className="flex justify-between items-start mb-3">
-              <span className="font-semibold text-gray-800">{user.name}</span>
-              <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(user.status)}`}>
+          <div key={user.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
+            <div className="flex justify-between items-start mb-4">
+              <span className="font-semibold text-gray-800 leading-relaxed">{user.name}</span>
+              <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(user.status)} tracking-wider`}>
                 {user.status}
               </span>
             </div>
-            <div className="space-y-2 text-sm mb-4">
-              <p><span className="font-medium text-gray-400">Email:</span> <span className="text-gray-600">{user.email}</span></p>
-              <p><span className="font-medium text-gray-400">Mobile:</span> <span className="text-gray-600">{user.mobile}</span></p>
-              <p><span className="font-medium text-gray-400">Role:</span> <span className="text-gray-600">{user.role}</span></p>
+            <div className="space-y-3 text-sm mb-5">
+              <p><span className="font-medium text-gray-600 tracking-wide">Email:</span> <span className="text-gray-700 leading-relaxed">{user.email}</span></p>
+              <p><span className="font-medium text-gray-600 tracking-wide">Mobile:</span> <span className="text-gray-700 leading-relaxed">{user.mobile}</span></p>
+              <p><span className="font-medium text-gray-600 tracking-wide">Role:</span> <span className="text-gray-700 leading-relaxed">{user.role}</span></p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => handleViewUser(user)}
-                className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
               >
                 View
               </button>
               <button
                 onClick={() => handleEditUser(user)}
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
               >
                 Edit
               </button>
@@ -176,58 +176,58 @@ const ViewUsers: React.FC = () => {
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <tr className="border-b-2 border-gray-200">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Email
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Mobile
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Role
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Status
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-gray-100">
             {users.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-4 font-medium text-gray-800">
+                <td className="px-5 py-4 font-medium text-gray-800 leading-relaxed">
                   {user.name}
                 </td>
-                <td className="px-4 py-4 text-gray-600">
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {user.email}
                 </td>
-                <td className="px-4 py-4 text-gray-600">
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {user.mobile}
                 </td>
-                <td className="px-4 py-4 text-gray-600">
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {user.role}
                 </td>
-                <td className="px-4 py-4">
-                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(user.status)}`}>
+                <td className="px-5 py-4 leading-relaxed">
+                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(user.status)} tracking-wider`}>
                     {user.status}
                   </span>
                 </td>
-                <td className="px-4 py-4">
-                  <div className="flex space-x-2">
+                <td className="px-5 py-4 leading-relaxed">
+                  <div className="flex space-x-3">
                     <button
                       onClick={() => handleViewUser(user)}
-                      className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                      className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
                     >
                       View
                     </button>
                     <button
                       onClick={() => handleEditUser(user)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                      className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
                     >
                       Edit
                     </button>

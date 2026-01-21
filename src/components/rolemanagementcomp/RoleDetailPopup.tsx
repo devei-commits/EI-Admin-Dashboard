@@ -1,4 +1,5 @@
 import React from 'react';
+import RolePermissionsDisplay from './RolePermissionsDisplay';
 
 interface Role {
   id: string;
@@ -44,9 +45,9 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-auto">
-        <div className="flex justify-between items-center p-5 border-b border-gray-100">
-          <h3 className="text-xl font-semibold text-gray-800">Role Details</h3>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
+          <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">Role Details</h3>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -57,46 +58,57 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Role Name</p>
-              <p className="text-gray-800 font-medium">{role.roleName}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Role Level</p>
-              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)}`}>
-                {role.roleLevel}
-              </span>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Status</p>
-              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)}`}>
-                {role.roleStatus}
-              </span>
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Description</p>
-              <p className="text-gray-600">{role.description || 'No description available'}</p>
+        <div className="p-6 space-y-8">
+          {/* Basic Role Information */}
+          <div>
+            <h4 className="text-lg font-semibold text-gray-800 mb-5 uppercase tracking-wider">Basic Information</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-gray-50 p-6 rounded-lg border border-gray-200">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest letter-spacing">Role Name</p>
+                <p className="text-gray-800 font-medium leading-relaxed">{role.roleName}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Role Level</p>
+                <span className={`inline-block px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>
+                  {role.roleLevel}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Status</p>
+                <span className={`inline-block px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
+                  {role.roleStatus}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Role ID</p>
+                <p className="text-gray-700 text-sm font-mono leading-relaxed">{role.id}</p>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Description</p>
+                <p className="text-gray-700 leading-relaxed tracking-wide">{role.description || 'No description available'}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Created At</p>
+                <p className="text-gray-700 text-sm leading-relaxed">{role.roleCreatedAt}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Updated At</p>
+                <p className="text-gray-700 text-sm leading-relaxed">{role.roleUpdatedAt}</p>
+              </div>
             </div>
           </div>
-          
-          <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Created At</p>
-              <p className="text-gray-600 text-sm">{role.roleCreatedAt}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Updated At</p>
-              <p className="text-gray-600 text-sm">{role.roleUpdatedAt}</p>
-            </div>
+
+          {/* Role Permissions */}
+          <div>
+            <h4 className="text-lg font-semibold text-gray-800 mb-5 uppercase tracking-wider">Permissions</h4>
+            <RolePermissionsDisplay roleId={role.id} />
           </div>
         </div>
 
-        <div className="p-5 border-t border-gray-100 flex justify-end">
+        <div className="p-6 border-t-2 border-gray-200 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
           >
             Close
           </button>

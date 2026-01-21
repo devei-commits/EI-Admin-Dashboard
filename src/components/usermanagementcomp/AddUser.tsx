@@ -46,12 +46,12 @@ const AddUser: React.FC = () => {
 
   return (
     <div className="w-full max-w-2xl">
-      <h2 className="text-lg font-semibold text-gray-800 mb-5">Add New User</h2>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-1 gap-5">
+      <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">Add New User</h2>
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="grid grid-cols-1 gap-8">
           {/* First Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               First Name
             </label>
             <input
@@ -59,14 +59,14 @@ const AddUser: React.FC = () => {
               name="firstName"
               value={formData.firstName}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             />
           </div>
 
           {/* Last Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Last Name
             </label>
             <input
@@ -74,14 +74,14 @@ const AddUser: React.FC = () => {
               name="lastName"
               value={formData.lastName}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             />
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Email
             </label>
             <input
@@ -89,14 +89,14 @@ const AddUser: React.FC = () => {
               name="email"
               value={formData.email}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             />
           </div>
 
           {/* Mobile */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Mobile
             </label>
             <input
@@ -104,21 +104,21 @@ const AddUser: React.FC = () => {
               name="mobile"
               value={formData.mobile}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             />
           </div>
 
           {/* Department */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Department
             </label>
             <select
               name="department"
               value={formData.department}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             >
               <option value="">Select Department</option>
@@ -132,14 +132,14 @@ const AddUser: React.FC = () => {
 
           {/* User Role */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Select User Role
             </label>
             <select
               name="userRole"
               value={formData.userRole}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             >
               <option value="">Select User Role</option>
@@ -153,7 +153,7 @@ const AddUser: React.FC = () => {
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Password
             </label>
             <input
@@ -161,14 +161,14 @@ const AddUser: React.FC = () => {
               name="password"
               value={formData.password}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
               required
             />
           </div>
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2">
+            <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
               Status
             </label>
             <input
@@ -176,16 +176,16 @@ const AddUser: React.FC = () => {
               name="status"
               value={formData.status}
               onChange={handleInputChange}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
+              className="w-full px-5 py-3 border border-gray-200 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed leading-normal"
               readOnly
             />
           </div>
         </div>
 
-        <div className="mt-6 pt-4">
+        <div className="mt-8 pt-6">
           <button
             type="submit"
-            className="w-full md:w-auto px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-all font-medium"
+            className="w-full md:w-auto px-7 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-all font-semibold tracking-wider uppercase"
           >
             Add User
           </button>

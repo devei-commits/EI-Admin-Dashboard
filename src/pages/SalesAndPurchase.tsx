@@ -275,26 +275,26 @@ const SalesAndPurchase: React.FC = () => {
                                             <table className="w-full">
                                                 <thead>
                                                     <tr className="border-b border-gray-200">
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Order ID</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Type</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Customer</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Items</th>
-                                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Action</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order ID</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Type</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Customer</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {salesOrders.map((order) => (
                                                         <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                                            <td className="py-3 px-4 text-gray-800 font-medium">{order.orderId}</td>
-                                                            <td className="py-3 px-4">
-                                                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">SO</span>
+                                                            <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
+                                                            <td className="py-4 px-5 leading-relaxed">
+                                                                <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-800 tracking-wider">SO</span>
                                                             </td>
-                                                            <td className="py-3 px-4 text-gray-800">{order.customerName || 'N/A'}</td>
-                                                            <td className="py-3 px-4 text-gray-800">{order.orderDate}</td>
-                                                            <td className="py-3 px-4">
-                                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                                                            <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.customerName || 'N/A'}</td>
+                                                            <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.orderDate}</td>
+                                                            <td className="py-4 px-5 leading-relaxed">
+                                                                <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
                                                                     {order.status}
                                                                 </span>
                                                             </td>
@@ -337,34 +337,34 @@ const SalesAndPurchase: React.FC = () => {
                                             <table className="w-full">
                                                 <thead>
                                                     <tr className="border-b border-gray-200">
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">PO ID</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Type</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Vendor</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
-                                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Items</th>
-                                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Action</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">PO ID</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Type</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Vendor</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                                                        <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {purchaseOrders.map((order) => (
                                                         <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                                            <td className="py-3 px-4 text-gray-800 font-medium">{order.orderId}</td>
-                                                            <td className="py-3 px-4">
-                                                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">PO</span>
+                                                            <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
+                                                            <td className="py-4 px-5 leading-relaxed">
+                                                                <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 tracking-wider">PO</span>
                                                             </td>
-                                                            <td className="py-3 px-4 text-gray-800">{order.vendorName || 'N/A'}</td>
-                                                            <td className="py-3 px-4 text-gray-800">{order.orderDate}</td>
-                                                            <td className="py-3 px-4">
-                                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                            <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.vendorName || 'N/A'}</td>
+                                                            <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.orderDate}</td>
+                                                            <td className="py-4 px-5 leading-relaxed">
+                                                                <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
                                                                     {order.status}
                                                                 </span>
                                                             </td>
-                                                            <td className="py-3 px-4 text-gray-800">{order.items.length}</td>
-                                                            <td className="py-3 px-4 text-center">
+                                                            <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.items.length}</td>
+                                                            <td className="py-4 px-5 text-center">
                                                                 <button
                                                                     onClick={() => openDetailModal(order)}
-                                                                    className="px-4 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium"
+                                                                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium tracking-wider"
                                                                 >
                                                                     View
                                                                 </button>

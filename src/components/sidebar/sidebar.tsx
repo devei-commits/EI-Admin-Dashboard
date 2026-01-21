@@ -51,7 +51,7 @@ const Sidebar = () => {
         } else if (!isEnquiryActive && enquiryOpen) {
             setEnquiryOpen(false);
         }
-    }, [location.pathname, isEnquiryActive, enquiryOpen]);
+    }, [isEnquiryActive]);
 
     // Auto-open dropdown when navigating to order pages, close when navigating away
     useEffect(() => {
@@ -60,7 +60,7 @@ const Sidebar = () => {
         } else if (!isOrderActive && orderOpen) {
             setOrderOpen(false);
         }
-    }, [location.pathname, isOrderActive, orderOpen]);
+    }, [isOrderActive]);
 
     // Auto-open dropdown when navigating to product pages, close when navigating away
     useEffect(() => {
@@ -69,13 +69,14 @@ const Sidebar = () => {
         } else if (!isProductActive && productOpen) {
             setProductOpen(false);
         }
-    }, [location.pathname, isProductActive, productOpen]);
+    }, [isProductActive]);
 
-    // Auto-open Masters when navigating to a Masters page.
-    // Do not auto-close when not on a Masters page, otherwise manual toggling would close immediately.
+    // Auto-open Masters when navigating to a Masters page, close when navigating away
     useEffect(() => {
-        if (isMastersActive) {
+        if (isMastersActive && !mastersOpen) {
             setMastersOpen(true);
+        } else if (!isMastersActive && mastersOpen) {
+            setMastersOpen(false);
         }
     }, [isMastersActive]);
 
@@ -229,7 +230,7 @@ const Sidebar = () => {
                                     orderOpen ? "max-h-96" : "max-h-0"
                                 }`}
                             >
-                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
                                     <li>
                                         <NavLink
                                             to="/order-list"
@@ -335,7 +336,7 @@ const Sidebar = () => {
                                     productOpen ? "max-h-96" : "max-h-0"
                                 }`}
                             >
-                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
                                     <li>
                                         <NavLink
                                             to="/catalogue-management"
@@ -582,7 +583,7 @@ const Sidebar = () => {
                                     enquiryOpen ? "max-h-96" : "max-h-0"
                                 }`}
                             >
-                                <ul className="bg-linear-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
                                     <li>
                                         <NavLink
                                             to="/doctor-appointments"

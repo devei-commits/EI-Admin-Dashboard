@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
 import EditRoleFullPage from './EditRoleFullPage.tsx';
+import PermissionsSummary from './PermissionsSummary.tsx';
 
 export interface Role {
   id: string;
@@ -307,39 +308,43 @@ const ViewRoles: React.FC = () => {
 
   return (
     <div className="w-full">
-      <h2 className="text-lg font-semibold text-gray-800 mb-5">View Roles</h2>
+      <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
       
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">
         {roles.map((role) => (
-          <div key={role.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-colors">
-            <div className="flex justify-between items-start mb-3">
-              <span className="font-semibold text-gray-800">{role.roleName}</span>
-              <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)}`}>
+          <div key={role.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
+            <div className="flex justify-between items-start mb-4">
+              <span className="font-semibold text-gray-800 leading-relaxed">{role.roleName}</span>
+              <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
                 {role.roleStatus}
               </span>
             </div>
-            <div className="space-y-2 text-sm mb-4">
-              <p><span className="font-medium text-gray-400">Level:</span> <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)}`}>{role.roleLevel}</span></p>
-              <p><span className="font-medium text-gray-400">Created:</span> <span className="text-gray-600">{role.roleCreatedAt}</span></p>
-              <p><span className="font-medium text-gray-400">Updated:</span> <span className="text-gray-600">{role.roleUpdatedAt}</span></p>
+            <div className="space-y-3 text-sm mb-5">
+              <p><span className="font-medium text-gray-600 tracking-wide">Level:</span> <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>{role.roleLevel}</span></p>
+              <div className="space-y-1.5">
+                <p className="font-medium text-gray-600 uppercase tracking-wide">Permissions:</p>
+                <PermissionsSummary roleId={role.id} />
+              </div>
+              <p><span className="font-medium text-gray-600 tracking-wide">Created:</span> <span className="text-gray-700 leading-relaxed">{role.roleCreatedAt}</span></p>
+              <p><span className="font-medium text-gray-600 tracking-wide">Updated:</span> <span className="text-gray-700 leading-relaxed">{role.roleUpdatedAt}</span></p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => handleViewRole(role)}
-                className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
               >
                 View
               </button>
               <button
                 onClick={() => handleEditRole(role)}
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
               >
                 Edit
               </button>
               <button
                 onClick={() => handleDeleteRole(role.id)}
-                className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                className="px-4 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium tracking-wider"
               >
                 Delete
               </button>
@@ -352,66 +357,72 @@ const ViewRoles: React.FC = () => {
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <tr className="border-b-2 border-gray-200">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Role Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Role Level
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Role Status
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
+                Permissions
+              </th>
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Created At
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Updated At
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-gray-100">
             {roles.map((role) => (
               <tr key={role.id} className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-4 font-medium text-gray-800">
+                <td className="px-5 py-4 font-medium text-gray-800 leading-relaxed">
                   {role.roleName}
                 </td>
-                <td className="px-4 py-4">
-                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)}`}>
+                <td className="px-5 py-4 leading-relaxed">
+                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>
                     {role.roleLevel}
                   </span>
                 </td>
-                <td className="px-4 py-4">
-                  <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)}`}>
+                <td className="px-5 py-4 leading-relaxed">
+                  <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
                     {role.roleStatus}
                   </span>
                 </td>
-                <td className="px-4 py-4 text-gray-500">
+                <td className="px-5 py-4 leading-relaxed">
+                  <PermissionsSummary roleId={role.id} />
+                </td>
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {role.roleCreatedAt}
                 </td>
-                <td className="px-4 py-4 text-gray-500">
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {role.roleUpdatedAt}
                 </td>
-                <td className="px-4 py-4">
-                  <div className="flex space-x-2">
+                <td className="px-5 py-4 leading-relaxed">
+                  <div className="flex space-x-3">
                     <button
                       onClick={() => handleViewRole(role)}
-                      className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                      className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
                     >
                       View
                     </button>
                     <button
                       onClick={() => handleEditRole(role)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                      className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDeleteRole(role.id)}
-                      className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                      className="px-4 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium tracking-wider"
                     >
                       Delete
                     </button>
