@@ -140,8 +140,10 @@ const SalesAndPurchase: React.FC = () => {
             return;
         }
 
+        const orderId = `${orderType}-${Date.now()}`;
+        
         const newOrder: Order = {
-            id: `${orderType}-${Date.now()}`,
+            id: orderId,
             type: orderType as 'SO' | 'PO',
             orderId: formData.orderId,
             customerName: formData.customerName,
@@ -160,7 +162,14 @@ const SalesAndPurchase: React.FC = () => {
             },
         };
 
+        // Save to SalesAndPurchase
         setOrders([...orders, newOrder]);
+
+        // If submitted (not draft), also sync to OrderHub
+        if (!draft) {
+            syncToOrderHub(newOrder);
+        }
+        
         alert(`${orderType} ${draft ? 'saved as draft' : 'submitted'} successfully!`);
         
         // Reset form
@@ -190,6 +199,48 @@ const SalesAndPurchase: React.FC = () => {
         setOrderType(null);
         setViewMode('dashboard');
         setActiveTab(orderType === 'SO' ? 'sales' : 'purchase');
+    };
+
+    const syncToOrderHub = (order: Order) => {
+        try {
+            // Get existing OrderHub orders
+            const orderHubOrders = JSON.parse(localStorage.getItem('eisthetic_order_hub_orders') || '[]');
+            
+            // Create an OrderHub order from SO/PO
+            const orderHubOrder = {
+                id: order.id,
+                soPoId: order.id, // Link back to SO/PO
+                orderNo: order.orderId,
+                orderType: order.type,
+                sku: order.items[0]?.sku || 'N/A',
+                itemName: order.items[0]?.productName || 'N/A',
+                qty: order.items[0]?.quantity || 0,
+                unitRate: order.items[0]?.rate || '0.00',
+                odrDate: order.orderDate,
+                estDelDate: order.formData.expectedShipmentDate || '',
+                comDate: '',
+                licenseArch: 'PENDING',
+                licenseEI: 'PENDING',
+                stage: 'Stage 1: Review',
+                currentStatus: 'PENDING',
+                pocForCurrentStatus: 'S1',
+                comments: order.formData.customerNotes || order.formData.termsConditions || '',
+                currentStage: 1,
+                stageProgress: {
+                    1: 'in-progress',
+                    2: 'pending',
+                    3: 'pending',
+                    4: 'pending',
+                    5: 'pending',
+                    6: 'pending'
+                }
+            };
+
+            orderHubOrders.push(orderHubOrder);
+            localStorage.setItem('eisthetic_order_hub_orders', JSON.stringify(orderHubOrders));
+        } catch (error) {
+            console.error('Error syncing to OrderHub:', error);
+        }
     };
 
     const openDetailModal = (order: Order) => {

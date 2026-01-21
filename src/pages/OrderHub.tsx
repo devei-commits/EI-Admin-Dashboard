@@ -270,13 +270,24 @@ const MOCK_ORDERS: Order[] = [
 
 // ==================== API FUNCTIONS (To be implemented with backend) ====================
 const fetchOrders = async (): Promise<Order[]> => {
-  // TODO: Replace with actual API call
-  // Example: const response = await fetch('/api/orders');
-  // return response.json();
+  // Load from multiple sources:
+  // 1. Mock orders
+  // 2. SO/PO synced orders from SalesAndPurchase
   
-  // For now, return mock data with stages initialized
   return new Promise((resolve) => {
-    setTimeout(() => resolve(initializeOrderStages(MOCK_ORDERS)), 500);
+    setTimeout(() => {
+      let allOrders = [...MOCK_ORDERS];
+      
+      // Load synced orders from SalesAndPurchase
+      try {
+        const syncedOrders = JSON.parse(localStorage.getItem('eisthetic_order_hub_orders') || '[]');
+        allOrders = [...allOrders, ...syncedOrders];
+      } catch (error) {
+        console.error('Error loading synced orders:', error);
+      }
+      
+      resolve(initializeOrderStages(allOrders));
+    }, 500);
   });
 };
 
