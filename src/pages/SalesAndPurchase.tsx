@@ -197,6 +197,20 @@ const SalesAndPurchase: React.FC = () => {
         setShowDetailModal(true);
     };
 
+    const updateOrderStatus = (field: keyof OrderStatus, value: any) => {
+        if (selectedOrder) {
+            const updatedOrder = {
+                ...selectedOrder,
+                orderStatus: {
+                    ...selectedOrder.orderStatus,
+                    [field]: value,
+                },
+            };
+            setSelectedOrder(updatedOrder);
+            setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+        }
+    };
+
     const salesOrders = orders.filter(o => o.type === 'SO');
     const purchaseOrders = orders.filter(o => o.type === 'PO');
 
@@ -1105,6 +1119,88 @@ const SalesAndPurchase: React.FC = () => {
                                 ) : (
                                     <p className="text-gray-500">No items added</p>
                                 )}
+                            </div>
+
+                            {/* Order Status Tracking */}
+                            <div className="bg-indigo-50 rounded-lg p-6 border border-indigo-200">
+                                <h3 className="text-lg font-bold text-indigo-900 mb-4">Order Status Tracking</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Order Status</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.orderStatus}
+                                            onChange={(e) => updateOrderStatus('orderStatus', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="processing">Processing</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Invoiced</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.invoiced}
+                                            onChange={(e) => updateOrderStatus('invoiced', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Payment</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.payment}
+                                            onChange={(e) => updateOrderStatus('payment', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Packed</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.packed}
+                                            onChange={(e) => updateOrderStatus('packed', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Shipped</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.shipped}
+                                            onChange={(e) => updateOrderStatus('shipped', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Delivery Method</label>
+                                        <select 
+                                            value={selectedOrder.orderStatus.deliveryMethod}
+                                            onChange={(e) => updateOrderStatus('deliveryMethod', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-indigo-500"
+                                        >
+                                            <option value="">Not Set</option>
+                                            <option value="road">Road</option>
+                                            <option value="rail">Rail</option>
+                                            <option value="air">Air</option>
+                                            <option value="sea">Sea</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Additional Info */}
