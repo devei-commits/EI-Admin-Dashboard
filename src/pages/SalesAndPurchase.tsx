@@ -1,4 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+interface OrderStatus {
+    orderStatus: 'pending' | 'processing' | 'completed' | '';
+    invoiced: 'pending' | 'completed' | '';
+    payment: 'pending' | 'completed' | '';
+    packed: 'pending' | 'completed' | '';
+    shipped: 'pending' | 'completed' | '';
+    deliveryMethod: 'road' | 'rail' | 'air' | 'sea' | '';
+}
 
 interface Order {
     id: string;
@@ -10,7 +19,19 @@ interface Order {
     status: string;
     items: any[];
     formData: any;
+    orderStatus: OrderStatus;
 }
+
+const STORAGE_KEY = 'eisthetic_sales_purchase_orders';
+
+const getStatusColor = (status: string) => {
+    switch(status) {
+        case 'pending': return 'bg-yellow-400';
+        case 'completed': return 'bg-green-500';
+        case 'processing': return 'bg-blue-500';
+        default: return 'bg-gray-300';
+    }
+};
 
 const SalesAndPurchase: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -20,6 +41,23 @@ const SalesAndPurchase: React.FC = () => {
     const [items, setItems] = useState<any[]>([]);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
+
+    // Load orders from localStorage on mount
+    useEffect(() => {
+        const savedOrders = localStorage.getItem(STORAGE_KEY);
+        if (savedOrders) {
+            try {
+                setOrders(JSON.parse(savedOrders));
+            } catch (error) {
+                console.error('Error loading orders:', error);
+            }
+        }
+    }, []);
+
+    // Save orders to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+    }, [orders]);
 
     const [formData, setFormData] = useState({
         customerName: '',
@@ -112,6 +150,14 @@ const SalesAndPurchase: React.FC = () => {
             status: draft ? 'Draft' : 'Submitted',
             items: items,
             formData: formData,
+            orderStatus: {
+                orderStatus: '',
+                invoiced: '',
+                payment: '',
+                packed: '',
+                shipped: '',
+                deliveryMethod: '',
+            },
         };
 
         setOrders([...orders, newOrder]);
@@ -280,6 +326,12 @@ const SalesAndPurchase: React.FC = () => {
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Customer</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order Status</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Invoiced</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Payment</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Packed</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Shipped</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Delivery Method</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
                                                         <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                                                     </tr>
@@ -297,6 +349,51 @@ const SalesAndPurchase: React.FC = () => {
                                                                 <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
                                                                     {order.status}
                                                                 </span>
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.orderStatus ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.orderStatus}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.invoiced ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.invoiced}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.payment ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.payment}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.packed ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.packed}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.shipped ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.shipped}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.deliveryMethod ? (
+                                                                    <span className="text-xs text-gray-600 capitalize">{order.orderStatus.deliveryMethod}</span>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
                                                             </td>
                                                             <td className="py-3 px-4 text-gray-800">{order.items.length}</td>
                                                             <td className="py-3 px-4 text-center">
@@ -342,6 +439,12 @@ const SalesAndPurchase: React.FC = () => {
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Vendor</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order Status</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Invoiced</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Payment</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Packed</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Shipped</th>
+                                                        <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Delivery Method</th>
                                                         <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
                                                         <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
                                                     </tr>
@@ -359,6 +462,51 @@ const SalesAndPurchase: React.FC = () => {
                                                                 <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
                                                                     {order.status}
                                                                 </span>
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.orderStatus ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.orderStatus}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.invoiced ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.invoiced}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.payment ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.payment}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.packed ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.packed}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.shipped ? (
+                                                                    <div className="flex justify-center items-center gap-2">
+                                                                        <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
+                                                                        <span className="text-xs text-gray-600 capitalize">{order.orderStatus.shipped}</span>
+                                                                    </div>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                            </td>
+                                                            <td className="py-4 px-5 text-center">
+                                                                {order.orderStatus.deliveryMethod ? (
+                                                                    <span className="text-xs text-gray-600 capitalize">{order.orderStatus.deliveryMethod}</span>
+                                                                ) : <span className="text-xs text-gray-400">-</span>}
                                                             </td>
                                                             <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.items.length}</td>
                                                             <td className="py-4 px-5 text-center">
