@@ -18,10 +18,8 @@ const Ordermanagement = () => {
             </div>
           </div>
           <a
-            href="/order-hub"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors"
+            onClick={() => window.open('/order-hub', '_blank')}
+            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors cursor-pointer"
           >
             Open Tracker
           </a>

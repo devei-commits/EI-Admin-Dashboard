@@ -137,14 +137,12 @@ const Dashboard = () => {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
-            <a 
-              href="/order-hub" 
-              target="_blank" 
-              rel="noopener noreferrer"
+            <button
+              onClick={() => window.open('/order-hub', '_blank')}
               className="text-sm text-amber-600 hover:text-amber-700 font-medium"
             >
               View all in Tracker →
-            </a>
+            </button>
           </div>
           
           {/* Mobile Card View */}
