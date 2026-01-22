@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { OrderTable } from '../components/ordermanagementcomp';
 
@@ -18,12 +17,14 @@ const Ordermanagement = () => {
               <span className="text-gray-600">Order Management</span>
             </div>
           </div>
-          <Link
-            to="/order-hub"
+          <a
+            href="/order-hub"
+            target="_blank"
+            rel="noopener noreferrer"
             className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors"
           >
             Open Tracker
-          </Link>
+          </a>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">

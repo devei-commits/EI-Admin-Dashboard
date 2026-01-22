@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { UnifiedBadge, getStatusBadgeColor } from '../components/ui';
 
 interface StatCardProps {
@@ -138,9 +137,14 @@ const Dashboard = () => {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
-            <Link to="/order-hub" className="text-sm text-amber-600 hover:text-amber-700 font-medium">
+            <a 
+              href="/order-hub" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm text-amber-600 hover:text-amber-700 font-medium"
+            >
               View all in Tracker →
-            </Link>
+            </a>
           </div>
           
           {/* Mobile Card View */}
