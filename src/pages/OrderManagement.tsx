@@ -18,7 +18,10 @@ const Ordermanagement = () => {
             </div>
           </div>
           <a
-            onClick={() => window.open('/order-hub', '_blank')}
+            onClick={() => {
+              const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
+              window.open(`/order-hub?role=${userRole}`, '_blank');
+            }}
             className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors cursor-pointer"
           >
             Open Tracker
