@@ -920,8 +920,148 @@ const OrderHub = () => {
     return matchesSearch && matchesStatus;
   });
 
+  const [activeTask, setActiveTask] = useState('all');
+  const [activeSubPage, setActiveSubPage] = useState<string>('hub');
+  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+
+  const tasks = [
+    { id: 'all', label: 'All Orders', icon: '📋' },
+    { id: 'planning', label: 'Planning', icon: '📝' },
+    { id: 'design', label: 'Design', icon: '🎨' },
+    { id: 'label', label: 'Label', icon: '🏷️' },
+    { id: 'production', label: 'Production', icon: '🏭' },
+    { id: 'dispense', label: 'Dispense', icon: '💊' },
+    { id: 'bundle', label: 'Bundle', icon: '📦' },
+    { id: 'invoice', label: 'Invoice', icon: '📄' },
+    { id: 'warehouse', label: 'Warehouse', icon: '🏢' },
+  ];
+
+  const handleTaskClick = (taskId: string) => {
+    if (taskId === 'all') {
+      setActiveTask(taskId);
+      setExpandedTask(null);
+      setActiveSubPage('hub');
+    } else {
+      if (expandedTask === taskId) {
+        setExpandedTask(null);
+      } else {
+        setExpandedTask(taskId);
+        setActiveTask(taskId);
+        setActiveSubPage('hub');
+      }
+    }
+  };
+
   return (
-    <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+    <div className="flex h-screen bg-gray-50/50">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm">
+        <div className="p-6 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800">Order Tasks</h2>
+          <p className="text-xs text-gray-500 mt-1">Track & manage orders</p>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+          {tasks.map((task) => (
+            <div key={task.id}>
+              <button
+                onClick={() => handleTaskClick(task.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left font-medium ${
+                  activeTask === task.id
+                    ? 'bg-amber-100 text-amber-700 border-l-4 border-amber-500 shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-50 border-l-4 border-transparent hover:text-gray-900'
+                }`}
+              >
+                <span className="text-lg">{task.icon}</span>
+                <span className="flex-1">{task.label}</span>
+                {task.id !== 'all' && (
+                  <svg
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      expandedTask === task.id ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Subpages */}
+              {task.id !== 'all' && expandedTask === task.id && (
+                <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2">
+                  <button
+                    onClick={() => setActiveSubPage('hub')}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all ${
+                      activeSubPage === 'hub'
+                        ? 'bg-amber-50 text-amber-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    📊 Order Hub
+                  </button>
+                  <button
+                    onClick={() => setActiveSubPage('dashboard')}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all ${
+                      activeSubPage === 'dashboard'
+                        ? 'bg-amber-50 text-amber-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    📈 {task.label} Dashboard
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+          
+          {/* Dashboard View */}
+          {activeSubPage === 'dashboard' && activeTask !== 'all' ? (
+            <div className="space-y-6">
+              {/* Dashboard Header */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-3xl">{tasks.find(t => t.id === activeTask)?.icon}</span>
+                  <h1 className="text-2xl font-bold text-gray-800 capitalize">{activeTask} Dashboard</h1>
+                </div>
+                <p className="text-gray-600">Monitor and manage {activeTask} tasks and metrics</p>
+              </div>
+
+              {/* Dashboard Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+                  <div className="text-3xl font-bold text-blue-700">24</div>
+                  <div className="text-sm text-blue-600 font-medium mt-1">Active Tasks</div>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+                  <div className="text-3xl font-bold text-green-700">18</div>
+                  <div className="text-sm text-green-600 font-medium mt-1">Completed</div>
+                </div>
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
+                  <div className="text-3xl font-bold text-amber-700">6</div>
+                  <div className="text-sm text-amber-600 font-medium mt-1">Pending</div>
+                </div>
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
+                  <div className="text-3xl font-bold text-red-700">2</div>
+                  <div className="text-sm text-red-600 font-medium mt-1">Overdue</div>
+                </div>
+              </div>
+
+              {/* Dashboard Content */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">Task Overview</h2>
+                <p className="text-gray-600">Detailed {activeTask} dashboard content will appear here.</p>
+              </div>
+            </div>
+          ) : (
+            <>
       {/* Header with Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
         <div className="p-4 border-b border-gray-100">
@@ -3077,6 +3217,10 @@ const OrderHub = () => {
         )}
         {activeTab === 'order-closure' && <div className="p-6">#6 Order Closure Content</div>}
       </div>
+      </>
+          )}
+        </div>
+      </main>
     </div>
   );
 };
