@@ -138,11 +138,12 @@ const Dashboard = () => {
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-                window.open(`/order-hub?role=${userRole}`, '_blank');
+                window.open(`/order-hub?role=${userRole}`, '_blank', 'noopener,noreferrer');
               }}
-              className="text-sm text-amber-600 hover:text-amber-700 font-medium"
+              className="text-sm text-amber-600 hover:text-amber-700 font-medium cursor-pointer"
             >
               View all in Tracker →
             </button>

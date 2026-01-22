@@ -17,15 +17,16 @@ const Ordermanagement = () => {
               <span className="text-gray-600">Order Management</span>
             </div>
           </div>
-          <a
-            onClick={() => {
+          <button
+            onClick={(e) => {
+              e.preventDefault();
               const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-              window.open(`/order-hub?role=${userRole}`, '_blank');
+              window.open(`/order-hub?role=${userRole}`, '_blank', 'noopener,noreferrer');
             }}
             className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors cursor-pointer"
           >
             Open Tracker
-          </a>
+          </button>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
