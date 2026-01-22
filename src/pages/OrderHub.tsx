@@ -1088,17 +1088,6 @@ const OrderHub = () => {
 
                       {/* Action Buttons */}
                       <div className="flex gap-2">
-                        {order.currentStage < 7 && (
-                          <button
-                            onClick={() => {
-                              const updatedOrder = moveOrderToNextStage(order);
-                              setOrders(orders.map(o => o.id === order.id ? updatedOrder : o));
-                            }}
-                            className="flex-1 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
-                          >
-                            Move to Stage {order.currentStage + 1}
-                          </button>
-                        )}
                         <button
                           onClick={() => setSelectedOrderDetails(order)}
                           className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors"

@@ -1087,50 +1087,7 @@ const OrderTable: React.FC = () => {
                 )}
 
                 {/* Actions */}
-                <div className="flex flex-wrap gap-3">
-                  {selectedOrder.orderStatus !== 'Cancelled' && selectedOrder.orderStatus !== 'Delivered' && (
-                    <>
-                      <button
-                        onClick={() => {
-                          handleCloseDetailsModal();
-                          openEditModal(selectedOrder);
-                        }}
-                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                      >
-                        Edit Order
-                      </button>
-                      
-                      {/* Status Change Dropdown */}
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleStatusChange(selectedOrder.orderId, e.target.value as Order['orderStatus']);
-                            handleCloseDetailsModal();
-                          }
-                        }}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        <option value="">Change Status...</option>
-                        {selectedOrder.orderStatus !== 'Processing' && <option value="Processing">Processing</option>}
-                        {selectedOrder.orderStatus !== 'Approved' && <option value="Approved">Approved</option>}
-                        {selectedOrder.orderStatus !== 'Packaging' && <option value="Packaging">Packaging</option>}
-                        {selectedOrder.orderStatus !== 'Shipped' && <option value="Shipped">Shipped</option>}
-                        {(selectedOrder.orderStatus as Order['orderStatus']) !== 'Delivered' && <option value="Delivered">Delivered</option>}
-                        {selectedOrder.orderStatus !== 'Rejected' && <option value="Rejected">Rejected</option>}
-                      </select>
-                      
-                      <button
-                        onClick={() => {
-                          handleCloseDetailsModal();
-                          openCancelModal(selectedOrder);
-                        }}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                      >
-                        Cancel Order
-                      </button>
-                    </>
-                  )}
+                <div className="flex gap-3">
                   <button
                     onClick={handleCloseDetailsModal}
                     className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1212,21 +1169,13 @@ const OrderTable: React.FC = () => {
       <div className="bg-white rounded-lg shadow-md">
         {/* Header with Filter Toggle */}
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">Order Management</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={openCreateModal}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium"
-            >
-              + Create New Order
-            </button>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="md:hidden px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              {showFilters ? 'Hide Filters' : 'Show Filters'}
-            </button>
-          </div>
+          <h2 className="text-xl font-semibold text-gray-800">Order Tracker</h2>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="md:hidden px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
+          </button>
         </div>
 
         {/* Advanced Filters */}
@@ -1528,24 +1477,6 @@ const OrderTable: React.FC = () => {
                       >
                         View
                       </button>
-                      {order.orderStatus !== 'Cancelled' && order.orderStatus !== 'Delivered' && (
-                        <>
-                          <button
-                            onClick={() => openEditModal(order)}
-                            className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
-                            title="Edit Order"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => openCancelModal(order)}
-                            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
-                            title="Cancel Order"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -1591,22 +1522,6 @@ const OrderTable: React.FC = () => {
                     >
                       View Details
                     </button>
-                    {order.orderStatus !== 'Cancelled' && order.orderStatus !== 'Delivered' && (
-                      <>
-                        <button
-                          onClick={() => openEditModal(order)}
-                          className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => openCancelModal(order)}
-                          className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
