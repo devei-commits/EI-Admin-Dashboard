@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { OrderTable } from '../components/ordermanagementcomp';
-import OrderHubModal from '../components/ordermanagementcomp/OrderHubModal';
 
 const Ordermanagement = () => {
-  const [showOrderHubModal, setShowOrderHubModal] = useState(false);
-
   return (
     <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
       <div className="mb-6">
@@ -21,20 +18,17 @@ const Ordermanagement = () => {
               <span className="text-gray-600">Order Management</span>
             </div>
           </div>
-          <button
-            onClick={() => setShowOrderHubModal(true)}
+          <Link
+            to="/order-hub"
             className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors"
           >
             Open Tracker
-          </button>
+          </Link>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
         <OrderTable />
       </div>
-
-      {/* Order Hub Modal */}
-      <OrderHubModal isOpen={showOrderHubModal} onClose={() => setShowOrderHubModal(false)} />
     </div>
   )
 }

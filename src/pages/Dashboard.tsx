@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { UnifiedBadge, getStatusBadgeColor } from '../components/ui';
-import OrderHubModal from '../components/ordermanagementcomp/OrderHubModal';
 
 interface StatCardProps {
   title: string;
@@ -51,8 +51,6 @@ interface RecentActivity {
 }
 
 const Dashboard = () => {
-  const [showOrderHubModal, setShowOrderHubModal] = useState(false);
-  
   const stats = [
     {
       title: 'Total Orders',
@@ -140,14 +138,9 @@ const Dashboard = () => {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setShowOrderHubModal(true)}
-                className="text-sm text-amber-600 hover:text-amber-700 font-medium"
-              >
-                View all in Tracker →
-              </button>
-            </div>
+            <Link to="/order-hub" className="text-sm text-amber-600 hover:text-amber-700 font-medium">
+              View all in Tracker →
+            </Link>
           </div>
           
           {/* Mobile Card View */}
@@ -242,9 +235,6 @@ const Dashboard = () => {
           </a>
         </div>
       </div>
-
-      {/* Order Hub Modal */}
-      <OrderHubModal isOpen={showOrderHubModal} onClose={() => setShowOrderHubModal(false)} />
     </div>
   )
 }

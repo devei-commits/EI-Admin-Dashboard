@@ -8,6 +8,7 @@ import UserManagement from './pages/UserManagement'
 import OrderManagement from './pages/OrderManagement'
 import OrderList from './pages/OrderList'
 import OrderHub from './pages/OrderHub'
+import OrderHubPage from './pages/OrderHubPage'
 import CouponManagement from './pages/CouponManagement'
 import DiscountManagement from './pages/DiscountManagement'
 import CatalogueManagement from './pages/CatalogueManagement'
@@ -33,12 +34,22 @@ const AppLayout = () => {
   const location = useLocation();
   const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
   const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
+  const isOrderHubRoute = location.pathname === '/order-hub' || location.pathname.startsWith('/order-hub/');
 
   // If it's a PIS route, render PIS standalone without admin sidebar
   if (isPISRoute) {
     return (
       <Routes>
         <Route path="/pis/*" element={<PIS />} />
+      </Routes>
+    );
+  }
+
+  // If it's an Order Hub route, render Order Hub standalone without admin sidebar
+  if (isOrderHubRoute) {
+    return (
+      <Routes>
+        <Route path="/order-hub/*" element={<OrderHubPage />} />
       </Routes>
     );
   }
@@ -63,7 +74,6 @@ const AppLayout = () => {
           <Route path="/user-management" element={<UserManagement />} />
           <Route path="/order-management" element={<OrderManagement />} />
           <Route path="/order-list" element={<OrderList />} />
-          <Route path="/order-hub" element={<OrderHub />} />
           <Route path="/coupon-management" element={<CouponManagement />} />
           <Route path="/discount-management" element={<DiscountManagement />} />
           <Route path="/catalogue-management" element={<CatalogueManagement />} />
