@@ -61,7 +61,7 @@ const PackagingManagement = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
+    // Form submission logic here
   };
 
   return (

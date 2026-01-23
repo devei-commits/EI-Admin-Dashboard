@@ -35,7 +35,7 @@ const ActiveIngredients = () => {
 
   const handleUpdateIngredient = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Updated ingredient:', selectedIngredient);
+    // Update ingredient logic here
     handleCloseModal();
   };
 
@@ -49,7 +49,7 @@ const ActiveIngredients = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
+    // Form submission logic here
   };
 
   return (

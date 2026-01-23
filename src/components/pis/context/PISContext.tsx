@@ -938,7 +938,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
 
       // If USE_MOCK_DATA is true, skip API calls and use mock data directly
       if (USE_MOCK_DATA) {
-        console.log('📦 Using mock data mode (API calls disabled)');
+        // console.log('📦 Using mock data mode (API calls disabled)');
         setPisRecords(mockPISData);
         setCustomers(mockCustomersData);
         setProducts(mockProductsData);
@@ -971,11 +971,11 @@ export function PISProvider({ children }: { children: ReactNode }) {
         // Only use mock data in development mode, not for CLIENT users in production
         // For CLIENT users, empty array is correct if no records are assigned
         if (currentUser?.role === 'CLIENT') {
-          console.log('CLIENT user: Using empty array (no mock data)');
+          // console.log('CLIENT user: Using empty array (no mock data)');
           setPisRecords([]);
         } else {
           // Only use mock data as fallback for non-CLIENT users in development
-          console.log('Non-CLIENT user: Using mock data as fallback');
+          // console.log('Non-CLIENT user: Using mock data as fallback');
           setPisRecords(mockPISData);
         }
       }

@@ -315,8 +315,6 @@ const updateOrderEstDate = async (orderId: string, newDate: string): Promise<voi
   //   method: 'PATCH',
   //   body: JSON.stringify({ estDelDate: newDate })
   // });
-  
-  console.log(`Update order ${orderId} with new date: ${newDate}`);
 };
 
 const updateOrderType = async (orderId: string, newType: string): Promise<void> => {
@@ -325,8 +323,6 @@ const updateOrderType = async (orderId: string, newType: string): Promise<void> 
   //   method: 'PATCH',
   //   body: JSON.stringify({ orderType: newType })
   // });
-  
-  console.log(`Update order ${orderId} with new type: ${newType}`);
 };
 
 const ORDER_TYPE_OPTIONS = ['NEW ORDER', 'REORDER', 'MODIFIED'] as const;
@@ -2648,7 +2644,7 @@ const OrderHub = () => {
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800">#4 Production Planner</h2>
               <button
-                onClick={() => console.log('Add new record')}
+                onClick={() => {}}
                 className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
               >
                 + Add New Record
@@ -2988,7 +2984,7 @@ const OrderHub = () => {
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800">#5 Production Tracker</h2>
               <button
-                onClick={() => console.log('Add new record')}
+                onClick={() => {}}
                 className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
               >
                 + Add New Record
@@ -3344,7 +3340,6 @@ const OrderHub = () => {
                                 <div className="flex gap-3">
                                   <button
                                     onClick={() => {
-                                      console.log('Bundle submitted with qty:', bundleQty);
                                       setBundleModalOpen(null);
                                       setBundleQty('');
                                     }}

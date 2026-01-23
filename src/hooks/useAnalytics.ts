@@ -36,7 +36,7 @@ const getSessionId = () => {
 // Send analytics to server (placeholder - replace with real implementation)
 const sendAnalytics = async (events: AnalyticsEvent[]) => {
   // In production, send to your analytics endpoint
-  console.log('[Analytics]', events);
+  // console.log('[Analytics]', events);
   
   // Example: Send to your backend
   // await fetch('/api/analytics', {

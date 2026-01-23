@@ -30,7 +30,7 @@ const AddUser: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('User data:', formData);
+    // User data submission logic here
     // Reset form
     setFormData({
       firstName: '',

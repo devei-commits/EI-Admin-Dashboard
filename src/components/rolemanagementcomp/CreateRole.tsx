@@ -191,9 +191,6 @@ const CreateRole: React.FC = () => {
     existingPermissions.push(rolePermissions);
     localStorage.setItem('eisthetic_role_permissions', JSON.stringify(existingPermissions));
     
-    console.log('Role created:', newRole);
-    console.log('Role permissions:', rolePermissions);
-    
     // Reset form
     setFormData({
       roleName: '',

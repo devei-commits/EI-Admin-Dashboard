@@ -35,13 +35,11 @@ const DiscountManagement = () => {
 
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Category form submitted:', categoryFormData);
     // Add your submit logic here
   };
 
   const handleProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Product form submitted:', productFormData);
     // Add your submit logic here
   };
 
