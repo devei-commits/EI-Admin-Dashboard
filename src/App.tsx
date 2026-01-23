@@ -1,32 +1,47 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from './lib/queryClient'
 import { ItemsProvider } from './context/ItemsContext'
 import { ToastProvider } from './context/ToastContext'
 import { VendorClientProvider } from './context/VendorClientContext'
-import Dashboard from './pages/Dashboard'
-import RoleManagement from './pages/RoleManagement'
-import UserManagement from './pages/UserManagement'
-import OrderManagement from './pages/OrderManagement'
-import OrderList from './pages/OrderList'
-import OrderHubPage from './pages/OrderHubPage'
-import CouponManagement from './pages/CouponManagement'
-import DiscountManagement from './pages/DiscountManagement'
-import CatalogueManagement from './pages/CatalogueManagement'
-import ActiveIngredients from './pages/ActiveIngredients'
-import EnquiryManagement from './pages/EnquiryManagement'
-import DoctorAppointments from './pages/DoctorAppointments'
-import ContactEnquiry from './pages/ContactEnquiry'
-import NewDevelopments from './pages/NewDevelopments'
-import ProductSamples from './pages/ProductSamples'
-// ...existing code...
-import Treasury from './pages/Treasury'
-import PackagingRefactored from './pages/PackagingRefactored'
-import RawMaterialRefactored from './pages/RawMaterialRefactored'
-import BOMRefactored from './pages/BOMRefactored'
-import ItemsMaster from './pages/ItemsMaster'
-import VendorClient from './pages/VendorClient'
-import SalesAndPurchase from './pages/SalesAndPurchase'
+import ErrorBoundary from './components/ErrorBoundary'
 import Sidebar from "./components/sidebar/sidebar"
-import PIS from './pages/PIS'
+
+// Lazy loaded pages for better performance
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const RoleManagement = lazy(() => import('./pages/RoleManagement'))
+const UserManagement = lazy(() => import('./pages/UserManagement'))
+const OrderManagement = lazy(() => import('./pages/OrderManagement'))
+const OrderList = lazy(() => import('./pages/OrderList'))
+const OrderHubPage = lazy(() => import('./pages/OrderHubPage'))
+const CouponManagement = lazy(() => import('./pages/CouponManagement'))
+const DiscountManagement = lazy(() => import('./pages/DiscountManagement'))
+const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
+const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
+const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'))
+const DoctorAppointments = lazy(() => import('./pages/DoctorAppointments'))
+const ContactEnquiry = lazy(() => import('./pages/ContactEnquiry'))
+const NewDevelopments = lazy(() => import('./pages/NewDevelopments'))
+const ProductSamples = lazy(() => import('./pages/ProductSamples'))
+const Treasury = lazy(() => import('./pages/Treasury'))
+const PackagingRefactored = lazy(() => import('./pages/PackagingRefactored'))
+const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialRefactored'))
+const BOMRefactored = lazy(() => import('./pages/BOMRefactored'))
+const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
+const VendorClient = lazy(() => import('./pages/VendorClient'))
+const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
+const PIS = lazy(() => import('./pages/PIS'))
+
+// Loading spinner component
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen bg-gray-50">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <p className="text-gray-500 font-medium">Loading...</p>
+    </div>
+  </div>
+)
 
 // Layout component that conditionally renders the sidebar
 const AppLayout = () => {
@@ -38,27 +53,39 @@ const AppLayout = () => {
   // If it's a PIS route, render PIS standalone without admin sidebar
   if (isPISRoute) {
     return (
-      <Routes>
-        <Route path="/pis/*" element={<PIS />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/pis/*" element={<PIS />} />
+          </Routes>
+        </ErrorBoundary>
+      </Suspense>
     );
   }
 
   // If it's an Order Hub route, render Order Hub standalone without admin sidebar
   if (isOrderHubRoute) {
     return (
-      <Routes>
-        <Route path="/order-hub/*" element={<OrderHubPage />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/order-hub/*" element={<OrderHubPage />} />
+          </Routes>
+        </ErrorBoundary>
+      </Suspense>
     );
   }
 
   // If it's a Treasury route, render Treasury standalone without admin sidebar
   if (isTreasuryRoute) {
     return (
-      <Routes>
-        <Route path="/treasury/*" element={<Treasury />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/treasury/*" element={<Treasury />} />
+          </Routes>
+        </ErrorBoundary>
+      </Suspense>
     );
   }
 
@@ -67,30 +94,34 @@ const AppLayout = () => {
     <div className="flex flex-row min-h-screen bg-gray-50">
       <Sidebar />
       <div className="flex-1 pt-14 md:pt-0 overflow-auto">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/role-management" element={<RoleManagement />} />
-          <Route path="/user-management" element={<UserManagement />} />
-          <Route path="/order-management" element={<OrderManagement />} />
-          <Route path="/order-list" element={<OrderList />} />
-          <Route path="/coupon-management" element={<CouponManagement />} />
-          <Route path="/discount-management" element={<DiscountManagement />} />
-          <Route path="/catalogue-management" element={<CatalogueManagement />} />
-          <Route path="/active-ingredients" element={<ActiveIngredients />} />
-          <Route path="/enquiry-management" element={<EnquiryManagement />} />
-          <Route path="/doctor-appointments" element={<DoctorAppointments />} />
-          <Route path="/contact-enquiry" element={<ContactEnquiry />} />
-          <Route path="/new-developments" element={<NewDevelopments />} />
-          <Route path="/product-samples" element={<ProductSamples />} />
+        <Suspense fallback={<PageLoader />}>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/role-management" element={<RoleManagement />} />
+              <Route path="/user-management" element={<UserManagement />} />
+              <Route path="/order-management" element={<OrderManagement />} />
+              <Route path="/order-list" element={<OrderList />} />
+              <Route path="/coupon-management" element={<CouponManagement />} />
+              <Route path="/discount-management" element={<DiscountManagement />} />
+              <Route path="/catalogue-management" element={<CatalogueManagement />} />
+              <Route path="/active-ingredients" element={<ActiveIngredients />} />
+              <Route path="/enquiry-management" element={<EnquiryManagement />} />
+              <Route path="/doctor-appointments" element={<DoctorAppointments />} />
+              <Route path="/contact-enquiry" element={<ContactEnquiry />} />
+              <Route path="/new-developments" element={<NewDevelopments />} />
+              <Route path="/product-samples" element={<ProductSamples />} />
 // ...existing code...
-          <Route path="/treasury" element={<Treasury />} />
-          <Route path="/packaging" element={<PackagingRefactored />} />
-          <Route path="/raw-material" element={<RawMaterialRefactored />} />
-          <Route path="/bom" element={<BOMRefactored />} />
-          <Route path="/items-master" element={<ItemsMaster />} />
-          <Route path="/vendor-client" element={<VendorClient />} />
-          <Route path="/sales-and-purchase" element={<SalesAndPurchase />} />
-        </Routes>
+              <Route path="/treasury" element={<Treasury />} />
+              <Route path="/packaging" element={<PackagingRefactored />} />
+              <Route path="/raw-material" element={<RawMaterialRefactored />} />
+              <Route path="/bom" element={<BOMRefactored />} />
+              <Route path="/items-master" element={<ItemsMaster />} />
+              <Route path="/vendor-client" element={<VendorClient />} />
+              <Route path="/sales-and-purchase" element={<SalesAndPurchase />} />
+            </Routes>
+          </ErrorBoundary>
+        </Suspense>
       </div>
     </div>
   );
@@ -98,15 +129,19 @@ const AppLayout = () => {
 
 const App = () => {
   return (
-    <BrowserRouter>
-      <ToastProvider>
-        <VendorClientProvider>
-          <ItemsProvider>
-            <AppLayout />
-          </ItemsProvider>
-        </VendorClientProvider>
-      </ToastProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <ToastProvider>
+          <VendorClientProvider>
+            <ItemsProvider>
+              <ErrorBoundary>
+                <AppLayout />
+              </ErrorBoundary>
+            </ItemsProvider>
+          </VendorClientProvider>
+        </ToastProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 
