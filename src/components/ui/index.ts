@@ -12,6 +12,11 @@ export {
   UnifiedLabel,
 } from './UnifiedComponents';
 
+// New components
+export { KPICard, KPIGrid } from './KPICard';
+export { ExportButton } from './ExportButton';
+export { MobileBottomNav, ResponsiveTable } from './MobileComponents';
+
 // Re-export types for convenience
 export type { UnifiedButtonProps } from './UnifiedComponents';
 export type { UnifiedBadgeProps } from './UnifiedComponents';
