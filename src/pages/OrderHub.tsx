@@ -925,15 +925,87 @@ const OrderHub = () => {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
   const tasks = [
-    { id: 'all', label: 'All Orders', icon: '📋' },
-    { id: 'planning', label: 'Planning', icon: '📝' },
-    { id: 'design', label: 'Design', icon: '🎨' },
-    { id: 'label', label: 'Label', icon: '🏷️' },
-    { id: 'production', label: 'Production', icon: '🏭' },
-    { id: 'dispense', label: 'Dispense', icon: '💊' },
-    { id: 'bundle', label: 'Bundle', icon: '📦' },
-    { id: 'invoice', label: 'Invoice', icon: '📄' },
-    { id: 'warehouse', label: 'Warehouse', icon: '🏢' },
+    { 
+      id: 'all', 
+      label: 'All Orders', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        </svg>
+      )
+    },
+    { 
+      id: 'planning', 
+      label: 'Planning', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      )
+    },
+    { 
+      id: 'design', 
+      label: 'Design', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+        </svg>
+      )
+    },
+    { 
+      id: 'label', 
+      label: 'Label', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+        </svg>
+      )
+    },
+    { 
+      id: 'production', 
+      label: 'Production', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+        </svg>
+      )
+    },
+    { 
+      id: 'dispense', 
+      label: 'Dispense', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      )
+    },
+    { 
+      id: 'bundle', 
+      label: 'Bundle', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      )
+    },
+    { 
+      id: 'invoice', 
+      label: 'Invoice', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )
+    },
+    { 
+      id: 'warehouse', 
+      label: 'Warehouse', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      )
+    },
   ];
 
   const handleTaskClick = (taskId: string) => {
@@ -953,12 +1025,12 @@ const OrderHub = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50/50">
+    <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm">
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">Order Tasks</h2>
-          <p className="text-xs text-gray-500 mt-1">Track & manage orders</p>
+          <h2 className="text-xl font-bold text-gray-800">Order Tasks</h2>
+          <p className="text-sm text-gray-500 mt-1">Track & manage orders</p>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
@@ -968,11 +1040,11 @@ const OrderHub = () => {
                 onClick={() => handleTaskClick(task.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left font-medium ${
                   activeTask === task.id
-                    ? 'bg-amber-100 text-amber-700 border-l-4 border-amber-500 shadow-sm'
+                    ? 'bg-amber-50 text-amber-700 border-l-4 border-amber-500'
                     : 'text-gray-600 hover:bg-gray-50 border-l-4 border-transparent hover:text-gray-900'
                 }`}
               >
-                <span className="text-lg">{task.icon}</span>
+                <span className="flex-shrink-0">{task.icon}</span>
                 <span className="flex-1">{task.label}</span>
                 {task.id !== 'all' && (
                   <svg
@@ -993,23 +1065,29 @@ const OrderHub = () => {
                 <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2">
                   <button
                     onClick={() => setActiveSubPage('hub')}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
                       activeSubPage === 'hub'
-                        ? 'bg-amber-50 text-amber-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'bg-amber-100 text-amber-700 font-semibold'
+                        : 'text-gray-600 hover:bg-white hover:text-amber-700'
                     }`}
                   >
-                    📊 Order Hub
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Order Hub
                   </button>
                   <button
                     onClick={() => setActiveSubPage('dashboard')}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
                       activeSubPage === 'dashboard'
-                        ? 'bg-amber-50 text-amber-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'bg-amber-100 text-amber-700 font-semibold'
+                        : 'text-gray-600 hover:bg-white hover:text-amber-700'
                     }`}
                   >
-                    📈 {task.label} Dashboard
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    {task.label} Dashboard
                   </button>
                 </div>
               )}
@@ -1019,8 +1097,8 @@ const OrderHub = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="p-4 md:p-8 min-h-screen">
           
           {/* Dashboard View */}
           {activeSubPage === 'dashboard' && activeTask !== 'all' ? (
@@ -1028,29 +1106,73 @@ const OrderHub = () => {
               {/* Dashboard Header */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{tasks.find(t => t.id === activeTask)?.icon}</span>
+                  <span className="text-amber-500">{tasks.find(t => t.id === activeTask)?.icon}</span>
                   <h1 className="text-2xl font-bold text-gray-800 capitalize">{activeTask} Dashboard</h1>
                 </div>
-                <p className="text-gray-600">Monitor and manage {activeTask} tasks and metrics</p>
+                <p className="text-gray-500 text-sm">Monitor and manage {activeTask} tasks and metrics</p>
               </div>
 
               {/* Dashboard Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                  <div className="text-3xl font-bold text-blue-700">24</div>
-                  <div className="text-sm text-blue-600 font-medium mt-1">Active Tasks</div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Active Tasks</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">24</p>
+                    </div>
+                    <div className="text-amber-500 opacity-80">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
-                  <div className="text-3xl font-bold text-green-700">18</div>
-                  <div className="text-sm text-green-600 font-medium mt-1">Completed</div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Completed</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">18</p>
+                      <p className="text-sm mt-2 flex items-center text-emerald-600">
+                        <span className="mr-1">↑</span>
+                        +12% from last week
+                      </p>
+                    </div>
+                    <div className="text-amber-500 opacity-80">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
-                  <div className="text-3xl font-bold text-amber-700">6</div>
-                  <div className="text-sm text-amber-600 font-medium mt-1">Pending</div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Pending</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">6</p>
+                    </div>
+                    <div className="text-amber-500 opacity-80">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
-                  <div className="text-3xl font-bold text-red-700">2</div>
-                  <div className="text-sm text-red-600 font-medium mt-1">Overdue</div>
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Overdue</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">2</p>
+                      <p className="text-sm mt-2 flex items-center text-amber-600">
+                        <span className="mr-1">•</span>
+                        Needs attention
+                      </p>
+                    </div>
+                    <div className="text-amber-500 opacity-80">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1090,16 +1212,25 @@ const OrderHub = () => {
           <div className="space-y-4 p-4">
             {/* Header with Statistics */}
             <div className="grid grid-cols-6 gap-4">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{orders.length}</div>
-                <div className="text-xs text-blue-600 font-medium mt-1">Total Orders</div>
+              <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Orders</div>
+                    <div className="text-2xl font-bold text-gray-800 mt-1">{orders.length}</div>
+                  </div>
+                  <div className="text-amber-500 opacity-80">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                </div>
               </div>
               {STAGES.map((stage) => {
                 const count = orders.filter(o => o.currentStage === stage.id).length;
                 return (
-                  <div key={stage.id} className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
-                    <div className="text-2xl font-bold text-amber-700">{count}</div>
-                    <div className="text-xs text-amber-600 font-medium mt-1">Stage {stage.id}</div>
+                  <div key={stage.id} className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">Stage {stage.id}</div>
+                    <div className="text-2xl font-bold text-gray-800 mt-1">{count}</div>
                   </div>
                 );
               })}
@@ -1270,7 +1401,7 @@ const OrderHub = () => {
                 </select>
               </div>
               <div className="pt-5">
-                <button className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                <button className="px-6 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors shadow-sm">
                   Filter Items
                 </button>
               </div>
@@ -1432,7 +1563,7 @@ const OrderHub = () => {
                           <td className="px-3 py-2.5 whitespace-nowrap text-gray-700">{order.comments}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <button className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors">
+                              <button className="px-3 py-1 text-xs font-medium text-white bg-amber-500 rounded hover:bg-amber-600 transition-colors">
                                 View
                               </button>
                               <button className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors">
@@ -1703,7 +1834,7 @@ const OrderHub = () => {
                       </select>
                     </div>
                     <div className="pt-5">
-                      <button className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                      <button className="px-6 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors shadow-sm">
                         Filter Items
                       </button>
                     </div>
@@ -2076,13 +2207,13 @@ const OrderHub = () => {
                                       autoFocus
                                       value={commentModalText}
                                       onChange={(e) => setCommentModalText(e.target.value)}
-                                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
                                       rows={4}
                                       placeholder="Enter your comment here..."
                                     />
                                     <div className="flex items-center gap-2 mt-4">
                                       <button
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                                        className="flex-1 px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors font-medium"
                                         onClick={() => saveComment(openCommentModal)}
                                       >
                                         Save
@@ -2189,13 +2320,13 @@ const OrderHub = () => {
                                 autoFocus
                                 value={commentModalText}
                                 onChange={(e) => setCommentModalText(e.target.value)}
-                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
                                 rows={4}
                                 placeholder="Enter your comment here..."
                               />
                               <div className="flex items-center gap-2 mt-4">
                                 <button
-                                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                                  className="flex-1 px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors font-medium"
                                   onClick={() => saveComment(openCommentModal)}
                                 >
                                   Save
@@ -2231,7 +2362,7 @@ const OrderHub = () => {
                               type="text"
                               defaultValue={recordData.req || '-'}
                               onChange={(e) => updateConnectivityRecord(order.id, 'req', e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             />
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{order.odrDate}</td>
@@ -2242,7 +2373,7 @@ const OrderHub = () => {
                               type="text"
                               defaultValue={recordData.invCandi || '-'}
                               onChange={(e) => updateConnectivityRecord(order.id, 'invCandi', e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             />
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">{transitionDate}</td>
@@ -2250,7 +2381,7 @@ const OrderHub = () => {
                             <select
                               defaultValue={recordData.mfgLoc || 'ARCHEESH LAB'}
                               onChange={(e) => updateConnectivityRecord(order.id, 'mfgLoc', e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             >
                               <option value="ARCHEESH LAB">ARCHEESH LAB</option>
                               <option value="EI FACTORY">EI FACTORY</option>
@@ -2283,14 +2414,14 @@ const OrderHub = () => {
                               type="number"
                               defaultValue={recordData.fgPlanQty || order.qty}
                               onChange={(e) => updateConnectivityRecord(order.id, 'fgPlanQty', parseInt(e.target.value) || 0)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             />
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                             <select
                               defaultValue={recordData.mfgUnit || ''}
                               onChange={(e) => updateConnectivityRecord(order.id, 'mfgUnit', e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             >
                               <option value="">SELECT MFG UNIT</option>
                               <optgroup label="Select MFG Location">
@@ -2304,14 +2435,14 @@ const OrderHub = () => {
                               type="date"
                               defaultValue={recordData.estMfgDate || order.estDelDate}
                               onChange={(e) => updateConnectivityRecord(order.id, 'estMfgDate', e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                             />
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                             <select
                               defaultValue={recordData.tankCode || ''}
                               onChange={(e) => updateConnectivityRecord(order.id, 'tankCode', e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             >
                               <option value="">SELECT TANK CODE</option>
                               <option value="MANUAL">MANUAL</option>
@@ -2333,7 +2464,7 @@ const OrderHub = () => {
                               type="text"
                               defaultValue={recordData.fillingUniCde || '-'}
                               onChange={(e) => updateConnectivityRecord(order.id, 'fillingUniCde', e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                               placeholder="Code"
                             />
                           </td>
@@ -2342,7 +2473,7 @@ const OrderHub = () => {
                               type="date"
                               defaultValue={recordData.estFillingUnit || order.estDelDate}
                               onChange={(e) => updateConnectivityRecord(order.id, 'estFillingUnit', e.target.value)}
-                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                              className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                             />
                           </td>
                           <td className="px-4 py-3.5 text-sm relative">
@@ -2443,7 +2574,7 @@ const OrderHub = () => {
                             value={newConnectivityRecord.orderNo}
                             onChange={(e) => setNewConnectivityRecord({ ...newConnectivityRecord, orderNo: e.target.value })}
                             placeholder="Order No"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td colSpan={24} className="px-4 py-3.5 text-center text-sm text-gray-600">
@@ -2606,7 +2737,7 @@ const OrderHub = () => {
                             type="number"
                             defaultValue={order.qty}
                             placeholder="Enter QTY"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
@@ -2661,7 +2792,7 @@ const OrderHub = () => {
                           <select
                             value={productionPlannerMfgUnits[order.id] || ''}
                             onChange={(e) => setProductionPlannerMfgUnits({ ...productionPlannerMfgUnits, [order.id]: e.target.value })}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           >
                             <option value="">SELECT MFG UNIT</option>
                             <option value="ARCHEESH LAB (MFG 1)">ARCHEESH LAB (MFG 1)</option>
@@ -2672,13 +2803,13 @@ const OrderHub = () => {
                           <input
                             type="date"
                             defaultValue={order.estDelDate}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                           <select
                             defaultValue=""
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           >
                             <option value="">SELECT TANK CODE</option>
                             <option value="MANUAL">MANUAL</option>
@@ -2711,7 +2842,7 @@ const OrderHub = () => {
                           <input
                             type="date"
                             defaultValue={order.estDelDate}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
@@ -2719,7 +2850,7 @@ const OrderHub = () => {
                             type="date"
                             value={rmReqDates[order.id] || ''}
                             onChange={(e) => setRmReqDates({ ...rmReqDates, [order.id]: e.target.value })}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
@@ -2727,7 +2858,7 @@ const OrderHub = () => {
                             type="date"
                             value={pmReqDates[order.id] || ''}
                             onChange={(e) => setPmReqDates({ ...pmReqDates, [order.id]: e.target.value })}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700">-</td>
@@ -2882,7 +3013,7 @@ const OrderHub = () => {
                   placeholder="Search..."
                   value={trackerSearchQuery}
                   onChange={(e) => setTrackerSearchQuery(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-64"
+                  className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 w-64"
                 />
               </div>
             </div>
@@ -2980,13 +3111,13 @@ const OrderHub = () => {
                             type="number"
                             defaultValue={order.qty}
                             placeholder="Enter QTY"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                           <select
                             defaultValue=""
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           >
                             <option value="">SELECT MFG UNIT</option>
                             <option value="ARCHEESH LAB (MFG 1)">ARCHEESH LAB (MFG 1)</option>
@@ -2997,13 +3128,13 @@ const OrderHub = () => {
                           <input
                             type="date"
                             defaultValue={order.estDelDate}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                           <select
                             defaultValue=""
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           >
                             <option value="">SELECT TANK CODE</option>
                             <option value="MANUAL">MANUAL</option>
@@ -3036,45 +3167,45 @@ const OrderHub = () => {
                           <input
                             type="date"
                             defaultValue={order.estDelDate}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <input
                             type="date"
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <input
                             type="date"
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <input
                             type="date"
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <input
                             type="date"
-                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                           <input
                             type="text"
                             placeholder="BUNDLE NO"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-sm">
                           <input
                             type="number"
                             placeholder="QTY"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-3.5 text-sm relative">
@@ -3146,7 +3277,7 @@ const OrderHub = () => {
                           <input
                             type="text"
                             placeholder="Select"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-gray-700 bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-3.5 text-sm">
@@ -3163,7 +3294,7 @@ const OrderHub = () => {
                               setBundleModalOpen(order.id);
                               setBundleQty('');
                             }}
-                            className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors"
+                            className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded hover:bg-amber-600 transition-colors"
                           >
                             Bundle
                           </button>
@@ -3180,7 +3311,7 @@ const OrderHub = () => {
                                   value={bundleQty}
                                   onChange={(e) => setBundleQty(e.target.value)}
                                   placeholder="Enter quantity"
-                                  className="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                                 />
                                 <div className="flex gap-3">
                                   <button
@@ -3189,7 +3320,7 @@ const OrderHub = () => {
                                       setBundleModalOpen(null);
                                       setBundleQty('');
                                     }}
-                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-medium"
+                                    className="flex-1 px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors font-medium"
                                   >
                                     Submit
                                   </button>
@@ -3226,3 +3357,4 @@ const OrderHub = () => {
 };
 
 export default OrderHub;
+
