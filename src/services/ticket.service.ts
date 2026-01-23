@@ -1,5 +1,5 @@
 /**
- * Ticket Management Service
+ * Enquiry Management Service
  * Backend abstraction layer for ticket/enquiry management operations
  */
 

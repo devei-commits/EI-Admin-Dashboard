@@ -199,9 +199,9 @@ const TreasuryApp = () => {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-50">
+    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Sidebar Navigation */}
-      <aside className="w-64 bg-gradient-to-b from-gray-800 to-gray-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl">
+      <aside className="w-64 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl">
         <div className="p-4 border-b border-gray-700 flex items-center justify-center">
           <img src={logoFull} alt="Esthetic Insights" className="h-12 object-contain" />
         </div>
@@ -218,8 +218,8 @@ const TreasuryApp = () => {
               onClick={() => setCurrentScreen(screen)}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
+                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
               }`}
             >
               {screenTitles[screen]}
@@ -234,8 +234,8 @@ const TreasuryApp = () => {
               onClick={() => setCurrentScreen(screen)}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
+                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
               }`}
             >
               {screenTitles[screen]}
@@ -250,8 +250,8 @@ const TreasuryApp = () => {
               onClick={() => setCurrentScreen(screen)}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
+                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
               }`}
             >
               {screenTitles[screen]}
@@ -266,8 +266,8 @@ const TreasuryApp = () => {
               onClick={() => setCurrentScreen(screen)}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
+                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
               }`}
             >
               {screenTitles[screen]}
@@ -277,7 +277,7 @@ const TreasuryApp = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="p-8">
           {/* Header with Notifications & Search */}
           <div className="mb-8">
@@ -315,7 +315,7 @@ const TreasuryApp = () => {
                 {/* Notifications Dropdown - stays open until bell is clicked again */}
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-                    <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+                    <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-xl">
                       <h3 className="font-bold text-gray-900">Notifications</h3>
                       {unreadCount > 0 && <p className="text-xs text-blue-600 font-medium mt-1">{unreadCount} new</p>}
                     </div>
@@ -555,7 +555,7 @@ const TreasuryApp = () => {
           {currentScreen === 'approvals' && (
             <>
               <div className="flex gap-2 mb-6 flex-wrap">
-                <button className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-600">Pending (5)</button>
+                <button className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-600">Pending (5)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Approved (12)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Rejected (2)</button>
               </div>

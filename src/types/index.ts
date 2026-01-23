@@ -9,3 +9,4 @@ export * from './user.types';
 export * from './common.types';
 export * from './api.types';
 export * from './ticket.types';
+export * from './task.types';

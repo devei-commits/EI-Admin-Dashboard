@@ -1,6 +1,6 @@
 /**
  * Ticket/Enquiry Management Types
- * Comprehensive type definitions for ticket management, staff assignment, and order tracking
+ * Comprehensive type definitions for enquiry management, staff assignment, and order tracking
  */
 
 // ==================== Ticket Status & Priority ====================

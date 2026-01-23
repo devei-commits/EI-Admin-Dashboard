@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import eilogofull from "../../assets/logo/eilogofull.svg";
+import { useAuth } from "../../context/AuthContext";
 
 const Sidebar = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -9,6 +10,14 @@ const Sidebar = () => {
     const [productOpen, setProductOpen] = useState(false);
     const [mastersOpen, setMastersOpen] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
+    const { user, logout } = useAuth();
+
+    // Handle logout
+    const handleLogout = () => {
+        logout();
+        navigate('/login', { replace: true });
+    };
 
     // Check if any enquiry submenu item is active
     const isEnquiryActive = [
@@ -190,6 +199,14 @@ const Sidebar = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
                                 <span className="font-medium">User Management</span>
+                            </NavLink>
+                        </li>
+                        <li>
+                            <NavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
+                                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                                <span className="font-medium">Task Management</span>
                             </NavLink>
                         </li>
                         <li>
@@ -671,9 +688,34 @@ const Sidebar = () => {
                     </ul>
                 </nav>
 
-                {/* Footer Section */}
-                <div className="p-4 border-t border-gray-100 bg-gray-50/50">
-                    <p className="text-xs text-gray-400 text-center">© 2025 Esthetic Insights</p>
+                {/* Footer Section with User Info */}
+                <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
+                    {/* User Info */}
+                    {user && (
+                        <div className="flex items-center gap-3 px-2">
+                            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                                {user.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{user.name}</p>
+                                <p className="text-xs text-gray-500 truncate">{user.roleName}</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Logout Button */}
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 rounded-lg transition-all duration-200 text-sm font-medium group"
+                    >
+                        <svg className="w-4 h-4 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Logout</span>
+                    </button>
+                    
+                    {/* Copyright */}
+                    <p className="text-xs text-gray-400 text-center pt-2">© 2025 Esthetic Insights</p>
                 </div>
             </div>
         </>

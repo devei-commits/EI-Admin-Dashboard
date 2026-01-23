@@ -11,6 +11,7 @@ export * from './user.service';
 export * from './master.service';
 export * from './auth.service';
 export * from './ticket.service';
+export * as taskService from './task.service';
 
 // Re-export common types from api.types
 export type { ServiceResult, PaginatedResponse, QueryParams } from '../types/api.types';

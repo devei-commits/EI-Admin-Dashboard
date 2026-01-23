@@ -291,12 +291,12 @@ const ViewRoles: React.FC = () => {
           <div key={role.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
             <div className="flex justify-between items-start mb-4">
               <span className="font-semibold text-gray-800 leading-relaxed">{role.roleName}</span>
-              <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getStatusColor(role.roleStatus)} tracking-wider`}>
+              <UnifiedBadge variant={getStatusBadgeColor(role.roleStatus)}>
                 {role.roleStatus}
-              </span>
+              </UnifiedBadge>
             </div>
             <div className="space-y-3 text-sm mb-5">
-              <p><span className="font-medium text-gray-600 tracking-wide">Level:</span> <span className={`px-3 py-1.5 text-xs font-medium rounded-full ${getLevelColor(role.roleLevel)} tracking-wider`}>{role.roleLevel}</span></p>
+              <p className="flex items-center gap-2"><span className="font-medium text-gray-600 tracking-wide">Level:</span> <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>{role.roleLevel}</UnifiedBadge></p>
               <div className="space-y-1.5">
                 <p className="font-medium text-gray-600 uppercase tracking-wide">Permissions:</p>
                 <PermissionsSummary roleId={role.id} />
