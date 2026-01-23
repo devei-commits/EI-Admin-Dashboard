@@ -24,7 +24,7 @@ const DoctorAppointments = lazy(() => import('./pages/DoctorAppointments'))
 const ContactEnquiry = lazy(() => import('./pages/ContactEnquiry'))
 const NewDevelopments = lazy(() => import('./pages/NewDevelopments'))
 const ProductSamples = lazy(() => import('./pages/ProductSamples'))
-const Treasury = lazy(() => import('./pages/Treasury'))
+const TreasuryApp = lazy(() => import('./pages/TreasuryApp'))
 const PackagingRefactored = lazy(() => import('./pages/PackagingRefactored'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialRefactored'))
 const BOMRefactored = lazy(() => import('./pages/BOMRefactored'))
@@ -82,7 +82,7 @@ const AppLayout = () => {
       <Suspense fallback={<PageLoader />}>
         <ErrorBoundary>
           <Routes>
-            <Route path="/treasury/*" element={<Treasury />} />
+            <Route path="/treasury/*" element={<TreasuryApp />} />
           </Routes>
         </ErrorBoundary>
       </Suspense>
@@ -112,7 +112,7 @@ const AppLayout = () => {
               <Route path="/new-developments" element={<NewDevelopments />} />
               <Route path="/product-samples" element={<ProductSamples />} />
 // ...existing code...
-              <Route path="/treasury" element={<Treasury />} />
+              <Route path="/treasury" element={<TreasuryApp />} />
               <Route path="/packaging" element={<PackagingRefactored />} />
               <Route path="/raw-material" element={<RawMaterialRefactored />} />
               <Route path="/bom" element={<BOMRefactored />} />
