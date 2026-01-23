@@ -23,6 +23,8 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    console.error('Component stack:', errorInfo.componentStack);
+    console.error('Error stack:', error.stack);
     this.props.onError?.(error, errorInfo);
     
     // You can send to error tracking service here
@@ -54,7 +56,12 @@ class ErrorBoundary extends Component<Props, State> {
             {this.state.error && (
               <details className="text-left mb-4 p-3 bg-gray-50 rounded-lg text-sm">
                 <summary className="cursor-pointer text-gray-500 font-medium">Error details</summary>
-                <pre className="mt-2 text-red-600 overflow-auto">{this.state.error.message}</pre>
+                <pre className="mt-2 text-red-600 overflow-auto text-xs">
+                  {this.state.error.message}
+                  {import.meta.env.DEV && this.state.error.stack && (
+                    <>\n\nStack trace:\n{this.state.error.stack}</>
+                  )}
+                </pre>
               </details>
             )}
             <button

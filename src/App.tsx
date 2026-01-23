@@ -14,6 +14,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const RoleManagement = lazy(() => import('./pages/RoleManagement'))
 const UserManagement = lazy(() => import('./pages/UserManagement'))
 const OrderManagement = lazy(() => import('./pages/OrderManagement'))
+const GoodReceivingPage = lazy(() => import('./pages/GoodReceivingPage'))
 const OrderList = lazy(() => import('./pages/OrderList'))
 const OrderHubPage = lazy(() => import('./pages/OrderHubPage'))
 const CouponManagement = lazy(() => import('./pages/CouponManagement'))
@@ -119,6 +120,7 @@ const AppLayout = () => {
               <Route path="/role-management" element={<RoleManagement />} />
               <Route path="/user-management" element={<UserManagement />} />
               <Route path="/order-management" element={<OrderManagement />} />
+              <Route path="/good-receiving" element={<GoodReceivingPage />} />
               <Route path="/order-list" element={<OrderList />} />
               <Route path="/coupon-management" element={<CouponManagement />} />
               <Route path="/discount-management" element={<DiscountManagement />} />
@@ -137,6 +139,8 @@ const AppLayout = () => {
               <Route path="/items-master" element={<ItemsMaster />} />
               <Route path="/vendor-client" element={<VendorClient />} />
               <Route path="/sales-and-purchase" element={<SalesAndPurchase />} />
+              {/* Catch-all route */}
+              <Route path="*" element={<Dashboard />} />
             </Routes>
           </ErrorBoundary>
         </Suspense>

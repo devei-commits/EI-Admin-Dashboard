@@ -2,23 +2,31 @@
  * Performance optimization utilities
  */
 
+// Safe window check for SSR compatibility
+const isClient = typeof window !== 'undefined';
+const isBrowser = isClient && typeof window.document !== 'undefined';
+
 /**
  * Request idle callback polyfill for better performance
  */
 export const scheduleIdleTask = (callback: () => void): number => {
+  if (!isBrowser) return 0;
+  
   if ('requestIdleCallback' in window) {
-    return requestIdleCallback(callback);
+    return (window as any).requestIdleCallback(callback);
   }
   // Fallback to setTimeout with 1 second delay
-  return window.setTimeout(callback, 1000) as unknown as number;
+  return setTimeout(callback, 1000);
 };
 
 /**
  * Cancel idle task
  */
 export const cancelIdleTask = (id: number): void => {
+  if (!isBrowser) return;
+  
   if ('cancelIdleCallback' in window) {
-    cancelIdleCallback(id);
+    (window as any).cancelIdleCallback(id);
   } else {
     clearTimeout(id);
   }
@@ -112,7 +120,7 @@ export const debounce = <T extends (...args: any[]) => any>(
   delay: number,
   immediate: boolean = false
 ): T => {
-  let timeoutId: NodeJS.Timeout | null = null;
+  let timeoutId: number | null = null;
 
   return ((...args: Parameters<T>) => {
     if (immediate && !timeoutId) {

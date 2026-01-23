@@ -123,6 +123,108 @@ interface AuditLog {
   newValue: string;
 }
 
+interface BOMItem {
+  id: string;
+  orderNo: string;
+  itemName: string;
+  componentName: string;
+  quantity: number;
+  unit: string;
+  supplier: string;
+  unitCost: number;
+  totalCost: number;
+  status: 'PENDING' | 'APPROVED' | 'IN_STOCK' | 'ORDERED';
+}
+
+// Mock BOM Data
+const MOCK_BOM_DATA: Record<string, BOMItem[]> = {
+  '1': [
+    { id: 'bom-1-1', orderNo: 'SO-02907_1', itemName: 'SK.MEN CORREXION SPOT RECTIFYING FACIAL SERUM FOR DARK SPOTS 30ML', componentName: 'Aqua (Water)', quantity: 15000, unit: 'ml', supplier: 'Supplier A', unitCost: 2.5, totalCost: 37500, status: 'APPROVED' },
+    { id: 'bom-1-2', orderNo: 'SO-02907_1', itemName: 'SK.MEN CORREXION SPOT RECTIFYING FACIAL SERUM FOR DARK SPOTS 30ML', componentName: 'Glycerin', quantity: 3000, unit: 'ml', supplier: 'Supplier B', unitCost: 8.5, totalCost: 25500, status: 'IN_STOCK' },
+    { id: 'bom-1-3', orderNo: 'SO-02907_1', itemName: 'SK.MEN CORREXION SPOT RECTIFYING FACIAL SERUM FOR DARK SPOTS 30ML', componentName: 'Niacinamide', quantity: 900, unit: 'gm', supplier: 'Supplier C', unitCost: 45.0, totalCost: 40500, status: 'ORDERED' },
+  ],
+  '2': [
+    { id: 'bom-2-1', orderNo: 'SO-02906_1', itemName: 'SKINKRAFT MEN ACNE EXFOLIATING FACIAL CREAM FOR SEVERE ACNE 50ML', componentName: 'Salicylic Acid', quantity: 150, unit: 'gm', supplier: 'Supplier D', unitCost: 120.0, totalCost: 18000, status: 'APPROVED' },
+    { id: 'bom-2-2', orderNo: 'SO-02906_1', itemName: 'SKINKRAFT MEN ACNE EXFOLIATING FACIAL CREAM FOR SEVERE ACNE 50ML', componentName: 'Benzoyl Peroxide', quantity: 300, unit: 'gm', supplier: 'Supplier A', unitCost: 95.0, totalCost: 28500, status: 'IN_STOCK' },
+    { id: 'bom-2-3', orderNo: 'SO-02906_1', itemName: 'SKINKRAFT MEN ACNE EXFOLIATING FACIAL CREAM FOR SEVERE ACNE 50ML', componentName: 'Cetyl Alcohol', quantity: 1500, unit: 'gm', supplier: 'Supplier E', unitCost: 12.0, totalCost: 18000, status: 'PENDING' },
+  ],
+  '3': [
+    { id: 'bom-3-1', orderNo: 'SO-02961_1', itemName: 'SOLGLO HYBRID SUNSCREEN SPF 70 PA ++++ 50 ML', componentName: 'Zinc Oxide', quantity: 10000, unit: 'gm', supplier: 'Supplier F', unitCost: 25.0, totalCost: 250000, status: 'APPROVED' },
+    { id: 'bom-3-2', orderNo: 'SO-02961_1', itemName: 'SOLGLO HYBRID SUNSCREEN SPF 70 PA ++++ 50 ML', componentName: 'Titanium Dioxide', quantity: 5000, unit: 'gm', supplier: 'Supplier B', unitCost: 35.0, totalCost: 175000, status: 'APPROVED' },
+  ],
+  '4': [
+    { id: 'bom-4-1', orderNo: 'SO-02959_1', itemName: 'SKINKRAFT ULTRA SMOOTH FACE CLEANSER FOR SENSITIVE SKIN 100ML', componentName: 'Cetyl Alcohol', quantity: 1500, unit: 'gm', supplier: 'Supplier E', unitCost: 12.0, totalCost: 18000, status: 'IN_STOCK' },
+    { id: 'bom-4-2', orderNo: 'SO-02959_1', itemName: 'SKINKRAFT ULTRA SMOOTH FACE CLEANSER FOR SENSITIVE SKIN 100ML', componentName: 'Sodium Lauryl Sulfate', quantity: 450, unit: 'ml', supplier: 'Supplier C', unitCost: 18.0, totalCost: 8100, status: 'APPROVED' },
+  ],
+  '5': [
+    { id: 'bom-5-1', orderNo: 'SO-02972_1', itemName: 'MEDIMANOR MOISTAR DEEP RESTORE CREAM-25GM', componentName: 'Shea Butter', quantity: 2500, unit: 'gm', supplier: 'Supplier A', unitCost: 35.0, totalCost: 87500, status: 'APPROVED' },
+  ],
+};
+
+// ==================== TEAM MANAGEMENT TYPES ====================
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'lead' | 'staff';
+}
+
+interface Team {
+  id: string;
+  name: string;
+  category: 'CMT' | 'RND_PRODUCT' | 'QUALITY_COMPLIANCE' | 'LABEL_DESIGN';
+  lead: TeamMember | null;
+  staff: TeamMember[];
+}
+
+// ==================== TEAM MOCK DATA ====================
+const MOCK_TEAMS: Team[] = [
+  {
+    id: 'team-1',
+    name: 'POC CMT Team',
+    category: 'CMT',
+    lead: { id: 'lead-1', name: 'Rajesh Kumar', email: 'rajesh.kumar@company.com', role: 'lead' },
+    staff: [
+      { id: 'staff-1', name: 'Priya Sharma', email: 'priya.sharma@company.com', role: 'staff' },
+      { id: 'staff-2', name: 'Amit Patel', email: 'amit.patel@company.com', role: 'staff' },
+      { id: 'staff-3', name: 'Neha Singh', email: 'neha.singh@company.com', role: 'staff' },
+    ]
+  },
+  {
+    id: 'team-2',
+    name: 'POC R&D Product Team',
+    category: 'RND_PRODUCT',
+    lead: { id: 'lead-2', name: 'Dr. Suresh Reddy', email: 'suresh.reddy@company.com', role: 'lead' },
+    staff: [
+      { id: 'staff-4', name: 'Kavita Desai', email: 'kavita.desai@company.com', role: 'staff' },
+      { id: 'staff-5', name: 'Ravi Verma', email: 'ravi.verma@company.com', role: 'staff' },
+      { id: 'staff-6', name: 'Sunita Joshi', email: 'sunita.joshi@company.com', role: 'staff' },
+      { id: 'staff-7', name: 'Anil Mehta', email: 'anil.mehta@company.com', role: 'staff' },
+    ]
+  },
+  {
+    id: 'team-3',
+    name: 'POC Quality Compliance Team',
+    category: 'QUALITY_COMPLIANCE',
+    lead: { id: 'lead-3', name: 'Meera Nair', email: 'meera.nair@company.com', role: 'lead' },
+    staff: [
+      { id: 'staff-8', name: 'Vijay Iyer', email: 'vijay.iyer@company.com', role: 'staff' },
+      { id: 'staff-9', name: 'Deepa Rao', email: 'deepa.rao@company.com', role: 'staff' },
+      { id: 'staff-10', name: 'Kiran Kulkarni', email: 'kiran.kulkarni@company.com', role: 'staff' },
+    ]
+  },
+  {
+    id: 'team-4',
+    name: 'POC Label Design Team',
+    category: 'LABEL_DESIGN',
+    lead: { id: 'lead-4', name: 'Arjun Bhat', email: 'arjun.bhat@company.com', role: 'lead' },
+    staff: [
+      { id: 'staff-11', name: 'Pooja Menon', email: 'pooja.menon@company.com', role: 'staff' },
+      { id: 'staff-12', name: 'Sanjay Gupta', email: 'sanjay.gupta@company.com', role: 'staff' },
+    ]
+  },
+];
+
 // ==================== MOCK DATA (Replace with API call later) ====================
 const MOCK_ORDERS: Order[] = [
   {
@@ -448,10 +550,44 @@ const OrderHub = () => {
   }>>({});
   const [commentEdits, setCommentEdits] = useState<Record<string, string>>({});
   const [openCommentModal, setOpenCommentModal] = useState<string | null>(null);
-    const [openPocModal, setOpenPocModal] = useState<string | null>(null);
-    const [pocModalOrder, setPocModalOrder] = useState<any>(null);
+  const [openPocModal, setOpenPocModal] = useState<string | null>(null);
+  const [pocModalOrder, setPocModalOrder] = useState<any>(null);
   const [commentModalText, setCommentModalText] = useState('');
   const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
+
+  // Stage buttons modals
+  const [consoReportModal, setConsoReportModal] = useState<string | null>(null);
+  const [priceReportModal, setPriceReportModal] = useState<string | null>(null);
+  const [changeStatusModal, setChangeStatusModal] = useState<string | null>(null);
+  const [selectedStatusForChange, setSelectedStatusForChange] = useState('');
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [stockPlanModal, setStockPlanModal] = useState(false);
+  const [stockPlanData, setStockPlanData] = useState<Array<{
+    id: string;
+    component: string;
+    currentStock: number;
+    requiredStock: number;
+    unit: string;
+    supplier: string;
+    leadTime: number;
+    notes: string;
+  }>>([
+    { id: '1', component: 'Component A', currentStock: 100, requiredStock: 150, unit: 'Kg', supplier: 'Supplier 1', leadTime: 7, notes: 'Priority' },
+    { id: '2', component: 'Component B', currentStock: 50, requiredStock: 200, unit: 'Pieces', supplier: 'Supplier 2', leadTime: 14, notes: '' },
+    { id: '3', component: 'Component C', currentStock: 200, requiredStock: 300, unit: 'Liters', supplier: 'Supplier 1', leadTime: 10, notes: 'Urgent' },
+  ]);
+  const [editingStockId, setEditingStockId] = useState<string | null>(null);
+  
+  // Team Management states
+  const [teams, setTeams] = useState<Team[]>(MOCK_TEAMS);
+  const [teamManagementModal, setTeamManagementModal] = useState(false);
+  const [selectedTeamForEdit, setSelectedTeamForEdit] = useState<Team | null>(null);
+  const [openPocDropdown, setOpenPocDropdown] = useState<{ orderId: string; type: 'cmt' | 'rnd' | 'quality' | 'label' } | null>(null);
+  
+  // Get user role from localStorage - only SUPER_ADMIN can edit
+  const userRole = typeof window !== 'undefined' ? (localStorage.getItem('adminUserRole') || 'SUPER_ADMIN') : 'SUPER_ADMIN';
+  const isViewOnly = userRole !== 'SUPER_ADMIN';
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const licenseDropdownRef = useRef<HTMLDivElement>(null);
   const hmgDropdownRef = useRef<HTMLDivElement>(null);
@@ -481,6 +617,27 @@ const OrderHub = () => {
   // Production Tracker states
   const [trackerWarehouseFilter, setTrackerWarehouseFilter] = useState('ALL');
   const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
+
+  // ==================== HANDLERS ====================
+  const handleOrderCheckboxChange = (orderId: string) => {
+    const newSelected = new Set(selectedOrderIds);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrderIds(newSelected);
+  };
+
+  const getSelectedOrdersBOM = (): BOMItem[] => {
+    const bomItems: BOMItem[] = [];
+    selectedOrderIds.forEach(orderId => {
+      if (MOCK_BOM_DATA[orderId]) {
+        bomItems.push(...MOCK_BOM_DATA[orderId]);
+      }
+    });
+    return bomItems;
+  };
 
   // ==================== OUTSIDE-CLICK HANDLERS ====================
   // Only handle order type dropdown (the main one)
@@ -1022,6 +1179,24 @@ const OrderHub = () => {
       )
     },
     { 
+      id: 'quality-team', 
+      label: 'Quality Team', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m7 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    },
+    { 
+      id: 'packaging-team', 
+      label: 'Packaging Team', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+        </svg>
+      )
+    },
+    { 
       id: 'warehouse', 
       label: 'Warehouse', 
       icon: (
@@ -1205,10 +1380,21 @@ const OrderHub = () => {
             <>
       {/* Header with Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 animate-fadeIn">
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800">Order Hub</h1>
+          {!isViewOnly && (
+            <button
+              onClick={() => setTeamManagementModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Team Management
+            </button>
+          )}
         </div>
-        <div className="flex overflow-x-auto scrollbar-hide">
+        <div className="flex overflow-x-auto scrollbar-hide border-b border-gray-100">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -1223,6 +1409,64 @@ const OrderHub = () => {
             </button>
           ))}
         </div>
+        
+        {/* Stage Action Buttons - Common for All Stages except Orders Tracker */}
+        {['orders-review', 'purchase-plan', 'purchase-planner', 'production-planner', 'production-tracker', 'order-closure'].includes(activeTab) && (
+          <div className="p-3 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-white flex items-center gap-2">
+            {isViewOnly && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium rounded-lg">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4.243 4.243a4 4 0 105.656 5.656l4.243-4.243" />
+                </svg>
+                View Only Mode
+              </div>
+            )}
+            <button
+              onClick={() => !isViewOnly && setConsoReportModal(consoReportModal ? null : 'active')}
+              disabled={isViewOnly}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors shadow-sm ${
+                isViewOnly 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  : 'bg-blue-500 hover:bg-blue-600'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Conso Report
+            </button>
+
+            <button
+              onClick={() => !isViewOnly && setPriceReportModal(priceReportModal ? null : 'active')}
+              disabled={isViewOnly}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors shadow-sm ${
+                isViewOnly 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  : 'bg-purple-500 hover:bg-purple-600'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Price Report
+            </button>
+
+            <button
+              onClick={() => !isViewOnly && setChangeStatusModal(changeStatusModal ? null : 'active')}
+              disabled={isViewOnly}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors shadow-sm ${
+                isViewOnly 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  : 'bg-green-500 hover:bg-green-600'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+              Change Status
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -1613,6 +1857,7 @@ const OrderHub = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  disabled={isViewOnly}
                 />
               </div>
               <div className="w-64">
@@ -1620,7 +1865,10 @@ const OrderHub = () => {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+                  disabled={isViewOnly}
+                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white ${
+                    isViewOnly ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
                   <option value="ALL">ALL ORDERS</option>
                   <option value="OPEN">OPEN ORDERS</option>
@@ -1630,7 +1878,14 @@ const OrderHub = () => {
                 </select>
               </div>
               <div className="pt-5">
-                <button className="px-6 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors shadow-sm">
+                <button 
+                  disabled={isViewOnly}
+                  className={`px-6 py-2 text-white text-sm font-medium rounded-lg transition-colors shadow-sm ${
+                    isViewOnly 
+                      ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                      : 'bg-amber-500 hover:bg-amber-600'
+                  }`}
+                >
                   Filter Items
                 </button>
               </div>
@@ -1647,7 +1902,21 @@ const OrderHub = () => {
                     <thead>
                       <tr className="border-b border-gray-200">
                         <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">
-                          <input type="checkbox" className="rounded border-gray-300 w-3.5 h-3.5" />
+                          <input 
+                            type="checkbox" 
+                            disabled={isViewOnly}
+                            checked={selectedOrderIds.size > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedOrderIds(new Set(filteredReviewOrders.map(o => o.id)));
+                              } else {
+                                setSelectedOrderIds(new Set());
+                              }
+                            }}
+                            className={`rounded border-gray-300 w-3.5 h-3.5 ${
+                              isViewOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                            }`}
+                          />
                       </th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Order Type</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-white">Order No</th>
@@ -1684,14 +1953,27 @@ const OrderHub = () => {
                       return (
                         <tr key={order.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${openOrderTypeDropdown === order.id ? 'relative z-[9998]' : ''}`}>
                           <td className="px-3 py-2.5 bg-white hover:bg-gray-50">
-                            <input type="checkbox" className="rounded border-gray-300 w-3.5 h-3.5" />
+                            <input 
+                              type="checkbox" 
+                              disabled={isViewOnly}
+                              checked={selectedOrderIds.has(order.id)}
+                              onChange={() => handleOrderCheckboxChange(order.id)}
+                              className={`rounded border-gray-300 w-3.5 h-3.5 ${
+                                isViewOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                              }`}
+                            />
                           </td>
                           <td className={`px-3 py-2.5 whitespace-nowrap ${openOrderTypeDropdown === order.id ? 'static' : ''}`}>
                             <div className={`${openOrderTypeDropdown === order.id ? 'relative z-[9999]' : 'relative'} inline-block`}>
                               <button
+                                disabled={isViewOnly}
                                 data-order-id={order.id}
-                                onClick={() => setOpenOrderTypeDropdown(openOrderTypeDropdown === order.id ? null : order.id)}
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ${
+                                onClick={() => !isViewOnly && setOpenOrderTypeDropdown(openOrderTypeDropdown === order.id ? null : order.id)}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                                  isViewOnly 
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer'
+                                } ${
                                   order.orderType === 'REORDER' 
                                     ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
                                     : order.orderType === 'NEW ORDER'
@@ -1704,7 +1986,7 @@ const OrderHub = () => {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                                 </svg>
                               </button>
-                              {openOrderTypeDropdown === order.id && (
+                              {openOrderTypeDropdown === order.id && !isViewOnly && (
                                 <div 
                                   ref={dropdownRef} 
                                   className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[160px] flex flex-col"
@@ -1741,16 +2023,160 @@ const OrderHub = () => {
                             <button className="text-blue-600 hover:underline">{order.estDate}</button>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button className="text-blue-600 hover:underline">{order.pocCmtTeam}</button>
+                            <div className="relative inline-block">
+                              <button
+                                disabled={isViewOnly}
+                                onClick={() => !isViewOnly && setOpenPocDropdown(openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'cmt' ? null : { orderId: order.id, type: 'cmt' })}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                                  isViewOnly 
+                                    ? 'cursor-not-allowed opacity-60 bg-gray-100 text-gray-700'
+                                    : 'cursor-pointer bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }`}
+                              >
+                                <span>{order.pocCmtTeam || 'Assign'}</span>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'cmt' && !isViewOnly && (
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                                  {teams.find(t => t.category === 'CMT')?.staff.map((member) => (
+                                    <button
+                                      key={member.id}
+                                      onClick={() => {
+                                        setReviewOrders(reviewOrders.map(o => o.id === order.id ? { ...o, pocCmtTeam: member.name } : o));
+                                        setOpenPocDropdown(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-all border-b border-gray-100 last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">
+                                          {member.name.charAt(0)}
+                                        </div>
+                                        <span>{member.name}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button className="text-blue-600 hover:underline">{order.pocRead}</button>
+                            <div className="relative inline-block">
+                              <button
+                                disabled={isViewOnly}
+                                onClick={() => !isViewOnly && setOpenPocDropdown(openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'rnd' ? null : { orderId: order.id, type: 'rnd' })}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                                  isViewOnly 
+                                    ? 'cursor-not-allowed opacity-60 bg-gray-100 text-gray-700'
+                                    : 'cursor-pointer bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                }`}
+                              >
+                                <span>{order.pocRead || 'Assign'}</span>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'rnd' && !isViewOnly && (
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                                  {teams.find(t => t.category === 'RND_PRODUCT')?.staff.map((member) => (
+                                    <button
+                                      key={member.id}
+                                      onClick={() => {
+                                        setReviewOrders(reviewOrders.map(o => o.id === order.id ? { ...o, pocRead: member.name } : o));
+                                        setOpenPocDropdown(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-all border-b border-gray-100 last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-xs">
+                                          {member.name.charAt(0)}
+                                        </div>
+                                        <span>{member.name}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button className="text-blue-600 hover:underline">{order.pocQuality}</button>
+                            <div className="relative inline-block">
+                              <button
+                                disabled={isViewOnly}
+                                onClick={() => !isViewOnly && setOpenPocDropdown(openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'quality' ? null : { orderId: order.id, type: 'quality' })}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                                  isViewOnly 
+                                    ? 'cursor-not-allowed opacity-60 bg-gray-100 text-gray-700'
+                                    : 'cursor-pointer bg-green-100 text-green-700 hover:bg-green-200'
+                                }`}
+                              >
+                                <span>{order.pocQuality || 'Assign'}</span>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'quality' && !isViewOnly && (
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                                  {teams.find(t => t.category === 'QUALITY_COMPLIANCE')?.staff.map((member) => (
+                                    <button
+                                      key={member.id}
+                                      onClick={() => {
+                                        setReviewOrders(reviewOrders.map(o => o.id === order.id ? { ...o, pocQuality: member.name } : o));
+                                        setOpenPocDropdown(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-all border-b border-gray-100 last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-bold text-xs">
+                                          {member.name.charAt(0)}
+                                        </div>
+                                        <span>{member.name}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button className="text-blue-600 hover:underline">{order.pocLabel}</button>
+                            <div className="relative inline-block">
+                              <button
+                                disabled={isViewOnly}
+                                onClick={() => !isViewOnly && setOpenPocDropdown(openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'label' ? null : { orderId: order.id, type: 'label' })}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                                  isViewOnly 
+                                    ? 'cursor-not-allowed opacity-60 bg-gray-100 text-gray-700'
+                                    : 'cursor-pointer bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                }`}
+                              >
+                                <span>{order.pocLabel || 'Assign'}</span>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'label' && !isViewOnly && (
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                                  {teams.find(t => t.category === 'LABEL_DESIGN')?.staff.map((member) => (
+                                    <button
+                                      key={member.id}
+                                      onClick={() => {
+                                        setReviewOrders(reviewOrders.map(o => o.id === order.id ? { ...o, pocLabel: member.name } : o));
+                                        setOpenPocDropdown(null);
+                                      }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-all border-b border-gray-100 last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 font-bold text-xs">
+                                          {member.name.charAt(0)}
+                                        </div>
+                                        <span>{member.name}</span>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <button className="text-blue-600 hover:underline">{order.rmReview}</button>
@@ -1873,6 +2299,509 @@ const OrderHub = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Conso Report Modal */}
+            {consoReportModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setConsoReportModal(null)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-100">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Consolidation Report - BOM Summary</h2>
+                      <p className="text-sm text-gray-600 mt-1">Selected Orders: {selectedOrderIds.size} | Total BOM Items: {getSelectedOrdersBOM().length}</p>
+                    </div>
+                    <button 
+                      onClick={() => setConsoReportModal(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
+                    {selectedOrderIds.size === 0 ? (
+                      <div className="text-center py-12">
+                        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-lg text-gray-500 font-medium">No orders selected</p>
+                        <p className="text-sm text-gray-400 mt-1">Please select orders from the table to view their BOM</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-4 gap-3">
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <p className="text-xs text-gray-600 mb-1">Selected Orders</p>
+                            <p className="text-2xl font-bold text-blue-600">{selectedOrderIds.size}</p>
+                          </div>
+                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                            <p className="text-xs text-gray-600 mb-1">Total BOM Items</p>
+                            <p className="text-2xl font-bold text-purple-600">{getSelectedOrdersBOM().length}</p>
+                          </div>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <p className="text-xs text-gray-600 mb-1">Total Cost</p>
+                            <p className="text-2xl font-bold text-green-600">₹{getSelectedOrdersBOM().reduce((sum, item) => sum + item.totalCost, 0).toLocaleString()}</p>
+                          </div>
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <p className="text-xs text-gray-600 mb-1">Approved Items</p>
+                            <p className="text-2xl font-bold text-amber-600">{getSelectedOrdersBOM().filter(i => i.status === 'APPROVED').length}</p>
+                          </div>
+                        </div>
+
+                        {/* BOM Table */}
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-100 border-b border-gray-200">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Order No</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Item Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Component</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Qty</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Unit</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Supplier</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Unit Cost</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Total Cost</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {getSelectedOrdersBOM().map((item) => (
+                                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.orderNo}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">{item.itemName}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-700">{item.componentName}</td>
+                                  <td className="px-4 py-3 text-sm text-center font-medium text-gray-900">{item.quantity}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-700">{item.unit}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-700">{item.supplier}</td>
+                                  <td className="px-4 py-3 text-sm text-center text-gray-700">₹{item.unitCost.toFixed(2)}</td>
+                                  <td className="px-4 py-3 text-sm text-center font-medium text-gray-900">₹{item.totalCost.toLocaleString()}</td>
+                                  <td className="px-4 py-3 text-sm text-center">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                      item.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                                      item.status === 'IN_STOCK' ? 'bg-blue-100 text-blue-800' :
+                                      item.status === 'ORDERED' ? 'bg-purple-100 text-purple-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {item.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setConsoReportModal(null)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button 
+                      onClick={() => setStockPlanModal(true)}
+                      className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Plan
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Price Report Modal */}
+            {priceReportModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setPriceReportModal(null)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-2xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Price Report</h2>
+                      <p className="text-sm text-gray-600 mt-1">View pricing and cost analysis</p>
+                    </div>
+                    <button 
+                      onClick={() => setPriceReportModal(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(80vh - 120px)' }}>
+                    <div className="space-y-4">
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <h3 className="font-semibold text-gray-800 mb-3">Price Summary</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">Total Value</p>
+                            <p className="text-2xl font-bold text-purple-600">₹{orders.reduce((sum, o) => sum + (parseInt(o.unitRate || '0') * o.qty), 0).toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">Avg Unit Rate</p>
+                            <p className="text-2xl font-bold text-purple-600">₹{Math.ceil(orders.reduce((sum, o) => sum + parseInt(o.unitRate || '0'), 0) / orders.length || 0)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">Total Qty</p>
+                            <p className="text-2xl font-bold text-purple-600">{orders.reduce((sum, o) => sum + o.qty, 0).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 text-center mt-8">Detailed price analysis will appear here</p>
+                    </div>
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setPriceReportModal(null)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium rounded-lg transition-colors">
+                      Download Report
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Change Status Modal */}
+            {changeStatusModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setChangeStatusModal(null)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-md" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-green-100">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Change Status</h2>
+                      <p className="text-sm text-gray-600 mt-1">Update order status</p>
+                    </div>
+                    <button 
+                      onClick={() => setChangeStatusModal(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">Select New Status</label>
+                    <select
+                      value={selectedStatusForChange}
+                      onChange={(e) => setSelectedStatusForChange(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white mb-6"
+                    >
+                      <option value="">Choose a status...</option>
+                      <option value="PENDING">Pending</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="UNDER_REVIEW">Under Review</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="ON_HOLD">On Hold</option>
+                    </select>
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setChangeStatusModal(null)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setChangeStatusModal(null);
+                        setSelectedStatusForChange('');
+                      }}
+                      className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Update Status
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Stock Planning Modal */}
+            {stockPlanModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setStockPlanModal(false)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-7xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Stock Planning & Procurement</h2>
+                      <p className="text-sm text-gray-600 mt-1">Manage and plan required stock levels</p>
+                    </div>
+                    <button 
+                      onClick={() => setStockPlanModal(false)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
+                    <div className="space-y-4">
+                      {/* Add New Item Button */}
+                      <div className="flex justify-end mb-4">
+                        <button 
+                          onClick={() => {
+                            const newItem = {
+                              id: Date.now().toString(),
+                              component: '',
+                              currentStock: 0,
+                              requiredStock: 0,
+                              unit: 'Kg',
+                              supplier: '',
+                              leadTime: 0,
+                              notes: '',
+                            };
+                            setStockPlanData([...stockPlanData, newItem]);
+                          }}
+                          className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add Component
+                        </button>
+                      </div>
+
+                      {/* Stock Planning Table */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-100 border-b border-gray-200">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Component</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Current Stock</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Required Stock</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Unit</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Supplier</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Lead Time (Days)</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Notes</th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {stockPlanData.map((item) => (
+                              <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="text"
+                                    value={item.component}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, component: e.target.value } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Component name"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="number"
+                                    value={item.currentStock}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, currentStock: parseInt(e.target.value) || 0 } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="number"
+                                    value={item.requiredStock}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, requiredStock: parseInt(e.target.value) || 0 } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <select
+                                    value={item.unit}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, unit: e.target.value } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  >
+                                    <option>Kg</option>
+                                    <option>Liters</option>
+                                    <option>Pieces</option>
+                                    <option>Boxes</option>
+                                    <option>Units</option>
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="text"
+                                    value={item.supplier}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, supplier: e.target.value } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Supplier name"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="number"
+                                    value={item.leadTime}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, leadTime: parseInt(e.target.value) || 0 } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm">
+                                  <input
+                                    type="text"
+                                    value={item.notes}
+                                    onChange={(e) => setStockPlanData(stockPlanData.map(i => i.id === item.id ? { ...i, notes: e.target.value } : i))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Add notes"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-sm text-center">
+                                  <button
+                                    onClick={() => setStockPlanData(stockPlanData.filter(i => i.id !== item.id))}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                  >
+                                    <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Summary Info */}
+                      <div className="grid grid-cols-3 gap-3 mt-6">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="text-xs text-gray-600 mb-1">Total Components</p>
+                          <p className="text-2xl font-bold text-blue-600">{stockPlanData.length}</p>
+                        </div>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <p className="text-xs text-gray-600 mb-1">Current Stock Total</p>
+                          <p className="text-2xl font-bold text-green-600">{stockPlanData.reduce((sum, item) => sum + item.currentStock, 0)}</p>
+                        </div>
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <p className="text-xs text-gray-600 mb-1">Required Stock Total</p>
+                          <p className="text-2xl font-bold text-amber-600">{stockPlanData.reduce((sum, item) => sum + item.requiredStock, 0)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setStockPlanModal(false)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium rounded-lg transition-colors">
+                      Plan
+                    </button>
+                    <button className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-colors">
+                      Submit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Team Management Modal */}
+            {teamManagementModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setTeamManagementModal(false)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-indigo-100">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Team Management</h2>
+                      <p className="text-sm text-gray-600 mt-1">Manage team leads and staff assignments</p>
+                    </div>
+                    <button 
+                      onClick={() => setTeamManagementModal(false)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
+                    <div className="space-y-6">
+                      {teams.map((team) => (
+                        <div key={team.id} className="border border-gray-200 rounded-lg p-5 bg-gradient-to-br from-white to-gray-50">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-indigo-100 rounded-lg">
+                                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h3 className="text-lg font-bold text-gray-800">{team.name}</h3>
+                                <p className="text-xs text-gray-500">{team.staff.length} staff members</p>
+                              </div>
+                            </div>
+                            <button className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg transition-colors">
+                              Edit Team
+                            </button>
+                          </div>
+
+                          {/* Team Lead */}
+                          <div className="mb-4">
+                            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Team Lead</label>
+                            {team.lead ? (
+                              <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                  {team.lead.name.charAt(0)}
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-gray-800">{team.lead.name}</p>
+                                  <p className="text-xs text-gray-500">{team.lead.email}</p>
+                                </div>
+                                <span className="px-2 py-1 bg-indigo-500 text-white text-xs font-medium rounded">Lead</span>
+                              </div>
+                            ) : (
+                              <button className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
+                                + Assign Team Lead
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Staff Members */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Staff Members</label>
+                            <div className="space-y-2">
+                              {team.staff.map((member) => (
+                                <div key={member.id} className="flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors">
+                                  <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-bold text-xs">
+                                    {member.name.charAt(0)}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-800">{member.name}</p>
+                                    <p className="text-xs text-gray-500">{member.email}</p>
+                                  </div>
+                                  <button className="text-gray-400 hover:text-red-600 transition-colors">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              ))}
+                              <button className="w-full p-2.5 border-2 border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
+                                + Add Staff Member
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setTeamManagementModal(false)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-colors">
+                      Save Changes
+                    </button>
                   </div>
                 </div>
               </div>

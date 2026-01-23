@@ -135,7 +135,7 @@ export const createDebounce = <T extends any[]>(
   fn: (...args: T) => void,
   delay: number
 ) => {
-  let timeoutId: NodeJS.Timeout | null = null;
+  let timeoutId: number | null = null;
 
   return {
     call: (...args: T) => {
