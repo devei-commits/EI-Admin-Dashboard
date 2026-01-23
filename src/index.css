@@ -319,3 +319,53 @@ button {
 .modal-footer {
   @apply p-5 border-t border-gray-100;
 }
+
+/* ============================================
+   ANIMATIONS & TRANSITIONS
+   ============================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, select, input {
+  @apply transition-all duration-150 ease-in-out;
+}
+
+/* Optimize rendering performance */
+.sidebar-nav button,
+.tab-button {
+  will-change: background-color, color;
+}
+
+/* Prevent layout shift during loading */
+.prevent-shift {
+  min-height: 1px;
+}
+
+/* Smooth scrolling */
+.overflow-y-auto {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

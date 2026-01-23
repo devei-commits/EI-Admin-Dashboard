@@ -1,5 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
+
+// ==================== DEBOUNCE UTILITY ====================
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 // ==================== CUSTOM HOOKS ====================
 /**
@@ -887,39 +904,49 @@ const OrderHub = () => {
     { id: 'order-closure', label: '#6 Order Closure' },
   ];
 
-  // Filter orders based on search query and status filter
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = searchQuery === '' || 
-      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'ALL' || 
-      (statusFilter === 'OPEN' && order.currentStatus === 'OPEN') ||
-      (statusFilter === 'IN_PROGRESS' && order.currentStatus === 'IN_PROGRESS') ||
-      (statusFilter === 'COMPLETED' && order.currentStatus === 'COMPLETED') ||
-      (statusFilter === 'PENDING' && order.currentStatus === 'PENDING');
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Debounce search query for better performance
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const poPlanOrders = filteredOrders.filter((order) => order.stage === 'PURCHASE PLAN');
+  // Memoize filtered orders to prevent unnecessary recalculations
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const matchesSearch = debouncedSearchQuery === '' || 
+        order.orderNo.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        order.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        order.itemName.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'ALL' || 
+        (statusFilter === 'OPEN' && order.currentStatus === 'OPEN') ||
+        (statusFilter === 'IN_PROGRESS' && order.currentStatus === 'IN_PROGRESS') ||
+        (statusFilter === 'COMPLETED' && order.currentStatus === 'COMPLETED') ||
+        (statusFilter === 'PENDING' && order.currentStatus === 'PENDING');
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, debouncedSearchQuery, statusFilter]);
 
-  // Filter review orders based on search query and status filter
-  const filteredReviewOrders = reviewOrders.filter(order => {
-    const matchesSearch = searchQuery === '' || 
-      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.productSku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.compatibleItem.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'ALL' || 
-      (statusFilter === 'OPEN' && order.approvalStatus === 'OPEN') ||
-      (statusFilter === 'IN_PROGRESS' && order.approvalStatus === 'IN_PROGRESS') ||
-      (statusFilter === 'COMPLETED' && order.approvalStatus === 'COMPLETED') ||
-      (statusFilter === 'PENDING' && order.approvalStatus === 'PENDING');
-    
-    return matchesSearch && matchesStatus;
-  });
+  const poPlanOrders = useMemo(() => 
+    filteredOrders.filter((order) => order.stage === 'PURCHASE PLAN'),
+    [filteredOrders]
+  );
+
+  // Memoize filtered review orders
+  const filteredReviewOrders = useMemo(() => {
+    return reviewOrders.filter(order => {
+      const matchesSearch = debouncedSearchQuery === '' || 
+        order.orderNo.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        order.productSku.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        order.compatibleItem.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'ALL' || 
+        (statusFilter === 'OPEN' && order.approvalStatus === 'OPEN') ||
+        (statusFilter === 'IN_PROGRESS' && order.approvalStatus === 'IN_PROGRESS') ||
+        (statusFilter === 'COMPLETED' && order.approvalStatus === 'COMPLETED') ||
+        (statusFilter === 'PENDING' && order.approvalStatus === 'PENDING');
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [reviewOrders, debouncedSearchQuery, statusFilter]);
 
   const [activeTask, setActiveTask] = useState('all');
   const [activeSubPage, setActiveSubPage] = useState<string>('hub');
@@ -1009,21 +1036,17 @@ const OrderHub = () => {
     },
   ];
 
-  const handleTaskClick = (taskId: string) => {
+  const handleTaskClick = useCallback((taskId: string) => {
     if (taskId === 'all') {
       setActiveTask(taskId);
       setExpandedTask(null);
       setActiveSubPage('hub');
     } else {
-      if (expandedTask === taskId) {
-        setExpandedTask(null);
-      } else {
-        setExpandedTask(taskId);
-        setActiveTask(taskId);
-        setActiveSubPage('hub');
-      }
+      setExpandedTask(prev => prev === taskId ? null : taskId);
+      setActiveTask(taskId);
+      setActiveSubPage('hub');
     }
-  };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -1033,12 +1056,12 @@ const OrderHub = () => {
           <img src={eilogofull} alt="Esthetic Insights" className="h-8 object-contain" />
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1 sidebar-nav">
           {tasks.map((task) => (
             <div key={task.id}>
               <button
                 onClick={() => handleTaskClick(task.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left font-medium ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 text-left font-medium will-change-auto ${
                   activeTask === task.id
                     ? 'bg-amber-50 text-amber-700 border-l-4 border-amber-500'
                     : 'text-gray-600 hover:bg-gray-50 border-l-4 border-transparent hover:text-gray-900'
@@ -1048,7 +1071,7 @@ const OrderHub = () => {
                 <span className="flex-1">{task.label}</span>
                 {task.id !== 'all' && (
                   <svg
-                    className={`w-4 h-4 transition-transform duration-200 ${
+                    className={`w-4 h-4 transition-transform duration-150 ${
                       expandedTask === task.id ? 'rotate-180' : ''
                     }`}
                     fill="none"
@@ -1062,10 +1085,10 @@ const OrderHub = () => {
 
               {/* Subpages */}
               {task.id !== 'all' && expandedTask === task.id && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2">
+                <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2 animate-fadeIn">
                   <button
                     onClick={() => setActiveSubPage('hub')}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2 ${
                       activeSubPage === 'hub'
                         ? 'bg-amber-100 text-amber-700 font-semibold'
                         : 'text-gray-600 hover:bg-white hover:text-amber-700'
@@ -1078,7 +1101,7 @@ const OrderHub = () => {
                   </button>
                   <button
                     onClick={() => setActiveSubPage('dashboard')}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2 ${
                       activeSubPage === 'dashboard'
                         ? 'bg-amber-100 text-amber-700 font-semibold'
                         : 'text-gray-600 hover:bg-white hover:text-amber-700'
@@ -1185,16 +1208,16 @@ const OrderHub = () => {
           ) : (
             <>
       {/* Header with Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 animate-fadeIn">
         <div className="p-4 border-b border-gray-100">
           <h1 className="text-2xl font-bold text-gray-800">Order Hub</h1>
         </div>
-        <div className="flex overflow-x-auto">
+        <div className="flex overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
+              className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-2 ${
                 activeTab === tab.id
                   ? 'border-amber-500 text-amber-600 bg-amber-50'
                   : 'border-transparent text-gray-600 hover:text-amber-600 hover:bg-gray-50'
@@ -1238,19 +1261,24 @@ const OrderHub = () => {
 
             {/* Search Bar */}
             <div className="flex gap-3">
-              <div className="flex-1">
+              <div className="flex-1 relative">
                 <input
                   type="text"
                   placeholder="Search by Order No, SKU, or Item Name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow"
                 />
+                {searchQuery && searchQuery !== debouncedSearchQuery && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
+                  </div>
+                )}
               </div>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white transition-shadow"
               >
                 <option value="ALL">All Stages</option>
                 {STAGES.map(s => (
