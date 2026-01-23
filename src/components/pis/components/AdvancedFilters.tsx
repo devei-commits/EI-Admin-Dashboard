@@ -48,7 +48,7 @@ export function AdvancedFilters({ filters, onFilterChange, customers, currentRol
 
   const statuses: PISStatus[] = ['PENDING', 'IN_PROGRESS', 'APPROVED', 'REJECTED', 'ON_HOLD', 'COMPLETED', 'TERMINATED'];
 
-  const updateFilter = (key: keyof FilterState, value: any) => {
+  const updateFilter = (key: keyof FilterState, value: FilterState[keyof FilterState]) => {
     onFilterChange({ ...filters, [key]: value });
   };
 

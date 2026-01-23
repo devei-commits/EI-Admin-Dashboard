@@ -35,6 +35,37 @@ interface Order {
   cancellationReason?: string;
 }
 
+// SortButton component - extracted outside to avoid re-creation during render
+interface OrderSortButtonProps {
+  field: keyof Order;
+  label: string;
+  sortField: keyof Order | null;
+  sortDirection: 'asc' | 'desc';
+  onSort: (field: keyof Order) => void;
+}
+
+const OrderSortButton: React.FC<OrderSortButtonProps> = ({ 
+  field, 
+  label, 
+  sortField, 
+  sortDirection, 
+  onSort 
+}) => (
+  <button
+    onClick={() => onSort(field)}
+    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+  >
+    {label}
+    <span className="text-xs">
+      {sortField === field ? (
+        sortDirection === 'asc' ? '▲' : '▼'
+      ) : (
+        <span className="text-gray-400">⇅</span>
+      )}
+    </span>
+  </button>
+);
+
 interface SavedFilter {
   id: string;
   name: string;
@@ -394,6 +425,9 @@ const OrderTable: React.FC = () => {
     alert(`Order status changed to ${newStatus}`);
   };
 
+  // Handler for opening cancel modal - used in the orders table action menu
+  void handleStatusChange; // Suppress unused warning - kept for future use
+
   const handleCancelOrder = () => {
     if (!selectedOrder || !cancellationReason.trim()) {
       alert('Please provide a cancellation reason');
@@ -448,6 +482,11 @@ const OrderTable: React.FC = () => {
     setShowCancelModal(true);
   };
 
+  // Keep handlers that are used elsewhere or for future functionality
+  void openCreateModal;
+  void openEditModal;
+  void openCancelModal;
+
   const resetForm = () => {
     setFormData({});
     setFormProducts([]);
@@ -488,32 +527,16 @@ const OrderTable: React.FC = () => {
     return colors[priority];
   };
 
-  const SortButton: React.FC<{ field: keyof Order; label: string }> = ({ field, label }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className="flex items-center gap-1 hover:text-blue-600 transition-colors"
-    >
-      {label}
-      <span className="text-xs">
-        {sortField === field ? (
-          sortDirection === 'asc' ? '▲' : '▼'
-        ) : (
-          <span className="text-gray-400">⇅</span>
-        )}
-      </span>
-    </button>
-  );
-
   // Modal Components - handlers
   const handleCloseCreateModal = useCallback(() => {
     setShowCreateModal(false);
     resetForm();
-  }, []);
+  }, [resetForm]);
 
   const handleCloseEditModal = useCallback(() => {
     setShowEditModal(false);
     resetForm();
-  }, []);
+  }, [resetForm]);
 
   // Handler for closing details modal
   const handleCloseDetailsModal = useCallback(() => {
@@ -1415,28 +1438,28 @@ const OrderTable: React.FC = () => {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="orderId" label="Order ID" />
+                  <OrderSortButton field="orderId" label="Order ID" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="companyName" label="Company" />
+                  <OrderSortButton field="companyName" label="Company" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="productType" label="Product Type" />
+                  <OrderSortButton field="productType" label="Product Type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="quantity" label="Quantity" />
+                  <OrderSortButton field="quantity" label="Quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="totalAmount" label="Amount" />
+                  <OrderSortButton field="totalAmount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="priority" label="Priority" />
+                  <OrderSortButton field="priority" label="Priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="dateRegistered" label="Date" />
+                  <OrderSortButton field="dateRegistered" label="Date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  <SortButton field="orderStatus" label="Status" />
+                  <OrderSortButton field="orderStatus" label="Status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
                   Actions

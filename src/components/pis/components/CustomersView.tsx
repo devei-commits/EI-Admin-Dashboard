@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Users, Building2, Mail, Phone, MapPin, Plus, Search, Filter, Edit, Trash2, Eye, MoreVertical, ArrowUpDown } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Users, Building2, Mail, Phone, MapPin, Plus, Search, Edit, Trash2, Eye, MoreVertical, ArrowUpDown } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -19,7 +19,7 @@ interface CustomersViewProps {
   currentRole: UserRole;
 }
 export function CustomersView({ currentRole }: CustomersViewProps) {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, isLoading } = usePIS();
+  const { customers, addCustomer, deleteCustomer } = usePIS();
   const permissions = getRolePermissions(currentRole);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -44,7 +44,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
 
   // Filtered and sorted customers
   const filteredCustomers = useMemo(() => {
-    let result = customers.filter(customer => {
+    const filtered = customers.filter(customer => {
       const matchesSearch = 
         customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         customer.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -57,7 +57,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
     });
 
     if (sortConfig) {
-      result.sort((a, b) => {
+      filtered.sort((a, b) => {
         const aVal = a[sortConfig.key];
         const bVal = b[sortConfig.key];
         
@@ -67,7 +67,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
       });
     }
 
-    return result;
+    return filtered;
   }, [customers, searchQuery, statusFilter, categoryFilter, sortConfig]);
 
   const stats = useMemo(() => ({

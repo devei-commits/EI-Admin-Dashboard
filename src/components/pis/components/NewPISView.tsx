@@ -46,26 +46,8 @@ export function NewPISView() {
   // For BD_MANAGER: Show unassigned CLIENT-requested PIS records
   const isBDManager = currentUser?.role === 'BD_MANAGER';
   const isClient = currentUser?.role === 'CLIENT';
-  
-  // Check if user can create PIS
-  if (!permissions?.canCreatePIS && !isBDManager) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">New PIS</h1>
-          <p className="text-sm text-muted-foreground">
-            You don't have permission to create new PIS records.
-          </p>
-        </div>
-        <Card className="p-6">
-          <p className="text-gray-600">
-            Please contact your administrator if you need access to create PIS records.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
+  // All hooks must be called before any early returns
   const [created, setCreated] = useState<PISRecord | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedPIS, setSelectedPIS] = useState<PISRecord | null>(null);
@@ -110,6 +92,52 @@ export function NewPISView() {
 
   const effectivePisCode = useMemo(() => projectCode.trim() || generatePisCode(), [projectCode]);
 
+  // For BD_MANAGER: Filter PIS records requested by CLIENT users that are not assigned to BD staff
+  const unassignedClientPIS = useMemo(() => {
+    if (!isBDManager) return [];
+    
+    return pisRecords.filter((pis) => {
+      // Must be in BD_INTAKE stage (new requests)
+      const isBdStage = pis.stage === 'BD_INTAKE' || pis.stage === 'ALIGNMENT' || pis.stage === 'AGREEMENT';
+      
+      // Must NOT be assigned to BD_STAFF
+      const isUnassigned = pis.assignedBdRole !== 'BD_STAFF' && !pis.assignedBdStaffId;
+      
+      // Check if requested by CLIENT user
+      const pisAny = pis as Record<string, unknown>;
+      const clientAccess = pisAny.clientAccess as unknown[] | undefined;
+      const createdBy = pisAny.createdBy as { role?: string } | undefined;
+      const hasClientAccess = Array.isArray(clientAccess) && clientAccess.length > 0;
+      const createdByClient = createdBy?.role === 'CLIENT';
+      
+      return isBdStage && isUnassigned && (hasClientAccess || createdByClient);
+    });
+  }, [pisRecords, isBDManager]);
+
+  // Get BD staff users for assignment
+  const bdStaffUsers = useMemo(() => {
+    return systemUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
+  }, [systemUsers]);
+  
+  // Check if user can create PIS - moved after all hooks
+  if (!permissions?.canCreatePIS && !isBDManager) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">New PIS</h1>
+          <p className="text-sm text-muted-foreground">
+            You don't have permission to create new PIS records.
+          </p>
+        </div>
+        <Card className="p-6">
+          <p className="text-gray-600">
+            Please contact your administrator if you need access to create PIS records.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const updateQaItem = (index: number, key: 'question' | 'answer', value: string) => {
     setDynamicQa((prev) => {
       const next = [...prev];
@@ -123,32 +151,6 @@ export function NewPISView() {
   const removeQaItem = (index: number) => {
     setDynamicQa((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   };
-
-  // For BD_MANAGER: Filter PIS records requested by CLIENT users that are not assigned to BD staff
-  const unassignedClientPIS = useMemo(() => {
-    if (!isBDManager) return [];
-    
-    return pisRecords.filter((pis) => {
-      // Must be in BD_INTAKE stage (new requests)
-      const isBdStage = pis.stage === 'BD_INTAKE' || pis.stage === 'ALIGNMENT' || pis.stage === 'AGREEMENT';
-      
-      // Must NOT be assigned to BD_STAFF
-      const isUnassigned = pis.assignedBdRole !== 'BD_STAFF' && !pis.assignedBdStaffId;
-      
-      // Check if requested by CLIENT user:
-      // 1. Has clientAccess entries (linked via client_pis table)
-      // 2. OR createdBy role is CLIENT
-      const hasClientAccess = (pis as any).clientAccess && Array.isArray((pis as any).clientAccess) && (pis as any).clientAccess.length > 0;
-      const createdByClient = (pis as any).createdBy?.role === 'CLIENT';
-      
-      return isBdStage && isUnassigned && (hasClientAccess || createdByClient);
-    });
-  }, [pisRecords, isBDManager]);
-
-  // Get BD staff users for assignment
-  const bdStaffUsers = useMemo(() => {
-    return systemUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
-  }, [systemUsers]);
 
   const handleAssignToStaff = (pis: PISRecord) => {
     setAssignTargetPis(pis);

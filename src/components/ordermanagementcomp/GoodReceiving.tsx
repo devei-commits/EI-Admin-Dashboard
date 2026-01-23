@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { UnifiedBadge } from '../ui';
 
 interface ReceivedItem {
   id: string;
@@ -84,9 +83,9 @@ const MOCK_RECEIVING_RECORDS: GoodReceivingRecord[] = [
 ];
 
 const GoodReceiving: React.FC = () => {
-  const [records, setRecords] = useState<GoodReceivingRecord[]>(MOCK_RECEIVING_RECORDS);
+  const [records] = useState<GoodReceivingRecord[]>(MOCK_RECEIVING_RECORDS);
   const [selectedRecord, setSelectedRecord] = useState<GoodReceivingRecord | null>(null);
-  const [showNewModal, setShowNewModal] = useState(false);
+  const [, setShowNewModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Completed' | 'Rejected'>('All');
 
@@ -158,7 +157,7 @@ const GoodReceiving: React.FC = () => {
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
+          onChange={(e) => setStatusFilter(e.target.value as 'All' | 'Pending' | 'Completed' | 'Rejected')}
           className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
         >
           <option value="All">All Status</option>

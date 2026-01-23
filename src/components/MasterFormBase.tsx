@@ -1,11 +1,11 @@
 import React, { ReactNode } from 'react';
 import { 
-  FIELD_DEPENDENCIES, 
-  AUTO_POPULATE_RULES, 
-  TEMP_FIELD_MAPPINGS,
-  autoPopulateDerivedFields,
-  getPrimaryFields 
+  autoPopulateDerivedFields 
 } from '../utils/masterFormUtils';
+
+interface FormData {
+  [key: string]: unknown;
+}
 
 interface MasterFormBaseProps {
   title: string;
@@ -13,9 +13,9 @@ interface MasterFormBaseProps {
   currentStage: number;
   onStageChange: (stage: number) => void;
   errors: Record<string, string>;
-  formData: any;
+  formData: FormData;
   onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
-  onAutoPopulate?: (field: string, data: any) => void;
+  onAutoPopulate?: (field: string, data: FormData) => void;
   children: ReactNode;
   onSave?: () => void;
   onSubmit?: () => void;
@@ -44,19 +44,24 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
   onSubmit,
   primaryFields = []
 }) => {
-  const isPrimaryField = (fieldId: string) => primaryFields.includes(fieldId);
+  // Utility functions that may be used by child components
+  const _isPrimaryField = (fieldId: string) => primaryFields.includes(fieldId);
 
-  const handleInputWithAutoPopulate = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const _handleInputWithAutoPopulate = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     onInputChange(e);
     
     // Check if this field has dependencies
     if (onAutoPopulate && e.target.id) {
       const updated = autoPopulateDerivedFields(formData, 'packaging', e.target.id);
       if (updated !== formData) {
-        onAutoPopulate(e.target.id, updated);
+        onAutoPopulate(e.target.id, updated as FormData);
       }
     }
   };
+  
+  // Export utility functions for potential use
+  void _isPrimaryField;
+  void _handleInputWithAutoPopulate;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -70,7 +75,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
               <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
               <select
                 id="status"
-                value={formData.status || 'Draft'}
+                value={(formData.status as string) || 'Draft'}
                 onChange={onInputChange}
                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
               >

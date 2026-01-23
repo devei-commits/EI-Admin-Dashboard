@@ -1,0 +1,10 @@
+/**
+ * Shared TypeScript type definitions
+ * Centralized types for consistent typing across the application
+ */
+
+// Re-export all types from sub-modules
+export * from './order.types';
+export * from './user.types';
+export * from './common.types';
+export * from './api.types';

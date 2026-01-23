@@ -1,10 +1,10 @@
 import React from 'react';
-import { TEMP_FIELD_MAPPINGS, addToArray, removeFromArray } from '../utils/masterFormUtils';
+import { TEMP_FIELD_MAPPINGS } from '../utils/masterFormUtils';
 
 interface ArrayItemManagerProps {
   masterType: 'packaging' | 'rawMaterial' | 'bom';
   itemType: string; // e.g., 'variant', 'vendor', 'test', 'rmLine', 'pmLine'
-  items: any[];
+  items: unknown[];
   tempFields: Record<string, string>;
   onTempFieldChange: (field: string, value: string) => void;
   onAdd: () => void;

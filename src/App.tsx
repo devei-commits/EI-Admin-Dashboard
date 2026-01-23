@@ -58,7 +58,7 @@ const NetworkStatus = ({ isOnline }: { isOnline: boolean }) => {
 // Layout component that conditionally renders the sidebar
 const AppLayout = () => {
   const location = useLocation();
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   useEffect(() => {
     const cleanup = monitorConnection(setIsOnline);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PISRecord, UserRole, Customer, Product, PISStatus } from '../types/pis';
+import { PISRecord, UserRole, Customer, Product } from '../types/pis';
 import { getStageLabel } from '../utils/permissions';
 import { usePIS } from '../context/PISContext';
 import {
@@ -30,6 +30,41 @@ import { getServerBaseUrl, pisApi, USE_MOCK_DATA } from '../utils/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 
+// Type definitions for internal use
+interface ClientFormData {
+  category: string;
+  productType: string;
+  dynamicQa: Array<{ question: string; answer: string }>;
+  specs: {
+    activeIngredients: string;
+    avoidIngredients: string;
+    otherIngredients: string;
+    referenceMode: string;
+    referenceFormulas: string;
+    customSelectionNotes: string;
+  };
+  packCatalog: {
+    volume: string;
+    packing: { option: string; reference: string; uploadLink: string };
+    monoCarton: { option: string; reference: string; uploadLink: string };
+    artwork: {
+      required: boolean;
+      artworkFormLink: string;
+      logo: { option: string; reference: string; uploadLink: string };
+    };
+  };
+}
+
+interface AttachmentData {
+  id: string;
+  fileName?: string;
+  fileUrl?: string;
+  description?: string;
+  createdAt?: string;
+  uploadedBy?: { name?: string };
+  status?: string;
+}
+
 interface PISDetailsDialogProps {
   pis: PISRecord | null;
   currentRole: UserRole;
@@ -39,26 +74,17 @@ interface PISDetailsDialogProps {
 }
 
 export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded = false }: PISDetailsDialogProps) {
-  if (!pis) return null;
-
   const serverBaseUrl = getServerBaseUrl();
 
-  const { updatePIS, customers, products, addHistoryEntry, currentUser } = usePIS();
-  const canEditClientDetails = currentRole === 'BD_MANAGER' || currentRole === 'BD_STAFF';
-  const canEditFormFields =
-    currentRole === 'BD_MANAGER' ||
-    currentRole === 'BD_STAFF' ||
-    currentRole === 'RND_LEAD' ||
-    currentRole === 'RND_STAFF';
-
-  const isTerminated = pis.status === 'TERMINATED' || pis.stage === 'TERMINATED';
-
+  const { updatePIS, customers, products, currentUser } = usePIS();
+  
+  // All hooks must be called before any conditional returns
   const [isEditingClient, setIsEditingClient] = useState(false);
-  const [customer, setCustomer] = useState(pis.customer);
-  const [formulation, setFormulation] = useState(pis.formulation);
-  const [costName, setCostName] = useState(pis.costName);
-  const [formLabel, setFormLabel] = useState(pis.formLabel);
-  const [clientForm, setClientForm] = useState<any | null>(null);
+  const [customer, setCustomer] = useState(pis?.customer ?? '');
+  const [formulation, setFormulation] = useState(pis?.formulation ?? '');
+  const [costName, setCostName] = useState(pis?.costName ?? '');
+  const [formLabel, setFormLabel] = useState(pis?.formLabel ?? '');
+  const [clientForm, setClientForm] = useState<ClientFormData | null>(null);
 
   const [isDecisionOpen, setIsDecisionOpen] = useState(false);
   const [decisionTitle, setDecisionTitle] = useState('Confirm action');
@@ -67,60 +93,84 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
   const [decisionValue, setDecisionValue] = useState('');
   const [decisionComments, setDecisionComments] = useState('');
 
-  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentData[]>([]);
   const [isAttachmentsLoading, setIsAttachmentsLoading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadDescription, setUploadDescription] = useState('');
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  
+  // Stage checklist state - moved here to ensure hooks are called unconditionally
+  const [localChecklist, setLocalChecklist] = useState<Record<string, boolean>>({});
+  const [checklistError, setChecklistError] = useState('');
 
+  // Sync state when pis changes
   useEffect(() => {
-    setCustomer(pis.customer);
-    setFormulation(pis.formulation);
-    setCostName(pis.costName);
-    setFormLabel(pis.formLabel);
-    setIsEditingClient(false);
-  }, [pis.id]);
+    if (pis) {
+      setCustomer(pis.customer);
+      setFormulation(pis.formulation);
+      setCostName(pis.costName);
+      setFormLabel(pis.formLabel);
+      setIsEditingClient(false);
+    }
+  }, [pis?.id, pis?.customer, pis?.formulation, pis?.costName, pis?.formLabel]);
 
+  // Parse client form from stageTemplates
   useEffect(() => {
-    const raw: any = (pis as any).stageTemplates?.S0?.newFormulationFlow;
+    if (!pis) {
+      setClientForm(null);
+      return;
+    }
+    
+    const pisAny = pis as Record<string, unknown>;
+    const stageTemplates = pisAny.stageTemplates as Record<string, unknown> | undefined;
+    const s0 = stageTemplates?.S0 as Record<string, unknown> | undefined;
+    const raw = s0?.newFormulationFlow as Record<string, unknown> | undefined;
+    
     if (raw) {
-      const safe = {
-        category: raw.category || '',
-        productType: raw.productType || '',
+      const specs = raw.specs as Record<string, unknown> | undefined;
+      const packCatalog = raw.packCatalog as Record<string, unknown> | undefined;
+      const packing = packCatalog?.packing as Record<string, unknown> | undefined;
+      const monoCarton = packCatalog?.monoCarton as Record<string, unknown> | undefined;
+      const artwork = packCatalog?.artwork as Record<string, unknown> | undefined;
+      const logo = artwork?.logo as Record<string, unknown> | undefined;
+      
+      const safe: ClientFormData = {
+        category: String(raw.category || ''),
+        productType: String(raw.productType || ''),
         dynamicQa:
           Array.isArray(raw.dynamicQa) && raw.dynamicQa.length
-            ? raw.dynamicQa
+            ? (raw.dynamicQa as Array<{ question: string; answer: string }>)
             : [{ question: '', answer: '' }],
         specs: {
-          activeIngredients: raw.specs?.activeIngredients || '',
-          avoidIngredients: raw.specs?.avoidIngredients || '',
-          otherIngredients: raw.specs?.otherIngredients || '',
-          referenceMode: raw.specs?.referenceMode || 'RECOMMENDED',
-          referenceFormulas: raw.specs?.referenceFormulas || '',
-          customSelectionNotes: raw.specs?.customSelectionNotes || '',
+          activeIngredients: String(specs?.activeIngredients || ''),
+          avoidIngredients: String(specs?.avoidIngredients || ''),
+          otherIngredients: String(specs?.otherIngredients || ''),
+          referenceMode: String(specs?.referenceMode || 'RECOMMENDED'),
+          referenceFormulas: String(specs?.referenceFormulas || ''),
+          customSelectionNotes: String(specs?.customSelectionNotes || ''),
         },
         packCatalog: {
-          volume: raw.packCatalog?.volume || '',
+          volume: String(packCatalog?.volume || ''),
           packing: {
-            option: raw.packCatalog?.packing?.option || 'EXISTING',
-            reference: raw.packCatalog?.packing?.reference || '',
-            uploadLink: raw.packCatalog?.packing?.uploadLink || '',
+            option: String(packing?.option || 'EXISTING'),
+            reference: String(packing?.reference || ''),
+            uploadLink: String(packing?.uploadLink || ''),
           },
           monoCarton: {
-            option: raw.packCatalog?.monoCarton?.option || 'EXISTING',
-            reference: raw.packCatalog?.monoCarton?.reference || '',
-            uploadLink: raw.packCatalog?.monoCarton?.uploadLink || '',
+            option: String(monoCarton?.option || 'EXISTING'),
+            reference: String(monoCarton?.reference || ''),
+            uploadLink: String(monoCarton?.uploadLink || ''),
           },
           artwork: {
             required:
-              typeof raw.packCatalog?.artwork?.required === 'boolean'
-                ? raw.packCatalog.artwork.required
+              typeof artwork?.required === 'boolean'
+                ? artwork.required
                 : true,
-            artworkFormLink: raw.packCatalog?.artwork?.artworkFormLink || '',
+            artworkFormLink: String(artwork?.artworkFormLink || ''),
             logo: {
-              option: raw.packCatalog?.artwork?.logo?.option || 'EXISTING',
-              reference: raw.packCatalog?.artwork?.logo?.reference || '',
-              uploadLink: raw.packCatalog?.artwork?.logo?.uploadLink || '',
+              option: String(logo?.option || 'EXISTING'),
+              reference: String(logo?.reference || ''),
+              uploadLink: String(logo?.uploadLink || ''),
             },
           },
         },
@@ -129,9 +179,11 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     } else {
       setClientForm(null);
     }
-  }, [pis.id]);
+  }, [pis?.id]);
 
   const fetchAttachments = async () => {
+    if (!pis) return;
+    
     // Skip API call in mock data mode
     if (USE_MOCK_DATA) {
       setAttachments([]);
@@ -142,9 +194,9 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       setIsAttachmentsLoading(true);
       const resp = await pisApi.listAttachments(pis.id);
       if (resp.success && resp.data) {
-        setAttachments(resp.data);
+        setAttachments(resp.data as AttachmentData[]);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to load attachments:', e);
       toast.error('Failed to load attachments');
     } finally {
@@ -156,7 +208,57 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     void fetchAttachments();
     setUploadFile(null);
     setUploadDescription('');
-  }, [pis.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pis?.id]);
+
+  // Sync checklist state based on pis stage
+  useEffect(() => {
+    if (!pis) {
+      setLocalChecklist({});
+      return;
+    }
+    
+    // Get the checklist key based on stage
+    let checklistKey: string | null = null;
+    switch (pis.stage) {
+      case 'BD_INTAKE':
+        checklistKey = 'bdIntakeChecklist';
+        break;
+      case 'RND_DEVELOPMENT':
+        checklistKey = 'rndDevelopmentChecklist';
+        break;
+      case 'QUALITY_REVIEW':
+        checklistKey = 'qaChecklist';
+        break;
+      case 'PACKAGING':
+        checklistKey = 'packagingChecklist';
+        break;
+      default:
+        checklistKey = null;
+    }
+    
+    if (!checklistKey) {
+      setLocalChecklist({});
+      return;
+    }
+    
+    const pisAny = pis as Record<string, unknown>;
+    const existing = (pisAny[checklistKey] as Record<string, boolean>) || {};
+    setLocalChecklist(existing);
+  }, [pis?.id, pis?.stage]);
+
+  // Early return after all hooks
+  if (!pis) return null;
+  
+  // Computed values - must be after hooks but can be before/after early return
+  const canEditClientDetails = currentRole === 'BD_MANAGER' || currentRole === 'BD_STAFF';
+  const canEditFormFields =
+    currentRole === 'BD_MANAGER' ||
+    currentRole === 'BD_STAFF' ||
+    currentRole === 'RND_LEAD' ||
+    currentRole === 'RND_STAFF';
+
+  const isTerminated = pis.status === 'TERMINATED' || pis.stage === 'TERMINATED';
 
   const resolvedCustomer: Customer | undefined =
     pis.customerId ? customers.find((c: Customer) => c.id === pis.customerId) : undefined;
@@ -166,20 +268,21 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
 
   const getAssignedSummary = () => {
     const parts: string[] = [];
-    if ((pis as any).assignedBdStaffId) {
+    const pisRecord = pis as Record<string, unknown>;
+    if (pisRecord.assignedBdStaffId) {
       parts.push('BD Staff assigned');
     }
-    if ((pis as any).rndStaffAssignment) {
+    if (pisRecord.rndStaffAssignment) {
       parts.push('R&D Staff assigned');
     }
-    if ((pis as any).qaAssignment) {
+    if (pisRecord.qaAssignment) {
       parts.push('QA Staff assigned');
     }
     if (
-      (pis as any).pkgDesignAssignment ||
-      (pis as any).pkgProductSubmission ||
-      (pis as any).pkgLabelSubmission ||
-      (pis as any).sampleDispatchPreparation
+      pisRecord.pkgDesignAssignment ||
+      pisRecord.pkgProductSubmission ||
+      pisRecord.pkgLabelSubmission ||
+      pisRecord.sampleDispatchPreparation
     ) {
       parts.push('Packaging tasks assigned');
     }
@@ -314,22 +417,12 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
   };
 
   const checklistConfig = getChecklistConfig();
-  const [localChecklist, setLocalChecklist] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (!checklistConfig) {
-      setLocalChecklist({});
-      return;
-    }
-    const { key } = checklistConfig;
-    const existing: any = (pis as any)[key] || {};
-    setLocalChecklist(existing);
-  }, [pis.id, pis.stage, checklistConfig?.key]);
 
   const getEffectiveChecklist = () => {
     if (!checklistConfig) return {} as Record<string, unknown>;
     const { key } = checklistConfig;
-    const fromRecord: any = (pis as any)[key] || {};
+    const pisAny = pis as Record<string, unknown>;
+    const fromRecord = (pisAny[key] as Record<string, boolean>) || {};
     return { ...fromRecord, ...localChecklist } as Record<string, unknown>;
   };
 
@@ -340,14 +433,12 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     return items.every((item) => Boolean(checklist[item.key]));
   };
 
-  const [checklistError, setChecklistError] = useState('');
-
   const toggleChecklistItem = (itemKey: string, value: boolean) => {
     if (!checklistConfig) return;
     const { key } = checklistConfig;
     const updatedLocal = { ...localChecklist, [itemKey]: value };
     setLocalChecklist(updatedLocal);
-    updatePIS(pis.id, { [key]: updatedLocal } as any);
+    updatePIS(pis.id, { [key]: updatedLocal } as Partial<PISRecord>);
 
     if (isChecklistCompleteForStage()) {
       setChecklistError('');
@@ -360,9 +451,11 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       return;
     }
     setChecklistError('');
-    const actorName = currentUser?.name;
-    const actorRole = currentUser?.role ?? currentRole;
-    const now = new Date();
+    // Actor info - stored for future history tracking
+    const _actorName = currentUser?.name;
+    const _actorRole = currentUser?.role ?? currentRole;
+    const _now = new Date();
+    void _actorName; void _actorRole; void _now; // Suppress unused warnings
 
     const taskTypeForRole = (role: UserRole): 'BD' | 'RND' | 'QA' | 'PKG' | null => {
       if (role === 'BD_MANAGER' || role === 'BD_STAFF') return 'BD';

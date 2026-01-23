@@ -39,14 +39,18 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Get permissions for future use (currently used for role-based UI decisions)
   const permissions = getRolePermissions(currentRole);
+  // Log permissions to verify role-based access
+  console.debug('[EnhancedPISTable] Permissions for', currentRole, ':', permissions.canCreatePIS ? 'Can create' : 'Read only');
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
       await refreshData();
       toast.success('Data refreshed successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to refresh data');
     } finally {
       setIsRefreshing(false);

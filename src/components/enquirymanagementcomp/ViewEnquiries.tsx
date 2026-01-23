@@ -14,6 +14,41 @@ interface ViewEnquiriesProps {
   onSelectEnquiry: (enquiry: Enquiry) => void;
 }
 
+// SortButton component extracted outside to avoid re-creation during render
+interface SortButtonProps {
+  field: keyof Enquiry;
+  children: React.ReactNode;
+  sortField: keyof Enquiry;
+  sortDirection: 'asc' | 'desc';
+  onSort: (field: keyof Enquiry) => void;
+}
+
+const SortButton: React.FC<SortButtonProps> = ({ 
+  field, 
+  children, 
+  sortField, 
+  sortDirection, 
+  onSort 
+}) => (
+  <button
+    onClick={() => onSort(field)}
+    className="flex items-center gap-1 hover:bg-gray-50 p-2 rounded transition-colors min-w-0 w-full justify-start"
+  >
+    <span className="truncate">{children}</span>
+    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {sortField === field ? (
+        sortDirection === 'asc' ? (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        ) : (
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        )
+      ) : (
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+      )}
+    </svg>
+  </button>
+);
+
 const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
   const [enquiries] = useState<Enquiry[]>([
     {
@@ -194,25 +229,10 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
     }
   };
 
-  const SortButton = ({ field, children }: { field: keyof Enquiry; children: React.ReactNode }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className="flex items-center gap-1 hover:bg-gray-50 p-2 rounded transition-colors min-w-0 w-full justify-start"
-    >
-      <span className="truncate">{children}</span>
-      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {sortField === field ? (
-          sortDirection === 'asc' ? (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-          ) : (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          )
-        ) : (
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-        )}
-      </svg>
-    </button>
-  );
+  // Sort handler for the SortButton
+  const handleSortField = (field: keyof Enquiry) => {
+    handleSort(field);
+  };
 
   return (
     <div className="w-full space-y-6">
@@ -434,22 +454,22 @@ const ViewEnquiries: React.FC<ViewEnquiriesProps> = ({ onSelectEnquiry }) => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">
-                    <SortButton field="id">Enquiry ID</SortButton>
+                    <SortButton field="id" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Enquiry ID</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
-                    <SortButton field="contactName">Contact Name</SortButton>
+                    <SortButton field="contactName" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Contact Name</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-45">
-                    <SortButton field="email">Email</SortButton>
+                    <SortButton field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Email</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-27.5">
-                    <SortButton field="mobileNumber">Mobile</SortButton>
+                    <SortButton field="mobileNumber" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Mobile</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
-                    <SortButton field="date">Date</SortButton>
+                    <SortButton field="date" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Date</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
-                    <SortButton field="status">Status</SortButton>
+                    <SortButton field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSortField}>Status</SortButton>
                   </th>
                   <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-20">
                     Action

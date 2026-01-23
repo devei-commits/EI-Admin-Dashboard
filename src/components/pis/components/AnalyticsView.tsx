@@ -53,7 +53,7 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
             pis.stage === 'RND_DEVELOPMENT' ||
             pis.stage === 'QUALITY_REVIEW'
           );
-        case 'RND_STAFF':
+        case 'RND_STAFF': {
           if (!currentUser) return false;
           const identities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           return (
@@ -61,6 +61,7 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
             pis.rndStaffAssignment &&
             identities.includes(pis.rndStaffAssignment)
           );
+        }
         case 'QA_MANAGER':
         case 'QA_STAFF':
           return pis.stage === 'QUALITY_REVIEW' || pis.stage === 'WAY_FORWARD';

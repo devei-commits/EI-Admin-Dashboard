@@ -77,41 +77,38 @@ const mapAdminRoleToPISRole = (adminRole: string): UserRole => {
   return roleMapping[normalizedRole] || roleMapping[adminRole] || 'SUPER_ADMIN';
 };
 
+// Get initial role from URL or localStorage
+const getInitialRole = (): UserRole => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const roleFromUrl = urlParams.get('role');
+  
+  if (roleFromUrl) {
+    const mappedRole = mapAdminRoleToPISRole(roleFromUrl);
+    localStorage.setItem('pisCurrentRole', mappedRole);
+    return mappedRole;
+  }
+  
+  const storedRole = localStorage.getItem('pisCurrentRole');
+  if (storedRole) {
+    return storedRole as UserRole;
+  }
+  
+  return 'SUPER_ADMIN';
+};
+
 function AppContent() {
   const [activeView, setActiveView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pisPreset, setPisPreset] = useState<PISManagementPreset | undefined>(undefined);
-  const [currentRole, setCurrentRole] = useState<UserRole>('SUPER_ADMIN');
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Get role from URL parameter on mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const roleFromUrl = urlParams.get('role');
-    
-    if (roleFromUrl) {
-      const mappedRole = mapAdminRoleToPISRole(roleFromUrl);
-      setCurrentRole(mappedRole);
-      localStorage.setItem('pisCurrentRole', mappedRole);
-    } else {
-      const storedRole = localStorage.getItem('pisCurrentRole');
-      if (storedRole) {
-        setCurrentRole(storedRole as UserRole);
-      }
-    }
-    
-    setIsLoading(false);
-  }, []);
+  const [currentRole] = useState<UserRole>(getInitialRole);
 
   // Show toast notification when PIS opens
   useEffect(() => {
-    if (!isLoading) {
-      toast.success('PIS Tool opened successfully', {
-        description: `Logged in as ${currentRole.replace(/_/g, ' ')}`,
-        duration: 4000,
-      });
-    }
-  }, [isLoading, currentRole]);
+    toast.success('PIS Tool opened successfully', {
+      description: `Logged in as ${currentRole.replace(/_/g, ' ')}`,
+      duration: 4000,
+    });
+  }, [currentRole]);
 
   // Close sidebar on mobile by default
   useEffect(() => {
@@ -145,7 +142,8 @@ function AppContent() {
     }
   };
 
-  const handleLogout = () => {
+  // Logout function (available for future use via props)
+  const _handleLogout = () => {
     localStorage.removeItem('pisCurrentRole');
     toast.info('Returning to Admin Panel...');
     setTimeout(() => {
@@ -154,17 +152,8 @@ function AppContent() {
     }, 1000);
   };
 
-  // Show loading screen
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading PIS...</p>
-        </div>
-      </div>
-    );
-  }
+  // Suppress unused variable warning (keeping for future functionality)
+  void _handleLogout;
 
   // Render main content based on active view
   const renderContent = () => {

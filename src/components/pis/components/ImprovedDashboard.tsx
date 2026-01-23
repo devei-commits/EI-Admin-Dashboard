@@ -12,6 +12,46 @@ import { PISDetailsDialog } from './PISDetailsDialog';
 import { getServerBaseUrl, pisApi } from '../utils/api';
 import { toast } from 'sonner';
 
+// Type definitions for dashboard data
+interface PendingUpload {
+  id: string;
+  fileName?: string;
+  fileUrl?: string;
+  pis?: {
+    pisCode?: string;
+    stage?: string;
+  };
+}
+
+interface StageCount {
+  stage: string;
+  count: number;
+}
+
+interface StatusCount {
+  status: string;
+  count: number;
+}
+
+interface Deadline {
+  id: string;
+  pisCode?: string;
+  customer?: string;
+  stage?: string;
+  dueAt?: string;
+  isOverdue?: boolean;
+}
+
+interface TopClient {
+  name: string;
+  count: number;
+}
+
+interface WorkloadItem {
+  assignee: string;
+  count: number;
+}
+
 interface ImprovedDashboardProps {
   currentRole: UserRole;
   onNavigate?: (view: string) => void;
@@ -34,7 +74,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
   const serverBaseUrl = getServerBaseUrl();
   const [selectedPIS, setSelectedPIS] = useState<PISRecord | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [pendingUploads, setPendingUploads] = useState<any[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [isPendingUploadsLoading, setIsPendingUploadsLoading] = useState(false);
 
   useEffect(() => {
@@ -63,11 +103,12 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       } else {
         setPendingUploads([]);
       }
-    } catch (e: any) {
-      console.error('Failed to load pending uploads:', e);
+    } catch (e: unknown) {
+      const error = e as Error;
+      console.error('Failed to load pending uploads:', error);
       setPendingUploads([]);
       // Only show toast for non-permission errors
-      const errorMessage = e.message || 'Unknown error';
+      const errorMessage = error.message || 'Unknown error';
       if (!errorMessage.includes('Access denied') && !errorMessage.includes('Authentication required')) {
         toast.error(`Failed to load pending client uploads: ${errorMessage}`);
       }
@@ -106,26 +147,29 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             pis.assignedBdRole === 'BD_STAFF' &&
             (!!currentUser && pis.assignedBdStaffId === currentUser.id)
           );
-        case 'RND_LEAD':
+        case 'RND_LEAD': {
           // RND_LEAD sees ONLY PIS assigned to them via rndLeadAssignment
           if (!currentUser) return false;
           const rndLeadIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToRndLead = !!pis.rndLeadAssignment && rndLeadIdentities.includes(pis.rndLeadAssignment);
           return isAssignedToRndLead;
-        case 'RND_STAFF':
+        }
+        case 'RND_STAFF': {
           // RND_STAFF sees ONLY PIS assigned to them via rndStaffAssignment
           if (!currentUser) return false;
           const rndIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToRndStaff = !!pis.rndStaffAssignment && rndIdentities.includes(pis.rndStaffAssignment);
           return isAssignedToRndStaff;
+        }
         case 'QA_MANAGER':
-        case 'QA_STAFF':
+        case 'QA_STAFF': {
           // QA_MANAGER and QA_STAFF see ONLY PIS assigned to them via qaAssignment
           if (!currentUser) return false;
           const qaIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToQA = !!pis.qaAssignment && qaIdentities.includes(pis.qaAssignment);
           return isAssignedToQA;
-        case 'PKG_STAFF':
+        }
+        case 'PKG_STAFF': {
           // PKG_STAFF sees ONLY PIS assigned to them via packaging assignment fields
           if (!currentUser) return false;
           const pkgIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
@@ -135,6 +179,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             (pis.pkgLabelSubmission && pkgIdentities.includes(pis.pkgLabelSubmission)) ||
             (pis.sampleDispatchPreparation && pkgIdentities.includes(pis.sampleDispatchPreparation));
           return isAssignedToPKG;
+        }
         case 'CLIENT':
           // CLIENT filtering is now handled by backend via ClientPIS table
           // Frontend receives only PIS records the client has access to
@@ -151,8 +196,8 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
     const fromApi = dashboardStats?.stageCounts;
     if (Array.isArray(fromApi) && fromApi.length) {
       return fromApi
-        .map((s: any) => ({ stage: getStageLabel(String(s.stage)), count: Number(s.count || 0) }))
-        .sort((a: any, b: any) => b.count - a.count);
+        .map((s: StageCount) => ({ stage: getStageLabel(String(s.stage)), count: Number(s.count || 0) }))
+        .sort((a: StageCount, b: StageCount) => b.count - a.count);
     }
 
     return roleScopedPISRecords
@@ -175,7 +220,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
 
     const fromApi = dashboardStats?.statusCounts;
     if (Array.isArray(fromApi) && fromApi.length) {
-      return fromApi.map((s: any) => ({
+      return fromApi.map((s: StatusCount) => ({
         status: normalizeStatus(String(s.status)),
         count: Number(s.count || 0),
       }));
@@ -194,7 +239,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
   }, [roleScopedPISRecords, dashboardStats]);
 
   const workflow = dashboardStats?.workflow;
-  const deadlines: any[] = Array.isArray(workflow?.deadlines) ? workflow.deadlines : [];
+  const deadlines: Deadline[] = Array.isArray(workflow?.deadlines) ? workflow.deadlines : [];
 
   // Timeline data - PIS created over time
   const timelineData = useMemo(() => {
@@ -248,12 +293,13 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
         case 'RND_STAFF':
           return pis.stage === 'RND_DEVELOPMENT' || pis.stage === 'QUALITY_REVIEW';
         case 'QA_MANAGER':
-        case 'QA_STAFF':
+        case 'QA_STAFF': {
           // QA_MANAGER and QA_STAFF see ONLY PIS assigned to them via qaAssignment
           if (!currentUser) return false;
           const qaIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToQA = !!pis.qaAssignment && qaIdentities.includes(pis.qaAssignment);
           return isAssignedToQA;
+        }
         case 'PKG_STAFF':
           return pis.stage === 'PACKAGING' || pis.stage === 'QUALITY_REVIEW';
         case 'CLIENT':
@@ -263,7 +309,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
           return false;
       }
     }).filter(pis => pis.status !== 'COMPLETED' && pis.status !== 'TERMINATED');
-  }, [roleScopedPISRecords, currentRole]);
+  }, [roleScopedPISRecords, currentRole, currentUser]);
 
   // Overdue items (idle thresholds from the workflow)
   const overdueItems = useMemo(() => {
@@ -404,7 +450,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
               <div className="text-sm text-gray-500">No upcoming deadlines.</div>
             ) : (
               <div className="space-y-2">
-                {deadlines.map((d: any) => {
+                {deadlines.map((d: Deadline) => {
                   const dueAt = d?.dueAt ? new Date(String(d.dueAt)) : null;
                   const isOverdue = Boolean(d?.isOverdue);
                   return (
@@ -476,7 +522,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             <div className="text-sm text-gray-500">No pending uploads.</div>
           ) : (
             <div className="space-y-2">
-              {pendingUploads.map((a: any) => (
+              {pendingUploads.map((a: PendingUpload) => (
                 <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg bg-white">
                   <div className="min-w-0">
                     <p className="font-medium truncate">{a.fileName || 'Attachment'}</p>
@@ -503,8 +549,9 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
                           await pisApi.moderateClientAttachment(a.id, 'APPROVE');
                           toast.success('Approved');
                           await fetchPendingUploads();
-                        } catch (e: any) {
-                          toast.error(e?.message || 'Approve failed');
+                        } catch (e: unknown) {
+                          const error = e as Error;
+                          toast.error(error?.message || 'Approve failed');
                         }
                       }}
                     >
@@ -518,8 +565,9 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
                           await pisApi.moderateClientAttachment(a.id, 'REJECT');
                           toast.success('Rejected');
                           await fetchPendingUploads();
-                        } catch (e: any) {
-                          toast.error(e?.message || 'Reject failed');
+                        } catch (e: unknown) {
+                          const error = e as Error;
+                          toast.error(error?.message || 'Reject failed');
                         }
                       }}
                       className="border-red-300 text-red-700 hover:bg-red-50"
@@ -541,7 +589,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             <h3 className="text-lg font-medium mb-4">Top Clients (Active)</h3>
             {Array.isArray(workflow?.topClients) && workflow.topClients.length ? (
               <div className="space-y-2">
-                {workflow.topClients.map((c: any) => (
+                {workflow.topClients.map((c: TopClient) => (
                   <div key={c.name} className="flex items-center justify-between text-sm">
                     <span className="text-gray-700 truncate">{c.name}</span>
                     <span className="font-medium">{c.count}</span>
@@ -587,7 +635,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-3 space-y-1">
-              {(workflow?.rnd?.workloadByScientist || []).slice(0, 4).map((w: any) => (
+              {(workflow?.rnd?.workloadByScientist || []).slice(0, 4).map((w: WorkloadItem) => (
                 <div key={w.assignee} className="flex items-center justify-between text-xs text-gray-600">
                   <span className="truncate">{w.assignee}</span>
                   <span className="font-medium">{w.count}</span>

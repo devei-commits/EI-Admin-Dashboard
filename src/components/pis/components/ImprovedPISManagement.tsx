@@ -55,6 +55,7 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
 
   const lastAppliedPresetKeyRef = useRef<number | null>(null);
 
+  // Apply preset when it changes - this is intentional state sync from props
   useEffect(() => {
     if (!preset) return;
     if (lastAppliedPresetKeyRef.current === preset.key) return;
@@ -95,33 +96,37 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
               pis.stage === 'WAY_FORWARD') &&
             pis.assignedBdRole !== 'BD_STAFF'
           );
-        case 'BD_STAFF':
+        case 'BD_STAFF': {
           // BD_STAFF sees ALL PIS assigned to them, regardless of stage
           if (!currentUser || pis.assignedBdRole !== 'BD_STAFF') return false;
           // Handle type mismatch: assignedBdStaffId might be string or number, currentUser.id is string
           const assignedId = pis.assignedBdStaffId?.toString();
           const userId = currentUser.id?.toString();
           return assignedId === userId;
-        case 'RND_LEAD':
+        }
+        case 'RND_LEAD': {
           // RND_LEAD sees ONLY PIS assigned to them via rndLeadAssignment
           if (!currentUser) return false;
           const rndLeadIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToRndLead = !!pis.rndLeadAssignment && rndLeadIdentities.includes(pis.rndLeadAssignment);
           return isAssignedToRndLead;
-        case 'RND_STAFF':
+        }
+        case 'RND_STAFF': {
           // RND_STAFF sees ONLY PIS assigned to them via rndStaffAssignment
           if (!currentUser) return false;
           const rndIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToRndStaff = !!pis.rndStaffAssignment && rndIdentities.includes(pis.rndStaffAssignment);
           return isAssignedToRndStaff;
+        }
         case 'QA_MANAGER':
-        case 'QA_STAFF':
+        case 'QA_STAFF': {
           // QA_MANAGER and QA_STAFF see ONLY PIS assigned to them via qaAssignment
           if (!currentUser) return false;
           const qaIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
           const isAssignedToQA = !!pis.qaAssignment && qaIdentities.includes(pis.qaAssignment);
           return isAssignedToQA;
-        case 'PKG_STAFF':
+        }
+        case 'PKG_STAFF': {
           // PKG_STAFF sees ONLY PIS assigned to them via packaging assignment fields
           if (!currentUser) return false;
           const pkgIdentities = [currentUser.id, currentUser.email, currentUser.name].filter(Boolean);
@@ -131,6 +136,7 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
             (pis.pkgLabelSubmission && pkgIdentities.includes(pis.pkgLabelSubmission)) ||
             (pis.sampleDispatchPreparation && pkgIdentities.includes(pis.sampleDispatchPreparation));
           return isAssignedToPKG;
+        }
         case 'CLIENT':
           // CLIENT filtering is now handled by backend via ClientPIS table
           // Frontend receives only PIS records the client has access to
@@ -211,7 +217,7 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
 
       return true;
     });
-  }, [roleScopedPISRecords, filters, activeTab, presetMode]);
+  }, [roleScopedPISRecords, filters, activeTab, presetMode, currentRole]);
 
   const handleViewDetails = (id: string) => {
     setSelectedPISId(id);
