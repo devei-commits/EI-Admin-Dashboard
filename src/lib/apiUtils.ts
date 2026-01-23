@@ -2,6 +2,8 @@
  * API utilities with error handling and retry logic
  */
 
+import { parseError, ApiError as ParsedApiError, retryWithBackoff } from './errorHandler';
+
 interface ApiError extends Error {
   status?: number;
   code?: string;
@@ -11,12 +13,14 @@ interface RetryConfig {
   maxRetries?: number;
   retryDelay?: number;
   retryOn?: number[];
+  timeout?: number;
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
   retryDelay: 1000,
   retryOn: [408, 429, 500, 502, 503, 504],
+  timeout: 10000,
 };
 
 /**
@@ -25,29 +29,50 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Fetch with retry logic
+ * Timeout wrapper
+ */
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), ms)
+    ),
+  ]);
+};
+
+/**
+ * Fetch with retry logic and timeout
  */
 export const fetchWithRetry = async <T>(
   url: string,
   options?: RequestInit,
   retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
 ): Promise<T> => {
-  const { maxRetries = 3, retryDelay = 1000, retryOn = [500, 502, 503, 504] } = retryConfig;
+  const { 
+    maxRetries = 3, 
+    retryDelay = 1000, 
+    retryOn = [500, 502, 503, 504],
+    timeout = 10000
+  } = retryConfig;
   
   let lastError: ApiError | null = null;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
-      });
+      const response = await withTimeout(
+        fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options?.headers,
+          },
+        }),
+        timeout
+      );
 
       if (!response.ok) {
         const error: ApiError = new Error(`HTTP error! status: ${response.status}`);
+
         error.status = response.status;
         
         if (retryOn.includes(response.status) && attempt < maxRetries) {

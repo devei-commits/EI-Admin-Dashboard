@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './lib/queryClient'
@@ -7,6 +7,7 @@ import { ToastProvider } from './context/ToastContext'
 import { VendorClientProvider } from './context/VendorClientContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import Sidebar from "./components/sidebar/sidebar"
+import { monitorConnection } from './lib/performanceOptimization'
 
 // Lazy loaded pages for better performance
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -43,9 +44,26 @@ const PageLoader = () => (
   </div>
 )
 
+// Network status indicator
+const NetworkStatus = ({ isOnline }: { isOnline: boolean }) => {
+  if (isOnline) return null;
+  return (
+    <div className="fixed top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-center text-sm font-medium z-[9999]">
+      ⚠️ You are offline. Some features may be limited.
+    </div>
+  );
+}
+
 // Layout component that conditionally renders the sidebar
 const AppLayout = () => {
   const location = useLocation();
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const cleanup = monitorConnection(setIsOnline);
+    return cleanup;
+  }, []);
+
   const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
   const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
   const isOrderHubRoute = location.pathname === '/order-hub' || location.pathname.startsWith('/order-hub/');
@@ -128,9 +146,17 @@ const AppLayout = () => {
 };
 
 const App = () => {
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const cleanup = monitorConnection(setIsOnline);
+    return cleanup;
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <NetworkStatus isOnline={isOnline} />
         <ToastProvider>
           <VendorClientProvider>
             <ItemsProvider>
