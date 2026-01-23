@@ -10,3 +10,4 @@ export * from './order.service';
 export * from './user.service';
 export * from './master.service';
 export * from './auth.service';
+export * from './ticket.service';
