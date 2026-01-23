@@ -90,7 +90,7 @@ export async function fetchRawMaterials(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -108,7 +108,7 @@ export async function fetchRawMaterialById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -126,7 +126,7 @@ export async function createRawMaterial(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -145,7 +145,7 @@ export async function updateRawMaterial(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -163,7 +163,7 @@ export async function deleteRawMaterial(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -183,7 +183,7 @@ export async function fetchPackagingItems(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -201,7 +201,7 @@ export async function fetchPackagingItemById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -219,7 +219,7 @@ export async function createPackagingItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -238,7 +238,7 @@ export async function updatePackagingItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -256,7 +256,7 @@ export async function deletePackagingItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -276,7 +276,7 @@ export async function fetchVendors(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -294,7 +294,7 @@ export async function fetchVendorById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -312,7 +312,7 @@ export async function createVendor(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -331,7 +331,7 @@ export async function updateVendor(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -349,7 +349,7 @@ export async function deleteVendor(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -369,7 +369,7 @@ export async function fetchClients(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -387,7 +387,7 @@ export async function fetchClientById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -405,7 +405,7 @@ export async function createClient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -424,7 +424,7 @@ export async function updateClient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -442,7 +442,7 @@ export async function deleteClient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -462,7 +462,7 @@ export async function fetchItems(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -480,7 +480,7 @@ export async function fetchItemById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -498,7 +498,7 @@ export async function createItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -517,7 +517,7 @@ export async function updateItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -535,7 +535,7 @@ export async function deleteItem(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -555,7 +555,7 @@ export async function fetchActiveIngredients(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -573,7 +573,7 @@ export async function createActiveIngredient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -592,7 +592,7 @@ export async function updateActiveIngredient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -610,6 +610,6 @@ export async function deleteActiveIngredient(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }

@@ -37,7 +37,7 @@ export async function fetchUsers(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -55,7 +55,7 @@ export async function fetchUserById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -73,7 +73,7 @@ export async function createUser(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -92,7 +92,7 @@ export async function updateUser(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -110,7 +110,7 @@ export async function deleteUser(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -129,7 +129,7 @@ export async function updateUserStatus(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -148,7 +148,7 @@ export async function assignUserRole(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -166,7 +166,7 @@ export async function fetchRoles(): Promise<ServiceResult<Role[]>> {
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -184,7 +184,7 @@ export async function fetchRoleById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -202,7 +202,7 @@ export async function createRole(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -221,7 +221,7 @@ export async function updateRole(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -239,7 +239,7 @@ export async function deleteRole(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -257,7 +257,7 @@ export async function fetchPermissions(): Promise<ServiceResult<Role['permission
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -276,6 +276,6 @@ export async function updateRolePermissions(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }

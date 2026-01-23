@@ -315,10 +315,10 @@ const EnquiryManagementEnhanced: React.FC = () => {
   const loadTickets = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await fetchTickets(filters, { page: currentPage, limit: recordsPerPage });
+      const result = await fetchTickets(filters, { page: currentPage, pageSize: recordsPerPage });
       if (result.success && result.data) {
         // Use mock data for now since API is not implemented
-        // setTickets(result.data.items);
+        // setTickets(result.data.data);
       }
     } catch (error) {
       console.error('Error loading tickets:', error);

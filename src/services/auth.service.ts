@@ -57,7 +57,7 @@ export async function login(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -73,7 +73,7 @@ export async function logout(): Promise<ServiceResult<void>> {
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -91,7 +91,7 @@ export async function refreshToken(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -107,7 +107,7 @@ export async function getCurrentUser(): Promise<ServiceResult<User>> {
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -125,7 +125,7 @@ export async function updateProfile(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -145,7 +145,7 @@ export async function requestPasswordReset(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -164,7 +164,7 @@ export async function resetPassword(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -182,7 +182,7 @@ export async function changePassword(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -200,7 +200,7 @@ export async function getActiveSessions(): Promise<ServiceResult<SessionInfo[]>>
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -218,7 +218,7 @@ export async function revokeSession(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -234,7 +234,7 @@ export async function revokeAllSessions(): Promise<ServiceResult<void>> {
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -254,7 +254,7 @@ export async function validateToken(
   return {
     data: { valid: true },
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 

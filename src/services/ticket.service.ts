@@ -178,11 +178,16 @@ export async function fetchTickets(
   return {
     success: true,
     data: {
-      items: [],
-      total: 0,
-      page: params?.page || 1,
-      pageSize: params?.limit || 10,
-      totalPages: 0,
+      data: [],
+      pagination: {
+        page: params?.page || 1,
+        pageSize: params?.pageSize || 10,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+      },
+      success: true,
     },
   };
 }
@@ -200,7 +205,7 @@ export async function fetchTicketById(
 
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -218,7 +223,7 @@ export async function createTicket(
   console.log('Creating ticket:', payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -237,7 +242,7 @@ export async function updateTicket(
   console.log('Updating ticket:', ticketId, payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -255,7 +260,7 @@ export async function deleteTicket(
   console.log('Deleting ticket:', ticketId);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -277,7 +282,7 @@ export async function updateTicketStatus(
   console.log('Updating ticket status:', ticketId, status, notes);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -295,7 +300,7 @@ export async function updateTicketPriority(
   console.log('Updating ticket priority:', ticketId, priority, reason);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -316,7 +321,7 @@ export async function assignTicket(
   console.log('Assigning ticket:', payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -333,7 +338,7 @@ export async function unassignTicket(
   console.log('Unassigning ticket:', ticketId, reason);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -351,7 +356,7 @@ export async function transferTicket(
   console.log('Transferring ticket:', ticketId, toDepartment, notes);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -369,7 +374,7 @@ export async function escalateTicket(
   console.log('Escalating ticket:', ticketId, reason, escalateTo);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -387,7 +392,7 @@ export async function resolveTicket(
   console.log('Resolving ticket:', payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -404,7 +409,7 @@ export async function reopenTicket(
   console.log('Reopening ticket:', ticketId, reason);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -421,7 +426,7 @@ export async function closeTicket(
   console.log('Closing ticket:', ticketId, notes);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -439,7 +444,7 @@ export async function addTicketMessage(
   console.log('Adding message to ticket:', payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -469,7 +474,7 @@ export async function addTicketNote(
   console.log('Adding note to ticket:', ticketId, note);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -487,7 +492,7 @@ export async function linkOrderToTicket(
   console.log('Linking order to ticket:', payload);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -504,7 +509,7 @@ export async function unlinkOrderFromTicket(
   console.log('Unlinking order from ticket:', ticketId, orderId);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -655,7 +660,7 @@ export async function exportTickets(
   console.log('Exporting tickets:', filters, format);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -672,7 +677,7 @@ export async function generateTicketReport(
   console.log('Generating report:', reportType, dateRange);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -691,7 +696,7 @@ export async function bulkUpdateTicketStatus(
   console.log('Bulk updating ticket status:', ticketIds, status);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 
@@ -708,7 +713,7 @@ export async function bulkAssignTickets(
   console.log('Bulk assigning tickets:', ticketIds, staffId);
   return {
     success: false,
-    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet' },
+    error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
   };
 }
 

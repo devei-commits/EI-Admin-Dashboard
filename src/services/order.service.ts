@@ -39,7 +39,7 @@ export async function fetchOrders(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -57,7 +57,7 @@ export async function fetchOrderById(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -75,7 +75,7 @@ export async function createOrder(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -94,7 +94,7 @@ export async function updateOrder(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -112,7 +112,7 @@ export async function deleteOrder(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -134,7 +134,7 @@ export async function updateOrderStatus(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -153,7 +153,7 @@ export async function bulkUpdateOrderStatus(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -173,7 +173,7 @@ export async function fetchOrderHubItems(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -191,7 +191,7 @@ export async function fetchOrderReviews(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -211,7 +211,7 @@ export async function updateOrderStage(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -231,7 +231,7 @@ export async function fetchBOMItems(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -250,7 +250,7 @@ export async function updateBOMItemStatus(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -270,7 +270,7 @@ export async function fetchGoodReceivingRecords(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -288,7 +288,7 @@ export async function createGoodReceivingRecord(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -307,7 +307,7 @@ export async function updateGoodReceivingStatus(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -325,7 +325,7 @@ export async function fetchSavedFilters(): Promise<ServiceResult<SavedFilter[]>>
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -343,7 +343,7 @@ export async function saveFilter(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -361,7 +361,7 @@ export async function deleteFilter(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -381,7 +381,7 @@ export async function fetchOrderAuditLogs(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }
 
@@ -402,6 +402,6 @@ export async function exportOrders(
   return {
     data: null,
     error: null,
-    isSuccess: true,
+    success: true,
   };
 }

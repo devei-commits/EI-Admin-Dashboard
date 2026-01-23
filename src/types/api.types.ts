@@ -69,9 +69,9 @@ export interface EndpointConfig {
 
 // ==================== Service Response Types ====================
 export interface ServiceResult<T> {
-  data: T | null;
-  error: ApiError | null;
-  isSuccess: boolean;
+  success: boolean;
+  data?: T | null;
+  error?: ApiError | null;
 }
 
 export interface BatchOperationResult {
