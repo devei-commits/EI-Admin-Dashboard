@@ -1283,115 +1283,320 @@ const OrderHub = () => {
               </select>
             </div>
 
-            {/* Orders Grid */}
+            {/* Orders Table */}
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {orders
-                  .filter(order => {
-                    const matchesSearch = !searchQuery || 
-                      order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
-                    const matchesStage = statusFilter === 'ALL' || order.currentStage === parseInt(statusFilter);
-                    return matchesSearch && matchesStage;
-                  })
-                  .map(order => (
-                    <div key={order.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      {/* Order Header */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <h3 className="font-semibold text-gray-900">{order.orderNo}</h3>
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                              order.orderType === 'REORDER' 
-                                ? 'bg-blue-100 text-blue-700' 
-                                : order.orderType === 'NEW ORDER'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-orange-100 text-orange-700'
-                            }`}>
-                              {order.orderType}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{order.itemName}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">SKU: {order.sku} • Qty: {order.qty}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-gray-700">Stage {order.currentStage}/6</div>
-                          <div className="text-xs text-gray-500 mt-1">{STAGES.find(s => s.id === order.currentStage)?.name}</div>
-                        </div>
-                      </div>
-
-                      {/* Stage Progress Bar */}
-                      <div className="mb-4">
-                        <div className="flex gap-1.5 items-center">
-                          {STAGES.map((stage) => {
-                            const status = order.stageProgress?.[stage.id] || 'pending';
-                            const isCurrentStage = stage.id === order.currentStage;
-                            return (
-                              <div
-                                key={stage.id}
-                                className={`flex-1 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-all ${
-                                  status === 'completed'
-                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                                    : isCurrentStage
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                                    : 'bg-gray-100 text-gray-500 border border-gray-300'
-                                }`}
-                                title={stage.name}
-                              >
-                                <span>{getStageStatusIcon(status)}</span>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-gray-100 sticky left-0 z-10">
+                        Order ID
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Item Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        SKU
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Qty
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Order Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Est. Delivery
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Current Stage
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Stage Progress
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Unit Rate
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {orders
+                      .filter(order => {
+                        const matchesSearch = !searchQuery || 
+                          order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
+                        const matchesStage = statusFilter === 'ALL' || order.currentStage === parseInt(statusFilter);
+                        return matchesSearch && matchesStage;
+                      })
+                      .map(order => {
+                        const hasRecentUpdate = lastUpdatedDates[order.id] && 
+                          new Date(lastUpdatedDates[order.id]).getTime() > Date.now() - 5000;
+                        
+                        return (
+                          <tr 
+                            key={order.id} 
+                            className={`hover:bg-amber-50 transition-colors ${
+                              hasRecentUpdate ? 'animate-pulse bg-green-50' : ''
+                            }`}
+                          >
+                            {/* Order ID - Sticky Left Column */}
+                            <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 border-r border-gray-200 bg-gray-50 sticky left-0">
+                              <div className="flex items-center gap-2">
+                                {hasRecentUpdate && (
+                                  <span className="flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                  </span>
+                                )}
+                                {order.orderNo}
                               </div>
-                            );
-                          })}
+                            </td>
+
+                            {/* Order Type */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                order.orderType === 'REORDER' 
+                                  ? 'bg-blue-100 text-blue-700' 
+                                  : order.orderType === 'NEW ORDER'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-orange-100 text-orange-700'
+                              }`}>
+                                {order.orderType}
+                              </span>
+                            </td>
+
+                            {/* Item Name */}
+                            <td className="px-4 py-3">
+                              <div className="max-w-xs">
+                                <p className="text-sm font-medium text-gray-900 truncate">{order.itemName}</p>
+                              </div>
+                            </td>
+
+                            {/* SKU */}
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                              {order.sku}
+                            </td>
+
+                            {/* Quantity */}
+                            <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-medium text-gray-900">
+                              {order.qty}
+                            </td>
+
+                            {/* Order Date */}
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                              {order.odrDate}
+                            </td>
+
+                            {/* Est. Delivery */}
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                              {order.estDelDate}
+                            </td>
+
+                            {/* Current Stage */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                                  Stage {order.currentStage}/6
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {STAGES.find(s => s.id === order.currentStage)?.name}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Stage Progress Indicators */}
+                            <td className="px-4 py-3">
+                              <div className="flex gap-1 items-center justify-center">
+                                {STAGES.map((stage) => {
+                                  const status = order.stageProgress?.[stage.id] || 'pending';
+                                  const isCurrentStage = stage.id === order.currentStage;
+                                  return (
+                                    <div
+                                      key={stage.id}
+                                      className={`w-8 h-8 rounded flex items-center justify-center text-xs font-bold transition-all ${
+                                        status === 'completed'
+                                          ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                                          : isCurrentStage
+                                          ? 'bg-blue-100 text-blue-700 border-2 border-blue-400 ring-2 ring-blue-200'
+                                          : 'bg-gray-100 text-gray-400 border border-gray-300'
+                                      }`}
+                                      title={`${stage.name}: ${status}`}
+                                    >
+                                      {getStageStatusIcon(status)}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                order.currentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                order.currentStatus === 'UNDER REVIEW' ? 'bg-amber-100 text-amber-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                                {order.currentStatus}
+                              </span>
+                            </td>
+
+                            {/* Unit Rate */}
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                              ₹{order.unitRate}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-3 whitespace-nowrap text-center">
+                              <button
+                                onClick={() => setSelectedOrderDetails(order)}
+                                className="inline-flex items-center px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
+                              >
+                                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                View
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Order Details Modal */}
+            {selectedOrderDetails && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setSelectedOrderDetails(null)}>
+                <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-4xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
+                      <p className="text-sm text-gray-600 mt-1">Order No: {selectedOrderDetails.orderNo}</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedOrderDetails(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* Left Column */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order No</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.orderNo}</p>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-2 px-1">
-                          {STAGES.map((stage) => (
-                            <span key={stage.id} className="text-center" style={{ width: `calc(100% / 6)` }}>
-                              {stage.id}
-                            </span>
-                          ))}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Type</label>
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            selectedOrderDetails.orderType === 'SO' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {selectedOrderDetails.orderType}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">SKU</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.sku}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Item Name</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.itemName}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Quantity</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.qty}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Unit Rate</label>
+                          <p className="text-sm font-medium text-gray-900">₹{selectedOrderDetails.unitRate}</p>
                         </div>
                       </div>
 
-                      {/* Order Details Grid */}
-                      <div className="grid grid-cols-4 gap-3 mb-4 pb-4 border-b border-gray-200">
+                      {/* Right Column */}
+                      <div className="space-y-4">
                         <div>
-                          <span className="text-xs text-gray-500 font-medium">Order Date</span>
-                          <p className="text-sm text-gray-700 font-medium">{order.odrDate}</p>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Date</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.odrDate}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-gray-500 font-medium">Est. Delivery</span>
-                          <p className="text-sm text-gray-700 font-medium">{order.estDelDate}</p>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Est. Delivery Date</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.estDelDate}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-gray-500 font-medium">Unit Rate</span>
-                          <p className="text-sm text-gray-700 font-medium">₹{order.unitRate}</p>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Stage</label>
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                            Stage {selectedOrderDetails.currentStage}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-xs text-gray-500 font-medium">Status</span>
-                          <p className={`text-sm font-medium ${
-                            order.currentStatus === 'COMPLETED' ? 'text-green-600' :
-                            order.currentStatus === 'UNDER REVIEW' ? 'text-amber-600' :
-                            'text-blue-600'
-                          }`}>{order.currentStatus}</p>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Status</label>
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            selectedOrderDetails.currentStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                            selectedOrderDetails.currentStatus === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {selectedOrderDetails.currentStatus}
+                          </span>
                         </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setSelectedOrderDetails(order)}
-                          className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors"
-                        >
-                          View Details
-                        </button>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - EI</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseEI}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - Architecture</label>
+                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseArch}</p>
+                        </div>
                       </div>
                     </div>
-                  ))}
+
+                    {/* Comments Section */}
+                    {selectedOrderDetails.comments && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Comments</label>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <p className="text-sm text-gray-700">{selectedOrderDetails.comments}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* POC for Current Status */}
+                    {selectedOrderDetails.pocForCurrentStatus && (
+                      <div className="mt-4">
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">POC for Current Status</label>
+                        <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.pocForCurrentStatus}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button
+                      onClick={() => setSelectedOrderDetails(null)}
+                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1668,127 +1873,6 @@ const OrderHub = () => {
                         ))}
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Order Details Modal */}
-            {selectedOrderDetails && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setSelectedOrderDetails(null)}>
-                <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-4xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
-                      <p className="text-sm text-gray-600 mt-1">Order No: {selectedOrderDetails.orderNo}</p>
-                    </div>
-                    <button 
-                      onClick={() => setSelectedOrderDetails(null)}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
-                    <div className="grid grid-cols-2 gap-6">
-                      {/* Left Column */}
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order No</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.orderNo}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Type</label>
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            selectedOrderDetails.orderType === 'SO' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {selectedOrderDetails.orderType}
-                          </span>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">SKU</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.sku}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Item Name</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.itemName}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Quantity</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.qty}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Unit Rate</label>
-                          <p className="text-sm font-medium text-gray-900">₹{selectedOrderDetails.unitRate}</p>
-                        </div>
-                      </div>
-
-                      {/* Right Column */}
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Order Date</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.odrDate}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Est. Delivery Date</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.estDelDate}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Stage</label>
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                            Stage {selectedOrderDetails.currentStage}
-                          </span>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Current Status</label>
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            selectedOrderDetails.currentStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                            selectedOrderDetails.currentStatus === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
-                            'bg-green-100 text-green-800'
-                          }`}>
-                            {selectedOrderDetails.currentStatus}
-                          </span>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - EI</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseEI}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">License - Architecture</label>
-                          <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.licenseArch}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Comments Section */}
-                    {selectedOrderDetails.comments && (
-                      <div className="mt-6 pt-6 border-t border-gray-200">
-                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Comments</label>
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                          <p className="text-sm text-gray-700">{selectedOrderDetails.comments}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* POC for Current Status */}
-                    {selectedOrderDetails.pocForCurrentStatus && (
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">POC for Current Status</label>
-                        <p className="text-sm font-medium text-gray-900">{selectedOrderDetails.pocForCurrentStatus}</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                    <button
-                      onClick={() => setSelectedOrderDetails(null)}
-                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
-                    >
-                      Close
-                    </button>
                   </div>
                 </div>
               </div>
