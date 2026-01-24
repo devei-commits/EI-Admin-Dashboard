@@ -210,68 +210,31 @@ export default function IssuedPOS() {
   };
 
   return (
-    <div className="p-4 md:p-6 bg-white">
-      {/* Header Section */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Issued POS</h2>
-
-        {/* Selection and Filters */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={selectedRequests.length === paginatedData.length && paginatedData.length > 0}
-                onChange={toggleSelectAll}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-600">Select all</span>
-            </label>
-            <span className="text-sm text-gray-600">{selectedRequests.length} Selected</span>
+    <div className="w-full h-full flex flex-col">
+      {/* Header with search and controls */}
+      <div className="bg-gradient-to-r from-amber-100 to-orange-100 p-4 border-b border-amber-300">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Search by SKU, Item Name, or PO Number..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
           </div>
-
-          {/* Category Filter */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-600">Filter By Category :</span>
-            {['All', 'RM', 'PM'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => {
-                  setSelectedCategory(cat);
-                  setCurrentPage(1);
-                }}
-                className={`px-3 py-1 rounded text-sm font-medium transition ${
-                  selectedCategory === cat
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">
-              Show Category
-            </button>
-            <button className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700">
-              + Sync New PO
-            </button>
-          </div>
-        </div>
-
-        {/* Entries and Search */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Show</span>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Show:</span>
             <select
               value={entriesPerPage}
               onChange={(e) => {
                 setEntriesPerPage(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="px-2 py-1 border border-gray-300 rounded text-sm"
+              className="px-2 py-1 border border-amber-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
             >
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -279,26 +242,15 @@ export default function IssuedPOS() {
             </select>
             <span className="text-sm text-gray-600">entries</span>
           </div>
-
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-3 py-2 border border-gray-300 rounded text-sm w-full md:w-48"
-          />
         </div>
       </div>
 
       {/* Desktop Table */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-x-auto flex-1">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="bg-amber-50 border-b border-gray-300">
-              <th className="p-2 text-left border border-gray-300 w-8">
+            <tr className="bg-amber-200 sticky top-0">
+              <th className="border border-amber-300 p-2 text-left whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={selectedRequests.length === paginatedData.length && paginatedData.length > 0}
@@ -306,27 +258,27 @@ export default function IssuedPOS() {
                   className="w-4 h-4"
                 />
               </th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">ID #</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">ITEM SKU</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Item Name</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Category</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">PO No</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">PO QTY</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Created_Dt</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Approved_Dt</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">ExptedDate</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Vendor</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">SOURCE</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Terms</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">Comments</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">GRN Status</th>
-              <th className="p-2 text-left border border-gray-300 whitespace-nowrap">ActionBtns</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">ID #</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">ITEM SKU</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold">Item Name</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Category</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">PO No</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">PO QTY</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Created_Dt</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Approved_Dt</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">ExptedDate</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold">Vendor</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">SOURCE</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Terms</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Comments</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">GRN Status</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">ActionBtns</th>
             </tr>
           </thead>
           <tbody>
             {paginatedData.map((item) => (
-              <tr key={item.id} className="border-b border-gray-300 hover:bg-amber-50">
-                <td className="p-2 border border-gray-300 text-center">
+              <tr key={item.id} className="hover:bg-amber-50 transition-colors">
+                <td className="border border-amber-300 p-2">
                   <input
                     type="checkbox"
                     checked={selectedRequests.includes(item.id)}
@@ -334,31 +286,41 @@ export default function IssuedPOS() {
                     className="w-4 h-4"
                   />
                 </td>
-                <td className="p-2 border border-gray-300">{item.id}</td>
-                <td className="p-2 border border-gray-300 font-medium">{item.itemSku}</td>
-                <td className="p-2 border border-gray-300 max-w-xs">{item.itemName}</td>
-                <td className="p-2 border border-gray-300">
+                <td className="border border-amber-300 p-2 font-mono whitespace-nowrap">{item.id}</td>
+                <td className="border border-amber-300 p-2 font-medium whitespace-nowrap">{item.itemSku}</td>
+                <td className="border border-amber-300 p-2 max-w-xs truncate" title={item.itemName}>{item.itemName}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">
                   <span className={`px-2 py-1 rounded text-xs font-medium ${getCategoryColor(item.category)}`}>
                     {item.category}
                   </span>
                 </td>
-                <td className="p-2 border border-gray-300 text-blue-600 underline cursor-pointer">
-                  {item.poNo}
+                <td className="border border-amber-300 p-2 whitespace-nowrap">
+                  <span className="text-blue-600 underline cursor-pointer">{item.poNo}</span>
                   <button className="ml-2 text-amber-600 hover:text-amber-800">✎</button>
                 </td>
-                <td className="p-2 border border-gray-300 text-right">{item.poQty.toFixed(2)}</td>
-                <td className="p-2 border border-gray-300">{item.createdDt}</td>
-                <td className="p-2 border border-gray-300">{item.approvedDt}</td>
-                <td className="p-2 border border-gray-300">{item.exptedDate}</td>
-                <td className="p-2 border border-gray-300 text-sm">{item.vendor}</td>
-                <td className="p-2 border border-gray-300 text-blue-600 underline cursor-pointer">{item.source}</td>
-                <td className="p-2 border border-gray-300">{item.terms}</td>
-                <td className="p-2 border border-gray-300 text-blue-600 underline cursor-pointer text-xs">{item.comments}</td>
-                <td className="p-2 border border-gray-300 text-blue-600 underline cursor-pointer text-xs max-w-xs">
-                  {item.grnStatus}
+                <td className="border border-amber-300 p-2 text-right whitespace-nowrap">{item.poQty.toFixed(2)}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">{item.createdDt}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">{item.approvedDt || '-'}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">{item.exptedDate}</td>
+                <td className="border border-amber-300 p-2 max-w-xs truncate" title={item.vendor}>{item.vendor}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">
+                  <button className="text-blue-600 hover:underline">{item.source}</button>
                 </td>
-                <td className="p-2 border border-gray-300 text-center">
-                  <button className="text-red-600 hover:text-red-800 font-bold">−</button>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">{item.terms || '-'}</td>
+                <td className="border border-amber-300 p-2 whitespace-nowrap">
+                  {item.comments ? (
+                    <span className="text-blue-600 underline cursor-pointer">{item.comments}</span>
+                  ) : (
+                    '--'
+                  )}
+                </td>
+                <td className="border border-amber-300 p-2 max-w-xs truncate" title={item.grnStatus}>
+                  {item.grnStatus === '--' ? '--' : (
+                    <span className="text-blue-600 underline cursor-pointer">{item.grnStatus}</span>
+                  )}
+                </td>
+                <td className="border border-amber-300 p-2 text-center">
+                  <button className="text-red-600 hover:text-red-800 font-bold text-lg">−</button>
                 </td>
               </tr>
             ))}
@@ -367,9 +329,9 @@ export default function IssuedPOS() {
       </div>
 
       {/* Mobile Card View */}
-      <div className="md:hidden space-y-4">
+      <div className="md:hidden space-y-4 p-4">
         {paginatedData.map((item) => (
-          <div key={item.id} className="border border-gray-300 rounded p-4 bg-amber-50">
+          <div key={item.id} className="border border-amber-300 rounded-lg p-4 bg-white shadow-sm">
             <div className="flex items-start justify-between mb-3">
               <input
                 type="checkbox"
@@ -378,8 +340,8 @@ export default function IssuedPOS() {
                 className="w-4 h-4 mt-1"
               />
               <div className="flex-1 ml-3">
-                <h3 className="font-bold text-gray-800">{item.itemName}</h3>
-                <p className="text-xs text-gray-600">SKU: {item.itemSku}</p>
+                <h3 className="font-bold text-gray-800 text-sm">{item.itemName}</h3>
+                <p className="text-xs text-gray-600 mt-1">SKU: {item.itemSku}</p>
               </div>
             </div>
 
@@ -398,7 +360,7 @@ export default function IssuedPOS() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Vendor:</span>
-                <span className="text-right max-w-xs">{item.vendor}</span>
+                <span className="text-right max-w-xs truncate">{item.vendor}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Created:</span>
@@ -406,11 +368,11 @@ export default function IssuedPOS() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">GRN Status:</span>
-                <span className="text-blue-600 underline max-w-xs text-right">{item.grnStatus}</span>
+                <span className="text-blue-600 underline max-w-xs text-right truncate">{item.grnStatus}</span>
               </div>
             </div>
 
-            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-300">
+            <div className="flex gap-2 mt-3 pt-3 border-t border-amber-300">
               <button className="flex-1 px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700">
                 Edit
               </button>
@@ -427,61 +389,65 @@ export default function IssuedPOS() {
       )}
 
       {/* Pagination */}
-      <div className="mt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="text-sm text-gray-600">
-          Showing {startIndex + 1} to {Math.min(endIndex, filteredData.length)} of {filteredData.length} entries
-        </div>
+      <div className="mt-auto p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-t border-amber-300">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="text-sm text-gray-600">
+            Showing {startIndex + 1} to {Math.min(endIndex, filteredData.length)} of {filteredData.length} entries
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-100"
-          >
-            Previous
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-amber-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-amber-100 transition-colors"
+            >
+              Previous
+            </button>
 
-          {Array.from({ length: totalPages }, (_, i) => i + 1)
-            .filter((page) => Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages)
-            .map((page, idx, arr) => {
-              if (idx > 0 && arr[idx - 1] < page - 1) {
-                return [
-                  <span key={`dots-${page}`} className="px-2 text-gray-400">
-                    ...
-                  </span>,
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((page) => Math.abs(page - currentPage) <= 1 || page === 1 || page === totalPages)
+              .map((page, idx, arr) => {
+                if (idx > 0 && arr[idx - 1] < page - 1) {
+                  return [
+                    <span key={`dots-${page}`} className="px-2 text-gray-400">
+                      ...
+                    </span>,
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        currentPage === page
+                          ? 'bg-amber-600 text-white'
+                          : 'border border-amber-300 hover:bg-amber-100'
+                      }`}
+                    >
+                      {page}
+                    </button>,
+                  ];
+                }
+                return (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`px-2 py-1 rounded text-sm ${
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
                       currentPage === page
                         ? 'bg-amber-600 text-white'
-                        : 'border border-gray-300 hover:bg-gray-100'
+                        : 'border border-amber-300 hover:bg-amber-100'
                     }`}
                   >
                     {page}
-                  </button>,
-                ];
-              }
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-2 py-1 rounded text-sm ${
-                    currentPage === page ? 'bg-amber-600 text-white' : 'border border-gray-300 hover:bg-gray-100'
-                  }`}
-                >
-                  {page}
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
 
-          <button
-            onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-100"
-          >
-            Next
-          </button>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-amber-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-amber-100 transition-colors"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
