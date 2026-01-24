@@ -77,6 +77,10 @@ const getStatusColor = (status: string) => {
 export default function Proofing() {
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingItem, setEditingItem] = useState<Proofing | null>(null);
+  const [editStatus, setEditStatus] = useState<'Pending' | 'Approved' | 'Rejected'>('Pending');
+  const [editComments, setEditComments] = useState('');
+  const [editAttachment, setEditAttachment] = useState<File | null>(null);
 
   // Filter data based on search
   const filteredData = useMemo(() => {
@@ -106,8 +110,100 @@ export default function Proofing() {
     }
   };
 
+  const handleEditClick = (item: Proofing) => {
+    setEditingItem(item);
+    setEditStatus(item.proofingStatus);
+    setEditComments(item.comments);
+    setEditAttachment(null);
+  };
+
+  const handleEditClose = () => {
+    setEditingItem(null);
+    setEditStatus('Pending');
+    setEditComments('');
+    setEditAttachment(null);
+  };
+
+  const handleEditUpdate = () => {
+    // Here you would typically update the item in your backend
+    console.log('Updating item:', {
+      id: editingItem?.id,
+      status: editStatus,
+      comments: editComments,
+      attachment: editAttachment,
+    });
+    handleEditClose();
+  };
+
   return (
     <div className="w-full h-full flex flex-col">
+      {/* Edit Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">Edit Proof Item</h2>
+
+              {/* Status Dropdown */}
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-2">
+                  Select Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as 'Pending' | 'Approved' | 'Rejected')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+              </div>
+
+              {/* Attachment Upload */}
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-2">Attachment</label>
+                <input
+                  type="file"
+                  onChange={(e) => setEditAttachment(e.target.files?.[0] || null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Comments Textarea */}
+              <div className="mb-6">
+                <label className="block text-sm text-gray-700 mb-2">
+                  Comments <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={editComments}
+                  onChange={(e) => setEditComments(e.target.value)}
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter comments..."
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleEditUpdate}
+                  className="px-6 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition"
+                >
+                  Update
+                </button>
+                <button
+                  onClick={handleEditClose}
+                  className="px-6 py-2 bg-gray-400 text-white rounded font-medium hover:bg-gray-500 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with search and controls */}
       <div className="bg-gradient-to-r from-amber-100 to-orange-100 p-4 border-b border-amber-300">
         {/* Selection and Action Buttons Row */}
@@ -221,7 +317,10 @@ export default function Proofing() {
                         <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                     </button>
-                    <button className="bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition">
+                    <button
+                      onClick={() => handleEditClick(item)}
+                      className="bg-blue-600 text-white p-1 rounded hover:bg-blue-700 transition"
+                    >
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
                         <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
@@ -278,7 +377,10 @@ export default function Proofing() {
             </div>
 
             <div className="flex gap-2 mt-3 pt-3 border-t border-amber-300">
-              <button className="flex-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+              <button
+                onClick={() => handleEditClick(item)}
+                className="flex-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
                 Edit
               </button>
               <button className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
