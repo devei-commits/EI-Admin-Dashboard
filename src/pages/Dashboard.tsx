@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useAuth } from '../context/AuthContext';
 import { UnifiedBadge, getStatusBadgeColor } from '../components/ui';
 
 interface StatCardProps {
@@ -50,6 +51,7 @@ interface RecentActivity {
 }
 
 const Dashboard = () => {
+  const { user } = useAuth();
   const stats = [
     {
       title: 'Total Orders',
@@ -120,8 +122,24 @@ const Dashboard = () => {
   return (
     <div className="w-full min-h-screen bg-gray-50/50 p-4 md:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Dashboard</h1>
+            <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
+          </div>
+          {user && (
+            <div className="bg-white rounded-xl border border-amber-200 p-4 shadow-sm">
+              <p className="text-sm text-gray-500 uppercase tracking-wide font-medium">Current User</p>
+              <p className="text-lg font-semibold text-gray-800 mt-1">{user.name}</p>
+              <div className="flex gap-2 mt-2">
+                <span className="px-3 py-1 text-xs font-medium bg-amber-100 text-amber-800 rounded-full">{user.roleName}</span>
+                <span className={`px-3 py-1 text-xs font-medium rounded-full ${user.roleLevel === 'admin' ? 'bg-red-100 text-red-800' : user.roleLevel === 'manager' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                  {user.roleLevel.charAt(0).toUpperCase() + user.roleLevel.slice(1)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       
       {/* Stats Grid */}
