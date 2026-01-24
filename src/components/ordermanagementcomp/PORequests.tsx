@@ -304,7 +304,7 @@ export default function PORequests() {
               <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Approver Comments</th>
               <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">PO_Approved_Dt</th>
               <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">PO_Schedule_Dt</th>
-              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Custom_Buttons</th>
+              <th className="border border-amber-300 p-2 text-left font-semibold whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody>
