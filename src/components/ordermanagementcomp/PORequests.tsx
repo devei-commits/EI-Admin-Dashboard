@@ -166,6 +166,7 @@ export default function PORequests() {
   const [entriesPerPage, setEntriesPerPage] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PORequest | null>(null);
   const [formData, setFormData] = useState({
     confirmedQty: '',
@@ -174,6 +175,15 @@ export default function PORequests() {
     rate: '',
     selectType: 'ZOHO_LIST',
     selectedPOId: '',
+  });
+  const [updateFormData, setUpdateFormData] = useState({
+    zoho: '',
+    preferredVendor: '',
+    outstandingPayables: '',
+    poQuantity: '',
+    unitRate: '',
+    budget: '',
+    releaseDate: '',
   });
 
   const filteredRequests = MOCK_PO_REQUESTS.filter(
@@ -220,7 +230,20 @@ export default function PORequests() {
   };
 
   const handleEdit = (id: string) => {
-    alert(`Edit PO: ${id}`);
+    const po = MOCK_PO_REQUESTS.find(req => req.id === id);
+    if (po) {
+      setSelectedPO(po);
+      setUpdateFormData({
+        zoho: '',
+        preferredVendor: po.vendorName,
+        outstandingPayables: '',
+        poQuantity: po.poQty.toString(),
+        unitRate: po.unitPriceQty.toString(),
+        budget: po.poBudget.toString(),
+        releaseDate: po.poScheduleDt,
+      });
+      setIsUpdateModalOpen(true);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -677,6 +700,172 @@ export default function PORequests() {
                 className="px-4 py-2 bg-amber-400 text-white rounded-lg text-sm font-medium hover:bg-amber-500"
               >
                 Save Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update PO Plan Modal */}
+      {isUpdateModalOpen && selectedPO && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-screen overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-800">Update PO Plan</h2>
+              <button
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-4">
+              {/* ZohoBills */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ZohoBills -
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={updateFormData.zoho}
+                    onChange={(e) => setUpdateFormData({ ...updateFormData, zoho: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                    placeholder="Enter ZohoBills ID"
+                  />
+                  <button className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Refresh">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.995-1.039M5.201 4.665a8.254 8.254 0 015.47-1.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Display Info */}
+              <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="text-xs text-gray-600">MOQ</p>
+                  <p className="font-semibold text-gray-800">{selectedPO.moq}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Unit Rate</p>
+                  <p className="font-semibold text-gray-800">{selectedPO.unitPrice}</p>
+                </div>
+              </div>
+
+              {/* Preferred Vendor */}
+              <div>
+                <label htmlFor="vendor" className="block text-sm font-medium text-gray-700 mb-1">
+                  Preferred Vendor
+                </label>
+                <select
+                  id="vendor"
+                  value={updateFormData.preferredVendor}
+                  onChange={(e) => setUpdateFormData({ ...updateFormData, preferredVendor: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                >
+                  <option value="">--Select Vendor--</option>
+                  {Array.from(new Set(MOCK_PO_REQUESTS.map(po => po.vendorName))).map((vendor) => (
+                    <option key={vendor} value={vendor}>
+                      {vendor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Outstanding Payables */}
+              <div>
+                <label htmlFor="payables" className="block text-sm font-medium text-gray-700 mb-1">
+                  Outstanding Payables
+                </label>
+                <input
+                  id="payables"
+                  type="text"
+                  value={updateFormData.outstandingPayables}
+                  onChange={(e) => setUpdateFormData({ ...updateFormData, outstandingPayables: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                />
+              </div>
+
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* PO Quantity */}
+                <div>
+                  <label htmlFor="poQty" className="block text-sm font-medium text-gray-700 mb-1">
+                    PO Quantity
+                  </label>
+                  <input
+                    id="poQty"
+                    type="number"
+                    value={updateFormData.poQuantity}
+                    onChange={(e) => setUpdateFormData({ ...updateFormData, poQuantity: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                  />
+                </div>
+
+                {/* Unit Rate */}
+                <div>
+                  <label htmlFor="unitRate" className="block text-sm font-medium text-gray-700 mb-1">
+                    Unit Rate
+                  </label>
+                  <input
+                    id="unitRate"
+                    type="number"
+                    value={updateFormData.unitRate}
+                    onChange={(e) => setUpdateFormData({ ...updateFormData, unitRate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Budget */}
+              <div>
+                <label htmlFor="budget" className="block text-sm font-medium text-gray-700 mb-1">
+                  Budget
+                </label>
+                <input
+                  id="budget"
+                  type="number"
+                  value={updateFormData.budget}
+                  onChange={(e) => setUpdateFormData({ ...updateFormData, budget: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                />
+              </div>
+
+              {/* Release Date */}
+              <div>
+                <label htmlFor="releaseDate" className="block text-sm font-medium text-gray-700 mb-1">
+                  Release Date
+                </label>
+                <input
+                  id="releaseDate"
+                  type="date"
+                  value={updateFormData.releaseDate}
+                  onChange={(e) => setUpdateFormData({ ...updateFormData, releaseDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-gray-200 p-4 flex justify-end gap-2">
+              <button
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  alert('PO plan updated successfully!');
+                  setIsUpdateModalOpen(false);
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600"
+              >
+                Update
               </button>
             </div>
           </div>
