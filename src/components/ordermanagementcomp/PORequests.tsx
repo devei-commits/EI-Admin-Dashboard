@@ -165,6 +165,16 @@ export default function PORequests() {
   const [searchTerm, setSearchTerm] = useState('');
   const [entriesPerPage, setEntriesPerPage] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPO, setSelectedPO] = useState<PORequest | null>(null);
+  const [formData, setFormData] = useState({
+    confirmedQty: '',
+    finalQuote: '',
+    confirmedBudget: '',
+    rate: '',
+    selectType: 'ZOHO_LIST',
+    selectedPOId: '',
+  });
 
   const filteredRequests = MOCK_PO_REQUESTS.filter(
     (req) =>
@@ -194,7 +204,19 @@ export default function PORequests() {
   };
 
   const handleApprove = (id: string) => {
-    alert(`Approved PO: ${id}`);
+    const po = MOCK_PO_REQUESTS.find(req => req.id === id);
+    if (po) {
+      setSelectedPO(po);
+      setFormData({
+        confirmedQty: po.poQty.toString(),
+        finalQuote: po.unitPriceQty.toString(),
+        confirmedBudget: po.poBudget.toString(),
+        rate: '',
+        selectType: 'ZOHO_LIST',
+        selectedPOId: '',
+      });
+      setIsModalOpen(true);
+    }
   };
 
   const handleEdit = (id: string) => {
@@ -506,6 +528,160 @@ export default function PORequests() {
           </button>
         </div>
       </div>
+
+      {/* Execute Purchase Orders Modal */}
+      {isModalOpen && selectedPO && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-screen overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-800">Execute Purchase Orders</h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-4">
+              {/* PO Item Qty */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Item Qty
+                </label>
+                <p className="text-gray-600 text-sm font-semibold">{selectedPO.poQty}</p>
+              </div>
+
+              {/* PO Item Unit Price */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Item Unit Price
+                </label>
+                <p className="text-gray-600 text-sm font-semibold">{selectedPO.unitPriceQty}</p>
+              </div>
+
+              {/* CONFIRMED PO QTY */}
+              <div>
+                <label htmlFor="confirmedQty" className="block text-sm font-medium text-gray-700 mb-1">
+                  CONFIRMED PO QTY
+                </label>
+                <input
+                  id="confirmedQty"
+                  type="number"
+                  value={formData.confirmedQty}
+                  onChange={(e) => setFormData({ ...formData, confirmedQty: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                />
+              </div>
+
+              {/* FINAL QUOTE PER UNIT */}
+              <div>
+                <label htmlFor="finalQuote" className="block text-sm font-medium text-gray-700 mb-1">
+                  FINAL QUOTE PER UNIT
+                </label>
+                <input
+                  id="finalQuote"
+                  type="number"
+                  value={formData.finalQuote}
+                  onChange={(e) => setFormData({ ...formData, finalQuote: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                />
+              </div>
+
+              {/* CONFIRMED BUDGET */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  CONFIRMED BUDGET
+                </label>
+                <input
+                  type="text"
+                  placeholder="Rate"
+                  value={formData.rate}
+                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                />
+              </div>
+
+              {/* SELECT */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select :
+                </label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center">
+                    <input
+                      id="zohoList"
+                      type="radio"
+                      name="selectType"
+                      value="ZOHO_LIST"
+                      checked={formData.selectType === 'ZOHO_LIST'}
+                      onChange={(e) => setFormData({ ...formData, selectType: e.target.value })}
+                      className="w-4 h-4 text-amber-400"
+                    />
+                    <label htmlFor="zohoList" className="ml-2 text-sm text-gray-700">
+                      ZOHO LIST
+                    </label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      id="textEntry"
+                      type="radio"
+                      name="selectType"
+                      value="TEXT_ENTRY"
+                      checked={formData.selectType === 'TEXT_ENTRY'}
+                      onChange={(e) => setFormData({ ...formData, selectType: e.target.value })}
+                      className="w-4 h-4 text-amber-400"
+                    />
+                    <label htmlFor="textEntry" className="ml-2 text-sm text-gray-700">
+                      TEXT ENTRY
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* SELECT PO */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SELECT PO
+                </label>
+                <select
+                  value={formData.selectedPOId}
+                  onChange={(e) => setFormData({ ...formData, selectedPOId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+                >
+                  <option value="">--Select PO--</option>
+                  {MOCK_PO_REQUESTS.map((po) => (
+                    <option key={po.id} value={po.referenceId}>
+                      {po.referenceId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-gray-200 p-4 flex justify-end gap-2">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  alert('Purchase order executed successfully!');
+                  setIsModalOpen(false);
+                }}
+                className="px-4 py-2 bg-amber-400 text-white rounded-lg text-sm font-medium hover:bg-amber-500"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
