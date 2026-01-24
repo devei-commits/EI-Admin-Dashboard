@@ -4,3 +4,4 @@ export { default as OrderHubModal } from './OrderHubModal';
 export { default as GoodReceiving } from './GoodReceiving';
 export { default as PORequests } from './PORequests';
 export { default as IssuedPOS } from './IssuedPOS';
+export { default as OngoingGRNs } from './OngoingGRNs';

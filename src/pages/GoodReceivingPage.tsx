@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GoodReceiving, PORequests, IssuedPOS } from '../components/ordermanagementcomp';
+import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs } from '../components/ordermanagementcomp';
 
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 
@@ -104,13 +104,7 @@ const GoodReceivingPage = () => {
 
           {/* Ongoing GRNs */}
           {activeTab === 'ongoing-grns' && (
-            <div className="text-center py-8">
-              <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Ongoing GRN\'s</h3>
-              <p className="text-gray-500">Monitor goods receiving notes in progress</p>
-            </div>
+            <OngoingGRNs />
           )}
 
           {/* MRN/FGs */}
