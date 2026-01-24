@@ -213,6 +213,53 @@ export default function IssuedPOS() {
     <div className="w-full h-full flex flex-col">
       {/* Header with search and controls */}
       <div className="bg-gradient-to-r from-amber-100 to-orange-100 p-4 border-b border-amber-300">
+        {/* Selection and Category Filters Row */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selectedRequests.length === paginatedData.length && paginatedData.length > 0}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded border-amber-400"
+              />
+              <span className="text-sm font-medium text-gray-700">Select all</span>
+            </label>
+            <span className="text-sm text-gray-600">{selectedRequests.length} Selected</span>
+          </div>
+
+          {/* Category Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">Filter By Category :</span>
+            {['All', 'RM', 'PM'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                  selectedCategory === cat
+                    ? 'bg-red-600 text-white'
+                    : 'bg-white text-gray-700 border border-amber-300 hover:bg-amber-50'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <button className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition">
+              Show Category
+            </button>
+            <button className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition">
+              + Sync New PO
+            </button>
+          </div>
+        </div>
+
+        {/* Search and Entries Row */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex-1">
             <input
