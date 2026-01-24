@@ -671,12 +671,12 @@ export default function PORequests() {
               </button>
               <button
                 onClick={() => {
-                  alert('Purchase order executed successfully!');
+                  alert('Purchase order data saved successfully!');
                   setIsModalOpen(false);
                 }}
                 className="px-4 py-2 bg-amber-400 text-white rounded-lg text-sm font-medium hover:bg-amber-500"
               >
-                Add
+                Save Data
               </button>
             </div>
           </div>
