@@ -5,7 +5,7 @@ import { GoodReceiving, PORequests } from '../components/ordermanagementcomp';
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 
 const GoodReceivingPage = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('grn');
+  const [activeTab, setActiveTab] = useState<TabType>('po-requests');
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
     {
