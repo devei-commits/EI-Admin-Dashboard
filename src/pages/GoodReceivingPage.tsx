@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs, MRNFGs } from '../components/ordermanagementcomp';
+import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList } from '../components/ordermanagementcomp';
 
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 
@@ -125,7 +125,7 @@ const GoodReceivingPage = () => {
 
           {/* GRN - Main Content */}
           {activeTab === 'grn' && (
-            <GoodReceiving />
+            <GRNList />
           )}
 
           {/* Proofing */}
