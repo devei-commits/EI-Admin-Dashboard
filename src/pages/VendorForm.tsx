@@ -418,7 +418,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 0 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Entity Setup</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Entity Type</label>
                   <select name="setupType" value={formData.setupType} onChange={handleInputChange} className={inputClass}>
@@ -438,7 +438,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Legal Name</label>
                   <input type="text" name="legalName" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN" className={inputClass} />
@@ -448,7 +448,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Primary Email</label>
                   <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={inputClass} />
@@ -460,7 +460,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
               </div>
               
               <div className={sectionTitleClass}>Code Series</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Series Prefix</label>
                   <input type="text" value="VEN" readOnly className={`${inputClass} bg-gray-50`} />
@@ -489,7 +489,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 1 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Organization Details</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Billing Address</label>
                   <textarea name="billingAddress" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={inputClass} rows={3} />
@@ -499,7 +499,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different" className={inputClass} rows={3} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>State</label>
                   <input type="text" name="state" value={formData.state} onChange={handleInputChange} className={inputClass} />
@@ -509,7 +509,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="country" value={formData.country} onChange={handleInputChange} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Website</label>
                   <input type="url" name="website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={inputClass} />
@@ -530,7 +530,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 2 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Tax, Compliance & Documents</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>GSTIN</label>
                   <input type="text" name="gstin" value={formData.gstin} onChange={handleInputChange} className={inputClass} />
@@ -540,7 +540,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="pan" value={formData.pan} onChange={handleInputChange} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>MSME (if any)</label>
                   <input type="text" name="msme" value={formData.msme} onChange={handleInputChange} className={inputClass} />
@@ -552,7 +552,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
               </div>
 
               <div className={sectionTitleClass}>Document Register</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Doc Type</label>
                   <select value={tempDoc.type} onChange={(e) => setTempDoc({...tempDoc, type: e.target.value})} className={inputClass}>
@@ -572,7 +572,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempDoc.link} onChange={(e) => setTempDoc({...tempDoc, link: e.target.value})} placeholder="Drive/Share link" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Doc Date</label>
                   <input type="date" value={tempDoc.date} onChange={(e) => setTempDoc({...tempDoc, date: e.target.value})} className={inputClass} />
@@ -617,7 +617,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 3 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Multi-level Points of Contact (POCs)</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>POC Name</label>
                   <input type="text" value={tempPoc.name} onChange={(e) => setTempPoc({...tempPoc, name: e.target.value})} className={inputClass} />
@@ -638,7 +638,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Email</label>
                   <input type="email" value={tempPoc.email} onChange={(e) => setTempPoc({...tempPoc, email: e.target.value})} className={inputClass} />
@@ -648,7 +648,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="tel" value={tempPoc.phone} onChange={(e) => setTempPoc({...tempPoc, phone: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Escalation Level</label>
                   <select value={tempPoc.level} onChange={(e) => setTempPoc({...tempPoc, level: e.target.value})} className={inputClass}>
@@ -667,7 +667,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Notes</label>
                   <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({...tempPoc, notes: e.target.value})} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
@@ -720,7 +720,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 4 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Bank Details</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Beneficiary Name</label>
                   <input type="text" value={tempBank.beneficiaryName} onChange={(e) => setTempBank({...tempBank, beneficiaryName: e.target.value})} className={inputClass} />
@@ -730,7 +730,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempBank.bankName} onChange={(e) => setTempBank({...tempBank, bankName: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Account No.</label>
                   <input type="text" value={tempBank.accountNo} onChange={(e) => setTempBank({...tempBank, accountNo: e.target.value})} className={inputClass} />
@@ -740,7 +740,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempBank.ifsc} onChange={(e) => setTempBank({...tempBank, ifsc: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Branch</label>
                   <input type="text" value={tempBank.branch} onChange={(e) => setTempBank({...tempBank, branch: e.target.value})} className={inputClass} />
@@ -756,7 +756,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>UPI ID (optional)</label>
                   <input type="text" value={tempBank.upiId} onChange={(e) => setTempBank({...tempBank, upiId: e.target.value})} className={inputClass} />
@@ -770,7 +770,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Notes</label>
                   <input type="text" value={tempBank.notes} onChange={(e) => setTempBank({...tempBank, notes: e.target.value})} placeholder="Any payment restrictions" className={inputClass} />
@@ -823,7 +823,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 5 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Payment Terms & Credit</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Payment Terms</label>
                   <select name="paymentTerms" value={formData.paymentTerms} onChange={handleInputChange} className={inputClass}>
@@ -843,7 +843,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="customTerms" value={formData.customTerms} onChange={handleInputChange} placeholder="e.g., 50% advance + 50% on delivery" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Credit Limit (₹)</label>
                   <input type="number" name="creditLimit" value={formData.creditLimit} onChange={handleInputChange} className={inputClass} />
@@ -853,7 +853,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="penalty" value={formData.penalty} onChange={handleInputChange} placeholder="e.g., 2% per month" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>TDS Applicable?</label>
                   <select name="tdsApplicable" value={formData.tdsApplicable} onChange={handleInputChange} className={inputClass}>
@@ -886,7 +886,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
               <div className={sectionTitleClass}>Vendor Items & Price List (Vendor Only)</div>
               <p className="text-sm text-gray-500 mb-4">This section is visible only for Vendor master.</p>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Item Type</label>
                   <select value={tempItem.itemType} onChange={(e) => setTempItem({...tempItem, itemType: e.target.value})} className={inputClass}>
@@ -902,7 +902,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempItem.itemCode} onChange={(e) => setTempItem({...tempItem, itemCode: e.target.value})} placeholder="EI-RM-... / EI-PM-..." className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Item Name</label>
                   <input type="text" value={tempItem.itemName} onChange={(e) => setTempItem({...tempItem, itemName: e.target.value})} className={inputClass} />
@@ -920,7 +920,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>MOQ</label>
                   <input type="number" value={tempItem.moq} onChange={(e) => setTempItem({...tempItem, moq: e.target.value})} className={inputClass} />
@@ -930,7 +930,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="number" value={tempItem.unitPrice} onChange={(e) => setTempItem({...tempItem, unitPrice: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Lead Time (days)</label>
                   <input type="number" value={tempItem.leadTime} onChange={(e) => setTempItem({...tempItem, leadTime: e.target.value})} className={inputClass} />
@@ -940,7 +940,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="date" value={tempItem.priceValidTill} onChange={(e) => setTempItem({...tempItem, priceValidTill: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Tax (GST %)</label>
                   <input type="number" value={tempItem.gst} onChange={(e) => setTempItem({...tempItem, gst: e.target.value})} className={inputClass} />
@@ -950,7 +950,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempItem.hsn} onChange={(e) => setTempItem({...tempItem, hsn: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Payment Terms Override (optional)</label>
                   <input type="text" value={tempItem.paymentTermsOverride} onChange={(e) => setTempItem({...tempItem, paymentTermsOverride: e.target.value})} placeholder="If different from vendor terms" className={inputClass} />
@@ -1007,7 +1007,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 7 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Agreements & Status</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Agreement Type</label>
                   <select name="agreementType" value={formData.agreementType} onChange={handleInputChange} className={inputClass}>
@@ -1032,7 +1032,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Start Date</label>
                   <input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={inputClass} />
@@ -1042,7 +1042,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="date" name="endDate" value={formData.endDate} onChange={handleInputChange} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Agreement Link</label>
                   <input type="text" name="agreementLink" value={formData.agreementLink} onChange={handleInputChange} placeholder="Drive/Portal link" className={inputClass} />

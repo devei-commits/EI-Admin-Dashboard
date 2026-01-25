@@ -1051,8 +1051,8 @@ export function GlobalTaskOverview() {
         )}
       </div>
 
-      {/* Task Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-amber-100 overflow-hidden">
+      {/* Task Table - Desktop */}
+      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-amber-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-amber-50 to-orange-50">
@@ -1228,6 +1228,105 @@ export function GlobalTaskOverview() {
                 <ChevronRightIcon className="w-4 h-4" />
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Task Cards - Mobile */}
+      <div className="md:hidden space-y-3">
+        {paginatedTasks.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-8 text-center">
+            <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p className="font-medium text-gray-500">No tasks found</p>
+            <p className="text-sm text-gray-400">Try adjusting your filters</p>
+          </div>
+        ) : (
+          paginatedTasks.map((task) => (
+            <div key={task.id} className={`bg-white rounded-xl shadow-sm border ${isOverdue(task) ? 'border-red-200 bg-red-50/30' : 'border-amber-100'} p-4`}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-gray-800">{task.orderNo}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getPriorityColor(task.priority)}`}>
+                      {task.priority || 'N/A'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 truncate" title={task.itemName}>{task.itemName}</p>
+                  <p className="text-xs text-gray-400">{task.sku}</p>
+                </div>
+                <div className="flex items-center gap-1 ml-2">
+                  <button
+                    onClick={() => handleViewTask(task)}
+                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleEditTask(task)}
+                    className="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Stage:</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium text-white ${getStageColor(task.stage)}`}>
+                    {task.stage}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Status:</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(task.currentStatus)}`}>
+                    {task.currentStatus}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <User className="w-3 h-3 text-gray-400" />
+                  <span className="text-gray-700 truncate">
+                    {task.assignedTo ? TEAM_MEMBERS[task.assignedTo] || 'Unknown' : 'Unassigned'}
+                  </span>
+                </div>
+                <div className={`flex items-center gap-2 ${isOverdue(task) ? 'text-red-600' : 'text-gray-700'}`}>
+                  {isOverdue(task) && <AlertTriangle className="w-3 h-3" />}
+                  <Calendar className="w-3 h-3 text-gray-400" />
+                  <span>{new Date(task.estDelDate).toLocaleDateString()}</span>
+                </div>
+              </div>
+              {task.currentStage < 7 && (
+                <button
+                  onClick={() => handlePushTask(task)}
+                  className="w-full mt-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  Push to Next Stage
+                </button>
+              )}
+            </div>
+          ))
+        )}
+
+        {/* Mobile Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-2 py-3">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-gray-500">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>

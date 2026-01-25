@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import eilogofull from "../../assets/logo/eilogofull.svg";
 import { useAuth } from "../../context/AuthContext";
+import { usePermissions } from "../../hooks/usePermissions";
 
 const Sidebar = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,46 @@ const Sidebar = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, logout } = useAuth();
+    const { hasModuleAccess, isAdmin } = usePermissions();
+
+    // Permission check helpers
+    const canAccess = (moduleId: string) => isAdmin || hasModuleAccess(moduleId);
+    
+    // Check which menu sections should be visible based on permissions
+    const showDashboard = canAccess('dashboard');
+    const showPIS = canAccess('pis');
+    const showRoleManagement = canAccess('role-management');
+    const showUserManagement = canAccess('user-management');
+    const showTaskManagement = canAccess('task-management');
+    const showTreasury = canAccess('treasury');
+    
+    // Order Management section
+    const showOrderList = canAccess('order-list');
+    const showOrderManagement = canAccess('order-management');
+    const showCouponManagement = canAccess('coupon-management');
+    const showDiscountManagement = canAccess('discount-management');
+    const showOrderSection = showOrderList || showOrderManagement || showCouponManagement || showDiscountManagement;
+    
+    // Enquiry section
+    const showEnquiryManagement = canAccess('enquiry-management');
+    const showDoctorAppointments = canAccess('doctor-appointments');
+    const showContactEnquiry = canAccess('contact-enquiry');
+    const showNewDevelopments = canAccess('new-developments');
+    const showProductSamples = canAccess('product-samples');
+    const showEnquirySection = showEnquiryManagement || showDoctorAppointments || showContactEnquiry || showNewDevelopments || showProductSamples;
+    
+    // Product Management section
+    const showCatalogueManagement = canAccess('catalogue-management');
+    const showPackagingManagement = canAccess('packaging-management');
+    const showActiveIngredients = canAccess('active-ingredients');
+    const showProductSection = showCatalogueManagement || showPackagingManagement || showActiveIngredients;
+    
+    // Masters section
+    const showInventory = canAccess('inventory');
+    const showItemsMaster = canAccess('items-master');
+    const showVendorClient = canAccess('vendor-client');
+    const showSalesPurchase = canAccess('sales-purchase');
+    const showMastersSection = showInventory || showItemsMaster || showVendorClient || showSalesPurchase;
 
     // Handle logout
     const handleLogout = () => {
@@ -157,6 +198,7 @@ const Sidebar = () => {
                 <nav className="flex-1 p-4 overflow-y-auto">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-3">Menu</p>
                     <ul className="space-y-1">
+                        {showDashboard && (
                         <li>
                             <NavLink to="/" className={linkClass} onClick={handleLinkClick}>
                                 <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -165,6 +207,8 @@ const Sidebar = () => {
                                 <span className="font-medium">Dashboard</span>
                             </NavLink>
                         </li>
+                        )}
+                        {showPIS && (
                         <li>
                             <button
                                 onClick={() => {
@@ -185,6 +229,8 @@ const Sidebar = () => {
                                 </svg>
                             </button>
                         </li>
+                        )}
+                        {showRoleManagement && (
                         <li>
                             <NavLink to="/role-management" className={linkClass} onClick={handleLinkClick}>
                                 <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,6 +239,8 @@ const Sidebar = () => {
                                 <span className="font-medium">Role Management</span>
                             </NavLink>
                         </li>
+                        )}
+                        {showUserManagement && (
                         <li>
                             <NavLink to="/user-management" className={linkClass} onClick={handleLinkClick}>
                                 <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,6 +249,8 @@ const Sidebar = () => {
                                 <span className="font-medium">User Management</span>
                             </NavLink>
                         </li>
+                        )}
+                        {showTaskManagement && (
                         <li>
                             <NavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
                                 <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,6 +259,8 @@ const Sidebar = () => {
                                 <span className="font-medium">Task Management</span>
                             </NavLink>
                         </li>
+                        )}
+                        {showOrderSection && (
                         <li>
                             <div className={`rounded-lg transition-all duration-200 ${
                                 isOrderActive || orderOpen
@@ -247,6 +299,7 @@ const Sidebar = () => {
                                 }`}
                             >
                                 <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    {showOrderList && (
                                     <li>
                                         <NavLink
                                             to="/order-list"
@@ -263,6 +316,8 @@ const Sidebar = () => {
                                             <span>Order List</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showOrderManagement && (
                                     <li>
                                         <NavLink
                                             to="/good-receiving"
@@ -279,6 +334,8 @@ const Sidebar = () => {
                                             <span>Good Receiving</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showOrderManagement && (
                                     <li>
                                         <button
                                             onClick={() => {
@@ -297,6 +354,8 @@ const Sidebar = () => {
                                             </svg>
                                         </button>
                                     </li>
+                                    )}
+                                    {showCouponManagement && (
                                     <li>
                                         <NavLink
                                             to="/coupon-management"
@@ -313,6 +372,8 @@ const Sidebar = () => {
                                             <span>Coupon Management</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showDiscountManagement && (
                                     <li>
                                         <NavLink
                                             to="/discount-management"
@@ -329,9 +390,12 @@ const Sidebar = () => {
                                             <span>Discount Management</span>
                                         </NavLink>
                                     </li>
+                                    )}
                                 </ul>
                             </div>
                         </li>
+                        )}
+                        {showProductSection && (
                         <li>
                             <div className={`rounded-lg transition-all duration-200 ${
                                 isProductActive || productOpen
@@ -371,6 +435,7 @@ const Sidebar = () => {
                                 }`}
                             >
                                 <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    {showCatalogueManagement && (
                                     <li>
                                         <NavLink
                                             to="/catalogue-management"
@@ -387,6 +452,8 @@ const Sidebar = () => {
                                             <span>Catalogue Management</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showPackagingManagement && (
                                     <li>
                                         <NavLink
                                             to="/packaging-management"
@@ -403,6 +470,8 @@ const Sidebar = () => {
                                             <span>Packaging Management</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showActiveIngredients && (
                                     <li>
                                         <NavLink
                                             to="/active-ingredients"
@@ -419,9 +488,12 @@ const Sidebar = () => {
                                             <span>Active Ingredients</span>
                                         </NavLink>
                                     </li>
+                                    )}
                                 </ul>
                             </div>
                         </li>
+                        )}
+                        {showMastersSection && (
                         <li>
                             <div className={`rounded-lg transition-all duration-200 ${
                                 isMastersActive || mastersOpen
@@ -462,6 +534,7 @@ const Sidebar = () => {
                                 }`}
                             >
                                 <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    {showInventory && (
                                     <li>
                                         <NavLink
                                             to="/packaging"
@@ -478,6 +551,8 @@ const Sidebar = () => {
                                             <span>Packaging</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showInventory && (
                                     <li>
                                         <NavLink
                                             to="/raw-material"
@@ -494,6 +569,8 @@ const Sidebar = () => {
                                             <span>Raw Material</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showInventory && (
                                     <li>
                                         <NavLink
                                             to="/bom"
@@ -510,6 +587,8 @@ const Sidebar = () => {
                                             <span>BOM</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showItemsMaster && (
                                     <li>
                                         <NavLink
                                             to="/items-master"
@@ -526,6 +605,8 @@ const Sidebar = () => {
                                             <span>Items Master</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showVendorClient && (
                                     <li>
                                         <NavLink
                                             to="/vendor-client"
@@ -542,6 +623,8 @@ const Sidebar = () => {
                                             <span>Vendor & Client</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showSalesPurchase && (
                                     <li>
                                         <NavLink
                                             to="/sales-and-purchase"
@@ -558,10 +641,13 @@ const Sidebar = () => {
                                             <span>Sales & Purchase</span>
                                         </NavLink>
                                     </li>
+                                    )}
                                 </ul>
                             </div>
                         </li>
+                        )}
                         {/* Customisation link removed */}
+                        {showTreasury && (
                         <li>
                             <button
                                 onClick={() => {
@@ -579,6 +665,8 @@ const Sidebar = () => {
                                 </svg>
                             </button>
                         </li>
+                        )}
+                        {showEnquirySection && (
                         <li>
                             <div className={`rounded-lg transition-all duration-200 ${
                                 isEnquiryActive || enquiryOpen
@@ -618,6 +706,7 @@ const Sidebar = () => {
                                 }`}
                             >
                                 <ul className="bg-gradient-to-b from-amber-50/30 to-gray-50/50 border-l-2 border-amber-200 ml-4 my-2 py-2 space-y-1">
+                                    {showDoctorAppointments && (
                                     <li>
                                         <NavLink
                                             to="/doctor-appointments"
@@ -634,6 +723,8 @@ const Sidebar = () => {
                                             <span>Doctor Appointments</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showContactEnquiry && (
                                     <li>
                                         <NavLink
                                             to="/contact-enquiry"
@@ -650,6 +741,8 @@ const Sidebar = () => {
                                             <span>Contact Enquiry</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showNewDevelopments && (
                                     <li>
                                         <NavLink
                                             to="/new-developments"
@@ -666,6 +759,8 @@ const Sidebar = () => {
                                             <span>New Developments</span>
                                         </NavLink>
                                     </li>
+                                    )}
+                                    {showProductSamples && (
                                     <li>
                                         <NavLink
                                             to="/product-samples"
@@ -682,9 +777,11 @@ const Sidebar = () => {
                                             <span>Product Samples</span>
                                         </NavLink>
                                     </li>
+                                    )}
                                 </ul>
                             </div>
                         </li>
+                        )}
                     </ul>
                 </nav>
 

@@ -222,10 +222,10 @@ const VendorClient: React.FC = () => {
     switch (activeTab) {
       case 'vendor-master':
         return (
-          <div className="p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-xl font-semibold text-gray-800">Vendor Master</h2>
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Vendor Master</h2>
                 <p className="text-sm text-gray-500">{filteredVendors.length} vendor(s)</p>
               </div>
               <div className="flex gap-2">
@@ -246,32 +246,33 @@ const VendorClient: React.FC = () => {
                     }));
                     downloadCsv(rows, `vendors_${new Date().toISOString().slice(0, 10)}.csv`);
                   }}
-                  className="px-4 py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm"
                 >
-                  Export CSV
+                  <span className="hidden sm:inline">Export CSV</span>
+                  <span className="sm:hidden">Export</span>
                 </button>
                 <button
                   type="button"
                   onClick={openVendorCreate}
-                  className="px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium shadow"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium shadow text-sm"
                 >
                   + Add Vendor
                 </button>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <input
                   value={vendorSearch}
                   onChange={(e) => setVendorSearch(e.target.value)}
-                  placeholder="Search by code, name, email, phone, category, state"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="Search by code, name, email..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 />
                 <select
                   value={vendorStatus}
                   onChange={(e) => setVendorStatus(e.target.value as any)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -281,7 +282,7 @@ const VendorClient: React.FC = () => {
                 <select
                   value={vendorCategory}
                   onChange={(e) => setVendorCategory(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 >
                   <option value="all">All Categories</option>
                   {vendorCategories.map(c => (
@@ -291,7 +292,8 @@ const VendorClient: React.FC = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto bg-white border border-gray-200 rounded-xl">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
@@ -364,6 +366,75 @@ const VendorClient: React.FC = () => {
               </table>
             </div>
 
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {filteredVendors.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No vendors found.</div>
+              ) : (
+                pagedVendors.map((v) => (
+                  <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 font-mono">Code: {String(v.data?.entityCode || '-')}</p>
+                        <p className="font-semibold text-gray-800 truncate">{v.name}</p>
+                        <p className="text-sm text-amber-600">{v.category}</p>
+                      </div>
+                      <select
+                        value={v.status}
+                        onChange={(e) => handleStatusChange(v.id, e.target.value as VendorClientType['status'])}
+                        className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="pending">Pending</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Email</span>
+                        <span className="text-gray-800 truncate ml-2 max-w-[60%] text-right">{v.email || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Phone</span>
+                        <span className="text-gray-800">{v.phone || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">State</span>
+                        <span className="text-gray-800">{v.location || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Updated</span>
+                        <span className="text-gray-800">{v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-'}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => openView(v)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium text-sm"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openVendorEdit(v.id)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-amber-200 text-amber-800 hover:bg-amber-50 font-medium text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(v.id)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
             {/* Pagination */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
               <div className="text-sm text-gray-600">
@@ -404,10 +475,10 @@ const VendorClient: React.FC = () => {
         );
       case 'client-master':
         return (
-          <div className="p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-xl font-semibold text-gray-800">Client Master</h2>
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Client Master</h2>
                 <p className="text-sm text-gray-500">{filteredClients.length} client(s)</p>
               </div>
               <div className="flex gap-2">
@@ -428,32 +499,33 @@ const VendorClient: React.FC = () => {
                     }));
                     downloadCsv(rows, `clients_${new Date().toISOString().slice(0, 10)}.csv`);
                   }}
-                  className="px-4 py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm"
                 >
-                  Export CSV
+                  <span className="hidden sm:inline">Export CSV</span>
+                  <span className="sm:hidden">Export</span>
                 </button>
                 <button
                   type="button"
                   onClick={openClientCreate}
-                  className="px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium shadow"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium shadow text-sm"
                 >
                   + Add Client
                 </button>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <input
                   value={clientSearch}
                   onChange={(e) => setClientSearch(e.target.value)}
-                  placeholder="Search by code, name, email, phone, category, state"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="Search by code, name, email..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 />
                 <select
                   value={clientStatus}
                   onChange={(e) => setClientStatus(e.target.value as any)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -463,7 +535,7 @@ const VendorClient: React.FC = () => {
                 <select
                   value={clientCategory}
                   onChange={(e) => setClientCategory(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 >
                   <option value="all">All Categories</option>
                   {clientCategories.map(c => (
@@ -473,7 +545,8 @@ const VendorClient: React.FC = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto bg-white border border-gray-200 rounded-xl">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
@@ -544,6 +617,75 @@ const VendorClient: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {filteredClients.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No clients found.</div>
+              ) : (
+                pagedClients.map((c) => (
+                  <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 font-mono">Code: {String(c.data?.entityCode || '-')}</p>
+                        <p className="font-semibold text-gray-800 truncate">{c.name}</p>
+                        <p className="text-sm text-amber-600">{c.category}</p>
+                      </div>
+                      <select
+                        value={c.status}
+                        onChange={(e) => handleStatusChange(c.id, e.target.value as VendorClientType['status'])}
+                        className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="pending">Pending</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Email</span>
+                        <span className="text-gray-800 truncate ml-2 max-w-[60%] text-right">{c.email || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Phone</span>
+                        <span className="text-gray-800">{c.phone || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">State</span>
+                        <span className="text-gray-800">{c.location || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Updated</span>
+                        <span className="text-gray-800">{c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-'}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => openView(c)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium text-sm"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openClientEdit(c.id)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-amber-200 text-amber-800 hover:bg-amber-50 font-medium text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(c.id)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Pagination */}

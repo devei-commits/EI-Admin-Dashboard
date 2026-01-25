@@ -631,3 +631,246 @@ textarea:focus-visible {
     @apply w-0.5 h-8 mx-auto;
   }
 }
+
+/* ==================== ENHANCED RESPONSIVE UTILITIES ==================== */
+
+/* Mobile Card View for Tables */
+.table-desktop {
+  @apply hidden md:block;
+}
+
+.table-mobile-cards {
+  @apply block md:hidden space-y-3;
+}
+
+/* Responsive Grid Utilities */
+.grid-responsive-2 {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-4;
+}
+
+.grid-responsive-3 {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4;
+}
+
+.grid-responsive-4 {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+}
+
+/* Mobile Action Menu */
+.mobile-action-menu {
+  @apply relative;
+}
+
+.mobile-action-menu-content {
+  @apply absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[120px];
+}
+
+/* Responsive Table Cell */
+.table-cell-responsive {
+  @apply px-2 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm;
+}
+
+/* Mobile Card for Table Row */
+.mobile-table-card {
+  @apply bg-white rounded-xl border border-gray-200 p-4 shadow-sm;
+}
+
+.mobile-table-card-header {
+  @apply flex items-center justify-between mb-3 pb-3 border-b border-gray-100;
+}
+
+.mobile-table-card-row {
+  @apply flex items-center justify-between py-2 text-sm;
+}
+
+.mobile-table-card-label {
+  @apply text-gray-500 font-medium;
+}
+
+.mobile-table-card-value {
+  @apply text-gray-900 text-right flex-1 ml-4;
+}
+
+.mobile-table-card-actions {
+  @apply flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-100;
+}
+
+/* Responsive Header */
+.page-header-responsive {
+  @apply flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between;
+}
+
+/* Responsive Search/Filter Bar */
+.filter-bar-responsive {
+  @apply flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center;
+}
+
+.filter-bar-responsive > * {
+  @apply w-full sm:w-auto;
+}
+
+/* Responsive Button Group */
+.btn-group-responsive {
+  @apply flex flex-col gap-2 sm:flex-row;
+}
+
+.btn-group-responsive > * {
+  @apply w-full sm:w-auto;
+}
+
+/* Hide on Mobile */
+.hide-mobile {
+  @apply hidden sm:inline-flex;
+}
+
+/* Show only on Mobile */
+.show-mobile-only {
+  @apply inline-flex sm:hidden;
+}
+
+/* Responsive Table Wrapper */
+.table-wrapper-responsive {
+  @apply overflow-x-auto -mx-4 sm:mx-0;
+}
+
+.table-wrapper-responsive > table {
+  @apply min-w-full;
+}
+
+/* Responsive Form Label */
+.form-label-responsive {
+  @apply block text-sm font-medium text-gray-700 mb-1;
+}
+
+/* Responsive Modal Content */
+.modal-content-responsive {
+  @apply w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto;
+}
+
+/* Responsive Stat Cards */
+.stat-card-responsive {
+  @apply p-3 sm:p-4 md:p-6;
+}
+
+.stat-card-responsive h3 {
+  @apply text-xs sm:text-sm;
+}
+
+.stat-card-responsive .stat-value {
+  @apply text-xl sm:text-2xl md:text-3xl;
+}
+
+/* Responsive Typography */
+.text-responsive-xs {
+  @apply text-[10px] sm:text-xs;
+}
+
+.text-responsive-sm {
+  @apply text-xs sm:text-sm;
+}
+
+.text-responsive-base {
+  @apply text-sm sm:text-base;
+}
+
+.text-responsive-lg {
+  @apply text-base sm:text-lg md:text-xl;
+}
+
+.text-responsive-xl {
+  @apply text-lg sm:text-xl md:text-2xl;
+}
+
+.text-responsive-2xl {
+  @apply text-xl sm:text-2xl md:text-3xl;
+}
+
+/* Responsive Spacing */
+.gap-responsive {
+  @apply gap-2 sm:gap-3 md:gap-4;
+}
+
+.space-y-responsive > * + * {
+  @apply mt-3 sm:mt-4 md:mt-6;
+}
+
+/* Responsive Icon Sizes */
+.icon-responsive-sm {
+  @apply w-3 h-3 sm:w-4 sm:h-4;
+}
+
+.icon-responsive-md {
+  @apply w-4 h-4 sm:w-5 sm:h-5;
+}
+
+.icon-responsive-lg {
+  @apply w-5 h-5 sm:w-6 sm:h-6;
+}
+
+/* Swipeable Cards Container for Mobile */
+.swipeable-container {
+  @apply flex overflow-x-auto gap-4 pb-4 -mx-4 px-4 snap-x snap-mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.swipeable-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipeable-container > * {
+  @apply flex-shrink-0 snap-center;
+}
+
+@media (min-width: 768px) {
+  .swipeable-container {
+    @apply flex-wrap overflow-visible mx-0 px-0;
+  }
+  .swipeable-container > * {
+    @apply flex-shrink;
+  }
+}
+
+/* Responsive Sidebar Offset */
+.main-content-with-sidebar {
+  @apply ml-0 md:ml-64 transition-all duration-300;
+}
+
+/* Mobile Bottom Navigation Safe Area */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+}
+
+/* Responsive Overflow */
+.overflow-responsive {
+  @apply overflow-visible sm:overflow-hidden;
+}
+
+/* Collapsible Section for Mobile */
+.collapsible-mobile {
+  @apply block;
+}
+
+@media (max-width: 640px) {
+  .collapsible-mobile[data-collapsed="true"] {
+    @apply hidden;
+  }
+}
+
+/* Touch-friendly minimum sizes */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .touch-target-sm {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+/* Responsive Badge */
+.badge-responsive {
+  @apply px-1.5 py-0.5 text-[10px] sm:px-2 sm:py-1 sm:text-xs;
+}

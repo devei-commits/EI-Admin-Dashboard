@@ -441,7 +441,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 0 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Client Setup</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Entity Type</label>
                   <select name="setupType" value={formData.setupType} onChange={handleInputChange} className={inputClass}>
@@ -465,7 +465,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Legal Name</label>
                   <input type="text" name="legalName" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN / Registration" className={inputClass} />
@@ -475,7 +475,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Primary Email</label>
                   <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={inputClass} />
@@ -487,7 +487,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               </div>
               
               <div className={sectionTitleClass}>Code Series</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Series Prefix</label>
                   <input type="text" value="CLI" readOnly className={`${inputClass} bg-gray-50`} />
@@ -516,7 +516,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 1 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Organization Details</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Brand Name</label>
                   <input type="text" name="brandName" value={formData.brandName} onChange={handleInputChange} placeholder="Client's brand name (if different)" className={inputClass} />
@@ -535,7 +535,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Billing Address</label>
                   <textarea name="billingAddress" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={inputClass} rows={3} />
@@ -545,7 +545,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different from billing" className={inputClass} rows={3} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>State</label>
                   <input type="text" name="state" value={formData.state} onChange={handleInputChange} className={inputClass} />
@@ -555,7 +555,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="country" value={formData.country} onChange={handleInputChange} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Website</label>
                   <input type="url" name="website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={inputClass} />
@@ -578,7 +578,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Market Segment</label>
                   <select name="segment" value={formData.segment} onChange={handleInputChange} className={inputClass}>
@@ -604,7 +604,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 2 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Tax & Compliance</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>GSTIN</label>
                   <input type="text" name="gstin" value={formData.gstin} onChange={handleInputChange} placeholder="22AAAAA0000A1Z5" className={inputClass} />
@@ -614,7 +614,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="pan" value={formData.pan} onChange={handleInputChange} placeholder="AAAAA0000A" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>TAN</label>
                   <input type="text" name="tan" value={formData.tan} onChange={handleInputChange} placeholder="AAAA00000A" className={inputClass} />
@@ -624,7 +624,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="cin" value={formData.cin} onChange={handleInputChange} placeholder="Company Identification Number" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>FSSAI License (if applicable)</label>
                   <input type="text" name="fssaiLicense" value={formData.fssaiLicense} onChange={handleInputChange} placeholder="For food/nutra products" className={inputClass} />
@@ -636,7 +636,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               </div>
 
               <div className={sectionTitleClass}>Document Register</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Doc Type</label>
                   <select value={tempDoc.type} onChange={(e) => setTempDoc({...tempDoc, type: e.target.value})} className={inputClass}>
@@ -661,7 +661,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempDoc.link} onChange={(e) => setTempDoc({...tempDoc, link: e.target.value})} placeholder="Drive/Share link" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Doc Date</label>
                   <input type="date" value={tempDoc.date} onChange={(e) => setTempDoc({...tempDoc, date: e.target.value})} className={inputClass} />
@@ -706,7 +706,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 3 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Multi-level Points of Contact (POCs)</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>POC Name</label>
                   <input type="text" value={tempPoc.name} onChange={(e) => setTempPoc({...tempPoc, name: e.target.value})} className={inputClass} />
@@ -730,7 +730,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Email</label>
                   <input type="email" value={tempPoc.email} onChange={(e) => setTempPoc({...tempPoc, email: e.target.value})} className={inputClass} />
@@ -740,7 +740,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="tel" value={tempPoc.phone} onChange={(e) => setTempPoc({...tempPoc, phone: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Escalation Level</label>
                   <select value={tempPoc.level} onChange={(e) => setTempPoc({...tempPoc, level: e.target.value})} className={inputClass}>
@@ -759,7 +759,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Notes</label>
                   <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({...tempPoc, notes: e.target.value})} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
@@ -812,7 +812,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 4 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Bank Details (for refunds/payments to client)</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Beneficiary Name</label>
                   <input type="text" value={tempBank.beneficiaryName} onChange={(e) => setTempBank({...tempBank, beneficiaryName: e.target.value})} className={inputClass} />
@@ -822,7 +822,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempBank.bankName} onChange={(e) => setTempBank({...tempBank, bankName: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Account No.</label>
                   <input type="text" value={tempBank.accountNo} onChange={(e) => setTempBank({...tempBank, accountNo: e.target.value})} className={inputClass} />
@@ -832,7 +832,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempBank.ifsc} onChange={(e) => setTempBank({...tempBank, ifsc: e.target.value})} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Branch</label>
                   <input type="text" value={tempBank.branch} onChange={(e) => setTempBank({...tempBank, branch: e.target.value})} className={inputClass} />
@@ -848,7 +848,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>UPI ID (optional)</label>
                   <input type="text" value={tempBank.upiId} onChange={(e) => setTempBank({...tempBank, upiId: e.target.value})} className={inputClass} />
@@ -862,7 +862,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Notes</label>
                   <input type="text" value={tempBank.notes} onChange={(e) => setTempBank({...tempBank, notes: e.target.value})} placeholder="Any payment instructions" className={inputClass} />
@@ -915,7 +915,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 5 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Payment Terms & Credit</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Payment Terms</label>
                   <select name="paymentTerms" value={formData.paymentTerms} onChange={handleInputChange} className={inputClass}>
@@ -936,7 +936,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="customTerms" value={formData.customTerms} onChange={handleInputChange} placeholder="e.g., 70% advance + 30% on dispatch" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Credit Limit (₹)</label>
                   <input type="number" name="creditLimit" value={formData.creditLimit} onChange={handleInputChange} placeholder="Maximum outstanding allowed" className={inputClass} />
@@ -946,7 +946,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="number" name="advanceRequired" value={formData.advanceRequired} onChange={handleInputChange} placeholder="e.g., 50" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>TDS Applicable?</label>
                   <select name="tdsApplicable" value={formData.tdsApplicable} onChange={handleInputChange} className={inputClass}>
@@ -983,7 +983,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               <div className={sectionTitleClass}>Product Interest & Requirements</div>
               <p className="text-sm text-gray-500 mb-4">Track products/services the client is interested in purchasing.</p>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Product Category</label>
                   <select value={tempProduct.productCategory} onChange={(e) => setTempProduct({...tempProduct, productCategory: e.target.value})} className={inputClass}>
@@ -1011,7 +1011,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempProduct.productType} onChange={(e) => setTempProduct({...tempProduct, productType: e.target.value})} placeholder="e.g., Face Serum, Shampoo, Cream" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Expected Volume</label>
                   <input type="text" value={tempProduct.expectedVolume} onChange={(e) => setTempProduct({...tempProduct, expectedVolume: e.target.value})} placeholder="e.g., 5000 units/month" className={inputClass} />
@@ -1029,7 +1029,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Target Price Range (₹)</label>
                   <input type="text" value={tempProduct.targetPrice} onChange={(e) => setTempProduct({...tempProduct, targetPrice: e.target.value})} placeholder="e.g., 150-200 per unit" className={inputClass} />
@@ -1043,7 +1043,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Specifications / Requirements</label>
                   <input type="text" value={tempProduct.specifications} onChange={(e) => setTempProduct({...tempProduct, specifications: e.target.value})} placeholder="Any specific requirements" className={inputClass} />
@@ -1102,7 +1102,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 7 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Agreements</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Agreement Type</label>
                   <select name="agreementType" value={formData.agreementType} onChange={handleInputChange} className={inputClass}>
@@ -1133,7 +1133,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Start Date</label>
                   <input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={inputClass} />
@@ -1143,7 +1143,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="date" name="endDate" value={formData.endDate} onChange={handleInputChange} className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Agreement Link</label>
                   <input type="text" name="agreementLink" value={formData.agreementLink} onChange={handleInputChange} placeholder="Drive/Portal link" className={inputClass} />
@@ -1159,7 +1159,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               </div>
 
               <div className={sectionTitleClass}>Client Lifecycle & Ownership</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Sales Owner</label>
                   <input type="text" name="salesOwner" value={formData.salesOwner} onChange={handleInputChange} placeholder="Sales rep name" className={inputClass} />
@@ -1169,7 +1169,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="accountManager" value={formData.accountManager} onChange={handleInputChange} placeholder="Post-sale account manager" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Lead Source</label>
                   <select name="leadSource" value={formData.leadSource} onChange={handleInputChange} className={inputClass}>
@@ -1192,7 +1192,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" name="referredBy" value={formData.referredBy} onChange={handleInputChange} placeholder="Name of referrer (if any)" className={inputClass} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>Client Stage</label>
                   <select name="clientStage" value={formData.clientStage} onChange={handleInputChange} className={inputClass}>

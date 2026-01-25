@@ -501,6 +501,319 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
         ]
       }
     ]
+  },
+  {
+    moduleId: 'catalogue-management',
+    moduleName: 'Catalogue Management',
+    icon: 'catalogue',
+    description: 'Product catalogue and listings',
+    subModules: [
+      {
+        subModuleId: 'catalogue-products',
+        subModuleName: 'Catalogue Products',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'product-id', columnName: 'Product ID', view: false, edit: false },
+          { columnId: 'product-name', columnName: 'Product Name', view: false, edit: false },
+          { columnId: 'category', columnName: 'Category', view: false, edit: false },
+          { columnId: 'description', columnName: 'Description', view: false, edit: false },
+          { columnId: 'price', columnName: 'Price', view: false, edit: false },
+          { columnId: 'images', columnName: 'Images', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      },
+      {
+        subModuleId: 'catalogue-categories',
+        subModuleName: 'Categories',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'category-id', columnName: 'Category ID', view: false, edit: false },
+          { columnId: 'category-name', columnName: 'Category Name', view: false, edit: false },
+          { columnId: 'parent-category', columnName: 'Parent Category', view: false, edit: false },
+          { columnId: 'products-count', columnName: 'Products Count', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'items-master',
+    moduleName: 'Items Master',
+    icon: 'items',
+    description: 'Master item database',
+    subModules: [
+      {
+        subModuleId: 'items-list',
+        subModuleName: 'Items List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'item-code', columnName: 'Item Code', view: false, edit: false },
+          { columnId: 'item-name', columnName: 'Item Name', view: false, edit: false },
+          { columnId: 'category', columnName: 'Category', view: false, edit: false },
+          { columnId: 'sub-category', columnName: 'Sub Category', view: false, edit: false },
+          { columnId: 'uom', columnName: 'Unit of Measure', view: false, edit: false },
+          { columnId: 'hsn-code', columnName: 'HSN Code', view: false, edit: false },
+          { columnId: 'gst-rate', columnName: 'GST Rate', view: false, edit: false },
+          { columnId: 'stock-qty', columnName: 'Stock Quantity', view: false, edit: false },
+          { columnId: 'reorder-level', columnName: 'Reorder Level', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'active-ingredients',
+    moduleName: 'Active Ingredients',
+    icon: 'ingredients',
+    description: 'Active pharmaceutical ingredients database',
+    subModules: [
+      {
+        subModuleId: 'ingredients-list',
+        subModuleName: 'Ingredients List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'api-code', columnName: 'API Code', view: false, edit: false },
+          { columnId: 'api-name', columnName: 'API Name', view: false, edit: false },
+          { columnId: 'cas-number', columnName: 'CAS Number', view: false, edit: false },
+          { columnId: 'molecular-formula', columnName: 'Molecular Formula', view: false, edit: false },
+          { columnId: 'therapeutic-class', columnName: 'Therapeutic Class', view: false, edit: false },
+          { columnId: 'supplier', columnName: 'Supplier', view: false, edit: false },
+          { columnId: 'stock-qty', columnName: 'Stock Quantity', view: false, edit: false },
+          { columnId: 'expiry-date', columnName: 'Expiry Date', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'coupon-management',
+    moduleName: 'Coupon Management',
+    icon: 'coupon',
+    description: 'Manage promotional coupons',
+    subModules: [
+      {
+        subModuleId: 'coupons-list',
+        subModuleName: 'Coupons List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'coupon-code', columnName: 'Coupon Code', view: false, edit: false },
+          { columnId: 'coupon-name', columnName: 'Coupon Name', view: false, edit: false },
+          { columnId: 'discount-type', columnName: 'Discount Type', view: false, edit: false },
+          { columnId: 'discount-value', columnName: 'Discount Value', view: false, edit: false },
+          { columnId: 'min-order', columnName: 'Minimum Order', view: false, edit: false },
+          { columnId: 'max-discount', columnName: 'Maximum Discount', view: false, edit: false },
+          { columnId: 'valid-from', columnName: 'Valid From', view: false, edit: false },
+          { columnId: 'valid-to', columnName: 'Valid To', view: false, edit: false },
+          { columnId: 'usage-limit', columnName: 'Usage Limit', view: false, edit: false },
+          { columnId: 'used-count', columnName: 'Used Count', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'discount-management',
+    moduleName: 'Discount Management',
+    icon: 'discount',
+    description: 'Manage discount schemes',
+    subModules: [
+      {
+        subModuleId: 'discounts-list',
+        subModuleName: 'Discounts List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'discount-id', columnName: 'Discount ID', view: false, edit: false },
+          { columnId: 'discount-name', columnName: 'Discount Name', view: false, edit: false },
+          { columnId: 'discount-type', columnName: 'Discount Type', view: false, edit: false },
+          { columnId: 'discount-percentage', columnName: 'Discount Percentage', view: false, edit: false },
+          { columnId: 'applicable-on', columnName: 'Applicable On', view: false, edit: false },
+          { columnId: 'start-date', columnName: 'Start Date', view: false, edit: false },
+          { columnId: 'end-date', columnName: 'End Date', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'doctor-appointments',
+    moduleName: 'Doctor Appointments',
+    icon: 'appointments',
+    description: 'Manage doctor appointments and schedules',
+    subModules: [
+      {
+        subModuleId: 'appointments-list',
+        subModuleName: 'Appointments List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'appointment-id', columnName: 'Appointment ID', view: false, edit: false },
+          { columnId: 'doctor-name', columnName: 'Doctor Name', view: false, edit: false },
+          { columnId: 'patient-name', columnName: 'Patient Name', view: false, edit: false },
+          { columnId: 'appointment-date', columnName: 'Date', view: false, edit: false },
+          { columnId: 'appointment-time', columnName: 'Time', view: false, edit: false },
+          { columnId: 'purpose', columnName: 'Purpose', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+          { columnId: 'notes', columnName: 'Notes', view: false, edit: false },
+        ]
+      },
+      {
+        subModuleId: 'doctors-list',
+        subModuleName: 'Doctors List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'doctor-id', columnName: 'Doctor ID', view: false, edit: false },
+          { columnId: 'doctor-name', columnName: 'Doctor Name', view: false, edit: false },
+          { columnId: 'specialization', columnName: 'Specialization', view: false, edit: false },
+          { columnId: 'clinic-hospital', columnName: 'Clinic/Hospital', view: false, edit: false },
+          { columnId: 'contact', columnName: 'Contact', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'contact-enquiry',
+    moduleName: 'Contact Enquiry',
+    icon: 'contact',
+    description: 'Website contact form submissions',
+    subModules: [
+      {
+        subModuleId: 'contact-submissions',
+        subModuleName: 'Contact Submissions',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'submission-id', columnName: 'Submission ID', view: false, edit: false },
+          { columnId: 'name', columnName: 'Name', view: false, edit: false },
+          { columnId: 'email', columnName: 'Email', view: false, edit: false },
+          { columnId: 'phone', columnName: 'Phone', view: false, edit: false },
+          { columnId: 'subject', columnName: 'Subject', view: false, edit: false },
+          { columnId: 'message', columnName: 'Message', view: false, edit: false },
+          { columnId: 'submitted-at', columnName: 'Submitted At', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+          { columnId: 'responded-by', columnName: 'Responded By', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'new-developments',
+    moduleName: 'New Developments',
+    icon: 'development',
+    description: 'R&D new product developments',
+    subModules: [
+      {
+        subModuleId: 'developments-list',
+        subModuleName: 'Developments List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'dev-id', columnName: 'Development ID', view: false, edit: false },
+          { columnId: 'project-name', columnName: 'Project Name', view: false, edit: false },
+          { columnId: 'product-type', columnName: 'Product Type', view: false, edit: false },
+          { columnId: 'client-name', columnName: 'Client Name', view: false, edit: false },
+          { columnId: 'assigned-team', columnName: 'Assigned Team', view: false, edit: false },
+          { columnId: 'start-date', columnName: 'Start Date', view: false, edit: false },
+          { columnId: 'target-date', columnName: 'Target Date', view: false, edit: false },
+          { columnId: 'stage', columnName: 'Stage', view: false, edit: false },
+          { columnId: 'progress', columnName: 'Progress', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      },
+      {
+        subModuleId: 'development-milestones',
+        subModuleName: 'Milestones',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'milestone-name', columnName: 'Milestone Name', view: false, edit: false },
+          { columnId: 'due-date', columnName: 'Due Date', view: false, edit: false },
+          { columnId: 'completed-date', columnName: 'Completed Date', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'product-samples',
+    moduleName: 'Product Samples',
+    icon: 'samples',
+    description: 'Manage product sample requests',
+    subModules: [
+      {
+        subModuleId: 'samples-list',
+        subModuleName: 'Samples List',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'sample-id', columnName: 'Sample ID', view: false, edit: false },
+          { columnId: 'product-name', columnName: 'Product Name', view: false, edit: false },
+          { columnId: 'requested-by', columnName: 'Requested By', view: false, edit: false },
+          { columnId: 'client-name', columnName: 'Client Name', view: false, edit: false },
+          { columnId: 'quantity', columnName: 'Quantity', view: false, edit: false },
+          { columnId: 'request-date', columnName: 'Request Date', view: false, edit: false },
+          { columnId: 'dispatch-date', columnName: 'Dispatch Date', view: false, edit: false },
+          { columnId: 'tracking-no', columnName: 'Tracking Number', view: false, edit: false },
+          { columnId: 'feedback', columnName: 'Feedback', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'packaging-management',
+    moduleName: 'Packaging Management',
+    icon: 'packaging',
+    description: 'Packaging specifications and designs',
+    subModules: [
+      {
+        subModuleId: 'packaging-specs',
+        subModuleName: 'Packaging Specifications',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'pkg-spec-id', columnName: 'Spec ID', view: false, edit: false },
+          { columnId: 'product-name', columnName: 'Product Name', view: false, edit: false },
+          { columnId: 'primary-pack', columnName: 'Primary Packaging', view: false, edit: false },
+          { columnId: 'secondary-pack', columnName: 'Secondary Packaging', view: false, edit: false },
+          { columnId: 'tertiary-pack', columnName: 'Tertiary Packaging', view: false, edit: false },
+          { columnId: 'label-info', columnName: 'Label Information', view: false, edit: false },
+          { columnId: 'artwork-status', columnName: 'Artwork Status', view: false, edit: false },
+          { columnId: 'approved-by', columnName: 'Approved By', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      },
+      {
+        subModuleId: 'packaging-designs',
+        subModuleName: 'Packaging Designs',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'design-id', columnName: 'Design ID', view: false, edit: false },
+          { columnId: 'design-name', columnName: 'Design Name', view: false, edit: false },
+          { columnId: 'designer', columnName: 'Designer', view: false, edit: false },
+          { columnId: 'version', columnName: 'Version', view: false, edit: false },
+          { columnId: 'approval-status', columnName: 'Approval Status', view: false, edit: false },
+        ]
+      }
+    ]
+  },
+  {
+    moduleId: 'order-list',
+    moduleName: 'Order List',
+    icon: 'orderlist',
+    description: 'View and filter all orders',
+    subModules: [
+      {
+        subModuleId: 'all-orders',
+        subModuleName: 'All Orders',
+        actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+        columns: [
+          { columnId: 'order-id', columnName: 'Order ID', view: false, edit: false },
+          { columnId: 'client-name', columnName: 'Client Name', view: false, edit: false },
+          { columnId: 'product-details', columnName: 'Product Details', view: false, edit: false },
+          { columnId: 'order-value', columnName: 'Order Value', view: false, edit: false },
+          { columnId: 'order-date', columnName: 'Order Date', view: false, edit: false },
+          { columnId: 'delivery-date', columnName: 'Delivery Date', view: false, edit: false },
+          { columnId: 'current-stage', columnName: 'Current Stage', view: false, edit: false },
+          { columnId: 'assigned-to', columnName: 'Assigned To', view: false, edit: false },
+          { columnId: 'priority', columnName: 'Priority', view: false, edit: false },
+          { columnId: 'status', columnName: 'Status', view: false, edit: false },
+        ]
+      }
+    ]
   }
 ];
 

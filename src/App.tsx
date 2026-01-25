@@ -7,6 +7,7 @@ import { ToastProvider } from './context/ToastContext'
 import { VendorClientProvider } from './context/VendorClientContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
+import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
 import Sidebar from "./components/sidebar/sidebar"
 import { monitorConnection } from './lib/performanceOptimization'
 
@@ -157,30 +158,122 @@ const AppLayout = () => {
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/role-management" element={<RoleManagement />} />
-              <Route path="/user-management" element={<UserManagement />} />
-              <Route path="/order-management" element={<OrderManagement />} />
-              <Route path="/good-receiving" element={<GoodReceivingPage />} />
-              <Route path="/order-list" element={<OrderList />} />
-              <Route path="/coupon-management" element={<CouponManagement />} />
-              <Route path="/discount-management" element={<DiscountManagement />} />
-              <Route path="/catalogue-management" element={<CatalogueManagement />} />
-              <Route path="/active-ingredients" element={<ActiveIngredients />} />
-              <Route path="/enquiry-management" element={<EnquiryManagement />} />
-              <Route path="/doctor-appointments" element={<DoctorAppointments />} />
-              <Route path="/contact-enquiry" element={<ContactEnquiry />} />
-              <Route path="/new-developments" element={<NewDevelopments />} />
-              <Route path="/product-samples" element={<ProductSamples />} />
+              <Route path="/role-management" element={
+                <ProtectedModuleRoute moduleId="role-management">
+                  <RoleManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/user-management" element={
+                <ProtectedModuleRoute moduleId="user-management">
+                  <UserManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/order-management" element={
+                <ProtectedModuleRoute moduleId="order-management">
+                  <OrderManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/good-receiving" element={
+                <ProtectedModuleRoute moduleId="order-management" subModuleId="goods-receiving">
+                  <GoodReceivingPage />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/order-list" element={
+                <ProtectedModuleRoute moduleId="order-list">
+                  <OrderList />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/coupon-management" element={
+                <ProtectedModuleRoute moduleId="coupon-management">
+                  <CouponManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/discount-management" element={
+                <ProtectedModuleRoute moduleId="discount-management">
+                  <DiscountManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/catalogue-management" element={
+                <ProtectedModuleRoute moduleId="catalogue-management">
+                  <CatalogueManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/active-ingredients" element={
+                <ProtectedModuleRoute moduleId="active-ingredients">
+                  <ActiveIngredients />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/enquiry-management" element={
+                <ProtectedModuleRoute moduleId="enquiry-management">
+                  <EnquiryManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/doctor-appointments" element={
+                <ProtectedModuleRoute moduleId="doctor-appointments">
+                  <DoctorAppointments />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/contact-enquiry" element={
+                <ProtectedModuleRoute moduleId="contact-enquiry">
+                  <ContactEnquiry />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/new-developments" element={
+                <ProtectedModuleRoute moduleId="new-developments">
+                  <NewDevelopments />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/product-samples" element={
+                <ProtectedModuleRoute moduleId="product-samples">
+                  <ProductSamples />
+                </ProtectedModuleRoute>
+              } />
 // ...existing code...
-              <Route path="/treasury" element={<TreasuryApp />} />
-              <Route path="/packaging-management" element={<PackagingManagement />} />
-              <Route path="/packaging" element={<PackagingRefactored />} />
-              <Route path="/raw-material" element={<RawMaterialRefactored />} />
-              <Route path="/bom" element={<BOMRefactored />} />
-              <Route path="/items-master" element={<ItemsMaster />} />
-              <Route path="/vendor-client" element={<VendorClient />} />
-              <Route path="/sales-and-purchase" element={<SalesAndPurchase />} />
-              <Route path="/task-management" element={<TaskManagement />} />
+              <Route path="/treasury" element={
+                <ProtectedModuleRoute moduleId="treasury">
+                  <TreasuryApp />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/packaging-management" element={
+                <ProtectedModuleRoute moduleId="packaging-management">
+                  <PackagingManagement />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/packaging" element={
+                <ProtectedModuleRoute moduleId="inventory" subModuleId="packaging">
+                  <PackagingRefactored />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/raw-material" element={
+                <ProtectedModuleRoute moduleId="inventory" subModuleId="raw-materials">
+                  <RawMaterialRefactored />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/bom" element={
+                <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
+                  <BOMRefactored />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/items-master" element={
+                <ProtectedModuleRoute moduleId="items-master">
+                  <ItemsMaster />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/vendor-client" element={
+                <ProtectedModuleRoute moduleId="vendor-client">
+                  <VendorClient />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/sales-and-purchase" element={
+                <ProtectedModuleRoute moduleId="sales-purchase">
+                  <SalesAndPurchase />
+                </ProtectedModuleRoute>
+              } />
+              <Route path="/task-management" element={
+                <ProtectedModuleRoute moduleId="task-management">
+                  <TaskManagement />
+                </ProtectedModuleRoute>
+              } />
               {/* Catch-all route */}
               <Route path="*" element={<Dashboard />} />
             </Routes>

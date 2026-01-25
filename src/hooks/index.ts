@@ -35,3 +35,7 @@ export type { UseModalReturn, UseConfirmReturn } from './useModal';
 // Toggle and selection
 export { useToggle, useSelection } from './useToggle';
 export type { UseToggleReturn, UseSelectionReturn } from './useToggle';
+
+// Permissions - Role-based access control
+export { usePermissions, MODULE_ROUTE_MAP, ROUTE_MODULE_MAP } from './usePermissions';
+export type { UsePermissionsReturn, PermissionCheck, ColumnPermissionCheck } from './usePermissions';

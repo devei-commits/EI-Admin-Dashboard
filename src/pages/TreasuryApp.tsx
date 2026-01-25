@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import logoFull from '../assets/logo/eilogofull.svg';
 
+// Mobile menu state
+const useTreasuryMobileMenu = () => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  return { isMobileMenuOpen, setIsMobileMenuOpen };
+};
+
 interface Notification {
   id: string;
   type: 'alert' | 'warning' | 'success' | 'info';
@@ -197,11 +203,43 @@ const TreasuryApp = () => {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+        <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 text-white hover:bg-slate-700 rounded-lg"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {isMobileMenuOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className="w-64 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl">
+      <aside className={`
+        fixed md:static inset-y-0 left-0 z-50
+        w-64 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl
+        transform transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        md:flex
+      `}>
         <div className="p-4 border-b border-gray-700 flex items-center justify-center">
           <img src={logoFull} alt="Esthetic Insights" className="h-12 object-contain" />
         </div>
@@ -215,7 +253,7 @@ const TreasuryApp = () => {
           {['dashboard', 'cashflow', 'treasury'].map(screen => (
             <button
               key={screen}
-              onClick={() => setCurrentScreen(screen)}
+              onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
@@ -231,7 +269,7 @@ const TreasuryApp = () => {
           {['new-payment', 'approvals', 'schedule', 'execute', 'recurring'].map(screen => (
             <button
               key={screen}
-              onClick={() => setCurrentScreen(screen)}
+              onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
@@ -247,7 +285,7 @@ const TreasuryApp = () => {
           {['inflows-clients', 'inflows-funding'].map(screen => (
             <button
               key={screen}
-              onClick={() => setCurrentScreen(screen)}
+              onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
@@ -263,7 +301,7 @@ const TreasuryApp = () => {
           {['budgets', 'settings'].map(screen => (
             <button
               key={screen}
-              onClick={() => setCurrentScreen(screen)}
+              onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 currentScreen === screen
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
@@ -277,14 +315,14 @@ const TreasuryApp = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="p-8">
+      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100 pt-14 md:pt-0">
+        <div className="p-4 md:p-8">
           {/* Header with Notifications & Search */}
-          <div className="mb-8">
-            <div className="flex justify-between items-start gap-4 mb-6">
+          <div className="mb-6 md:mb-8">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4 md:mb-6">
               <div>
-                <h1 className="text-4xl font-bold text-gray-900 mb-2">{screenTitles[currentScreen]}</h1>
-                <div className="flex items-center gap-3 text-sm bg-white px-4 py-2 rounded-xl w-fit border border-gray-200 shadow-sm">
+                <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2">{screenTitles[currentScreen]}</h1>
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm bg-white px-3 md:px-4 py-2 rounded-xl w-fit border border-gray-200 shadow-sm">
                   <span className="text-gray-500">Treasury</span>
                   <span className="text-gray-300">/</span>
                   <span className="text-gray-700 font-medium">{screenTitles[currentScreen]}</span>

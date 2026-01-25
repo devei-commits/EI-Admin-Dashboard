@@ -1,266 +1,661 @@
-
-import React from 'react';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UnifiedBadge, getStatusBadgeColor } from '../components/ui';
+import {
+  LayoutDashboard,
+  Package,
+  Users,
+  Shield,
+  ClipboardList,
+  MessageSquare,
+  Calendar,
+  Mail,
+  FlaskConical,
+  TestTubes,
+  Wallet,
+  Box,
+  Layers,
+  Building2,
+  TrendingUp,
+  ShoppingCart,
+  CheckSquare,
+  Clock,
+  AlertCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  Eye,
+  Plus,
+  RefreshCw,
+  Truck,
+  FileText,
+  Tag,
+  Percent,
+  BookOpen,
+  Pill,
+  Stethoscope,
+  Beaker,
+  ChevronRight,
+  Activity,
+  BarChart3,
+  PieChart,
+  Target,
+  Zap,
+  Star,
+  Bell,
+  Search,
+  Filter,
+  ExternalLink,
+} from 'lucide-react';
 
+// ==================== TYPES ====================
 interface StatCardProps {
   title: string;
   value: string | number;
   icon: React.ReactNode;
   change?: string;
-  changeType?: 'positive' | 'negative' | 'neutral';
-  bgColor: string;
+  changeType?: 'up' | 'down' | 'neutral';
+  color: string;
+  link?: string;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon, change, changeType, bgColor }) => (
-  <div className={`${bgColor} rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200`}>
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">{title}</p>
-        <p className="text-2xl md:text-3xl font-bold text-gray-800 mt-1">{value}</p>
-        {change && (
-          <p className={`text-sm mt-2 flex items-center ${
-            changeType === 'positive' ? 'text-emerald-600' : 
-            changeType === 'negative' ? 'text-amber-600' : 'text-gray-500'
-          }`}>
-            {changeType === 'positive' && <span className="mr-1">↑</span>}
-            {changeType === 'negative' && <span className="mr-1">•</span>}
-            {change}
-          </p>
-        )}
-      </div>
-      <div className="text-amber-500 opacity-80">
-        {icon}
-      </div>
-    </div>
-  </div>
-);
+interface QuickAction {
+  label: string;
+  icon: React.ReactNode;
+  href: string;
+  color: string;
+  description: string;
+}
 
-interface RecentOrder {
-  id: string;
-  company: string;
-  status: string;
-  date: string;
+interface ModuleCard {
+  title: string;
+  icon: React.ReactNode;
+  href: string;
+  color: string;
+  stats?: { label: string; value: number | string }[];
+  description: string;
 }
 
 interface RecentActivity {
   id: string;
   action: string;
+  module: string;
   user: string;
   time: string;
+  type: 'order' | 'user' | 'enquiry' | 'task' | 'system';
 }
 
-const Dashboard = () => {
-  const { user } = useAuth();
-  const stats = [
-    {
-      title: 'Total Orders',
-      value: 156,
-      change: '+12% from last month',
-      changeType: 'positive' as const,
-      bgColor: 'bg-white',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-      )
-    },
-    {
-      title: 'Pending Reviews',
-      value: 23,
-      change: '5 urgent',
-      changeType: 'negative' as const,
-      bgColor: 'bg-white',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      )
-    },
-    {
-      title: 'Active Users',
-      value: 42,
-      change: '+3 this week',
-      changeType: 'positive' as const,
-      bgColor: 'bg-white',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      )
-    },
-    {
-      title: 'Total Enquiries',
-      value: 89,
-      change: '+8% from last month',
-      changeType: 'positive' as const,
-      bgColor: 'bg-white',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-      )
-    }
-  ];
+interface PendingItem {
+  id: string;
+  title: string;
+  module: string;
+  priority: 'high' | 'medium' | 'low';
+  dueDate?: string;
+}
 
-  const recentOrders: RecentOrder[] = [
-    { id: 'ORD001', company: 'MedCorp Solutions', status: 'Review at BD', date: '2024-01-15' },
-    { id: 'ORD002', company: 'HealthTech Inc', status: 'Review at R&D', date: '2024-01-20' },
-    { id: 'ORD003', company: 'Clinical Partners', status: 'Approved', date: '2024-01-25' },
-    { id: 'ORD004', company: 'Pharma Solutions', status: 'Packaging', date: '2024-01-30' },
-    { id: 'ORD005', company: 'Medical Supplies Co', status: 'Shipped', date: '2024-02-01' },
-  ];
+// ==================== MOCK DATA ====================
+const STATS = {
+  totalOrders: 156,
+  pendingOrders: 23,
+  activeUsers: 42,
+  totalEnquiries: 89,
+  openTasks: 18,
+  completedTasks: 127,
+  totalProducts: 234,
+  lowStock: 12,
+  todayRevenue: 245000,
+  monthlyGrowth: 12.5,
+};
 
-  const recentActivity: RecentActivity[] = [
-    { id: '1', action: 'New order created', user: 'John Smith', time: '5 mins ago' },
-    { id: '2', action: 'User role updated', user: 'Admin', time: '15 mins ago' },
-    { id: '3', action: 'Order approved', user: 'Sarah Johnson', time: '1 hour ago' },
-    { id: '4', action: 'New enquiry received', user: 'System', time: '2 hours ago' },
-    { id: '5', action: 'Order shipped', user: 'Michael Brown', time: '3 hours ago' },
-  ];
+const RECENT_ACTIVITY: RecentActivity[] = [
+  { id: '1', action: 'New order ORD-2026-0125 created', module: 'Orders', user: 'Priya Sharma', time: '5 mins ago', type: 'order' },
+  { id: '2', action: 'User Amit Patel role updated to Manager', module: 'Users', user: 'Admin', time: '15 mins ago', type: 'user' },
+  { id: '3', action: 'Enquiry #ENQ-089 resolved', module: 'Enquiries', user: 'Kavita Desai', time: '32 mins ago', type: 'enquiry' },
+  { id: '4', action: 'Task "Review BOM specs" completed', module: 'Tasks', user: 'Ravi Verma', time: '1 hour ago', type: 'task' },
+  { id: '5', action: 'GRN-2026-0045 approved', module: 'Receiving', user: 'Sunita Joshi', time: '2 hours ago', type: 'order' },
+  { id: '6', action: 'New product sample requested', module: 'Samples', user: 'Meera Nair', time: '3 hours ago', type: 'system' },
+  { id: '7', action: 'Packaging specs updated for PKG-112', module: 'Packaging', user: 'Anil Mehta', time: '4 hours ago', type: 'system' },
+];
 
-  return (
-    <div className="w-full min-h-screen bg-gray-50/50 p-4 md:p-8">
-      <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Dashboard</h1>
-            <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
-          </div>
-          {user && (
-            <div className="bg-white rounded-xl border border-amber-200 p-4 shadow-sm">
-              <p className="text-sm text-gray-500 uppercase tracking-wide font-medium">Current User</p>
-              <p className="text-lg font-semibold text-gray-800 mt-1">{user.name}</p>
-              <div className="flex gap-2 mt-2">
-                <span className="px-3 py-1 text-xs font-medium bg-amber-100 text-amber-800 rounded-full">{user.roleName}</span>
-                <span className={`px-3 py-1 text-xs font-medium rounded-full ${user.roleLevel === 'admin' ? 'bg-red-100 text-red-800' : user.roleLevel === 'manager' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
-                  {user.roleLevel.charAt(0).toUpperCase() + user.roleLevel.slice(1)}
-                </span>
-              </div>
+const PENDING_ITEMS: PendingItem[] = [
+  { id: '1', title: 'Review order ORD-2026-0118', module: 'Orders', priority: 'high', dueDate: 'Today' },
+  { id: '2', title: 'Approve GRN for Raw Materials', module: 'Receiving', priority: 'high', dueDate: 'Today' },
+  { id: '3', title: 'Update packaging specifications', module: 'Packaging', priority: 'medium', dueDate: 'Tomorrow' },
+  { id: '4', title: 'Complete vendor evaluation', module: 'Vendors', priority: 'medium', dueDate: 'Jan 27' },
+  { id: '5', title: 'Review new development proposal', module: 'R&D', priority: 'low', dueDate: 'Jan 28' },
+];
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: 'New Order', icon: <Plus className="w-5 h-5" />, href: '/order-management', color: 'amber', description: 'Create new order' },
+  { label: 'Add User', icon: <Users className="w-5 h-5" />, href: '/user-management', color: 'blue', description: 'Add team member' },
+  { label: 'View Tasks', icon: <CheckSquare className="w-5 h-5" />, href: '/task-management', color: 'green', description: 'Manage tasks' },
+  { label: 'Enquiries', icon: <MessageSquare className="w-5 h-5" />, href: '/enquiry-management', color: 'purple', description: 'Handle enquiries' },
+  { label: 'Order Hub', icon: <Package className="w-5 h-5" />, href: '/order-hub', color: 'orange', description: 'Track all orders' },
+  { label: 'PIS Portal', icon: <LayoutDashboard className="w-5 h-5" />, href: '/pis', color: 'rose', description: 'Product Info System' },
+];
+
+const MODULE_CARDS: ModuleCard[] = [
+  {
+    title: 'Order Management',
+    icon: <Package className="w-6 h-6" />,
+    href: '/order-management',
+    color: 'amber',
+    stats: [{ label: 'Total', value: 156 }, { label: 'Pending', value: 23 }],
+    description: 'Create and manage orders',
+  },
+  {
+    title: 'Order Hub',
+    icon: <Truck className="w-6 h-6" />,
+    href: '/order-hub',
+    color: 'orange',
+    stats: [{ label: 'In Progress', value: 45 }, { label: 'Shipped', value: 89 }],
+    description: 'Track order lifecycle',
+  },
+  {
+    title: 'User Management',
+    icon: <Users className="w-6 h-6" />,
+    href: '/user-management',
+    color: 'blue',
+    stats: [{ label: 'Active', value: 42 }, { label: 'Total', value: 58 }],
+    description: 'Manage users & access',
+  },
+  {
+    title: 'Role Management',
+    icon: <Shield className="w-6 h-6" />,
+    href: '/role-management',
+    color: 'indigo',
+    stats: [{ label: 'Roles', value: 8 }, { label: 'Permissions', value: 24 }],
+    description: 'Define roles & permissions',
+  },
+  {
+    title: 'Task Management',
+    icon: <CheckSquare className="w-6 h-6" />,
+    href: '/task-management',
+    color: 'green',
+    stats: [{ label: 'Open', value: 18 }, { label: 'Completed', value: 127 }],
+    description: 'Track team tasks',
+  },
+  {
+    title: 'Enquiry Management',
+    icon: <MessageSquare className="w-6 h-6" />,
+    href: '/enquiry-management',
+    color: 'purple',
+    stats: [{ label: 'Open', value: 12 }, { label: 'Resolved', value: 77 }],
+    description: 'Handle customer enquiries',
+  },
+  {
+    title: 'Good Receiving',
+    icon: <ClipboardList className="w-6 h-6" />,
+    href: '/good-receiving',
+    color: 'teal',
+    stats: [{ label: 'Pending', value: 8 }, { label: 'Approved', value: 156 }],
+    description: 'Manage GRN process',
+  },
+  {
+    title: 'Treasury',
+    icon: <Wallet className="w-6 h-6" />,
+    href: '/treasury',
+    color: 'emerald',
+    stats: [{ label: 'Balance', value: '₹24.5L' }],
+    description: 'Financial management',
+  },
+  {
+    title: 'Items Master',
+    icon: <Box className="w-6 h-6" />,
+    href: '/items-master',
+    color: 'cyan',
+    stats: [{ label: 'Items', value: 234 }, { label: 'Categories', value: 18 }],
+    description: 'Product catalog',
+  },
+  {
+    title: 'Raw Materials',
+    icon: <Beaker className="w-6 h-6" />,
+    href: '/raw-material',
+    color: 'lime',
+    stats: [{ label: 'Materials', value: 89 }, { label: 'Low Stock', value: 5 }],
+    description: 'Raw material inventory',
+  },
+  {
+    title: 'BOM Management',
+    icon: <Layers className="w-6 h-6" />,
+    href: '/bom',
+    color: 'yellow',
+    stats: [{ label: 'BOMs', value: 67 }],
+    description: 'Bill of Materials',
+  },
+  {
+    title: 'Packaging',
+    icon: <Box className="w-6 h-6" />,
+    href: '/packaging',
+    color: 'pink',
+    stats: [{ label: 'Types', value: 45 }],
+    description: 'Packaging specifications',
+  },
+  {
+    title: 'Vendor & Client',
+    icon: <Building2 className="w-6 h-6" />,
+    href: '/vendor-client',
+    color: 'slate',
+    stats: [{ label: 'Vendors', value: 34 }, { label: 'Clients', value: 56 }],
+    description: 'Manage business partners',
+  },
+  {
+    title: 'Sales & Purchase',
+    icon: <TrendingUp className="w-6 h-6" />,
+    href: '/sales-and-purchase',
+    color: 'red',
+    stats: [{ label: 'This Month', value: '₹45L' }],
+    description: 'Track transactions',
+  },
+  {
+    title: 'Active Ingredients',
+    icon: <Pill className="w-6 h-6" />,
+    href: '/active-ingredients',
+    color: 'violet',
+    stats: [{ label: 'APIs', value: 78 }],
+    description: 'API database',
+  },
+  {
+    title: 'Doctor Appointments',
+    icon: <Stethoscope className="w-6 h-6" />,
+    href: '/doctor-appointments',
+    color: 'sky',
+    stats: [{ label: 'Today', value: 8 }, { label: 'Week', value: 34 }],
+    description: 'Manage appointments',
+  },
+  {
+    title: 'New Developments',
+    icon: <FlaskConical className="w-6 h-6" />,
+    href: '/new-developments',
+    color: 'fuchsia',
+    stats: [{ label: 'Active', value: 12 }],
+    description: 'R&D projects',
+  },
+  {
+    title: 'Product Samples',
+    icon: <TestTubes className="w-6 h-6" />,
+    href: '/product-samples',
+    color: 'rose',
+    stats: [{ label: 'Pending', value: 6 }],
+    description: 'Sample requests',
+  },
+  {
+    title: 'Coupons',
+    icon: <Tag className="w-6 h-6" />,
+    href: '/coupon-management',
+    color: 'amber',
+    stats: [{ label: 'Active', value: 15 }],
+    description: 'Manage coupons',
+  },
+  {
+    title: 'Discounts',
+    icon: <Percent className="w-6 h-6" />,
+    href: '/discount-management',
+    color: 'orange',
+    stats: [{ label: 'Schemes', value: 8 }],
+    description: 'Discount schemes',
+  },
+  {
+    title: 'Catalogue',
+    icon: <BookOpen className="w-6 h-6" />,
+    href: '/catalogue-management',
+    color: 'blue',
+    stats: [{ label: 'Products', value: 234 }],
+    description: 'Product catalogue',
+  },
+  {
+    title: 'Contact Enquiry',
+    icon: <Mail className="w-6 h-6" />,
+    href: '/contact-enquiry',
+    color: 'gray',
+    stats: [{ label: 'New', value: 5 }],
+    description: 'Contact form submissions',
+  },
+  {
+    title: 'PIS Portal',
+    icon: <LayoutDashboard className="w-6 h-6" />,
+    href: '/pis',
+    color: 'amber',
+    description: 'Product Information System',
+  },
+];
+
+// ==================== HELPER COMPONENTS ====================
+const StatCard = ({ title, value, icon, change, changeType, color, link }: StatCardProps) => {
+  const colorClasses: Record<string, { bg: string; icon: string }> = {
+    amber: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-500' },
+    blue: { bg: 'bg-blue-50 border-blue-100', icon: 'text-blue-500' },
+    green: { bg: 'bg-green-50 border-green-100', icon: 'text-green-500' },
+    purple: { bg: 'bg-purple-50 border-purple-100', icon: 'text-purple-500' },
+    red: { bg: 'bg-red-50 border-red-100', icon: 'text-red-500' },
+    orange: { bg: 'bg-orange-50 border-orange-100', icon: 'text-orange-500' },
+  };
+  const colors = colorClasses[color] || colorClasses.amber;
+
+  const content = (
+    <div className={`${colors.bg} rounded-xl p-5 border hover:shadow-md transition-all duration-200 group cursor-pointer`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-gray-500 font-medium">{title}</p>
+          <p className="text-2xl md:text-3xl font-bold text-gray-800 mt-1">{value}</p>
+          {change && (
+            <div className={`flex items-center gap-1 mt-2 text-sm ${changeType === 'up' ? 'text-green-600' : changeType === 'down' ? 'text-red-600' : 'text-gray-500'}`}>
+              {changeType === 'up' && <ArrowUpRight className="w-4 h-4" />}
+              {changeType === 'down' && <ArrowDownRight className="w-4 h-4" />}
+              <span>{change}</span>
             </div>
           )}
         </div>
+        <div className={`p-3 rounded-xl bg-white shadow-sm ${colors.icon}`}>
+          {icon}
+        </div>
       </div>
-      
+      {link && (
+        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs text-gray-500">View details</span>
+          <ChevronRight className="w-4 h-4 text-gray-400" />
+        </div>
+      )}
+    </div>
+  );
+
+  return link ? <Link to={link}>{content}</Link> : content;
+};
+
+const getActivityIcon = (type: RecentActivity['type']) => {
+  const icons = {
+    order: <Package className="w-4 h-4" />,
+    user: <Users className="w-4 h-4" />,
+    enquiry: <MessageSquare className="w-4 h-4" />,
+    task: <CheckSquare className="w-4 h-4" />,
+    system: <Activity className="w-4 h-4" />,
+  };
+  return icons[type];
+};
+
+const getActivityColor = (type: RecentActivity['type']) => {
+  const colors = {
+    order: 'bg-amber-100 text-amber-600',
+    user: 'bg-blue-100 text-blue-600',
+    enquiry: 'bg-purple-100 text-purple-600',
+    task: 'bg-green-100 text-green-600',
+    system: 'bg-gray-100 text-gray-600',
+  };
+  return colors[type];
+};
+
+const getPriorityColor = (priority: PendingItem['priority']) => {
+  const colors = {
+    high: 'bg-red-100 text-red-700 border-red-200',
+    medium: 'bg-amber-100 text-amber-700 border-amber-200',
+    low: 'bg-gray-100 text-gray-600 border-gray-200',
+  };
+  return colors[priority];
+};
+
+// ==================== MAIN COMPONENT ====================
+const Dashboard = () => {
+  const { user } = useAuth();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const categories = [
+    { id: 'all', label: 'All Modules' },
+    { id: 'orders', label: 'Orders' },
+    { id: 'users', label: 'Users & Roles' },
+    { id: 'inventory', label: 'Inventory' },
+    { id: 'finance', label: 'Finance' },
+    { id: 'enquiries', label: 'Enquiries' },
+  ];
+
+  const filteredModules = useMemo(() => {
+    let modules = MODULE_CARDS;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      modules = modules.filter(m => m.title.toLowerCase().includes(term) || m.description.toLowerCase().includes(term));
+    }
+    if (selectedCategory !== 'all') {
+      const categoryMap: Record<string, string[]> = {
+        orders: ['Order Management', 'Order Hub', 'Good Receiving', 'Order List'],
+        users: ['User Management', 'Role Management'],
+        inventory: ['Items Master', 'Raw Materials', 'BOM Management', 'Packaging', 'Active Ingredients'],
+        finance: ['Treasury', 'Sales & Purchase', 'Coupons', 'Discounts'],
+        enquiries: ['Enquiry Management', 'Contact Enquiry', 'Doctor Appointments'],
+      };
+      const allowed = categoryMap[selectedCategory] || [];
+      modules = modules.filter(m => allowed.includes(m.title));
+    }
+    return modules;
+  }, [searchTerm, selectedCategory]);
+
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 p-4 md:p-6 lg:p-8">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div>
+            <p className="text-amber-100 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <h1 className="text-2xl md:text-3xl font-bold mt-1">{greeting}, {user?.name || 'Admin'}!</h1>
+            <p className="text-amber-100 mt-2">Welcome to your PIS Admin Dashboard. Here's an overview of your system.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+              <p className="text-3xl font-bold">{STATS.totalOrders}</p>
+              <p className="text-xs text-amber-100">Total Orders</p>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+              <p className="text-3xl font-bold">{STATS.activeUsers}</p>
+              <p className="text-xs text-amber-100">Active Users</p>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+              <p className="text-3xl font-bold">{STATS.openTasks}</p>
+              <p className="text-xs text-amber-100">Open Tasks</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {stats.map((stat, index) => (
-          <StatCard key={index} {...stat} />
-        ))}
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Orders */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-semibold text-gray-800">Recent Orders</h2>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-                window.open(`/order-hub?role=${userRole}`, '_blank', 'noopener,noreferrer');
-              }}
-              className="text-sm text-amber-600 hover:text-amber-700 font-medium cursor-pointer"
-            >
-              View all in Tracker →
-            </button>
-          </div>
-          
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-3">
-            {recentOrders.map((order) => (
-              <div key={order.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="font-semibold text-gray-800">{order.id}</span>
-                  <UnifiedBadge variant={getStatusBadgeColor(order.status)}>
-                    {order.status}
-                  </UnifiedBadge>
-                </div>
-                <p className="text-sm text-gray-700 font-medium">{order.company}</p>
-                <p className="text-xs text-gray-400 mt-1">{order.date}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                  <th className="pb-3 font-semibold">Order ID</th>
-                  <th className="pb-3 font-semibold">Company</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                  <th className="pb-3 font-semibold">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                    <td className="py-4 text-gray-800 font-semibold">{order.id}</td>
-                    <td className="py-4 text-gray-700">{order.company}</td>
-                    <td className="py-4">
-                      <UnifiedBadge variant={getStatusBadgeColor(order.status)}>
-                        {order.status}
-                      </UnifiedBadge>
-                    </td>
-                    <td className="py-4 text-gray-400">{order.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-5">Recent Activity</h2>
-          <div className="space-y-4">
-            {recentActivity.map((activity) => (
-              <div key={activity.id} className="flex items-start space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-2 h-2 bg-amber-400 rounded-full mt-2 shrink-0"></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700 truncate">{activity.action}</p>
-                  <p className="text-xs text-gray-400">{activity.user} • {activity.time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+        <StatCard title="Total Orders" value={STATS.totalOrders} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/order-management" />
+        <StatCard title="Pending Review" value={STATS.pendingOrders} icon={<Clock className="w-6 h-6" />} change="5 urgent" changeType="down" color="orange" link="/order-hub" />
+        <StatCard title="Active Users" value={STATS.activeUsers} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
+        <StatCard title="Open Enquiries" value={STATS.totalEnquiries} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
+        <StatCard title="Open Tasks" value={STATS.openTasks} icon={<CheckSquare className="w-6 h-6" />} change={`${STATS.completedTasks} completed`} changeType="neutral" color="green" link="/task-management" />
+        <StatCard title="Low Stock Items" value={STATS.lowStock} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/items-master" />
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-5">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <a href="/order-management" className="flex flex-col items-center p-5 bg-gray-50 rounded-xl hover:bg-gray-100 hover:shadow-sm transition-all duration-200 border border-gray-100">
-            <svg className="w-7 h-7 text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 text-center">New Order</span>
-          </a>
-          <a href="/user-management" className="flex flex-col items-center p-5 bg-gray-50 rounded-xl hover:bg-gray-100 hover:shadow-sm transition-all duration-200 border border-gray-100">
-            <svg className="w-7 h-7 text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 text-center">Add User</span>
-          </a>
-          <a href="/role-management" className="flex flex-col items-center p-5 bg-gray-50 rounded-xl hover:bg-gray-100 hover:shadow-sm transition-all duration-200 border border-gray-100">
-            <svg className="w-7 h-7 text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 text-center">Manage Roles</span>
-          </a>
-          <a href="/enquiry-management" className="flex flex-col items-center p-5 bg-gray-50 rounded-xl hover:bg-gray-100 hover:shadow-sm transition-all duration-200 border border-gray-100">
-            <svg className="w-7 h-7 text-amber-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 text-center">Enquiries</span>
-          </a>
+      <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-500" /> Quick Actions
+          </h2>
+          <button className="text-sm text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {QUICK_ACTIONS.map((action) => (
+            <Link
+              key={action.label}
+              to={action.href}
+              className="flex flex-col items-center p-4 bg-gray-50 hover:bg-amber-50 rounded-xl border border-gray-100 hover:border-amber-200 transition-all duration-200 group"
+            >
+              <div className="p-3 bg-white rounded-xl shadow-sm text-amber-500 group-hover:text-amber-600 group-hover:shadow-md transition-all">
+                {action.icon}
+              </div>
+              <span className="text-sm font-medium text-gray-700 mt-2 text-center">{action.label}</span>
+              <span className="text-xs text-gray-400 text-center">{action.description}</span>
+            </Link>
+          ))}
         </div>
       </div>
-    </div>
-  )
-}
 
-export default Dashboard
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Recent Activity */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-amber-500" /> Recent Activity
+            </h2>
+            <button className="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+          </div>
+          <div className="space-y-3">
+            {RECENT_ACTIVITY.map((activity) => (
+              <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                <div className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}>
+                  {getActivityIcon(activity.type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700">{activity.action}</p>
+                  <p className="text-xs text-gray-500">{activity.user} • {activity.module}</p>
+                </div>
+                <span className="text-xs text-gray-400 whitespace-nowrap">{activity.time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Pending Items */}
+        <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" /> Pending Items
+            </h2>
+            <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">{PENDING_ITEMS.length} items</span>
+          </div>
+          <div className="space-y-3">
+            {PENDING_ITEMS.map((item) => (
+              <div key={item.id} className="p-3 rounded-lg border border-gray-100 hover:border-amber-200 hover:bg-amber-50/50 transition-all cursor-pointer">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">{item.title}</p>
+                    <p className="text-xs text-gray-500">{item.module}</p>
+                  </div>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getPriorityColor(item.priority)}`}>
+                    {item.priority}
+                  </span>
+                </div>
+                {item.dueDate && (
+                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                    <Clock className="w-3 h-3" /> Due: {item.dueDate}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* All Modules Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+            <LayoutDashboard className="w-5 h-5 text-amber-500" /> All Modules
+          </h2>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search modules..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full sm:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
+                    selectedCategory === cat.id
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {filteredModules.map((module) => {
+            const colorMap: Record<string, string> = {
+              amber: 'from-amber-400 to-orange-500',
+              blue: 'from-blue-400 to-blue-600',
+              green: 'from-green-400 to-green-600',
+              purple: 'from-purple-400 to-purple-600',
+              indigo: 'from-indigo-400 to-indigo-600',
+              teal: 'from-teal-400 to-teal-600',
+              emerald: 'from-emerald-400 to-emerald-600',
+              cyan: 'from-cyan-400 to-cyan-600',
+              lime: 'from-lime-400 to-lime-600',
+              yellow: 'from-yellow-400 to-yellow-600',
+              pink: 'from-pink-400 to-pink-600',
+              rose: 'from-rose-400 to-rose-600',
+              red: 'from-red-400 to-red-600',
+              orange: 'from-orange-400 to-orange-600',
+              violet: 'from-violet-400 to-violet-600',
+              sky: 'from-sky-400 to-sky-600',
+              fuchsia: 'from-fuchsia-400 to-fuchsia-600',
+              slate: 'from-slate-400 to-slate-600',
+              gray: 'from-gray-400 to-gray-600',
+            };
+            const gradient = colorMap[module.color] || colorMap.amber;
+
+            return (
+              <Link
+                key={module.title}
+                to={module.href}
+                className="group p-4 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-lg transition-all duration-200 bg-white"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
+                  {module.icon}
+                </div>
+                <h3 className="font-semibold text-gray-800 group-hover:text-amber-600 transition-colors">{module.title}</h3>
+                <p className="text-xs text-gray-500 mt-1">{module.description}</p>
+                {module.stats && (
+                  <div className="flex gap-3 mt-3 pt-3 border-t border-gray-100">
+                    {module.stats.map((stat, idx) => (
+                      <div key={idx} className="text-center">
+                        <p className="text-lg font-bold text-gray-700">{stat.value}</p>
+                        <p className="text-xs text-gray-400">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3 flex items-center justify-between text-xs text-gray-400 group-hover:text-amber-500 transition-colors">
+                  <span>Open</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {filteredModules.length === 0 && (
+          <div className="text-center py-12">
+            <Search className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-500 font-medium">No modules found</p>
+            <p className="text-sm text-gray-400">Try adjusting your search or filter</p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer Info */}
+      <div className="mt-6 text-center text-xs text-gray-400">
+        <p>PIS Admin Dashboard • {filteredModules.length} Modules Available • Last updated: {new Date().toLocaleTimeString()}</p>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
