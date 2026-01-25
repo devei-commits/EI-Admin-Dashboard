@@ -78,6 +78,35 @@ interface Order {
   comments: string;
   currentStage: number; // 1-6 for stages, 7 for closed
   stageProgress: Record<number, 'pending' | 'in-progress' | 'completed'>; // Track status of each stage
+  // Team assignment fields
+  assignedTeam?: string; // Team category: CMT, RND_PRODUCT, QUALITY_COMPLIANCE, LABEL_DESIGN, PRODUCTION, DISPENSE, etc.
+  assignedTo?: string; // Team member ID who is assigned this task
+  assignedBy?: string; // Team lead ID who assigned this task
+  assignedAt?: string; // Date when task was assigned
+  // Enhanced fields
+  priority?: 'high' | 'medium' | 'low';
+  activityLog?: ActivityLogEntry[];
+  attachments?: Attachment[];
+}
+
+interface ActivityLogEntry {
+  id: string;
+  action: string;
+  performedBy: string;
+  performedAt: string;
+  details?: string;
+  oldValue?: string;
+  newValue?: string;
+}
+
+interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  size: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  url: string;
 }
 
 interface OrderReview {
@@ -227,105 +256,412 @@ const MOCK_TEAMS: Team[] = [
 
 // ==================== MOCK DATA (Replace with API call later) ====================
 const MOCK_ORDERS: Order[] = [
+  // Planning Tasks (Stage 1)
   {
     id: '1',
-    orderNo: 'SO-02907_1',
+    orderNo: 'EI/PIS/DEC/24/0016',
     orderType: 'NEW ORDER',
-    sku: 'SK2201MC5R',
-    itemName: 'SK.MEN CORREXION SPOT RECTIFYING FACIAL SERUM FOR DARK SPOTS 30ML',
+    sku: 'EXBD24126-1',
+    itemName: 'R&D Lead Review & Assignment',
     qty: 3000,
-    unitRate: '',
-    odrDate: '2025-07-10',
-    estDelDate: '2025-08-15',
+    unitRate: '₹125.50',
+    odrDate: '2025-12-21',
+    estDelDate: '2026-01-21',
     comDate: 'N/A',
     licenseArch: 'yes',
     licenseEI: 'no',
-    stage: 'ORDERS REVIEW',
-    currentStatus: 'UNDER REVIEW',
-    pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-',
+    stage: 'Planning',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'BioHealth Labs',
+    comments: 'High priority - Review required for new formulation',
     currentStage: 1,
-    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
+    stageProgress: { 1: 'pending', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'RND_PRODUCT',
+    assignedTo: 'staff-4',
+    assignedBy: 'lead-2',
+    assignedAt: '2025-12-22',
+    priority: 'high',
+    activityLog: [
+      { id: 'log-1', action: 'Task Created', performedBy: 'System', performedAt: '2025-12-21T10:30:00', details: 'Order created from SO page' },
+      { id: 'log-2', action: 'Task Assigned', performedBy: 'Dr. Suresh Reddy', performedAt: '2025-12-22T09:15:00', details: 'Assigned to Kavita Desai', oldValue: 'Unassigned', newValue: 'Kavita Desai' },
+    ],
+    attachments: [
+      { id: 'att-1', name: 'PO_Document.pdf', type: 'application/pdf', size: '245 KB', uploadedBy: 'Rajesh Kumar', uploadedAt: '2025-12-21', url: '#' },
+    ]
   },
   {
     id: '2',
-    orderNo: 'SO-02906_1',
+    orderNo: 'EI/PIS/NOV/24/0020',
     orderType: 'REORDER',
-    sku: 'SK2201MEFC',
-    itemName: 'SKINKRAFT MEN ACNE EXFOLIATING FACIAL CREAM FOR SEVERE ACNE 50ML',
-    qty: 3000,
-    unitRate: '',
-    odrDate: '2025-07-10',
-    estDelDate: '2025-08-15',
+    sku: 'EXBD24110-1',
+    itemName: 'Stage 2: Alignment',
+    qty: 5000,
+    unitRate: '₹89.75',
+    odrDate: '2024-11-18',
+    estDelDate: '2026-01-18',
     comDate: 'N/A',
     licenseArch: 'yes',
-    licenseEI: 'no',
-    stage: 'ORDERS REVIEW',
-    currentStatus: 'UNDER REVIEW',
-    pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-',
+    licenseEI: 'yes',
+    stage: 'Planning',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'Dawn Sanitizing',
+    comments: 'Requires team alignment before proceeding',
     currentStage: 1,
-    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
+    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'CMT',
+    assignedTo: 'staff-1',
+    assignedBy: 'lead-1',
+    assignedAt: '2024-11-20',
+    priority: 'medium',
+    activityLog: [
+      { id: 'act-3', action: 'Task Assigned', performedBy: 'lead-1', performedAt: '2024-11-20 11:00', details: 'Task assigned to CMT team' }
+    ],
+    attachments: []
   },
   {
     id: '3',
-    orderNo: 'SO-02961_1',
+    orderNo: 'EI/PIS/AUG/24/0080',
     orderType: 'MODIFIED',
-    sku: 'PR0006393',
-    itemName: 'SOLGLO HYBRID SUNSCREEN SPF 70 PA ++++ 50 ML',
-    qty: 20000,
-    unitRate: '',
-    odrDate: '2025-07-31',
-    estDelDate: '2025-08-25',
+    sku: 'EXRND24050-1',
+    itemName: 'R&D Lead Review & Assignment',
+    qty: 8000,
+    unitRate: '₹156.00',
+    odrDate: '2024-08-10',
+    estDelDate: '2025-10-01',
     comDate: 'N/A',
     licenseArch: 'no',
     licenseEI: 'yes',
-    stage: 'ORDERS REVIEW',
-    currentStatus: 'UNDER REVIEW',
-    pocForCurrentStatus: '*#S1 COMPLETED*',
-    comments: '-',
+    stage: 'Planning',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'Nova Cosmetics',
+    comments: 'Modified specs - awaiting approval',
     currentStage: 1,
-    stageProgress: { 1: 'in-progress', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
+    stageProgress: { 1: 'pending', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'RND_PRODUCT',
+    assignedTo: 'staff-5',
+    assignedBy: 'lead-2',
+    assignedAt: '2024-08-12',
+    priority: 'low',
+    activityLog: [
+      { id: 'act-4', action: 'Order Created', performedBy: 'system', performedAt: '2024-08-10 09:00', details: 'Modified order received' }
+    ],
+    attachments: []
   },
+  
+  // Design Tasks (Stage 2)
   {
     id: '4',
-    orderNo: 'SO-02959_1',
+    orderNo: 'EI/PIS/JUN/24/0120',
     orderType: 'NEW ORDER',
-    sku: 'SK2109NUFC',
-    itemName: 'SKINKRAFT ULTRA SMOOTH FACE CLEANSER FOR SENSITIVE SKIN 100ML',
+    sku: 'EXQA24010-1',
+    itemName: 'Stage 6: Quality',
     qty: 3000,
-    unitRate: '',
-    odrDate: '2025-08-01',
-    estDelDate: '2025-08-31',
+    unitRate: '₹210.25',
+    odrDate: '2024-06-26',
+    estDelDate: '2025-12-26',
     comDate: 'N/A',
     licenseArch: 'yes',
     licenseEI: 'yes',
-    stage: 'PURCHASE PLAN',
-    currentStatus: 'UNDER PLANNING',
-    pocForCurrentStatus: '*#S2 COMPLETED*',
-    comments: '-',
+    stage: 'Design',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'MedTech Solutions',
+    comments: 'Design review pending for quality standards',
     currentStage: 2,
-    stageProgress: { 1: 'completed', 2: 'in-progress', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' }
+    stageProgress: { 1: 'completed', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'LABEL_DESIGN',
+    assignedTo: 'staff-11',
+    assignedBy: 'lead-4',
+    assignedAt: '2024-06-28',
+    priority: 'high',
+    activityLog: [
+      { id: 'act-5', action: 'Order Created', performedBy: 'system', performedAt: '2024-06-26 08:30', details: 'New order received' },
+      { id: 'act-6', action: 'Stage Advanced', performedBy: 'lead-1', performedAt: '2024-06-27 14:00', details: 'Planning completed, moved to Design' }
+    ],
+    attachments: [
+      { id: 'att-2', name: 'Design_Brief.pdf', type: 'pdf', size: '1.2 MB', uploadedBy: 'lead-4', uploadedAt: '2024-06-28', url: '#' }
+    ]
   },
   {
     id: '5',
-    orderNo: 'SO-02972_1',
+    orderNo: 'EI/PIS/SEP/24/0095',
     orderType: 'REORDER',
-    sku: 'PR0004404',
-    itemName: 'MEDIMANOR MOISTAR DEEP RESTORE CREAM-25GM',
-    qty: 5000,
-    unitRate: '',
-    odrDate: '2025-08-06',
-    estDelDate: '2025-08-31',
+    sku: 'EXBD24251-1',
+    itemName: 'Stage 3: Assessment & Hardware',
+    qty: 12000,
+    unitRate: '₹95.80',
+    odrDate: '2024-09-15',
+    estDelDate: '2026-02-10',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'no',
+    stage: 'Design',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'TechFlow Industries',
+    comments: 'Hardware assessment in progress',
+    currentStage: 2,
+    stageProgress: { 1: 'completed', 2: 'in-progress', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'LABEL_DESIGN',
+    assignedTo: 'staff-12',
+    assignedBy: 'lead-4',
+    assignedAt: '2024-09-18',
+    priority: 'medium',
+    activityLog: [
+      { id: 'act-7', action: 'Status Changed', performedBy: 'staff-12', performedAt: '2024-09-20 10:00', details: 'Started working on assessment', oldValue: 'Pending', newValue: 'In Progress' }
+    ],
+    attachments: []
+  },
+
+  // Label Tasks (Stage 3)
+  {
+    id: '6',
+    orderNo: 'EI/PIS/MAR/24/0045',
+    orderType: 'NEW ORDER',
+    sku: 'LBLD24015-1',
+    itemName: 'Label Design - Premium Series',
+    qty: 6000,
+    unitRate: '₹45.50',
+    odrDate: '2024-03-12',
+    estDelDate: '2025-05-20',
     comDate: 'N/A',
     licenseArch: 'yes',
     licenseEI: 'yes',
-    stage: 'CONNECTIVITY TRACKER',
-    currentStatus: 'UNDER SCHEDULE',
-    pocForCurrentStatus: '*#S3 COMPLETED*',
-    comments: '-',
+    stage: 'Label',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'Creative Labs',
+    comments: 'Label artwork needs final approval',
     currentStage: 3,
-    stageProgress: { 1: 'completed', 2: 'completed', 3: 'in-progress', 4: 'pending', 5: 'pending', 6: 'pending' }
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'LABEL_DESIGN',
+    assignedTo: 'staff-11',
+    assignedBy: 'lead-4',
+    assignedAt: '2024-03-15',
+    priority: 'high',
+    activityLog: [
+      { id: 'act-8', action: 'Task Assigned', performedBy: 'lead-4', performedAt: '2024-03-15 09:00', details: 'Assigned to Label Design team' }
+    ],
+    attachments: [
+      { id: 'att-3', name: 'Label_Mockup_v1.ai', type: 'ai', size: '4.5 MB', uploadedBy: 'staff-11', uploadedAt: '2024-03-16', url: '#' }
+    ]
+  },
+  {
+    id: '7',
+    orderNo: 'EI/PIS/APR/24/0078',
+    orderType: 'MODIFIED',
+    sku: 'LBLD24032-1',
+    itemName: 'Label Compliance Update',
+    qty: 4500,
+    unitRate: '₹38.90',
+    odrDate: '2024-04-22',
+    estDelDate: '2025-06-15',
+    comDate: 'N/A',
+    licenseArch: 'no',
+    licenseEI: 'yes',
+    stage: 'Label',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'Regulatory Team',
+    comments: 'Updating labels for new compliance standards',
+    currentStage: 3,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'in-progress', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'QUALITY_COMPLIANCE',
+    assignedTo: 'staff-8',
+    assignedBy: 'lead-3',
+    assignedAt: '2024-04-25',
+    priority: 'medium',
+    activityLog: [
+      { id: 'act-9', action: 'Status Changed', performedBy: 'staff-8', performedAt: '2024-04-28 11:30', details: 'Started compliance review', oldValue: 'Pending', newValue: 'In Progress' }
+    ],
+    attachments: [
+      { id: 'att-4', name: 'Compliance_Guidelines.pdf', type: 'pdf', size: '890 KB', uploadedBy: 'lead-3', uploadedAt: '2024-04-25', url: '#' }
+    ]
+  },
+
+  // Production Tasks (Stage 4)
+  {
+    id: '8',
+    orderNo: 'EI/PIS/MAY/24/0112',
+    orderType: 'NEW ORDER',
+    sku: 'PROD24088-1',
+    itemName: 'Production Batch - Series A',
+    qty: 15000,
+    unitRate: '₹185.00',
+    odrDate: '2024-05-08',
+    estDelDate: '2025-07-30',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'yes',
+    stage: 'Production',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'Manufacturing Unit 1',
+    comments: 'Production scheduling pending',
+    currentStage: 4,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'pending', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'PRODUCTION',
+    assignedTo: 'prod-staff-1',
+    assignedBy: 'prod-lead-1',
+    assignedAt: '2024-05-10',
+    priority: 'high',
+    activityLog: [
+      { id: 'act-10', action: 'Task Assigned', performedBy: 'prod-lead-1', performedAt: '2024-05-10 08:00', details: 'Assigned to Production team' }
+    ],
+    attachments: [
+      { id: 'att-5', name: 'Production_Schedule.xlsx', type: 'xlsx', size: '245 KB', uploadedBy: 'prod-lead-1', uploadedAt: '2024-05-10', url: '#' }
+    ]
+  },
+  {
+    id: '9',
+    orderNo: 'EI/PIS/JUL/24/0145',
+    orderType: 'REORDER',
+    sku: 'PROD24101-1',
+    itemName: 'Production Batch - Premium',
+    qty: 10000,
+    unitRate: '₹220.50',
+    odrDate: '2024-07-14',
+    estDelDate: '2025-09-25',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'no',
+    stage: 'Production',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'Manufacturing Unit 2',
+    comments: 'Production line active - 60% complete',
+    currentStage: 4,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'in-progress', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'PRODUCTION',
+    assignedTo: 'prod-staff-2',
+    assignedBy: 'prod-lead-1',
+    assignedAt: '2024-07-16',
+    priority: 'medium',
+    activityLog: [
+      { id: 'act-11', action: 'Status Changed', performedBy: 'prod-staff-2', performedAt: '2024-07-18 09:30', details: 'Production started', oldValue: 'Pending', newValue: 'In Progress' },
+      { id: 'act-12', action: 'Comment Added', performedBy: 'prod-staff-2', performedAt: '2024-07-25 16:00', details: 'Production at 60% completion' }
+    ],
+    attachments: []
+  },
+
+  // Dispense/Bundle Tasks (Stage 5)
+  {
+    id: '10',
+    orderNo: 'EI/PIS/OCT/24/0158',
+    orderType: 'NEW ORDER',
+    sku: 'DISP24045-1',
+    itemName: 'Dispensing & Packaging - Batch 1',
+    qty: 7500,
+    unitRate: '₹78.25',
+    odrDate: '2024-10-05',
+    estDelDate: '2025-12-18',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'yes',
+    stage: 'Dispense',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'Packaging Division',
+    comments: 'Awaiting packaging materials',
+    currentStage: 5,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'completed', 5: 'pending', 6: 'pending' },
+    assignedTeam: 'DISPENSE',
+    assignedTo: 'disp-staff-1',
+    assignedBy: 'disp-lead-1',
+    assignedAt: '2024-10-08',
+    priority: 'low',
+    activityLog: [
+      { id: 'act-13', action: 'Task Assigned', performedBy: 'disp-lead-1', performedAt: '2024-10-08 10:00', details: 'Assigned to Dispense team' }
+    ],
+    attachments: []
+  },
+  {
+    id: '11',
+    orderNo: 'EI/PIS/NOV/24/0172',
+    orderType: 'REORDER',
+    sku: 'BUND24028-1',
+    itemName: 'Bundle Assembly - Holiday Pack',
+    qty: 9000,
+    unitRate: '₹142.00',
+    odrDate: '2024-11-12',
+    estDelDate: '2026-01-05',
+    comDate: 'N/A',
+    licenseArch: 'no',
+    licenseEI: 'yes',
+    stage: 'Bundle',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'Assembly Team',
+    comments: 'Bundle assembly ongoing - 45% complete',
+    currentStage: 5,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'completed', 5: 'in-progress', 6: 'pending' },
+    assignedTeam: 'BUNDLE',
+    assignedTo: 'bund-staff-1',
+    assignedBy: 'bund-lead-1',
+    assignedAt: '2024-11-15',
+    priority: 'medium',
+    activityLog: [
+      { id: 'act-14', action: 'Status Changed', performedBy: 'bund-staff-1', performedAt: '2024-11-18 08:30', details: 'Started bundle assembly', oldValue: 'Pending', newValue: 'In Progress' }
+    ],
+    attachments: [
+      { id: 'att-6', name: 'Holiday_Pack_Specs.pdf', type: 'pdf', size: '1.8 MB', uploadedBy: 'bund-lead-1', uploadedAt: '2024-11-15', url: '#' }
+    ]
+  },
+
+  // Invoice/Quality Tasks (Stage 6)
+  {
+    id: '12',
+    orderNo: 'EI/PIS/DEC/24/0188',
+    orderType: 'MODIFIED',
+    sku: 'INV24062-1',
+    itemName: 'Final Quality Check & Invoice',
+    qty: 5500,
+    unitRate: '₹195.75',
+    odrDate: '2024-12-03',
+    estDelDate: '2026-02-14',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'yes',
+    stage: 'Invoice',
+    currentStatus: 'Pending',
+    pocForCurrentStatus: 'Quality Assurance',
+    comments: 'Final QC before invoicing',
+    currentStage: 6,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'completed', 5: 'completed', 6: 'pending' },
+    assignedTeam: 'QUALITY_COMPLIANCE',
+    assignedTo: 'staff-9',
+    assignedBy: 'lead-3',
+    assignedAt: '2024-12-05',
+    priority: 'high',
+    activityLog: [
+      { id: 'act-15', action: 'Task Assigned', performedBy: 'lead-3', performedAt: '2024-12-05 09:00', details: 'Assigned for final QC' }
+    ],
+    attachments: [
+      { id: 'att-7', name: 'QC_Checklist.pdf', type: 'pdf', size: '320 KB', uploadedBy: 'lead-3', uploadedAt: '2024-12-05', url: '#' }
+    ]
+  },
+  {
+    id: '13',
+    orderNo: 'EI/PIS/JAN/25/0201',
+    orderType: 'NEW ORDER',
+    sku: 'QA24075-1',
+    itemName: 'Quality Certification Process',
+    qty: 4000,
+    unitRate: '₹168.50',
+    odrDate: '2025-01-15',
+    estDelDate: '2026-03-10',
+    comDate: 'N/A',
+    licenseArch: 'yes',
+    licenseEI: 'no',
+    stage: 'Quality',
+    currentStatus: 'In Progress',
+    pocForCurrentStatus: 'QA Department',
+    comments: 'Certification documentation in progress',
+    currentStage: 6,
+    stageProgress: { 1: 'completed', 2: 'completed', 3: 'completed', 4: 'completed', 5: 'completed', 6: 'in-progress' },
+    assignedTeam: 'QUALITY_COMPLIANCE',
+    assignedTo: 'staff-10',
+    assignedBy: 'lead-3',
+    assignedAt: '2025-01-18',
+    priority: 'low',
+    activityLog: [
+      { id: 'act-16', action: 'Status Changed', performedBy: 'staff-10', performedAt: '2025-01-20 14:00', details: 'Started certification process', oldValue: 'Pending', newValue: 'In Progress' }
+    ],
+    attachments: [
+      { id: 'att-8', name: 'Certification_Template.docx', type: 'docx', size: '156 KB', uploadedBy: 'staff-10', uploadedAt: '2025-01-20', url: '#' }
+    ]
   },
   ...Array.from({ length: 55 }, (_, i) => {
     const idx = i + 1;
@@ -583,6 +919,101 @@ const OrderHub = () => {
   const [teamManagementModal, setTeamManagementModal] = useState(false);
   const [selectedTeamForEdit, setSelectedTeamForEdit] = useState<Team | null>(null);
   const [openPocDropdown, setOpenPocDropdown] = useState<{ orderId: string; type: 'cmt' | 'rnd' | 'quality' | 'label' } | null>(null);
+  
+  // Team Management - Add/Edit Member states
+  const [editingMember, setEditingMember] = useState<{ teamId: string; member: TeamMember | null; isLead: boolean } | null>(null);
+  const [memberFormData, setMemberFormData] = useState<{ name: string; email: string }>({ name: '', email: '' });
+  const [editingTeamName, setEditingTeamName] = useState<string | null>(null);
+  const [teamNameInput, setTeamNameInput] = useState('');
+
+  // Team Management Handlers
+  const handleAddStaffMember = (teamId: string) => {
+    setEditingMember({ teamId, member: null, isLead: false });
+    setMemberFormData({ name: '', email: '' });
+  };
+
+  const handleAssignTeamLead = (teamId: string) => {
+    setEditingMember({ teamId, member: null, isLead: true });
+    setMemberFormData({ name: '', email: '' });
+  };
+
+  const handleEditMember = (teamId: string, member: TeamMember, isLead: boolean) => {
+    setEditingMember({ teamId, member, isLead });
+    setMemberFormData({ name: member.name, email: member.email });
+  };
+
+  const handleSaveMember = () => {
+    if (!editingMember || !memberFormData.name.trim() || !memberFormData.email.trim()) return;
+    
+    setTeams(prev => prev.map(team => {
+      if (team.id !== editingMember.teamId) return team;
+      
+      if (editingMember.isLead) {
+        // Add/Edit Lead
+        const newLead: TeamMember = {
+          id: editingMember.member?.id || `lead-${Date.now()}`,
+          name: memberFormData.name.trim(),
+          email: memberFormData.email.trim(),
+          role: 'lead'
+        };
+        return { ...team, lead: newLead };
+      } else {
+        // Add/Edit Staff
+        if (editingMember.member) {
+          // Edit existing staff
+          return {
+            ...team,
+            staff: team.staff.map(s => 
+              s.id === editingMember.member!.id 
+                ? { ...s, name: memberFormData.name.trim(), email: memberFormData.email.trim() }
+                : s
+            )
+          };
+        } else {
+          // Add new staff
+          const newStaff: TeamMember = {
+            id: `staff-${Date.now()}`,
+            name: memberFormData.name.trim(),
+            email: memberFormData.email.trim(),
+            role: 'staff'
+          };
+          return { ...team, staff: [...team.staff, newStaff] };
+        }
+      }
+    }));
+    
+    setEditingMember(null);
+    setMemberFormData({ name: '', email: '' });
+  };
+
+  const handleDeleteMember = (teamId: string, memberId: string, isLead: boolean) => {
+    if (!confirm('Are you sure you want to remove this team member?')) return;
+    
+    setTeams(prev => prev.map(team => {
+      if (team.id !== teamId) return team;
+      
+      if (isLead) {
+        return { ...team, lead: null };
+      } else {
+        return { ...team, staff: team.staff.filter(s => s.id !== memberId) };
+      }
+    }));
+  };
+
+  const handleEditTeamName = (teamId: string, currentName: string) => {
+    setEditingTeamName(teamId);
+    setTeamNameInput(currentName);
+  };
+
+  const handleSaveTeamName = (teamId: string) => {
+    if (!teamNameInput.trim()) return;
+    
+    setTeams(prev => prev.map(team => 
+      team.id === teamId ? { ...team, name: teamNameInput.trim() } : team
+    ));
+    setEditingTeamName(null);
+    setTeamNameInput('');
+  };
   
   // Get user role from localStorage - only SUPER_ADMIN can edit
   const userRole = typeof window !== 'undefined' ? (localStorage.getItem('adminUserRole') || 'SUPER_ADMIN') : 'SUPER_ADMIN';
@@ -1102,8 +1533,206 @@ const OrderHub = () => {
   }, [reviewOrders, debouncedSearchQuery, statusFilter]);
 
   const [activeTask, setActiveTask] = useState('all');
-  const [activeSubPage, setActiveSubPage] = useState<string>('hub');
+  const [activeSubPage, setActiveSubPage] = useState<string>('dashboard');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<Order | null>(null);
+
+  // Enhanced Filter & Sort States
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'Pending' | 'In Progress' | 'Completed'>('all');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [taskDateFilter, setTaskDateFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  const [taskSortBy, setTaskSortBy] = useState<'date' | 'priority' | 'status' | 'orderNo'>('date');
+  const [taskSortOrder, setTaskSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  
+  // Team Workload & Activity States
+  const [showWorkloadView, setShowWorkloadView] = useState(false);
+  const [showActivityTimeline, setShowActivityTimeline] = useState(false);
+  
+  // Task Actions States
+  const [showStatusDropdown, setShowStatusDropdown] = useState<string | null>(null);
+  const [showReassignModal, setShowReassignModal] = useState<Order | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [showCommentInput, setShowCommentInput] = useState<string | null>(null);
+
+  // Helper function to check due date status
+  const getDueDateStatus = (estDelDate: string): 'overdue' | 'near-due' | 'normal' => {
+    const today = new Date();
+    const dueDate = new Date(estDelDate);
+    const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'overdue';
+    if (diffDays <= 7) return 'near-due';
+    return 'normal';
+  };
+
+  // Helper function to get priority color
+  const getPriorityColor = (priority?: 'high' | 'medium' | 'low') => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-700 border-red-300';
+      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      case 'low': return 'bg-green-100 text-green-700 border-green-300';
+      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+    }
+  };
+
+  // Handler to update task status
+  const handleUpdateTaskStatus = (orderId: string, newStatus: 'Pending' | 'In Progress' | 'Completed') => {
+    setOrders(prev => prev.map(order => {
+      if (order.id === orderId) {
+        const newActivityLog = order.activityLog || [];
+        newActivityLog.push({
+          id: `act-${Date.now()}`,
+          action: 'Status Changed',
+          performedBy: 'Current User',
+          performedAt: new Date().toLocaleString(),
+          details: `Status updated`,
+          oldValue: order.currentStatus,
+          newValue: newStatus
+        });
+        
+        // Update stage progress based on status
+        const updatedStageProgress = { ...order.stageProgress };
+        if (newStatus === 'Completed') {
+          updatedStageProgress[order.currentStage] = 'completed';
+        } else if (newStatus === 'In Progress') {
+          updatedStageProgress[order.currentStage] = 'in-progress';
+        } else {
+          updatedStageProgress[order.currentStage] = 'pending';
+        }
+        
+        return {
+          ...order,
+          currentStatus: newStatus,
+          stageProgress: updatedStageProgress,
+          activityLog: newActivityLog
+        };
+      }
+      return order;
+    }));
+    setShowStatusDropdown(null);
+  };
+
+  // Handler to reassign task
+  const handleReassignTask = (orderId: string, newAssignee: string, newTeam: string) => {
+    setOrders(prev => prev.map(order => {
+      if (order.id === orderId) {
+        const newActivityLog = order.activityLog || [];
+        newActivityLog.push({
+          id: `act-${Date.now()}`,
+          action: 'Task Reassigned',
+          performedBy: 'Current User',
+          performedAt: new Date().toLocaleString(),
+          details: `Reassigned to ${newAssignee}`,
+          oldValue: order.assignedTo,
+          newValue: newAssignee
+        });
+        
+        return {
+          ...order,
+          assignedTo: newAssignee,
+          assignedTeam: newTeam,
+          assignedBy: 'Current User',
+          assignedAt: new Date().toISOString().split('T')[0],
+          activityLog: newActivityLog
+        };
+      }
+      return order;
+    }));
+    setShowReassignModal(null);
+  };
+
+  // Handler to add comment
+  const handleAddComment = (orderId: string, comment: string) => {
+    if (!comment.trim()) return;
+    
+    setOrders(prev => prev.map(order => {
+      if (order.id === orderId) {
+        const newActivityLog = order.activityLog || [];
+        newActivityLog.push({
+          id: `act-${Date.now()}`,
+          action: 'Comment Added',
+          performedBy: 'Current User',
+          performedAt: new Date().toLocaleString(),
+          details: comment
+        });
+        
+        return {
+          ...order,
+          activityLog: newActivityLog
+        };
+      }
+      return order;
+    }));
+    setNewComment('');
+    setShowCommentInput(null);
+  };
+
+  // Filter and sort tasks
+  const getFilteredAndSortedTasks = (taskOrders: Order[]) => {
+    let filtered = [...taskOrders];
+    
+    // Apply status filter
+    if (taskStatusFilter !== 'all') {
+      filtered = filtered.filter(o => o.currentStatus === taskStatusFilter);
+    }
+    
+    // Apply priority filter
+    if (taskPriorityFilter !== 'all') {
+      filtered = filtered.filter(o => o.priority === taskPriorityFilter);
+    }
+    
+    // Apply date filter
+    if (taskDateFilter.from) {
+      filtered = filtered.filter(o => new Date(o.odrDate) >= new Date(taskDateFilter.from));
+    }
+    if (taskDateFilter.to) {
+      filtered = filtered.filter(o => new Date(o.odrDate) <= new Date(taskDateFilter.to));
+    }
+    
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (taskSortBy) {
+        case 'date':
+          comparison = new Date(a.odrDate).getTime() - new Date(b.odrDate).getTime();
+          break;
+        case 'priority':
+          const priorityOrder = { high: 3, medium: 2, low: 1, undefined: 0 };
+          comparison = (priorityOrder[b.priority || 'undefined'] || 0) - (priorityOrder[a.priority || 'undefined'] || 0);
+          break;
+        case 'status':
+          comparison = a.currentStatus.localeCompare(b.currentStatus);
+          break;
+        case 'orderNo':
+          comparison = a.orderNo.localeCompare(b.orderNo);
+          break;
+      }
+      
+      return taskSortOrder === 'asc' ? comparison : -comparison;
+    });
+    
+    return filtered;
+  };
+
+  // Calculate team workload
+  const getTeamWorkload = () => {
+    const workload: Record<string, { total: number; pending: number; inProgress: number; completed: number }> = {};
+    
+    orders.forEach(order => {
+      const team = order.assignedTeam || 'Unassigned';
+      if (!workload[team]) {
+        workload[team] = { total: 0, pending: 0, inProgress: 0, completed: 0 };
+      }
+      workload[team].total++;
+      if (order.currentStatus === 'Pending') workload[team].pending++;
+      else if (order.currentStatus === 'In Progress') workload[team].inProgress++;
+      else if (order.currentStatus === 'Completed') workload[team].completed++;
+    });
+    
+    return workload;
+  };
 
   const tasks = [
     { 
@@ -1215,7 +1844,7 @@ const OrderHub = () => {
     } else {
       setExpandedTask(prev => prev === taskId ? null : taskId);
       setActiveTask(taskId);
-      setActiveSubPage('hub');
+      setActiveSubPage('dashboard');
     }
   }, []);
 
@@ -1258,19 +1887,6 @@ const OrderHub = () => {
               {task.id !== 'all' && expandedTask === task.id && (
                 <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2 animate-fadeIn">
                   <button
-                    onClick={() => setActiveSubPage('hub')}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2 ${
-                      activeSubPage === 'hub'
-                        ? 'bg-amber-100 text-amber-700 font-semibold'
-                        : 'text-gray-600 hover:bg-white hover:text-amber-700'
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    Order Hub
-                  </button>
-                  <button
                     onClick={() => setActiveSubPage('dashboard')}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2 ${
                       activeSubPage === 'dashboard'
@@ -1281,7 +1897,20 @@ const OrderHub = () => {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                    {task.label} Dashboard
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={() => setActiveSubPage('tasks')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2 ${
+                      activeSubPage === 'tasks'
+                        ? 'bg-amber-100 text-amber-700 font-semibold'
+                        : 'text-gray-600 hover:bg-white hover:text-amber-700'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    Tasks
                   </button>
                 </div>
               )}
@@ -1294,8 +1923,514 @@ const OrderHub = () => {
       <main className="flex-1 overflow-y-auto bg-gray-50">
         <div className="p-4 md:p-8 min-h-screen">
           
-          {/* Dashboard View */}
-          {activeSubPage === 'dashboard' && activeTask !== 'all' ? (
+          {/* Tasks View */}
+          {activeSubPage === 'tasks' && activeTask !== 'all' ? (
+            <div className="space-y-6">
+              {/* Tasks Header */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-amber-500">{tasks.find(t => t.id === activeTask)?.icon}</span>
+                  <h1 className="text-2xl font-bold text-gray-800 capitalize">{tasks.find(t => t.id === activeTask)?.label} Tasks</h1>
+                </div>
+                <p className="text-gray-500 text-sm">View and manage all {tasks.find(t => t.id === activeTask)?.label.toLowerCase()} related tasks</p>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 shadow-sm border border-amber-200 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-amber-500 rounded-lg p-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">Pending</p>
+                      <p className="text-3xl font-bold text-gray-800">
+                        {orders.filter(o => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1,
+                            'design': 2,
+                            'label': 3,
+                            'production': 4,
+                            'dispense': 5,
+                            'bundle': 5,
+                            'invoice': 6,
+                            'quality-team': 4,
+                            'packaging-team': 5,
+                            'warehouse': 6
+                          };
+                          return o.currentStage === stageMap[activeTask] && o.stageProgress[stageMap[activeTask]] === 'pending';
+                        }).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 shadow-sm border border-blue-200 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-blue-500 rounded-lg p-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">In Progress</p>
+                      <p className="text-3xl font-bold text-gray-800">
+                        {orders.filter(o => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1,
+                            'design': 2,
+                            'label': 3,
+                            'production': 4,
+                            'dispense': 5,
+                            'bundle': 5,
+                            'invoice': 6,
+                            'quality-team': 4,
+                            'packaging-team': 5,
+                            'warehouse': 6
+                          };
+                          return o.currentStage === stageMap[activeTask] && o.stageProgress[stageMap[activeTask]] === 'in-progress';
+                        }).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 shadow-sm border border-green-200 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-green-500 rounded-lg p-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">Total Tasks</p>
+                      <p className="text-3xl font-bold text-gray-800">
+                        {orders.filter(o => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1,
+                            'design': 2,
+                            'label': 3,
+                            'production': 4,
+                            'dispense': 5,
+                            'bundle': 5,
+                            'invoice': 6,
+                            'quality-team': 4,
+                            'packaging-team': 5,
+                            'warehouse': 6
+                          };
+                          return o.currentStage === stageMap[activeTask];
+                        }).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* High Priority Count */}
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 shadow-sm border border-red-200 hover:shadow-md transition-shadow duration-200">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-red-500 rounded-lg p-3">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 font-medium">High Priority</p>
+                      <p className="text-3xl font-bold text-gray-800">
+                        {orders.filter(o => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1,
+                            'design': 2,
+                            'label': 3,
+                            'production': 4,
+                            'dispense': 5,
+                            'bundle': 5,
+                            'invoice': 6,
+                            'quality-team': 4,
+                            'packaging-team': 5,
+                            'warehouse': 6
+                          };
+                          return o.currentStage === stageMap[activeTask] && o.priority === 'high';
+                        }).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter & Sort Bar */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Filter Toggle */}
+                  <button
+                    onClick={() => setShowFilterPanel(!showFilterPanel)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      showFilterPanel ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    Filters
+                    {(taskStatusFilter !== 'all' || taskPriorityFilter !== 'all' || taskDateFilter.from || taskDateFilter.to) && (
+                      <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full">Active</span>
+                    )}
+                  </button>
+
+                  {/* Sort Options */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">Sort by:</span>
+                    <select
+                      value={taskSortBy}
+                      onChange={(e) => setTaskSortBy(e.target.value as 'date' | 'priority' | 'status' | 'orderNo')}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="date">Date</option>
+                      <option value="priority">Priority</option>
+                      <option value="status">Status</option>
+                      <option value="orderNo">Order No</option>
+                    </select>
+                    <button
+                      onClick={() => setTaskSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                    >
+                      {taskSortOrder === 'asc' ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Team Workload Toggle */}
+                  <button
+                    onClick={() => setShowWorkloadView(!showWorkloadView)}
+                    className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      showWorkloadView ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Team Workload
+                  </button>
+                </div>
+
+                {/* Filter Panel */}
+                {showFilterPanel && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Status Filter */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
+                      <select
+                        value={taskStatusFilter}
+                        onChange={(e) => setTaskStatusFilter(e.target.value as 'all' | 'Pending' | 'In Progress' | 'Completed')}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </div>
+
+                    {/* Priority Filter */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Priority</label>
+                      <select
+                        value={taskPriorityFilter}
+                        onChange={(e) => setTaskPriorityFilter(e.target.value as 'all' | 'high' | 'medium' | 'low')}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="all">All Priorities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+
+                    {/* Date From */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">From Date</label>
+                      <input
+                        type="date"
+                        value={taskDateFilter.from}
+                        onChange={(e) => setTaskDateFilter(prev => ({ ...prev, from: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    {/* Date To */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">To Date</label>
+                      <input
+                        type="date"
+                        value={taskDateFilter.to}
+                        onChange={(e) => setTaskDateFilter(prev => ({ ...prev, to: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    {/* Clear Filters */}
+                    <div className="md:col-span-4 flex justify-end">
+                      <button
+                        onClick={() => {
+                          setTaskStatusFilter('all');
+                          setTaskPriorityFilter('all');
+                          setTaskDateFilter({ from: '', to: '' });
+                        }}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        Clear all filters
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Team Workload Panel */}
+              {showWorkloadView && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">Team Workload Distribution</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {Object.entries(getTeamWorkload()).map(([team, stats]) => (
+                      <div key={team} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <h4 className="font-semibold text-gray-800 mb-2">{team.replace(/_/g, ' ')}</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Total</span>
+                            <span className="font-medium">{stats.total}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-amber-600">Pending</span>
+                            <span className="font-medium">{stats.pending}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-blue-600">In Progress</span>
+                            <span className="font-medium">{stats.inProgress}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-green-600">Completed</span>
+                            <span className="font-medium">{stats.completed}</span>
+                          </div>
+                          {/* Progress Bar */}
+                          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-green-500 to-green-400"
+                              style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tasks Section */}
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold text-gray-800">All Tasks</h2>
+                {getFilteredAndSortedTasks(
+                  orders.filter(o => {
+                    const stageMap: Record<string, number> = {
+                      'planning': 1,
+                      'design': 2,
+                      'label': 3,
+                      'production': 4,
+                      'dispense': 5,
+                      'bundle': 5,
+                      'invoice': 6,
+                      'quality-team': 4,
+                      'packaging-team': 5,
+                      'warehouse': 6
+                    };
+                    return o.currentStage === stageMap[activeTask];
+                  })
+                ).map((order) => {
+                    const formatDate = (dateStr: string) => {
+                      if (!dateStr) return 'N/A';
+                      const date = new Date(dateStr);
+                      return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    };
+                    const dueDateStatus = getDueDateStatus(order.estDelDate);
+
+                    return (
+                      <div key={order.id} className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-all duration-200 ${
+                        dueDateStatus === 'overdue' ? 'border-red-300 bg-red-50/30' :
+                        dueDateStatus === 'near-due' ? 'border-yellow-300 bg-yellow-50/30' :
+                        'border-gray-100'
+                      }`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            {/* Priority & Due Date Badges */}
+                            <div className="flex items-center gap-2 mb-2">
+                              {order.priority && (
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getPriorityColor(order.priority)}`}>
+                                  {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)} Priority
+                                </span>
+                              )}
+                              {dueDateStatus === 'overdue' && (
+                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-700 border border-red-300">
+                                  ⚠️ Overdue
+                                </span>
+                              )}
+                              {dueDateStatus === 'near-due' && (
+                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 text-yellow-700 border border-yellow-300">
+                                  ⏰ Due Soon
+                                </span>
+                              )}
+                              {/* Status Badge */}
+                              <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                order.currentStatus === 'Completed' ? 'bg-green-100 text-green-700' :
+                                order.currentStatus === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {order.currentStatus}
+                              </span>
+                            </div>
+                            
+                            <button
+                              onClick={() => setSelectedTaskDetail(order)}
+                              className="text-blue-600 hover:text-blue-700 font-medium text-base mb-1 transition-colors"
+                            >
+                              {order.orderNo}
+                            </button>
+                            <h3 className="text-gray-800 font-semibold text-lg mb-2">{order.itemName}</h3>
+                            <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+                              <span>{order.sku}</span>
+                              <span>•</span>
+                              <span>Due: {formatDate(order.estDelDate)}</span>
+                              {order.assignedTo && (
+                                <>
+                                  <span>•</span>
+                                  <span>Assigned: {order.assignedTo}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {/* Status Update Dropdown */}
+                            <div className="relative">
+                              <button
+                                onClick={() => setShowStatusDropdown(showStatusDropdown === order.id ? null : order.id)}
+                                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors flex items-center gap-1"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Update Status
+                              </button>
+                              {showStatusDropdown === order.id && (
+                                <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                                  {['Pending', 'In Progress', 'Completed'].map(status => (
+                                    <button
+                                      key={status}
+                                      onClick={() => handleUpdateTaskStatus(order.id, status as 'Pending' | 'In Progress' | 'Completed')}
+                                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                                        order.currentStatus === status ? 'bg-amber-50 text-amber-700 font-medium' : 'text-gray-700'
+                                      }`}
+                                    >
+                                      {status}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Reassign Button */}
+                            <button
+                              onClick={() => setShowReassignModal(order)}
+                              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                              title="Reassign Task"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                            </button>
+                            
+                            {/* View Details */}
+                            <button
+                              onClick={() => setSelectedTaskDetail(order)}
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors"
+                            >
+                              View Details
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Quick Comment Input */}
+                        {showCommentInput === order.id ? (
+                          <div className="mt-4 pt-4 border-t border-gray-100">
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                                placeholder="Add a comment..."
+                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                onKeyPress={(e) => e.key === 'Enter' && handleAddComment(order.id, newComment)}
+                              />
+                              <button
+                                onClick={() => handleAddComment(order.id, newComment)}
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+                              >
+                                Add
+                              </button>
+                              <button
+                                onClick={() => { setShowCommentInput(null); setNewComment(''); }}
+                                className="px-3 py-2 text-gray-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowCommentInput(order.id)}
+                            className="mt-3 text-sm text-gray-500 hover:text-amber-600 flex items-center gap-1"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                            </svg>
+                            Add Comment
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                {getFilteredAndSortedTasks(
+                  orders.filter(o => {
+                    const stageMap: Record<string, number> = {
+                      'planning': 1,
+                      'design': 2,
+                      'label': 3,
+                      'production': 4,
+                      'dispense': 5,
+                      'bundle': 5,
+                      'invoice': 6,
+                      'quality-team': 4,
+                      'packaging-team': 5,
+                      'warehouse': 6
+                    };
+                    return o.currentStage === stageMap[activeTask];
+                  })
+                ).length === 0 && (
+                  <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+                    <p className="text-gray-500">No tasks found matching your filters</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeSubPage === 'dashboard' && activeTask !== 'all' ? (
             <div className="space-y-6">
               {/* Dashboard Header */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -1312,7 +2447,19 @@ const OrderHub = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Active Tasks</p>
-                      <p className="text-3xl font-bold text-gray-800 mt-1">24</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">
+                        {(() => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                            'dispense': 5, 'bundle': 5, 'invoice': 6,
+                            'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                          };
+                          return orders.filter(o => 
+                            o.currentStage === stageMap[activeTask] && 
+                            o.stageProgress[stageMap[activeTask]] !== 'completed'
+                          ).length;
+                        })()}
+                      </p>
                     </div>
                     <div className="text-amber-500 opacity-80">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1325,10 +2472,21 @@ const OrderHub = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Completed</p>
-                      <p className="text-3xl font-bold text-gray-800 mt-1">18</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">
+                        {(() => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                            'dispense': 5, 'bundle': 5, 'invoice': 6,
+                            'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                          };
+                          return orders.filter(o => 
+                            o.stageProgress[stageMap[activeTask]] === 'completed'
+                          ).length;
+                        })()}
+                      </p>
                       <p className="text-sm mt-2 flex items-center text-emerald-600">
-                        <span className="mr-1">↑</span>
-                        +12% from last week
+                        <span className="mr-1">✓</span>
+                        Done
                       </p>
                     </div>
                     <div className="text-amber-500 opacity-80">
@@ -1342,7 +2500,19 @@ const OrderHub = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Pending</p>
-                      <p className="text-3xl font-bold text-gray-800 mt-1">6</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">
+                        {(() => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                            'dispense': 5, 'bundle': 5, 'invoice': 6,
+                            'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                          };
+                          return orders.filter(o => 
+                            o.currentStage === stageMap[activeTask] && 
+                            o.stageProgress[stageMap[activeTask]] === 'pending'
+                          ).length;
+                        })()}
+                      </p>
                     </div>
                     <div className="text-amber-500 opacity-80">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1354,16 +2524,28 @@ const OrderHub = () => {
                 <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">Overdue</p>
-                      <p className="text-3xl font-bold text-gray-800 mt-1">2</p>
-                      <p className="text-sm mt-2 flex items-center text-amber-600">
-                        <span className="mr-1">•</span>
-                        Needs attention
+                      <p className="text-sm text-gray-500 font-medium uppercase tracking-wide">In Progress</p>
+                      <p className="text-3xl font-bold text-gray-800 mt-1">
+                        {(() => {
+                          const stageMap: Record<string, number> = {
+                            'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                            'dispense': 5, 'bundle': 5, 'invoice': 6,
+                            'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                          };
+                          return orders.filter(o => 
+                            o.currentStage === stageMap[activeTask] && 
+                            o.stageProgress[stageMap[activeTask]] === 'in-progress'
+                          ).length;
+                        })()}
+                      </p>
+                      <p className="text-sm mt-2 flex items-center text-blue-600">
+                        <span className="mr-1">⚙</span>
+                        Working
                       </p>
                     </div>
                     <div className="text-amber-500 opacity-80">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
                   </div>
@@ -1373,7 +2555,57 @@ const OrderHub = () => {
               {/* Dashboard Content */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-lg font-bold text-gray-800 mb-4">Task Overview</h2>
-                <p className="text-gray-600">Detailed {activeTask} dashboard content will appear here.</p>
+                <div className="space-y-3">
+                  {orders
+                    .filter(o => {
+                      const stageMap: Record<string, number> = {
+                        'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                        'dispense': 5, 'bundle': 5, 'invoice': 6,
+                        'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                      };
+                      return o.currentStage === stageMap[activeTask];
+                    })
+                    .slice(0, 5)
+                    .map(order => (
+                      <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex-1">
+                          <button
+                            onClick={() => {
+                              setActiveSubPage('tasks');
+                              setSelectedTaskDetail(order);
+                            }}
+                            className="font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                          >
+                            {order.orderNo}
+                          </button>
+                          <p className="text-sm text-gray-500">{order.itemName}</p>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          order.stageProgress[order.currentStage] === 'completed' ? 'bg-green-100 text-green-700' :
+                          order.stageProgress[order.currentStage] === 'in-progress' ? 'bg-blue-100 text-blue-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {order.stageProgress[order.currentStage]?.replace('-', ' ').toUpperCase()}
+                        </div>
+                      </div>
+                    ))}
+                  {orders.filter(o => {
+                    const stageMap: Record<string, number> = {
+                      'planning': 1, 'design': 2, 'label': 3, 'production': 4,
+                      'dispense': 5, 'bundle': 5, 'invoice': 6,
+                      'quality-team': 4, 'packaging-team': 5, 'warehouse': 6
+                    };
+                    return o.currentStage === stageMap[activeTask];
+                  }).length === 0 && (
+                    <p className="text-gray-500 text-center py-8">No tasks in this stage</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setActiveSubPage('tasks')}
+                  className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all font-medium"
+                >
+                  View All Tasks
+                </button>
               </div>
             </div>
           ) : (
@@ -2703,109 +3935,6 @@ const OrderHub = () => {
               </div>
             )}
 
-            {/* Team Management Modal */}
-            {teamManagementModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setTeamManagementModal(false)}>
-                <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                  <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-indigo-100">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-800">Team Management</h2>
-                      <p className="text-sm text-gray-600 mt-1">Manage team leads and staff assignments</p>
-                    </div>
-                    <button 
-                      onClick={() => setTeamManagementModal(false)}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
-                    <div className="space-y-6">
-                      {teams.map((team) => (
-                        <div key={team.id} className="border border-gray-200 rounded-lg p-5 bg-gradient-to-br from-white to-gray-50">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-indigo-100 rounded-lg">
-                                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
-                              </div>
-                              <div>
-                                <h3 className="text-lg font-bold text-gray-800">{team.name}</h3>
-                                <p className="text-xs text-gray-500">{team.staff.length} staff members</p>
-                              </div>
-                            </div>
-                            <button className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg transition-colors">
-                              Edit Team
-                            </button>
-                          </div>
-
-                          {/* Team Lead */}
-                          <div className="mb-4">
-                            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Team Lead</label>
-                            {team.lead ? (
-                              <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-                                <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                  {team.lead.name.charAt(0)}
-                                </div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-800">{team.lead.name}</p>
-                                  <p className="text-xs text-gray-500">{team.lead.email}</p>
-                                </div>
-                                <span className="px-2 py-1 bg-indigo-500 text-white text-xs font-medium rounded">Lead</span>
-                              </div>
-                            ) : (
-                              <button className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
-                                + Assign Team Lead
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Staff Members */}
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Staff Members</label>
-                            <div className="space-y-2">
-                              {team.staff.map((member) => (
-                                <div key={member.id} className="flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors">
-                                  <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-bold text-xs">
-                                    {member.name.charAt(0)}
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-800">{member.name}</p>
-                                    <p className="text-xs text-gray-500">{member.email}</p>
-                                  </div>
-                                  <button className="text-gray-400 hover:text-red-600 transition-colors">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              ))}
-                              <button className="w-full p-2.5 border-2 border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
-                                + Add Staff Member
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                    <button
-                      onClick={() => setTeamManagementModal(false)}
-                      className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
-                    >
-                      Close
-                    </button>
-                    <button className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-colors">
-                      Save Changes
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             </div>
           </div>
         )}
@@ -4388,6 +5517,631 @@ const OrderHub = () => {
           )}
         </div>
       </main>
+
+      {/* Task Detail Modal */}
+      {selectedTaskDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-0 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gradient-to-r from-amber-500 to-orange-500 text-white p-6 rounded-t-2xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold mb-2">{selectedTaskDetail.orderNo}</h2>
+                  <p className="text-amber-100">{selectedTaskDetail.itemName}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedTaskDetail(null)}
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Order Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 font-medium mb-1">Order Type</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.orderType}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 font-medium mb-1">SKU</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.sku}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 font-medium mb-1">Quantity</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.qty}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 font-medium mb-1">Unit Rate</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.unitRate}</p>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <p className="text-sm text-blue-600 font-medium mb-1">Order Date</p>
+                  <p className="text-gray-800 font-semibold">
+                    {selectedTaskDetail.odrDate ? new Date(selectedTaskDetail.odrDate).toLocaleDateString('en-GB') : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <p className="text-sm text-amber-600 font-medium mb-1">Est. Delivery Date</p>
+                  <p className="text-gray-800 font-semibold">
+                    {selectedTaskDetail.estDelDate ? new Date(selectedTaskDetail.estDelDate).toLocaleDateString('en-GB') : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                <p className="text-sm text-green-600 font-medium mb-1">Current Status</p>
+                <p className="text-gray-800 font-semibold text-lg">{selectedTaskDetail.currentStatus}</p>
+                {selectedTaskDetail.pocForCurrentStatus && (
+                  <p className="text-sm text-gray-600 mt-2">POC: {selectedTaskDetail.pocForCurrentStatus}</p>
+                )}
+              </div>
+
+              {/* Assignment Information */}
+              {selectedTaskDetail.assignedTo && (
+                <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+                  <p className="text-sm text-indigo-600 font-medium mb-3">Assignment Details</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Assigned Team</p>
+                      <p className="text-gray-800 font-medium">{selectedTaskDetail.assignedTeam?.replace('_', ' ') || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Assigned To</p>
+                      <p className="text-gray-800 font-medium">
+                        {(() => {
+                          const allMembers = teams.flatMap(t => [...(t.lead ? [t.lead] : []), ...t.staff]);
+                          const member = allMembers.find(m => m.id === selectedTaskDetail.assignedTo);
+                          return member?.name || selectedTaskDetail.assignedTo;
+                        })()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Assigned By</p>
+                      <p className="text-gray-800 font-medium">
+                        {(() => {
+                          const allLeads = teams.map(t => t.lead).filter(Boolean);
+                          const lead = allLeads.find(l => l?.id === selectedTaskDetail.assignedBy);
+                          return lead?.name || selectedTaskDetail.assignedBy;
+                        })()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Assigned Date</p>
+                      <p className="text-gray-800 font-medium">
+                        {selectedTaskDetail.assignedAt ? new Date(selectedTaskDetail.assignedAt).toLocaleDateString('en-GB') : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stage Progress */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-600 font-medium mb-3">Stage Progress</p>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5, 6].map((stage) => {
+                    const status = selectedTaskDetail.stageProgress[stage];
+                    const isCurrent = selectedTaskDetail.currentStage === stage;
+                    return (
+                      <div key={stage} className="flex-1">
+                        <div className={`h-2 rounded-full ${
+                          status === 'completed' ? 'bg-green-500' :
+                          status === 'in-progress' ? 'bg-blue-500' :
+                          'bg-gray-300'
+                        } ${isCurrent ? 'ring-2 ring-amber-500 ring-offset-2' : ''}`} />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-gray-500">
+                  <span>Planning</span>
+                  <span>Design</span>
+                  <span>Label</span>
+                  <span>Production</span>
+                  <span>Dispense</span>
+                  <span>Invoice</span>
+                </div>
+              </div>
+
+              {/* Comments */}
+              {selectedTaskDetail.comments && (
+                <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                  <p className="text-sm text-yellow-700 font-medium mb-2">Notes</p>
+                  <p className="text-gray-700">{selectedTaskDetail.comments}</p>
+                </div>
+              )}
+
+              {/* Priority Badge */}
+              {selectedTaskDetail.priority && (
+                <div className={`rounded-lg p-4 border ${getPriorityColor(selectedTaskDetail.priority)}`}>
+                  <p className="text-sm font-medium mb-1">Priority Level</p>
+                  <p className="font-bold text-lg capitalize">{selectedTaskDetail.priority}</p>
+                </div>
+              )}
+
+              {/* Activity Timeline */}
+              {selectedTaskDetail.activityLog && selectedTaskDetail.activityLog.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm text-gray-700 font-medium">Activity Timeline</p>
+                    <span className="text-xs text-gray-500">{selectedTaskDetail.activityLog.length} activities</span>
+                  </div>
+                  <div className="space-y-4 max-h-60 overflow-y-auto">
+                    {selectedTaskDetail.activityLog.slice().reverse().map((activity) => (
+                      <div key={activity.id} className="flex gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                          {activity.action === 'Status Changed' && (
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                          {activity.action === 'Task Assigned' && (
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          )}
+                          {activity.action === 'Task Reassigned' && (
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
+                          )}
+                          {activity.action === 'Comment Added' && (
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                            </svg>
+                          )}
+                          {(activity.action === 'Order Created' || activity.action === 'Stage Advanced') && (
+                            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-800">{activity.action}</p>
+                            {activity.oldValue && activity.newValue && (
+                              <span className="text-xs text-gray-500">
+                                {activity.oldValue} → {activity.newValue}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{activity.details}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            by {activity.performedBy} • {activity.performedAt}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add Comment Section in Modal */}
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <p className="text-sm text-gray-700 font-medium mb-3">Add Comment</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Type your comment..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newComment.trim()) {
+                        handleAddComment(selectedTaskDetail.id, newComment);
+                        // Re-fetch the updated order
+                        const updatedOrder = orders.find(o => o.id === selectedTaskDetail.id);
+                        if (updatedOrder) setSelectedTaskDetail(updatedOrder);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (newComment.trim()) {
+                        handleAddComment(selectedTaskDetail.id, newComment);
+                        // Re-fetch the updated order
+                        setTimeout(() => {
+                          const updatedOrder = orders.find(o => o.id === selectedTaskDetail.id);
+                          if (updatedOrder) setSelectedTaskDetail(updatedOrder);
+                        }, 100);
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Attachments */}
+              {selectedTaskDetail.attachments && selectedTaskDetail.attachments.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-700 font-medium">Attachments</p>
+                    <span className="text-xs text-gray-500">{selectedTaskDetail.attachments.length} files</span>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedTaskDetail.attachments.map((attachment) => (
+                      <div key={attachment.id} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-200">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          attachment.type === 'pdf' ? 'bg-red-100 text-red-600' :
+                          attachment.type === 'docx' ? 'bg-blue-100 text-blue-600' :
+                          attachment.type === 'xlsx' ? 'bg-green-100 text-green-600' :
+                          attachment.type === 'ai' ? 'bg-orange-100 text-orange-600' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{attachment.name}</p>
+                          <p className="text-xs text-gray-500">{attachment.size} • Uploaded {attachment.uploadedAt}</p>
+                        </div>
+                        <button className="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* License Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <p className="text-sm text-purple-600 font-medium mb-1">License Arch</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.licenseArch || 'N/A'}</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <p className="text-sm text-purple-600 font-medium mb-1">License EI</p>
+                  <p className="text-gray-800 font-semibold">{selectedTaskDetail.licenseEI || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setActiveSubPage('dashboard');
+                    setSelectedTaskDetail(null);
+                  }}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all font-medium shadow-lg hover:shadow-xl"
+                >
+                  View in Dashboard
+                </button>
+                <button
+                  onClick={() => setShowReassignModal(selectedTaskDetail)}
+                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
+                >
+                  Reassign
+                </button>
+                <button
+                  onClick={() => setSelectedTaskDetail(null)}
+                  className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reassign Task Modal */}
+      {showReassignModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-t-2xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-bold mb-1">Reassign Task</h2>
+                  <p className="text-blue-100 text-sm">{showReassignModal.orderNo}</p>
+                </div>
+                <button
+                  onClick={() => setShowReassignModal(null)}
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-sm text-gray-500 mb-1">Current Assignment</p>
+                <p className="text-gray-800 font-medium">{showReassignModal.assignedTo || 'Unassigned'} ({showReassignModal.assignedTeam?.replace('_', ' ') || 'No Team'})</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Team</label>
+                <select
+                  id="reassign-team"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  defaultValue={showReassignModal.assignedTeam || ''}
+                >
+                  <option value="">Select a team...</option>
+                  {teams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Team Member</label>
+                <select
+                  id="reassign-member"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  defaultValue={showReassignModal.assignedTo || ''}
+                >
+                  <option value="">Select a member...</option>
+                  {teams.flatMap(team => [
+                    ...(team.lead ? [{ ...team.lead, teamId: team.id, isLead: true }] : []),
+                    ...team.staff.map(s => ({ ...s, teamId: team.id, isLead: false }))
+                  ]).map(member => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} {member.isLead ? '(Lead)' : ''} - {teams.find(t => t.id === member.teamId)?.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    const teamSelect = document.getElementById('reassign-team') as HTMLSelectElement;
+                    const memberSelect = document.getElementById('reassign-member') as HTMLSelectElement;
+                    if (teamSelect.value && memberSelect.value) {
+                      handleReassignTask(showReassignModal.id, memberSelect.value, teamSelect.value);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
+                >
+                  Reassign Task
+                </button>
+                <button
+                  onClick={() => setShowReassignModal(null)}
+                  className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Management Modal */}
+      {teamManagementModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => { setTeamManagementModal(false); setEditingMember(null); setEditingTeamName(null); }}>
+          <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-indigo-100">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Team Management</h2>
+                <p className="text-sm text-gray-600 mt-1">Manage team leads and staff assignments</p>
+              </div>
+              <button 
+                onClick={() => { setTeamManagementModal(false); setEditingMember(null); setEditingTeamName(null); }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
+              <div className="space-y-6">
+                {teams.map((team) => (
+                  <div key={team.id} className="border border-gray-200 rounded-lg p-5 bg-gradient-to-br from-white to-gray-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-100 rounded-lg">
+                          <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          {editingTeamName === team.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={teamNameInput}
+                                onChange={(e) => setTeamNameInput(e.target.value)}
+                                className="px-2 py-1 border border-indigo-300 rounded text-lg font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleSaveTeamName(team.id)}
+                                className="p-1 text-green-600 hover:text-green-700"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setEditingTeamName(null)}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <h3 className="text-lg font-bold text-gray-800">{team.name}</h3>
+                          )}
+                          <p className="text-xs text-gray-500">{team.staff.length} staff members</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleEditTeamName(team.id, team.name)}
+                        className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg transition-colors"
+                      >
+                        Edit Team
+                      </button>
+                    </div>
+
+                    {/* Team Lead */}
+                    <div className="mb-4">
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Team Lead</label>
+                      {team.lead ? (
+                        <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                          <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                            {team.lead.name.charAt(0)}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-800">{team.lead.name}</p>
+                            <p className="text-xs text-gray-500">{team.lead.email}</p>
+                          </div>
+                          <button 
+                            onClick={() => handleEditMember(team.id, team.lead!, true)}
+                            className="p-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100 rounded transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteMember(team.id, team.lead!.id, true)}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                          <span className="px-2 py-1 bg-indigo-500 text-white text-xs font-medium rounded">Lead</span>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => handleAssignTeamLead(team.id)}
+                          className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+                        >
+                          + Assign Team Lead
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Staff Members */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Staff Members</label>
+                      <div className="space-y-2">
+                        {team.staff.map((member) => (
+                          <div key={member.id} className="flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors">
+                            <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-bold text-xs">
+                              {member.name.charAt(0)}
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-800">{member.name}</p>
+                              <p className="text-xs text-gray-500">{member.email}</p>
+                            </div>
+                            <button 
+                              onClick={() => handleEditMember(team.id, member, false)}
+                              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteMember(team.id, member.id, false)}
+                              className="text-gray-400 hover:text-red-600 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                        <button 
+                          onClick={() => handleAddStaffMember(team.id)}
+                          className="w-full p-2.5 border-2 border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+                        >
+                          + Add Staff Member
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => { setTeamManagementModal(false); setEditingMember(null); setEditingTeamName(null); }}
+                className="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Member Modal */}
+      {editingMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10002]" onClick={() => setEditingMember(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100">
+              <h3 className="text-lg font-bold text-gray-800">
+                {editingMember.member ? 'Edit' : 'Add'} {editingMember.isLead ? 'Team Lead' : 'Staff Member'}
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {teams.find(t => t.id === editingMember.teamId)?.name}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={memberFormData.name}
+                  onChange={(e) => setMemberFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Enter full name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={memberFormData.email}
+                  onChange={(e) => setMemberFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="Enter email address"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingMember(null)}
+                className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm font-medium rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveMember}
+                disabled={!memberFormData.name.trim() || !memberFormData.email.trim()}
+                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {editingMember.member ? 'Save Changes' : 'Add Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
