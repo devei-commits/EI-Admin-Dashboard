@@ -17,6 +17,8 @@ export default defineConfig({
     }),
   ],
   build: {
+    // Target modern browsers for smaller bundles
+    target: 'esnext',
     // Code splitting configuration
     rollupOptions: {
       output: {
@@ -43,18 +45,36 @@ export default defineConfig({
           if (id.includes('node_modules/xlsx/') || id.includes('node_modules/file-saver/')) {
             return 'utils-vendor';
           }
+          // Lucide icons - separate chunk to reduce main bundle
+          if (id.includes('node_modules/lucide-react/')) {
+            return 'icons-vendor';
+          }
+          // Date utilities
+          if (id.includes('node_modules/date-fns/')) {
+            return 'date-vendor';
+          }
         },
       },
     },
     // Performance hints
     chunkSizeWarningLimit: 1000,
-    // Enable source maps for production debugging
+    // Disable source maps for smaller production bundles
     sourcemap: false,
-    // Minification
+    // Minification with esbuild (faster than terser)
     minify: 'esbuild',
+    // Skip compressed size reporting for faster builds
+    reportCompressedSize: false,
+    // CSS code splitting
+    cssCodeSplit: true,
   },
-  // Optimize deps
+  // Optimize deps for faster dev server startup
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
+    include: ['react', 'react-dom', 'react-router-dom', 'lucide-react', 'sonner'],
+  },
+  // Dev server optimizations
+  server: {
+    warmup: {
+      clientFiles: ['./src/App.tsx', './src/main.tsx'],
+    },
   },
 })

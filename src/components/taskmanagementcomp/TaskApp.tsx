@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Toaster } from '../pis/components/ui/sonner';
 import { GlobalTaskOverview } from './components/GlobalTaskOverview.tsx';
-import { ArrowUp, Layers, Menu, X, Bell, User, LogOut, Settings, Home } from 'lucide-react';
+import { ArrowUp, Layers, Bell, User, LogOut, Settings } from 'lucide-react';
 import eilogofull from '../../assets/logo/eilogofull.svg';
 
 // Get current user from localStorage

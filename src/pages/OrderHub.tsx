@@ -1,22 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
-
-// ==================== DEBOUNCE UTILITY ====================
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
+import { useDebounce } from '../hooks/useDebounce';
 
 // ==================== CUSTOM HOOKS ====================
 /**
@@ -25,7 +9,7 @@ function useDebounce<T>(value: T, delay: number): T {
  * @param onClose - Callback to close the dropdown
  * @param triggerSelector - Optional CSS selector to exclude from outside-click detection
  */
-const useOutsideClick = (
+const useOutsideClickLocal = (
   isOpen: boolean,
   onClose: () => void,
   triggerSelector?: string
@@ -1072,7 +1056,7 @@ const OrderHub = () => {
 
   // ==================== OUTSIDE-CLICK HANDLERS ====================
   // Only handle order type dropdown (the main one)
-  useOutsideClick(!!openOrderTypeDropdown, () => setOpenOrderTypeDropdown(null));
+  useOutsideClickLocal(!!openOrderTypeDropdown, () => setOpenOrderTypeDropdown(null));
   
   // Manual outside-click handlers for other dropdowns
   useEffect(() => {
