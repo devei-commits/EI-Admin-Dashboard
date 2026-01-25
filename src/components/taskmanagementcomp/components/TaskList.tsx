@@ -120,7 +120,7 @@ export function TaskList({ currentRole, currentUser, filter }: TaskListProps) {
   }, [filter, currentUser, searchTerm, statusFilter, priorityFilter, sortBy, sortOrder]);
 
   const getStatusIcon = (status: string) => {
-    const icons: Record<string, JSX.Element> = {
+    const icons: Record<string, React.ReactElement> = {
       'pending': <Clock className="w-4 h-4" />,
       'in-progress': <PlayCircle className="w-4 h-4" />,
       'completed': <CheckCircle2 className="w-4 h-4" />,
