@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Toaster } from '../pis/components/ui/sonner';
-import { TaskHeader } from './components/TaskHeader';
-import { TaskSidebar } from './components/TaskSidebar';
-import { TaskDashboard } from './components/TaskDashboard';
-import { TaskList } from './components/TaskList';
-import { TaskSettings } from './components/TaskSettings';
+import { TaskHeader } from './components/TaskHeader.tsx';
+import { TaskSidebar } from './components/TaskSidebar.tsx';
+import { TaskDashboard } from './components/TaskDashboard.tsx';
+import { TaskList } from './components/TaskList.tsx';
+import { TaskSettings } from './components/TaskSettings.tsx';
 import { ArrowUp } from 'lucide-react';
 
 type TaskView = 'dashboard' | 'my-tasks' | 'team-tasks' | 'all-tasks' | 'settings';
