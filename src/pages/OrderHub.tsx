@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
 import { useDebounce } from '../hooks/useDebounce';
+import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
 
 // ==================== CUSTOM HOOKS ====================
 /**
@@ -1482,6 +1483,7 @@ const OrderHub = () => {
     { id: 'production-planner', label: '#4 Production Planner' },
     { id: 'production-tracker', label: '#5 Production Tracker' },
     { id: 'order-closure', label: '#6 Order Closure' },
+    { id: 'goods-receiving', label: 'Goods Receiving' },
   ];
 
   // Debounce search query for better performance
@@ -1845,6 +1847,15 @@ const OrderHub = () => {
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      )
+    },
+    { 
+      id: 'goods-receiving', 
+      label: 'Goods Receiving', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
         </svg>
       )
     },
@@ -2656,7 +2667,7 @@ const OrderHub = () => {
           ))}
         </div>
         
-        {/* Stage Action Buttons - Common for All Stages except Orders Tracker */}
+        {/* Stage Action Buttons - Common for All Stages except Orders Tracker and Goods Receiving */}
         {['orders-review', 'purchase-plan', 'purchase-planner', 'production-planner', 'production-tracker', 'order-closure'].includes(activeTab) && (
           <div className="p-3 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-white flex items-center gap-2">
             {isViewOnly && (
@@ -5525,6 +5536,7 @@ const OrderHub = () => {
             </div>
           </div>
         )}
+        {activeTab === 'goods-receiving' && <GoodReceiving />}
         {activeTab === 'order-closure' && <div className="p-6">#6 Order Closure Content</div>}
       </div>
       </>
