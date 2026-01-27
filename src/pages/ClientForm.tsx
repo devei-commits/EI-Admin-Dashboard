@@ -764,8 +764,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <label className={labelClass}>Notes</label>
                   <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({...tempPoc, notes: e.target.value})} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
                 </div>
-                <div className="flex items-end">
-                  <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition font-medium text-sm">
+                <div>
+                  <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-amber-500 text-white border border-amber-600 rounded-lg hover:bg-amber-600 transition font-medium text-sm font-semibold">
                     + Add POC
                   </button>
                 </div>
