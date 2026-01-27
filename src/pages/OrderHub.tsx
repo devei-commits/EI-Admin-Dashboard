@@ -72,6 +72,19 @@ interface Order {
   priority?: 'high' | 'medium' | 'low';
   activityLog?: ActivityLogEntry[];
   attachments?: Attachment[];
+  // BD Team Checkpoints
+  poc_cmt_team?: 'yes' | 'no' | 'pending';
+  label_design_status?: 'yes' | 'no' | 'pending';
+  license_arch?: 'yes' | 'no' | 'pending';
+  // RND Team Checkpoints
+  poc_rnd_product?: 'yes' | 'no' | 'pending';
+  poc_quality_compliance?: 'yes' | 'no' | 'pending';
+  poc_label_design?: 'yes' | 'no' | 'pending';
+  rm_review?: 'yes' | 'no' | 'pending';
+  pm_review?: 'yes' | 'no' | 'pending';
+  label_review_qc?: 'yes' | 'no' | 'pending';
+  rm_sync?: 'yes' | 'no' | 'pending';
+  pm_sync?: 'yes' | 'no' | 'pending';
 }
 
 interface ActivityLogEntry {
@@ -1747,6 +1760,15 @@ const OrderHub = () => {
       )
     },
     { 
+      id: 'goods-receiving', 
+      label: 'Goods Receiving', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+        </svg>
+      )
+    },
+    { 
       id: 'bd-tasks', 
       label: 'BD Tasks', 
       icon: (
@@ -1854,15 +1876,6 @@ const OrderHub = () => {
         </svg>
       )
     },
-    { 
-      id: 'goods-receiving', 
-      label: 'Goods Receiving', 
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-        </svg>
-      )
-    },
   ];
 
   const handleTaskClick = useCallback((taskId: string) => {
@@ -1870,6 +1883,11 @@ const OrderHub = () => {
       setActiveTask(taskId);
       setExpandedTask(null);
       setActiveSubPage('hub');
+    } else if (taskId === 'goods-receiving') {
+      // Special handling for goods-receiving - show as standalone full page
+      setActiveTask('goods-receiving');
+      setExpandedTask(null);
+      setActiveSubPage('goods-receiving-page');
     } else {
       setExpandedTask(prev => prev === taskId ? null : taskId);
       setActiveTask(taskId);
@@ -1898,7 +1916,7 @@ const OrderHub = () => {
               >
                 <span className="flex-shrink-0">{task.icon}</span>
                 <span className="flex-1">{task.label}</span>
-                {task.id !== 'all' && (
+                {task.id !== 'all' && task.id !== 'goods-receiving' && (
                   <svg
                     className={`w-4 h-4 transition-transform duration-150 ${
                       expandedTask === task.id ? 'rotate-180' : ''
@@ -1913,7 +1931,7 @@ const OrderHub = () => {
               </button>
 
               {/* Subpages */}
-              {task.id !== 'all' && expandedTask === task.id && (
+              {task.id !== 'all' && task.id !== 'goods-receiving' && expandedTask === task.id && (
                 <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2 animate-fadeIn">
                   <button
                     onClick={() => setActiveSubPage('dashboard')}
@@ -1952,8 +1970,121 @@ const OrderHub = () => {
       <main className="flex-1 overflow-y-auto bg-gray-50">
         <div className="p-4 md:p-8 min-h-screen">
           
-          {/* Tasks View */}
-          {activeSubPage === 'tasks' && activeTask !== 'all' ? (
+          {/* Goods Receiving Full Page */}
+          {activeSubPage === 'goods-receiving-page' ? (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Goods Receiving</h1>
+                    <p className="text-gray-500 text-sm mt-2">Manage purchase orders, GRNs, and receiving processes</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tab Navigation */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                {/* Scrollable Tab Container */}
+                <div className="overflow-x-auto">
+                  <div className="flex border-b border-gray-200 min-w-max md:min-w-full">
+                    {[
+                      {
+                        id: 'po-requests' as GoodsReceivingTabType,
+                        label: 'PO Requests',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      },
+                      {
+                        id: 'issued-pos' as GoodsReceivingTabType,
+                        label: 'Issued P.O.s',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      },
+                      {
+                        id: 'ongoing-grns' as GoodsReceivingTabType,
+                        label: 'Ongoing GRN\'s',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                      },
+                      {
+                        id: 'mrn-fgs' as GoodsReceivingTabType,
+                        label: 'MRN/FG\'s',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m0 0v10l8 4" /></svg>
+                      },
+                      {
+                        id: 'print-labels' as GoodsReceivingTabType,
+                        label: 'Print Labels',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      },
+                      {
+                        id: 'grn' as GoodsReceivingTabType,
+                        label: 'GRN',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      },
+                      {
+                        id: 'proofing' as GoodsReceivingTabType,
+                        label: 'Proofing',
+                        icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveGoodsReceivingTab(tab.id)}
+                        className={`flex-1 px-4 md:px-6 py-4 font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                          activeGoodsReceivingTab === tab.id
+                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-b-2 border-amber-600'
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="hidden sm:inline">{tab.icon}</span>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tab Content */}
+                <div className="p-4 md:p-6">
+                  {/* PO Requests */}
+                  {activeGoodsReceivingTab === 'po-requests' && (
+                    <PORequests />
+                  )}
+
+                  {/* Issued POs */}
+                  {activeGoodsReceivingTab === 'issued-pos' && (
+                    <IssuedPOS />
+                  )}
+
+                  {/* Ongoing GRNs */}
+                  {activeGoodsReceivingTab === 'ongoing-grns' && (
+                    <OngoingGRNs />
+                  )}
+
+                  {/* MRN/FGs */}
+                  {activeGoodsReceivingTab === 'mrn-fgs' && (
+                    <MRNFGs />
+                  )}
+
+                  {/* Print Labels */}
+                  {activeGoodsReceivingTab === 'print-labels' && (
+                    <div className="text-center py-8">
+                      <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Print Labels</h3>
+                      <p className="text-gray-500">Generate and print product labels</p>
+                    </div>
+                  )}
+
+                  {/* GRN - Main Content */}
+                  {activeGoodsReceivingTab === 'grn' && (
+                    <GRNList />
+                  )}
+
+                  {/* Proofing */}
+                  {activeGoodsReceivingTab === 'proofing' && <Proofing />}
+                </div>
+              </div>
+            </div>
+          ) : activeSubPage === 'tasks' && activeTask !== 'all' ? (
             <div className="space-y-6">
               {/* Tasks Header */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -2263,24 +2394,509 @@ const OrderHub = () => {
 
               {/* Tasks Section */}
               <div className="space-y-4">
-                <h2 className="text-lg font-bold text-gray-800">All Tasks</h2>
-                {getFilteredAndSortedTasks(
-                  orders.filter(o => {
-                    const stageMap: Record<string, number> = {
-                      'planning': 1,
-                      'design': 2,
-                      'label': 3,
-                      'production': 4,
-                      'dispense': 5,
-                      'bundle': 5,
-                      'invoice': 6,
-                      'quality-team': 4,
-                      'packaging-team': 5,
-                      'warehouse': 6
-                    };
-                    return o.currentStage === stageMap[activeTask];
-                  })
-                ).map((order) => {
+                {/* BD Tasks and RND Tasks - Show Orders Table in Tasks View */}
+                {(activeTask === 'bd-tasks' || activeTask === 'rnd-tasks') ? (
+                  <>
+                    <h2 className="text-lg font-bold text-gray-800">All Orders</h2>
+                    
+                    {/* Search Bar */}
+                    <div className="flex gap-3">
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          placeholder={`Search ${activeTask === 'bd-tasks' ? 'BD' : 'RND'} orders by Order No, SKU, or Item Name...`}
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow"
+                        />
+                        {searchQuery && searchQuery !== debouncedSearchQuery && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
+                          </div>
+                        )}
+                      </div>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white transition-shadow"
+                      >
+                        <option value="ALL">All Stages</option>
+                        {STAGES.map(s => (
+                          <option key={s.id} value={s.id}>Stage {s.id}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Orders Table */}
+                    {loading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200 bg-gray-100 sticky left-0 z-10">
+                                Order ID
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Type
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Item Name
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                SKU
+                              </th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Qty
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Order Date
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Est. Delivery
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Current Stage
+                              </th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Stage Progress
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Status
+                              </th>
+                              {activeTask === 'bd-tasks' && (
+                                <>
+                                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-blue-50">
+                                    POC CMT Team
+                                  </th>
+                                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-blue-50">
+                                    Label Design Status
+                                  </th>
+                                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-blue-50">
+                                    License Arch
+                                  </th>
+                                </>
+                              )}
+                              {activeTask === 'rnd-tasks' && (
+                                <>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    R&D Product
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    Quality
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    Label Design
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    RM Review
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    PM Review
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    Label Review
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    RM Sync
+                                  </th>
+                                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-purple-50">
+                                    PM Sync
+                                  </th>
+                                </>
+                              )}
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {orders
+                              .filter(order => {
+                                const matchesSearch = !searchQuery || 
+                                  order.orderNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  order.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  order.itemName.toLowerCase().includes(searchQuery.toLowerCase());
+                                const matchesStage = statusFilter === 'ALL' || order.currentStage === parseInt(statusFilter);
+                                return matchesSearch && matchesStage;
+                              })
+                              .map(order => {
+                                const hasRecentUpdate = lastUpdatedDates[order.id] && 
+                                  new Date(lastUpdatedDates[order.id]).getTime() > Date.now() - 5000;
+                                
+                                return (
+                                  <tr 
+                                    key={order.id} 
+                                    className={`hover:bg-amber-50 transition-colors ${
+                                      hasRecentUpdate ? 'animate-pulse bg-green-50' : ''
+                                    }`}
+                                  >
+                                    {/* Order ID - Sticky Left Column */}
+                                    <td className="px-4 py-3 whitespace-nowrap font-semibold text-gray-900 border-r border-gray-200 bg-gray-50 sticky left-0">
+                                      <div className="flex items-center gap-2">
+                                        {hasRecentUpdate && (
+                                          <span className="flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                          </span>
+                                        )}
+                                        {order.orderNo}
+                                      </div>
+                                    </td>
+
+                                    {/* Order Type */}
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                        order.orderType === 'REORDER' 
+                                          ? 'bg-blue-100 text-blue-700' 
+                                          : order.orderType === 'NEW ORDER'
+                                          ? 'bg-green-100 text-green-700'
+                                          : 'bg-orange-100 text-orange-700'
+                                      }`}>
+                                        {order.orderType}
+                                      </span>
+                                    </td>
+
+                                    {/* Item Name */}
+                                    <td className="px-4 py-3">
+                                      <div className="max-w-xs">
+                                        <p className="text-sm font-medium text-gray-900 truncate">{order.itemName}</p>
+                                      </div>
+                                    </td>
+
+                                    {/* SKU */}
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                                      {order.sku}
+                                    </td>
+
+                                    {/* Quantity */}
+                                    <td className="px-4 py-3 whitespace-nowrap text-center text-sm font-medium text-gray-900">
+                                      {order.qty}
+                                    </td>
+
+                                    {/* Order Date */}
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                                      {order.odrDate}
+                                    </td>
+
+                                    {/* Est. Delivery */}
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                                      {order.estDelDate}
+                                    </td>
+
+                                    {/* Current Stage */}
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <div className="flex items-center gap-2">
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                                          Stage {order.currentStage}/6
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {STAGES.find(s => s.id === order.currentStage)?.name}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Stage Progress Indicators */}
+                                    <td className="px-4 py-3">
+                                      <div className="flex gap-1 items-center justify-center">
+                                        {STAGES.map((stage) => {
+                                          const status = order.stageProgress?.[stage.id] || 'pending';
+                                          const isCurrentStage = stage.id === order.currentStage;
+                                          return (
+                                            <div
+                                              key={stage.id}
+                                              className={`w-8 h-8 rounded flex items-center justify-center text-xs font-bold transition-all ${
+                                                status === 'completed'
+                                                  ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                                                  : isCurrentStage
+                                                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-400 ring-2 ring-blue-200'
+                                                  : 'bg-gray-100 text-gray-400 border border-gray-300'
+                                              }`}
+                                              title={`${stage.name}: ${status}`}
+                                            >
+                                              {getStageStatusIcon(status)}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </td>
+
+                                    {/* Status */}
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                        order.currentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                        order.currentStatus === 'UNDER REVIEW' ? 'bg-amber-100 text-amber-700' :
+                                        'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {order.currentStatus}
+                                      </span>
+                                    </td>
+
+                                    {/* BD Tasks Checkpoints */}
+                                    {activeTask === 'bd-tasks' && (
+                                      <>
+                                        <td className="px-3 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.poc_cmt_team || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, poc_cmt_team: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.poc_cmt_team === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.poc_cmt_team === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-3 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.label_design_status || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, label_design_status: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.label_design_status === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.label_design_status === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-3 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.license_arch || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, license_arch: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.license_arch === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.license_arch === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                      </>
+                                    )}
+
+                                    {/* RND Tasks Checkpoints */}
+                                    {activeTask === 'rnd-tasks' && (
+                                      <>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.poc_rnd_product || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, poc_rnd_product: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.poc_rnd_product === 'yes' ? 'bg-purple-100 text-purple-700' :
+                                              order.poc_rnd_product === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.poc_quality_compliance || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, poc_quality_compliance: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.poc_quality_compliance === 'yes' ? 'bg-green-100 text-green-700' :
+                                              order.poc_quality_compliance === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.poc_label_design || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, poc_label_design: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.poc_label_design === 'yes' ? 'bg-pink-100 text-pink-700' :
+                                              order.poc_label_design === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.rm_review || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, rm_review: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.rm_review === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.rm_review === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.pm_review || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, pm_review: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.pm_review === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.pm_review === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.label_review_qc || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, label_review_qc: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.label_review_qc === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.label_review_qc === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.rm_sync || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, rm_sync: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.rm_sync === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.rm_sync === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                        <td className="px-2 py-3 whitespace-nowrap text-center">
+                                          <select
+                                            value={order.pm_sync || 'pending'}
+                                            onChange={(e) => {
+                                              setOrders(prev => prev.map(o => 
+                                                o.id === order.id ? { ...o, pm_sync: e.target.value as any } : o
+                                              ));
+                                            }}
+                                            className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
+                                              order.pm_sync === 'yes' ? 'bg-blue-100 text-blue-700' :
+                                              order.pm_sync === 'no' ? 'bg-red-100 text-red-700' :
+                                              'bg-yellow-100 text-yellow-700'
+                                            }`}
+                                          >
+                                            <option value="pending">PENDING</option>
+                                            <option value="yes">yes</option>
+                                            <option value="no">no</option>
+                                          </select>
+                                        </td>
+                                      </>
+                                    )}
+
+                                    {/* Actions */}
+                                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                                      <button
+                                        onClick={() => setSelectedOrderDetails(order)}
+                                        className="inline-flex items-center px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
+                                      >
+                                        <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                        View
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-bold text-gray-800">All Tasks</h2>
+                    {getFilteredAndSortedTasks(
+                      orders.filter(o => {
+                        const stageMap: Record<string, number> = {
+                          'planning': 1,
+                          'design': 2,
+                          'label': 3,
+                          'production': 4,
+                          'dispense': 5,
+                          'bundle': 5,
+                          'invoice': 6,
+                          'quality-team': 4,
+                          'packaging-team': 5,
+                          'warehouse': 6
+                        };
+                        return o.currentStage === stageMap[activeTask];
+                      })
+                    ).map((order) => {
                     const formatDate = (dateStr: string) => {
                       if (!dateStr) return 'N/A';
                       const date = new Date(dateStr);
@@ -2457,6 +3073,8 @@ const OrderHub = () => {
                     <p className="text-gray-500">No tasks found matching your filters</p>
                   </div>
                 )}
+                  </>
+                )}
               </div>
             </div>
           ) : activeSubPage === 'dashboard' && activeTask !== 'all' ? (
@@ -2465,9 +3083,9 @@ const OrderHub = () => {
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex items-center gap-3 mb-2">
                   <span className="text-amber-500">{tasks.find(t => t.id === activeTask)?.icon}</span>
-                  <h1 className="text-2xl font-bold text-gray-800 capitalize">{activeTask} Dashboard</h1>
+                  <h1 className="text-2xl font-bold text-gray-800 capitalize">{activeTask === 'bd-tasks' ? 'BD Tasks' : activeTask === 'rnd-tasks' ? 'RND Tasks' : activeTask} Dashboard</h1>
                 </div>
-                <p className="text-gray-500 text-sm">Monitor and manage {activeTask} tasks and metrics</p>
+                <p className="text-gray-500 text-sm">Monitor and manage {activeTask === 'bd-tasks' ? 'BD tasks' : activeTask === 'rnd-tasks' ? 'RND tasks' : activeTask} tasks and metrics</p>
               </div>
 
               {/* Dashboard Stats */}

@@ -553,6 +553,7 @@ export function GlobalTaskOverview() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPushModal, setShowPushModal] = useState(false);
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -567,6 +568,27 @@ export function GlobalTaskOverview() {
     priority: '',
     assignedTo: '',
     comments: '',
+  });
+
+  // Add task form state
+  const [addTaskForm, setAddTaskForm] = useState<{
+    title: string;
+    clientName: string;
+    dueDate: string;
+    assignTo: string;
+    priority: string;
+    description: string;
+    createdBy: string;
+    setReminder: boolean;
+  }>({
+    title: '',
+    clientName: '',
+    dueDate: '',
+    assignTo: '',
+    priority: 'Very Low',
+    description: '',
+    createdBy: '',
+    setReminder: false,
   });
 
   // Filter and sort tasks
@@ -755,6 +777,71 @@ export function GlobalTaskOverview() {
     setShowPushModal(true);
   };
 
+  // Handle add task
+  const handleAddTask = () => {
+    if (!addTaskForm.title.trim() || !addTaskForm.assignTo) {
+      alert('Please fill in required fields: Title and Assign To');
+      return;
+    }
+
+    const newTask: GlobalTask = {
+      id: `task-${Date.now()}`,
+      orderNo: `ORD-${String(tasks.length + 1).padStart(5, '0')}`,
+      orderType: 'Standard',
+      sku: 'TBD',
+      itemName: addTaskForm.title,
+      stage: 'Planning',
+      currentStage: 1,
+      currentStatus: 'Pending',
+      priority: addTaskForm.priority as 'high' | 'medium' | 'low',
+      qty: 0,
+      unitRate: '0',
+      odrDate: new Date().toISOString(),
+      estDelDate: addTaskForm.dueDate || new Date().toISOString(),
+      comDate: '',
+      licenseArch: '',
+      licenseEI: '',
+      pocForCurrentStatus: addTaskForm.assignTo,
+      assignedTeam: 'CMT',
+      assignedTo: addTaskForm.assignTo,
+      comments: addTaskForm.description,
+      stageProgress: {
+        1: 'pending',
+        2: 'pending',
+        3: 'pending',
+        4: 'pending',
+        5: 'pending',
+        6: 'pending',
+        7: 'pending',
+      },
+      activityLog: [
+        {
+          id: `log-${Date.now()}`,
+          action: 'Task Created',
+          performedBy: addTaskForm.createdBy || 'Current User',
+          performedAt: new Date().toISOString(),
+          details: `New task created${addTaskForm.clientName ? ` for client: ${addTaskForm.clientName || 'NA'}` : ' (Client: NA)'}`,
+        },
+      ],
+      attachments: [],
+    };
+
+    setTasks(prev => [newTask, ...prev]);
+    setShowAddTaskModal(false);
+    
+    // Reset form
+    setAddTaskForm({
+      title: '',
+      clientName: '',
+      dueDate: '',
+      assignTo: '',
+      priority: 'Very Low',
+      description: '',
+      createdBy: '',
+      setReminder: false,
+    });
+  };
+
   // Handle confirm push
   const handleConfirmPush = () => {
     if (!selectedTask || selectedTask.currentStage >= 7) return;
@@ -831,6 +918,15 @@ export function GlobalTaskOverview() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAddTaskModal(true)}
+              className="px-4 py-2 bg-white text-amber-600 rounded-lg font-medium hover:bg-amber-50 transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Task
+            </button>
             <button
               onClick={resetFilters}
               className="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition-colors flex items-center gap-2"
@@ -1632,6 +1728,163 @@ export function GlobalTaskOverview() {
                 >
                   <TrendingUp className="w-4 h-4" />
                   Confirm Push
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Task Modal */}
+      {showAddTaskModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl my-8">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">New Task</h2>
+                <button
+                  onClick={() => setShowAddTaskModal(false)}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-white" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={addTaskForm.title}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  placeholder="Enter task title"
+                />
+              </div>
+
+              {/* Client Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+                <input
+                  type="text"
+                  value={addTaskForm.clientName}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, clientName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  placeholder="NA"
+                />
+                <p className="text-xs text-gray-500 mt-1">Leave empty to show as "NA"</p>
+              </div>
+
+              {/* Due Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={addTaskForm.dueDate}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, dueDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
+
+              {/* Assign To */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assign To <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={addTaskForm.assignTo}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, assignTo: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <option value="">Select User</option>
+                  {Object.entries(TEAM_MEMBERS).map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <select
+                  value={addTaskForm.priority}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, priority: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <option value="Very Low">Very Low</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="Very High">Very High</option>
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={addTaskForm.description}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, description: e.target.value })}
+                  rows={4}
+                  maxLength={10000}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                  placeholder="Max. 10000 characters"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {addTaskForm.description.length}/10000 characters
+                </p>
+              </div>
+
+              {/* Created By */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Created By</label>
+                <select
+                  value={addTaskForm.createdBy}
+                  onChange={(e) => setAddTaskForm({ ...addTaskForm, createdBy: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <option value="">Select User</option>
+                  {Object.entries(TEAM_MEMBERS).map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Set Reminder */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <label className="text-sm font-medium text-gray-700">Set Reminder</label>
+                <button
+                  type="button"
+                  onClick={() => setAddTaskForm({ ...addTaskForm, setReminder: !addTaskForm.setReminder })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    addTaskForm.setReminder ? 'bg-amber-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      addTaskForm.setReminder ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowAddTaskModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddTask}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-medium hover:from-amber-600 hover:to-orange-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Task
                 </button>
               </div>
             </div>
