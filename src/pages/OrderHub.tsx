@@ -678,12 +678,24 @@ const MOCK_ORDERS: Order[] = [
 
     // Distribute stages across mock orders
     const currentStage = 1 + (idx % 6);
+    const stageNames = ['ORDERS REVIEW', 'PURCHASE PLAN', 'CONNECTIVITY TRACKER', 'PRODUCTION PLANNER', 'PRODUCTION TRACKER', 'ORDER CLOSURE'];
+    const stage = stageNames[currentStage - 1];
+    
     const stageProgress: Record<number, 'pending' | 'in-progress' | 'completed'> = {};
     for (let s = 1; s <= 6; s++) {
       if (s < currentStage) stageProgress[s] = 'completed';
       else if (s === currentStage) stageProgress[s] = 'in-progress';
       else stageProgress[s] = 'pending';
     }
+
+    const statusMap: Record<string, string> = {
+      'ORDERS REVIEW': 'UNDER REVIEW',
+      'PURCHASE PLAN': 'UNDER PLANNING',
+      'CONNECTIVITY TRACKER': 'CONNECTIVITY TRACKING',
+      'PRODUCTION PLANNER': 'PLANNING PRODUCTION',
+      'PRODUCTION TRACKER': 'IN PRODUCTION',
+      'ORDER CLOSURE': 'READY TO CLOSE'
+    };
 
     return {
       id,
@@ -698,9 +710,9 @@ const MOCK_ORDERS: Order[] = [
       comDate,
       licenseArch,
       licenseEI,
-      stage: 'PURCHASE PLAN',
-      currentStatus: 'UNDER PLANNING',
-      pocForCurrentStatus: '*#S2 COMPLETED*',
+      stage,
+      currentStatus: statusMap[stage],
+      pocForCurrentStatus: currentStage <= 2 ? '-' : '*#S' + currentStage + ' IN PROGRESS*',
       comments: '-',
       currentStage,
       stageProgress
