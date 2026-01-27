@@ -1813,15 +1813,6 @@ const OrderHub = () => {
       )
     },
     { 
-      id: 'invoice', 
-      label: 'Invoice', 
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      )
-    },
-    { 
       id: 'quality-team', 
       label: 'Quality Team', 
       icon: (
@@ -1840,6 +1831,15 @@ const OrderHub = () => {
       )
     },
     { 
+      id: 'invoice', 
+      label: 'Invoice', 
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )
+    },
+    { 
       id: 'warehouse', 
       label: 'Warehouse', 
       icon: (
@@ -1852,10 +1852,6 @@ const OrderHub = () => {
 
   const handleTaskClick = useCallback((taskId: string) => {
     if (taskId === 'all') {
-      setActiveTask(taskId);
-      setExpandedTask(null);
-      setActiveSubPage('hub');
-    } else if (taskId === 'bd-tasks' || taskId === 'rnd-tasks') {
       setActiveTask(taskId);
       setExpandedTask(null);
       setActiveSubPage('hub');
@@ -1887,7 +1883,7 @@ const OrderHub = () => {
               >
                 <span className="flex-shrink-0">{task.icon}</span>
                 <span className="flex-1">{task.label}</span>
-              {task.id !== 'all' && task.id !== 'bd-tasks' && task.id !== 'rnd-tasks' && (
+                {task.id !== 'all' && (
                   <svg
                     className={`w-4 h-4 transition-transform duration-150 ${
                       expandedTask === task.id ? 'rotate-180' : ''
@@ -1902,7 +1898,7 @@ const OrderHub = () => {
               </button>
 
               {/* Subpages */}
-              {task.id !== 'all' && task.id !== 'bd-tasks' && task.id !== 'rnd-tasks' && expandedTask === task.id && (
+              {task.id !== 'all' && expandedTask === task.id && (
                 <div className="ml-4 mt-1 space-y-1 border-l-2 border-amber-200 pl-2 animate-fadeIn">
                   <button
                     onClick={() => setActiveSubPage('dashboard')}
