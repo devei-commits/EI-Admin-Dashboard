@@ -438,7 +438,7 @@ const Dashboard = () => {
           <div>
             <p className="text-amber-100 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             <h1 className="text-2xl md:text-3xl font-bold mt-1">{greeting}, {user?.name || 'Admin'}!</h1>
-            <p className="text-amber-100 mt-2">Welcome to your PIS Admin Dashboard. Here's an overview of your system.</p>
+            <p className="text-amber-100 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
@@ -652,7 +652,7 @@ const Dashboard = () => {
 
       {/* Footer Info */}
       <div className="mt-6 text-center text-xs text-gray-400">
-        <p>PIS Admin Dashboard • {filteredModules.length} Modules Available • Last updated: {new Date().toLocaleTimeString()}</p>
+        <p>Admin Tool • {filteredModules.length} Modules Available • Last updated: {new Date().toLocaleTimeString()}</p>
       </div>
     </div>
   );

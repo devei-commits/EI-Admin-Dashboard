@@ -96,8 +96,21 @@ const getInitialRole = (): UserRole => {
   return 'SUPER_ADMIN';
 };
 
+// Get initial view from URL parameter
+const getInitialView = (): string => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewFromUrl = urlParams.get('view');
+  
+  const validViews = ['dashboard', 'pis', 'bd-tasks', 'rnd-tasks', 'qa-tasks', 'new-pis', 'customers', 'products', 'analytics', 'settings'];
+  if (viewFromUrl && validViews.includes(viewFromUrl)) {
+    return viewFromUrl;
+  }
+  
+  return 'dashboard';
+};
+
 function AppContent() {
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(getInitialView);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pisPreset, setPisPreset] = useState<PISManagementPreset | undefined>(undefined);
   const [currentRole] = useState<UserRole>(getInitialRole);
