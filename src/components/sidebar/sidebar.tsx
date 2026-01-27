@@ -355,46 +355,6 @@ const Sidebar = () => {
                                         </button>
                                     </li>
                                     )}
-                                    {showOrderManagement && (
-                                    <li>
-                                        <button
-                                            onClick={() => {
-                                                handleLinkClick();
-                                                const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-                                                window.open(`/order-hub?role=${userRole}&view=bd-tasks`, '_blank', 'noopener,noreferrer');
-                                            }}
-                                            className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-gray-600 hover:bg-white hover:text-amber-700 w-full text-left"
-                                        >
-                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                            </svg>
-                                            <span>BD Tasks</span>
-                                            <svg className="w-3 h-3 ml-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                            </svg>
-                                        </button>
-                                    </li>
-                                    )}
-                                    {showOrderManagement && (
-                                    <li>
-                                        <button
-                                            onClick={() => {
-                                                handleLinkClick();
-                                                const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-                                                window.open(`/order-hub?role=${userRole}&view=rnd-tasks`, '_blank', 'noopener,noreferrer');
-                                            }}
-                                            className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-gray-600 hover:bg-white hover:text-amber-700 w-full text-left"
-                                        >
-                                            <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                                            </svg>
-                                            <span>RND Tasks</span>
-                                            <svg className="w-3 h-3 ml-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                            </svg>
-                                        </button>
-                                    </li>
-                                    )}
                                     {showCouponManagement && (
                                     <li>
                                         <NavLink
