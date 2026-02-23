@@ -552,7 +552,7 @@ export const TicketRow: React.FC<TicketRowProps> = ({
   ticket,
   onSelect,
   onStatusChange,
-  onPriorityChange,
+  _onPriorityChange,
   isSelected = false,
 }) => {
   const timeAgo = (dateStr: string): string => {

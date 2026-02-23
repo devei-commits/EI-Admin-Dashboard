@@ -1,5 +1,4 @@
 import React, { ReactNode } from 'react';
-import { BUTTON_VARIANTS, SPACING, TYPOGRAPHY } from './theme';
 
 // Unified Button Component
 export interface UnifiedButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

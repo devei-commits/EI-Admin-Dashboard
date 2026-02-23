@@ -1,54 +1,83 @@
 import React, { useState } from 'react';
+import { UnifiedButton, inputClassName, selectClassName } from '../ui';
+import { updateUserRole } from '../../services/user.service';
+import type { User } from './ViewUsers';
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  mobile: string;
-  role: string;
-  department: string;
-  createdAt: string;
-  lastLogin: string;
-  lastUpdate: string;
-  status: 'active' | 'deactive' | 'suspended';
+interface RoleOption {
+  role_id: number;
+  role_name: string;
 }
+
+const DEPARTMENTS = [
+  { value: 'sales', label: 'Sales' },
+  { value: 'rnd', label: 'R&D' },
+  { value: 'quality_assurance', label: 'Quality Assurance' },
+  { value: 'logistics', label: 'Logistics' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'finance', label: 'Finance' },
+] as const;
 
 interface EditUserPopupProps {
   user: User;
+  roles: RoleOption[];
   onClose: () => void;
   onSave: (updatedUser: User) => void;
 }
 
-const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) => {
-  const [editedUser, setEditedUser] = useState<User>({ ...user });
-
-  const departments = [
-    'BD', 'QA', 'R&D', 'Sales', 'Packaging', 'Design', 'Procurement', 
-    'Manufacturing and production', 'logistic', 'admin', 'client'
-  ];
-
-  const userRoles = [
-    'BD Manager', 'BD Staff', 'QA Staff', 'QA Manager', 'R&D Lead', 'R&D Staff',
-    'Sales', 'Design', 'Procurement', 'Manufacturing and Production', 'Logistics',
-    'Admin', 'Super Admin', 'Doctor', 'Customer'
-  ];
+const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, roles, onClose, onSave }) => {
+  const [editedUser, setEditedUser] = useState<User>({
+    ...user,
+    roleId: user.roleId ?? (roles.find(r => r.role_name === user.role)?.role_id),
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const statusOptions: ('active' | 'deactive' | 'suspended')[] = ['active', 'deactive', 'suspended'];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'roleId') {
+      const roleId = Number(value);
+      const roleName = roles.find(r => r.role_id === roleId)?.role_name ?? '';
+      setEditedUser(prev => ({ ...prev, roleId, role: roleName }));
+      return;
+    }
     setEditedUser(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Update the last update timestamp
-    const updatedUser = {
-      ...editedUser,
-      lastUpdate: new Date().toISOString().slice(0, 19).replace('T', ' ')
-    };
-    onSave(updatedUser);
-    onClose();
+    setError(null);
+    setSaving(true);
+    const roleId = editedUser.roleId ?? roles.find(r => r.role_name === editedUser.role)?.role_id;
+    if (roleId == null) {
+      setError('Please select a role');
+      setSaving(false);
+      return;
+    }
+    try {
+      const result = await updateUserRole(user.id, {
+        roleId,
+        department: editedUser.department || undefined,
+      });
+      if (!result.success) {
+        setError(result.error ?? 'Failed to update user');
+        setSaving(false);
+        return;
+      }
+      const updatedUser: User = {
+        ...editedUser,
+        roleId,
+        role: roles.find(r => r.role_id === roleId)?.role_name ?? editedUser.role,
+        lastUpdate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      };
+      onSave(updatedUser);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -78,7 +107,7 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 name="name"
                 value={editedUser.name}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                className={inputClassName}
                 required
               />
             </div>
@@ -93,7 +122,7 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 name="email"
                 value={editedUser.email}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                className={inputClassName}
                 required
               />
             </div>
@@ -108,7 +137,7 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 name="mobile"
                 value={editedUser.mobile}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                className={inputClassName}
                 required
               />
             </div>
@@ -122,12 +151,12 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 name="department"
                 value={editedUser.department}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
-                required
+                className={selectClassName}
               >
-                {departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
+                <option value="">— Select —</option>
+                {DEPARTMENTS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
                   </option>
                 ))}
               </select>
@@ -139,15 +168,16 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 Role
               </label>
               <select
-                name="role"
-                value={editedUser.role}
+                name="roleId"
+                value={editedUser.roleId ?? ''}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                className={selectClassName}
                 required
               >
-                {userRoles.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
+                <option value="">— Select —</option>
+                {roles.map((r) => (
+                  <option key={r.role_id} value={r.role_id}>
+                    {r.role_name}
                   </option>
                 ))}
               </select>
@@ -162,7 +192,7 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
                 name="status"
                 value={editedUser.status}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                className={selectClassName}
                 required
               >
                 {statusOptions.map((status) => (
@@ -211,20 +241,14 @@ const EditUserPopup: React.FC<EditUserPopupProps> = ({ user, onClose, onSave }) 
             </div>
           </div>
 
+          {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-5 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-            >
+            <UnifiedButton type="button" variant="secondary" onClick={onClose} disabled={saving}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="w-full sm:w-auto px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
-            >
-              Save Changes
-            </button>
+            </UnifiedButton>
+            <UnifiedButton type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </UnifiedButton>
           </div>
         </form>
       </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
 import { useDebounce } from '../hooks/useDebounce';
-import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
+import { PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
 
 // ==================== CUSTOM HOOKS ====================
 /**
@@ -757,15 +757,7 @@ const fetchOrders = async (): Promise<Order[]> => {
   });
 };
 
-const updateOrderEstDate = async (orderId: string, newDate: string): Promise<void> => {
-  // TODO: Replace with actual API call
-  // Example: await fetch(`/api/orders/${orderId}`, {
-  //   method: 'PATCH',
-  //   body: JSON.stringify({ estDelDate: newDate })
-  // });
-};
-
-const updateOrderType = async (orderId: string, newType: string): Promise<void> => {
+const updateOrderType = async (_orderId: string, _newType: string): Promise<void> => {
   // TODO: Replace with actual API call
   // Example: await fetch(`/api/orders/${orderId}`, {
   //   method: 'PATCH',
@@ -813,39 +805,6 @@ const initializeOrderStages = (orders: Order[]): Order[] => {
   });
 };
 
-const moveOrderToNextStage = (order: Order): Order => {
-  if (order.currentStage >= 6) {
-    return { ...order, currentStage: 7, stage: 'ORDER CLOSED' }; // Final stage
-  }
-
-  const nextStage = order.currentStage + 1;
-  const stageNames = ['ORDERS REVIEW', 'PURCHASE PLAN', 'CONNECTIVITY TRACKER', 'PRODUCTION PLANNER', 'PRODUCTION TRACKER', 'ORDER CLOSURE'];
-  
-  return {
-    ...order,
-    currentStage: nextStage,
-    stage: stageNames[nextStage - 1] || 'ORDER CLOSED',
-    stageProgress: {
-      ...order.stageProgress,
-      [order.currentStage]: 'completed',
-      [nextStage]: 'in-progress',
-    },
-  };
-};
-
-const getStageStatusColor = (stageStatus: 'pending' | 'in-progress' | 'completed'): string => {
-  switch (stageStatus) {
-    case 'completed':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-300';
-    case 'in-progress':
-      return 'bg-blue-100 text-blue-700 border-blue-300';
-    case 'pending':
-      return 'bg-gray-100 text-gray-600 border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-600 border-gray-300';
-  }
-};
-
 const getStageStatusIcon = (stageStatus: 'pending' | 'in-progress' | 'completed'): string => {
   switch (stageStatus) {
     case 'completed':
@@ -875,7 +834,7 @@ const OrderHub = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [reviewOrders, setReviewOrders] = useState<OrderReview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [_currentTime, setCurrentTime] = useState(new Date());
   const [openOrderTypeDropdown, setOpenOrderTypeDropdown] = useState<string | null>(null);
   const [openLicenseDropdown, setOpenLicenseDropdown] = useState<{
     orderId: string;
@@ -922,12 +881,10 @@ const OrderHub = () => {
     { id: '2', component: 'Component B', currentStock: 50, requiredStock: 200, unit: 'Pieces', supplier: 'Supplier 2', leadTime: 14, notes: '' },
     { id: '3', component: 'Component C', currentStock: 200, requiredStock: 300, unit: 'Liters', supplier: 'Supplier 1', leadTime: 10, notes: 'Urgent' },
   ]);
-  const [editingStockId, setEditingStockId] = useState<string | null>(null);
   
   // Team Management states
   const [teams, setTeams] = useState<Team[]>(MOCK_TEAMS);
   const [teamManagementModal, setTeamManagementModal] = useState(false);
-  const [selectedTeamForEdit, setSelectedTeamForEdit] = useState<Team | null>(null);
   const [openPocDropdown, setOpenPocDropdown] = useState<{ orderId: string; type: 'cmt' | 'rnd' | 'quality' | 'label' } | null>(null);
   
   // Team Management - Add/Edit Member states
@@ -1247,17 +1204,6 @@ const OrderHub = () => {
   }, []);
 
   // ==================== UTILITY FUNCTIONS ====================
-  const calculateTimeElapsed = (odrDate: string) => {
-    const orderDate = new Date(odrDate);
-    const now = currentTime;
-    const diffMs = now.getTime() - orderDate.getTime();
-    
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return { days, hours, minutes };
-  };
 
   const getMfgProcess = (order: Order) => {
     const seed = order.sku.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
@@ -1336,22 +1282,6 @@ const OrderHub = () => {
     updateLastModified(orderId);
     setOpenCommentModal(null);
     setCommentModalText('');
-  };
-
-  const handleDateChange = async (orderId: string, newDate: string) => {
-    // Optimistically update UI
-    setOrders(orders.map(order => 
-      order.id === orderId ? { ...order, estDelDate: newDate } : order
-    ));
-
-    // Send update to backend
-    try {
-      await updateOrderEstDate(orderId, newDate);
-    } catch (error) {
-      console.error('Failed to update date:', error);
-      // Revert on error
-      loadOrders();
-    }
   };
 
   const getLicenseKey = (orderId: string, type: 'arch' | 'ei') => `${orderId}-${type}`;
@@ -1472,22 +1402,6 @@ const OrderHub = () => {
     setShowAddConnectivityRow(true);
   };
 
-  const saveNewConnectivityRecord = () => {
-    if (newConnectivityRecord) {
-      setConnectivityRecords((prev) => ({
-        ...prev,
-        [newConnectivityRecord.id]: newConnectivityRecord
-      }));
-      setNewConnectivityRecord(null);
-      setShowAddConnectivityRow(false);
-    }
-  };
-
-  const cancelNewConnectivityRecord = () => {
-    setNewConnectivityRecord(null);
-    setShowAddConnectivityRow(false);
-  };
-
   const tabs = [
     { id: 'orders-tracker', label: 'Orders Tracker' },
     { id: 'orders-review', label: '#1 Orders Review' },
@@ -1562,7 +1476,6 @@ const OrderHub = () => {
   
   // Team Workload & Activity States
   const [showWorkloadView, setShowWorkloadView] = useState(false);
-  const [showActivityTimeline, setShowActivityTimeline] = useState(false);
   
   // Task Actions States
   const [showStatusDropdown, setShowStatusDropdown] = useState<string | null>(null);

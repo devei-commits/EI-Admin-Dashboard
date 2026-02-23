@@ -104,7 +104,7 @@ export const createInfiniteScrollObserver = (
 /**
  * Performance metrics tracking
  */
-export const trackMetric = (label: string, value: number) => {
+export const trackMetric = (label: string, _value: number) => {
   if ('PerformanceObserver' in window) {
     if (window.performance && window.performance.mark) {
       window.performance.mark(`${label}-${Date.now()}`);

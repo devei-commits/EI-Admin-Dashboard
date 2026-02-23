@@ -88,9 +88,16 @@ const getInitialRole = (): UserRole => {
     return mappedRole;
   }
   
+  // Check pisCurrentRole first, then adminUserRole for compatibility with admin panel
   const storedRole = localStorage.getItem('pisCurrentRole');
   if (storedRole) {
     return storedRole as UserRole;
+  }
+  
+  // Fallback to admin panel role
+  const adminRole = localStorage.getItem('adminUserRole');
+  if (adminRole) {
+    return mapAdminRoleToPISRole(adminRole);
   }
   
   return 'SUPER_ADMIN';

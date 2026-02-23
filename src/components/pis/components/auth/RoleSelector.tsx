@@ -32,7 +32,7 @@ const roleConfig: Record<string, { icon: typeof User; color: string; defaultDesc
   'CLIENT': { icon: User, color: 'bg-gray-500', defaultDescription: 'View your PIS' },
 };
 
-export function RoleSelector({ onRoleSelect, currentUserRole }: RoleSelectorProps) {
+export function RoleSelector({ onRoleSelect, currentUserRole: _currentUserRole }: RoleSelectorProps) {
   const [roles, setRoles] = useState<Array<{ role: UserRole; icon: typeof User; color: string; description: string; roleLevel: string }>>([]);
   const [loading, setLoading] = useState(true);
 

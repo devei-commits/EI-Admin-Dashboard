@@ -81,7 +81,7 @@ export interface ItemMasterPayload {
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchRawMaterials(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<RawMaterial>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<RawMaterial>>('/raw-materials', { params });
@@ -99,7 +99,7 @@ export async function fetchRawMaterials(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchRawMaterialById(
-  id: string
+  _id: string
 ): Promise<ServiceResult<RawMaterial>> {
   // TODO: Replace with actual API call
   // return apiClient.get<RawMaterial>(`/raw-materials/${id}`);
@@ -117,7 +117,7 @@ export async function fetchRawMaterialById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createRawMaterial(
-  data: RawMaterialPayload
+  _data: RawMaterialPayload
 ): Promise<ServiceResult<RawMaterial>> {
   // TODO: Replace with actual API call
   // return apiClient.post<RawMaterial>('/raw-materials', data);
@@ -135,8 +135,8 @@ export async function createRawMaterial(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateRawMaterial(
-  id: string,
-  data: Partial<RawMaterialPayload>
+  _id: string,
+  _data: Partial<RawMaterialPayload>
 ): Promise<ServiceResult<RawMaterial>> {
   // TODO: Replace with actual API call
   // return apiClient.put<RawMaterial>(`/raw-materials/${id}`, data);
@@ -154,7 +154,7 @@ export async function updateRawMaterial(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteRawMaterial(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/raw-materials/${id}`);
@@ -174,7 +174,7 @@ export async function deleteRawMaterial(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchPackagingItems(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<PackagingItem>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<PackagingItem>>('/packaging', { params });
@@ -192,7 +192,7 @@ export async function fetchPackagingItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchPackagingItemById(
-  id: string
+  _id: string
 ): Promise<ServiceResult<PackagingItem>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PackagingItem>(`/packaging/${id}`);
@@ -210,7 +210,7 @@ export async function fetchPackagingItemById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createPackagingItem(
-  data: PackagingItemPayload
+  _data: PackagingItemPayload
 ): Promise<ServiceResult<PackagingItem>> {
   // TODO: Replace with actual API call
   // return apiClient.post<PackagingItem>('/packaging', data);
@@ -228,8 +228,8 @@ export async function createPackagingItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updatePackagingItem(
-  id: string,
-  data: Partial<PackagingItemPayload>
+  _id: string,
+  _data: Partial<PackagingItemPayload>
 ): Promise<ServiceResult<PackagingItem>> {
   // TODO: Replace with actual API call
   // return apiClient.put<PackagingItem>(`/packaging/${id}`, data);
@@ -247,7 +247,7 @@ export async function updatePackagingItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deletePackagingItem(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/packaging/${id}`);
@@ -267,7 +267,7 @@ export async function deletePackagingItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchVendors(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<Vendor>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<Vendor>>('/vendors', { params });
@@ -285,7 +285,7 @@ export async function fetchVendors(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchVendorById(
-  id: string
+  _id: string
 ): Promise<ServiceResult<Vendor>> {
   // TODO: Replace with actual API call
   // return apiClient.get<Vendor>(`/vendors/${id}`);
@@ -303,7 +303,7 @@ export async function fetchVendorById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createVendor(
-  data: VendorPayload
+  _data: VendorPayload
 ): Promise<ServiceResult<Vendor>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Vendor>('/vendors', data);
@@ -321,8 +321,8 @@ export async function createVendor(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateVendor(
-  id: string,
-  data: Partial<VendorPayload>
+  _id: string,
+  _data: Partial<VendorPayload>
 ): Promise<ServiceResult<Vendor>> {
   // TODO: Replace with actual API call
   // return apiClient.put<Vendor>(`/vendors/${id}`, data);
@@ -340,7 +340,7 @@ export async function updateVendor(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteVendor(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/vendors/${id}`);
@@ -360,7 +360,7 @@ export async function deleteVendor(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchClients(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<Client>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<Client>>('/clients', { params });
@@ -378,7 +378,7 @@ export async function fetchClients(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchClientById(
-  id: string
+  _id: string
 ): Promise<ServiceResult<Client>> {
   // TODO: Replace with actual API call
   // return apiClient.get<Client>(`/clients/${id}`);
@@ -396,7 +396,7 @@ export async function fetchClientById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createClient(
-  data: ClientPayload
+  _data: ClientPayload
 ): Promise<ServiceResult<Client>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Client>('/clients', data);
@@ -414,8 +414,8 @@ export async function createClient(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateClient(
-  id: string,
-  data: Partial<ClientPayload>
+  _id: string,
+  _data: Partial<ClientPayload>
 ): Promise<ServiceResult<Client>> {
   // TODO: Replace with actual API call
   // return apiClient.put<Client>(`/clients/${id}`, data);
@@ -433,7 +433,7 @@ export async function updateClient(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteClient(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/clients/${id}`);
@@ -453,7 +453,7 @@ export async function deleteClient(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchItems(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<unknown>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<Item>>('/items', { params });
@@ -471,7 +471,7 @@ export async function fetchItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchItemById(
-  id: string
+  _id: string
 ): Promise<ServiceResult<unknown>> {
   // TODO: Replace with actual API call
   // return apiClient.get<Item>(`/items/${id}`);
@@ -489,7 +489,7 @@ export async function fetchItemById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createItem(
-  data: ItemMasterPayload
+  _data: ItemMasterPayload
 ): Promise<ServiceResult<unknown>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Item>('/items', data);
@@ -507,8 +507,8 @@ export async function createItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateItem(
-  id: string,
-  data: Partial<ItemMasterPayload>
+  _id: string,
+  _data: Partial<ItemMasterPayload>
 ): Promise<ServiceResult<unknown>> {
   // TODO: Replace with actual API call
   // return apiClient.put<Item>(`/items/${id}`, data);
@@ -526,7 +526,7 @@ export async function updateItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteItem(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/items/${id}`);
@@ -546,7 +546,7 @@ export async function deleteItem(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchActiveIngredients(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<unknown>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<ActiveIngredient>>('/active-ingredients', { params });
@@ -564,7 +564,7 @@ export async function fetchActiveIngredients(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createActiveIngredient(
-  data: Record<string, unknown>
+  _data: Record<string, unknown>
 ): Promise<ServiceResult<unknown>> {
   // TODO: Replace with actual API call
   // return apiClient.post<ActiveIngredient>('/active-ingredients', data);
@@ -582,8 +582,8 @@ export async function createActiveIngredient(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateActiveIngredient(
-  id: string,
-  data: Record<string, unknown>
+  _id: string,
+  _data: Record<string, unknown>
 ): Promise<ServiceResult<unknown>> {
   // TODO: Replace with actual API call
   // return apiClient.put<ActiveIngredient>(`/active-ingredients/${id}`, data);
@@ -601,7 +601,7 @@ export async function updateActiveIngredient(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteActiveIngredient(
-  id: string
+  _id: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/active-ingredients/${id}`);

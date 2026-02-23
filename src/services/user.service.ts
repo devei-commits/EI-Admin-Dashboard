@@ -1,11 +1,9 @@
 /**
  * User Service
- * Backend abstraction layer for user and role operations
- * 
- * PLACEHOLDER IMPLEMENTATION - No actual backend calls
- * Replace mock implementations with real API calls when backend is ready
+ * Backend: staff users GET /api/v1/users/getusers?staffOnly=true, PATCH /api/v1/users/:id/role
  */
 
+import { api } from '../lib/apiClient';
 import type {
   User,
   UserCreatePayload,
@@ -21,18 +19,46 @@ import type {
   ServiceResult,
 } from '../types/api.types';
 
+/** Backend staff user from getusers?staffOnly=true */
+export interface StaffUserFromApi {
+  userid: number;
+  id?: number;
+  display_name: string;
+  email: string;
+  mobile?: string;
+  usertype?: string;
+  status?: string;
+  created_at?: string;
+  role_id?: number;
+  role_name?: string;
+  department?: string;
+}
+
 // ==================== User CRUD Operations ====================
+
+/**
+ * Fetch staff users only (internal team with staff_profiles). Backend: GET /api/v1/users/getusers?staffOnly=true
+ */
+export async function fetchStaffUsers(): Promise<ServiceResult<StaffUserFromApi[]>> {
+  try {
+    const list = await api.get<StaffUserFromApi[]>('/api/v1/users/getusers?staffOnly=true');
+    return { data: list ?? [], error: null, success: true };
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Failed to fetch staff users',
+      success: false,
+    };
+  }
+}
 
 /**
  * Fetch all users with optional filtering and pagination
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchUsers(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<User>>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<PaginatedResponse<User>>('/users', { params });
-  
   console.warn('[UserService] fetchUsers: Using placeholder implementation');
   return {
     data: null,
@@ -46,7 +72,7 @@ export async function fetchUsers(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchUserById(
-  userId: string
+  _userId: string
 ): Promise<ServiceResult<User>> {
   // TODO: Replace with actual API call
   // return apiClient.get<User>(`/users/${userId}`);
@@ -64,7 +90,7 @@ export async function fetchUserById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createUser(
-  userData: UserCreatePayload
+  _userData: UserCreatePayload
 ): Promise<ServiceResult<User>> {
   // TODO: Replace with actual API call
   // return apiClient.post<User>('/users', userData);
@@ -82,8 +108,8 @@ export async function createUser(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateUser(
-  userId: string,
-  userData: UserUpdatePayload
+  _userId: string,
+  _userData: UserUpdatePayload
 ): Promise<ServiceResult<User>> {
   // TODO: Replace with actual API call
   // return apiClient.put<User>(`/users/${userId}`, userData);
@@ -101,7 +127,7 @@ export async function updateUser(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteUser(
-  userId: string
+  _userId: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/users/${userId}`);
@@ -119,8 +145,8 @@ export async function deleteUser(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateUserStatus(
-  userId: string,
-  status: User['status']
+  _userId: string,
+  _status: User['status']
 ): Promise<ServiceResult<User>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<User>(`/users/${userId}/status`, { status });
@@ -134,17 +160,37 @@ export async function updateUserStatus(
 }
 
 /**
- * Assign role to user
- * @placeholder Returns mock data - replace with API call
+ * Update user's role and department (staff_profiles). Backend: PATCH /api/v1/users/:id/role
+ */
+export async function updateUserRole(
+  userId: string,
+  payload: { roleId: number; department?: string }
+): Promise<ServiceResult<{ id: number; role_id: number; role_name: string; department: string | null }>> {
+  try {
+    const res = await api.patch<{ id: number; role_id: number; role_name: string; department: string | null }>(
+      `/api/v1/users/${userId}/role`,
+      payload
+    );
+    return { data: res, error: null, success: true };
+  } catch (err) {
+    const body = err && typeof err === 'object' && 'body' in err ? (err as { body?: { error?: string } }).body : undefined;
+    return {
+      data: null,
+      error: body?.error ?? (err instanceof Error ? err.message : 'Failed to update role'),
+      success: false,
+    };
+  }
+}
+
+/**
+ * Assign role to user (alias for updateUserRole)
  */
 export async function assignUserRole(
   userId: string,
   role: UserRole
 ): Promise<ServiceResult<User>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch<User>(`/users/${userId}/role`, { role });
-  
-  console.warn('[UserService] assignUserRole: Using placeholder implementation');
+  // Backend expects roleId (number). UserRole is string enum - would need role list to resolve.
+  console.warn('[UserService] assignUserRole: Prefer updateUserRole(userId, { roleId, department })');
   return {
     data: null,
     error: null,
@@ -155,37 +201,55 @@ export async function assignUserRole(
 // ==================== Role CRUD Operations ====================
 
 /**
- * Fetch all roles
- * @placeholder Returns mock data - replace with API call
+ * Fetch all roles. Backend: GET /api/v1/roles
  */
 export async function fetchRoles(): Promise<ServiceResult<Role[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<Role[]>('/roles');
-  
-  console.warn('[UserService] fetchRoles: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+  try {
+    const list = await api.get<Array<{ role_id: number; role_code: string; role_name: string; description?: string; level: string; status: string; userCount: number; createdAt: string }>>('/api/v1/roles');
+    const roles: Role[] = (list ?? []).map((r) => ({
+      id: String(r.role_id),
+      name: r.role_name,
+      description: r.description ?? '',
+      permissions: [],
+      userCount: r.userCount ?? 0,
+      createdAt: r.createdAt,
+      updatedAt: r.createdAt,
+      isSystem: false,
+    }));
+    return { data: roles, error: null, success: true };
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Failed to fetch roles',
+      success: false,
+    };
+  }
 }
 
 /**
- * Fetch a single role by ID
- * @placeholder Returns mock data - replace with API call
+ * Fetch a single role by ID. Backend: GET /api/v1/roles/:id
  */
-export async function fetchRoleById(
-  roleId: string
-): Promise<ServiceResult<Role>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<Role>(`/roles/${roleId}`);
-  
-  console.warn('[UserService] fetchRoleById: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+export async function fetchRoleById(roleId: string): Promise<ServiceResult<Role>> {
+  try {
+    const r = await api.get<{ role_id: number; role_name: string; description?: string; permissions?: Role['permissions'] }>(`/api/v1/roles/${roleId}`);
+    const role: Role = {
+      id: String(r.role_id),
+      name: r.role_name,
+      description: r.description ?? '',
+      permissions: r.permissions ?? [],
+      userCount: 0,
+      createdAt: '',
+      updatedAt: '',
+      isSystem: false,
+    };
+    return { data: role, error: null, success: true };
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Failed to fetch role',
+      success: false,
+    };
+  }
 }
 
 /**
@@ -193,7 +257,7 @@ export async function fetchRoleById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createRole(
-  roleData: RoleCreatePayload
+  _roleData: RoleCreatePayload
 ): Promise<ServiceResult<Role>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Role>('/roles', roleData);
@@ -211,8 +275,8 @@ export async function createRole(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateRole(
-  roleId: string,
-  roleData: RoleUpdatePayload
+  _roleId: string,
+  _roleData: RoleUpdatePayload
 ): Promise<ServiceResult<Role>> {
   // TODO: Replace with actual API call
   // return apiClient.put<Role>(`/roles/${roleId}`, roleData);
@@ -230,7 +294,7 @@ export async function updateRole(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteRole(
-  roleId: string
+  _roleId: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/roles/${roleId}`);
@@ -266,8 +330,8 @@ export async function fetchPermissions(): Promise<ServiceResult<Role['permission
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateRolePermissions(
-  roleId: string,
-  permissions: string[]
+  _roleId: string,
+  _permissions: string[]
 ): Promise<ServiceResult<Role>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<Role>(`/roles/${roleId}/permissions`, { permissions });

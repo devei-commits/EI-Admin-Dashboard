@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
 import EditRoleFullPage from './EditRoleFullPage.tsx';
-import PermissionsSummary from './PermissionsSummary.tsx';
-import { UnifiedButton, UnifiedBadge, UnifiedCard, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
+import { UnifiedButton, UnifiedBadge, ConfirmDialog, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
+import { listRoles, deleteRole as deleteRoleApi } from '../../services/role.service';
 
 export interface Role {
   id: string;
@@ -12,6 +12,8 @@ export interface Role {
   roleCreatedAt: string;
   roleUpdatedAt: string;
   description: string;
+  /** True when the role has permissions stored in the backend (granted keys). */
+  permissionsSet?: boolean;
 }
 
 export interface RoleUser {
@@ -22,10 +24,7 @@ export interface RoleUser {
   addedAt: string;
 }
 
-// LocalStorage key for roles
-const ROLES_STORAGE_KEY = 'eisthetic_roles';
-
-// LocalStorage key for role users
+// Local storage key for role users (optional; users can be loaded from API per role)
 const ROLE_USERS_STORAGE_KEY = 'eisthetic_role_users';
 
 type RoleUsersMap = {
@@ -171,27 +170,6 @@ const defaultRoles: Role[] = [
     }
   ];
 
-// Helper functions for localStorage
-export const loadRolesFromStorage = (): Role[] => {
-  try {
-    const stored = localStorage.getItem(ROLES_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error('Error loading roles from localStorage:', error);
-  }
-  return defaultRoles;
-};
-
-export const saveRolesToStorage = (roles: Role[]): void => {
-  try {
-    localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(roles));
-  } catch (error) {
-    console.error('Error saving roles to localStorage:', error);
-  }
-};
-
 // Helper functions for role users localStorage
 export const loadRoleUsersMapFromStorage = (): RoleUsersMap => {
   try {
@@ -213,23 +191,44 @@ export const saveRoleUsersMapToStorage = (roleUsersMap: RoleUsersMap): void => {
   }
 };
 
+function mapApiRoleToRole(r: { role_id: number; role_name: string; description?: string | null; level: string; status: string; userCount?: number; permissionsSet?: boolean; createdAt?: string }): Role {
+  return {
+    id: String(r.role_id),
+    roleName: r.role_name,
+    roleLevel: r.level,
+    roleStatus: (r.status === 'active' ? 'active' : 'inactive') as Role['roleStatus'],
+    roleCreatedAt: r.createdAt ?? '',
+    roleUpdatedAt: r.createdAt ?? '',
+    description: r.description ?? '',
+    permissionsSet: r.permissionsSet ?? false,
+  };
+}
+
 const ViewRoles: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
   const [isEditFullPageOpen, setIsEditFullPageOpen] = useState(false);
-  
-  // Load roles from localStorage on mount
-  const [roles, setRoles] = useState<Role[]>(() => loadRolesFromStorage());
-
-  // Load role users map from localStorage on mount
+  const [deleteRoleId, setDeleteRoleId] = useState<string | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
   const [roleUsersMap, setRoleUsersMap] = useState<RoleUsersMap>(() => loadRoleUsersMapFromStorage());
 
-  // Save to localStorage whenever roles change
-  useEffect(() => {
-    saveRolesToStorage(roles);
-  }, [roles]);
+  const loadRoles = useCallback(async () => {
+    setRolesLoading(true);
+    try {
+      const list = await listRoles();
+      setRoles(list.map(mapApiRoleToRole));
+    } catch {
+      setRoles(defaultRoles);
+    } finally {
+      setRolesLoading(false);
+    }
+  }, []);
 
-  // Save role users map whenever it changes
+  useEffect(() => {
+    loadRoles();
+  }, [loadRoles]);
+
   useEffect(() => {
     saveRoleUsersMapToStorage(roleUsersMap);
   }, [roleUsersMap]);
@@ -245,30 +244,35 @@ const ViewRoles: React.FC = () => {
   };
 
   const handleDeleteRole = (roleId: string) => {
-    if (window.confirm('Are you sure you want to delete this role?')) {
-      setRoles(prevRoles => prevRoles.filter(role => role.id !== roleId));
-      // Also remove any stored users for this role
+    setDeleteRoleId(roleId);
+  };
+
+  const confirmDeleteRole = async () => {
+    if (!deleteRoleId) return;
+    try {
+      await deleteRoleApi(deleteRoleId);
+      setRoles(prevRoles => prevRoles.filter(role => role.id !== deleteRoleId));
       setRoleUsersMap(prev => {
-        const { [roleId]: _removed, ...rest } = prev;
+        const { [deleteRoleId]: _removed, ...rest } = prev;
         return rest;
       });
-      alert('Role deleted successfully!');
+    } catch {
+      // keep dialog open or toast error
     }
+    setDeleteRoleId(null);
   };
 
   const handleSaveRole = (updatedRole: Role, users?: RoleUser[]) => {
-    setRoles(prevRoles => 
-      prevRoles.map(role => 
+    setRoles(prevRoles =>
+      prevRoles.map(role =>
         role.id === updatedRole.id ? updatedRole : role
       )
     );
-    // Persist users for this role if provided
     if (users) {
-      setRoleUsersMap(prev => ({
-        ...prev,
-        [updatedRole.id]: users,
-      }));
+      setRoleUsersMap(prev => ({ ...prev, [updatedRole.id]: users }));
     }
+    // Refetch list so "Permissions Set" and other server state stay in sync
+    loadRoles();
   };
 
   const handleCloseViewPopup = () => {
@@ -280,6 +284,15 @@ const ViewRoles: React.FC = () => {
     setIsEditFullPageOpen(false);
     setSelectedRole(null);
   };
+
+  if (rolesLoading) {
+    return (
+      <div className="w-full">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
+        <p className="text-gray-500">Loading roles...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -298,31 +311,24 @@ const ViewRoles: React.FC = () => {
             <div className="space-y-3 text-sm mb-5">
               <p className="flex items-center gap-2"><span className="font-medium text-gray-600 tracking-wide">Level:</span> <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>{role.roleLevel}</UnifiedBadge></p>
               <div className="space-y-1.5">
-                <p className="font-medium text-gray-600 uppercase tracking-wide">Permissions:</p>
-                <PermissionsSummary roleId={role.id} />
+                <p className="font-medium text-gray-600 uppercase tracking-wide">Permissions Set:</p>
+                <UnifiedBadge variant={role.permissionsSet ? 'success' : 'outline'}>
+                  {role.permissionsSet ? 'Yes' : 'Not set'}
+                </UnifiedBadge>
               </div>
               <p><span className="font-medium text-gray-600 tracking-wide">Created:</span> <span className="text-gray-700 leading-relaxed">{role.roleCreatedAt}</span></p>
               <p><span className="font-medium text-gray-600 tracking-wide">Updated:</span> <span className="text-gray-700 leading-relaxed">{role.roleUpdatedAt}</span></p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handleViewRole(role)}
-                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
-              >
+              <UnifiedButton variant="primary" size="sm" onClick={() => handleViewRole(role)}>
                 View
-              </button>
-              <button
-                onClick={() => handleEditRole(role)}
-                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
-              >
+              </UnifiedButton>
+              <UnifiedButton variant="secondary" size="sm" onClick={() => handleEditRole(role)}>
                 Edit
-              </button>
-              <button
-                onClick={() => handleDeleteRole(role.id)}
-                className="px-4 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium tracking-wider"
-              >
+              </UnifiedButton>
+              <UnifiedButton variant="danger" size="sm" onClick={() => handleDeleteRole(role.id)}>
                 Delete
-              </button>
+              </UnifiedButton>
             </div>
           </div>
         ))}
@@ -343,7 +349,7 @@ const ViewRoles: React.FC = () => {
                 Role Status
               </th>
               <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-                Permissions
+                Permissions Set
               </th>
               <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Created At
@@ -373,7 +379,9 @@ const ViewRoles: React.FC = () => {
                   </UnifiedBadge>
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
-                  <PermissionsSummary roleId={role.id} />
+                  <UnifiedBadge variant={role.permissionsSet ? 'success' : 'outline'}>
+                    {role.permissionsSet ? 'Yes' : 'Not set'}
+                  </UnifiedBadge>
                 </td>
                 <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {role.roleCreatedAt}
@@ -383,24 +391,15 @@ const ViewRoles: React.FC = () => {
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
                   <div className="flex space-x-3">
-                    <button
-                      onClick={() => handleViewRole(role)}
-                      className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
-                    >
+                    <UnifiedButton variant="primary" size="sm" onClick={() => handleViewRole(role)}>
                       View
-                    </button>
-                    <button
-                      onClick={() => handleEditRole(role)}
-                      className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
-                    >
+                    </UnifiedButton>
+                    <UnifiedButton variant="secondary" size="sm" onClick={() => handleEditRole(role)}>
                       Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRole(role.id)}
-                      className="px-4 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium tracking-wider"
-                    >
+                    </UnifiedButton>
+                    <UnifiedButton variant="danger" size="sm" onClick={() => handleDeleteRole(role.id)}>
                       Delete
-                    </button>
+                    </UnifiedButton>
                   </div>
                 </td>
               </tr>
@@ -426,6 +425,17 @@ const ViewRoles: React.FC = () => {
           onSave={handleSaveRole}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteRoleId}
+        onClose={() => setDeleteRoleId(null)}
+        onConfirm={confirmDeleteRole}
+        title="Delete Role"
+        message="Are you sure you want to delete this role? This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

@@ -9,7 +9,6 @@ const RawMaterialRefactored: React.FC = () => {
   const { addItem } = useItems();
   const { addToast } = useToast();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
 
   const [formData, setFormData] = useState({

@@ -24,10 +24,8 @@ import {
   assignTicket,
   updateTicketStatus,
   updateTicketPriority,
-  linkOrderToTicket,
   resolveTicket,
   closeTicket,
-  addTicketNote,
 } from '../../services/ticket.service';
 
 // ==================== Activity Timeline ====================

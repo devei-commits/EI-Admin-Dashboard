@@ -46,9 +46,7 @@ const MOCK_TASKS = [
   { id: 8, title: 'Sample Preparation - MEDMANOR', status: 'completed', priority: 'high', assignee: 'Rahul Mehta', dueDate: '2026-01-23', category: 'formulation' },
 ];
 
-const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899'];
-
-export function TaskDashboard({ currentRole, currentUser, onNavigate }: TaskDashboardProps) {
+export function TaskDashboard({ _currentRole, currentUser, onNavigate }: TaskDashboardProps) {
   // Calculate stats
   const stats = useMemo(() => {
     const total = MOCK_TASKS.length;
@@ -111,16 +109,6 @@ export function TaskDashboard({ currentRole, currentUser, onNavigate }: TaskDash
       'on-hold': 'bg-red-100 text-red-700',
     };
     return colors[status] || 'bg-gray-100 text-gray-700';
-  };
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      'low': 'bg-slate-100 text-slate-600',
-      'medium': 'bg-blue-100 text-blue-600',
-      'high': 'bg-orange-100 text-orange-600',
-      'urgent': 'bg-red-100 text-red-600',
-    };
-    return colors[priority] || 'bg-gray-100 text-gray-700';
   };
 
   return (

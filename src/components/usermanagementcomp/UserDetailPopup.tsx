@@ -1,5 +1,5 @@
 import React from 'react';
-import { UnifiedBadge, getStatusBadgeColor } from '../ui';
+import { UnifiedBadge, UnifiedButton, getStatusBadgeColor } from '../ui';
 
 interface User {
   id: string;
@@ -82,12 +82,9 @@ const UserDetailPopup: React.FC<UserDetailPopupProps> = ({ user, onClose }) => {
         </div>
 
         <div className="p-5 border-t border-gray-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-          >
+          <UnifiedButton variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </UnifiedButton>
         </div>
       </div>
     </div>

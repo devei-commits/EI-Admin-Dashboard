@@ -12,7 +12,6 @@ import {
   Eye,
   Edit3,
   Trash2,
-  MoreVertical,
   ChevronDown,
   Calendar,
   User,
@@ -56,7 +55,7 @@ const MOCK_TASKS: Task[] = [
   { id: 10, title: 'New Product R&D', description: 'Research and develop new skincare formula', status: 'in-progress', priority: 'high', assignee: 'Priya Sharma', assigneeId: 'user-4', dueDate: '2026-02-05', createdAt: '2026-01-10', category: 'formulation', estimatedHours: 40, loggedHours: 15 },
 ];
 
-export function TaskList({ currentRole, currentUser, filter }: TaskListProps) {
+export function TaskList({ _currentRole, currentUser, filter }: TaskListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');

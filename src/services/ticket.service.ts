@@ -32,7 +32,7 @@ import type {
  * TODO: Replace with actual API call: GET /api/tickets/dashboard
  */
 export async function fetchTicketDashboardStats(
-  dateRange?: { from: string; to: string }
+  _dateRange?: { from: string; to: string }
 ): Promise<ServiceResult<TicketDashboardStats>> {
   // TODO: Implement API call
   // const response = await axios.get('/api/tickets/dashboard', { params: dateRange });
@@ -102,7 +102,7 @@ export async function fetchTicketDashboardStats(
  * TODO: Replace with actual API call: GET /api/tickets/staff-performance
  */
 export async function fetchStaffPerformanceMetrics(
-  dateRange?: { from: string; to: string }
+  _dateRange?: { from: string; to: string }
 ): Promise<ServiceResult<StaffPerformanceMetrics[]>> {
   // TODO: Implement API call
   
@@ -197,7 +197,7 @@ export async function fetchTickets(
  * TODO: Replace with actual API call: GET /api/tickets/:id
  */
 export async function fetchTicketById(
-  ticketId: string
+  _ticketId: string
 ): Promise<ServiceResult<Ticket>> {
   // TODO: Implement API call
   // const response = await axios.get(`/api/tickets/${ticketId}`);

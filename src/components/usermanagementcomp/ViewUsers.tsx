@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import UserDetailPopup from './UserDetailPopup';
 import EditUserPopup from './EditUserPopup';
-import { UnifiedBadge, getStatusBadgeColor } from '../ui';
+import { UnifiedButton, UnifiedBadge, getStatusBadgeColor } from '../ui';
+import { fetchStaffUsers, type StaffUserFromApi } from '../../services/user.service';
+import { listRoles } from '../../services/role.service';
 
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
   mobile: string;
   role: string;
+  roleId?: number;
   department: string;
   createdAt: string;
   lastLogin: string;
@@ -16,84 +19,55 @@ interface User {
   status: 'active' | 'deactive' | 'suspended';
 }
 
+function mapStaffUserToUser(r: StaffUserFromApi): User {
+  const status = r.status === 'active' ? 'active' : r.status === 'inactive' ? 'deactive' : 'suspended';
+  return {
+    id: String(r.id ?? r.userid),
+    name: r.display_name ?? '',
+    email: r.email ?? '',
+    mobile: r.mobile ?? '',
+    role: r.role_name ?? '',
+    roleId: r.role_id,
+    department: r.department ?? '',
+    createdAt: r.created_at ?? '',
+    lastLogin: '',
+    lastUpdate: '',
+    status,
+  };
+}
+
+interface RoleOption {
+  role_id: number;
+  role_name: string;
+}
+
 const ViewUsers: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isViewPopupOpen, setIsViewPopupOpen] = useState(false);
   const [isEditPopupOpen, setIsEditPopupOpen] = useState(false);
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: 'USR001',
-      name: 'John Smith',
-      email: 'john.smith@company.com',
-      mobile: '+1-555-0101',
-      role: 'BD Manager',
-      department: 'BD',
-      createdAt: '2024-01-15',
-      lastLogin: '2024-02-28 09:30:00',
-      lastUpdate: '2024-02-27 14:22:00',
-      status: 'active'
-    },
-    {
-      id: 'USR002',
-      name: 'Sarah Johnson',
-      email: 'sarah.johnson@company.com',
-      mobile: '+1-555-0102',
-      role: 'QA Staff',
-      department: 'QA',
-      createdAt: '2024-01-20',
-      lastLogin: '2024-02-28 08:15:00',
-      lastUpdate: '2024-02-25 16:45:00',
-      status: 'active'
-    },
-    {
-      id: 'USR003',
-      name: 'Michael Brown',
-      email: 'michael.brown@company.com',
-      mobile: '+1-555-0103',
-      role: 'R&D Lead',
-      department: 'R&D',
-      createdAt: '2024-01-25',
-      lastLogin: '2024-02-27 17:20:00',
-      lastUpdate: '2024-02-26 10:30:00',
-      status: 'suspended'
-    },
-    {
-      id: 'USR004',
-      name: 'Emily Davis',
-      email: 'emily.davis@company.com',
-      mobile: '+1-555-0104',
-      role: 'Sales',
-      department: 'Sales',
-      createdAt: '2024-02-01',
-      lastLogin: '2024-02-28 11:45:00',
-      lastUpdate: '2024-02-28 11:50:00',
-      status: 'active'
-    },
-    {
-      id: 'USR005',
-      name: 'David Wilson',
-      email: 'david.wilson@company.com',
-      mobile: '+1-555-0105',
-      role: 'Admin',
-      department: 'admin',
-      createdAt: '2024-02-05',
-      lastLogin: '2024-02-26 13:30:00',
-      lastUpdate: '2024-02-24 09:15:00',
-      status: 'deactive'
-    },
-    {
-      id: 'USR006',
-      name: 'Lisa Anderson',
-      email: 'lisa.anderson@company.com',
-      mobile: '+1-555-0106',
-      role: 'Design',
-      department: 'Design',
-      createdAt: '2024-02-10',
-      lastLogin: '2024-02-28 15:20:00',
-      lastUpdate: '2024-02-28 15:25:00',
-      status: 'active'
+  const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [usersRes, rolesList] = await Promise.all([
+        fetchStaffUsers(),
+        listRoles(),
+      ]);
+      if (usersRes.success && usersRes.data) setUsers(usersRes.data.map(mapStaffUserToUser));
+      if (rolesList?.length) setRoles(rolesList.map((r) => ({ role_id: r.role_id, role_name: r.role_name })));
+    } catch {
+      setUsers([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const handleViewUser = (user: User) => {
     setSelectedUser(user);
@@ -106,10 +80,8 @@ const ViewUsers: React.FC = () => {
   };
 
   const handleSaveUser = (updatedUser: User) => {
-    setUsers(prevUsers => 
-      prevUsers.map(user => 
-        user.id === updatedUser.id ? updatedUser : user
-      )
+    setUsers(prevUsers =>
+      prevUsers.map(user => (user.id === updatedUser.id ? updatedUser : user))
     );
   };
 
@@ -121,6 +93,15 @@ const ViewUsers: React.FC = () => {
     setIsEditPopupOpen(false);
     setSelectedUser(null);
   };
+
+  if (loading) {
+    return (
+      <div className="w-full">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Users</h2>
+        <p className="text-gray-500">Loading users...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -140,20 +121,15 @@ const ViewUsers: React.FC = () => {
               <p><span className="font-medium text-gray-600 tracking-wide">Email:</span> <span className="text-gray-700 leading-relaxed">{user.email}</span></p>
               <p><span className="font-medium text-gray-600 tracking-wide">Mobile:</span> <span className="text-gray-700 leading-relaxed">{user.mobile}</span></p>
               <p><span className="font-medium text-gray-600 tracking-wide">Role:</span> <span className="text-gray-700 leading-relaxed">{user.role}</span></p>
+              <p><span className="font-medium text-gray-600 tracking-wide">Department:</span> <span className="text-gray-700 leading-relaxed">{user.department || '—'}</span></p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handleViewUser(user)}
-                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
-              >
+              <UnifiedButton variant="primary" size="sm" onClick={() => handleViewUser(user)}>
                 View
-              </button>
-              <button
-                onClick={() => handleEditUser(user)}
-                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
-              >
+              </UnifiedButton>
+              <UnifiedButton variant="secondary" size="sm" onClick={() => handleEditUser(user)}>
                 Edit
-              </button>
+              </UnifiedButton>
             </div>
           </div>
         ))}
@@ -175,6 +151,9 @@ const ViewUsers: React.FC = () => {
               </th>
               <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Role
+              </th>
+              <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
+                Department
               </th>
               <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
                 Status
@@ -199,6 +178,9 @@ const ViewUsers: React.FC = () => {
                 <td className="px-5 py-4 text-gray-700 leading-relaxed">
                   {user.role}
                 </td>
+                <td className="px-5 py-4 text-gray-700 leading-relaxed">
+                  {user.department || '—'}
+                </td>
                 <td className="px-5 py-4 leading-relaxed">
                   <UnifiedBadge variant={getStatusBadgeColor(user.status)}>
                     {user.status}
@@ -206,18 +188,12 @@ const ViewUsers: React.FC = () => {
                 </td>
                 <td className="px-5 py-4 leading-relaxed">
                   <div className="flex space-x-3">
-                    <button
-                      onClick={() => handleViewUser(user)}
-                      className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium tracking-wider"
-                    >
+                    <UnifiedButton variant="primary" size="sm" onClick={() => handleViewUser(user)}>
                       View
-                    </button>
-                    <button
-                      onClick={() => handleEditUser(user)}
-                      className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
-                    >
+                    </UnifiedButton>
+                    <UnifiedButton variant="secondary" size="sm" onClick={() => handleEditUser(user)}>
                       Edit
-                    </button>
+                    </UnifiedButton>
                   </div>
                 </td>
               </tr>
@@ -238,6 +214,7 @@ const ViewUsers: React.FC = () => {
       {isEditPopupOpen && selectedUser && (
         <EditUserPopup
           user={selectedUser}
+          roles={roles}
           onClose={handleCloseEditPopup}
           onSave={handleSaveUser}
         />

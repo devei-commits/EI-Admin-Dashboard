@@ -26,6 +26,10 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   lastLogin?: string;
+  /** From backend /me when user has staff_profile (admin dashboard RBAC) */
+  roleId?: string | number;
+  roleName?: string;
+  roleLevel?: string;
 }
 
 export interface UserCreatePayload {

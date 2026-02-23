@@ -149,8 +149,6 @@ const MOCK_ISSUED_POS: IssuedPO[] = [
   },
 ];
 
-const CATEGORIES = ['All', 'RM', 'PM', 'Not specified', 'RM. BASE', 'RM. ACTIVE', 'SPM - OTHERS', 'Packaging Material'];
-
 const getCategoryColor = (category: string) => {
   const colorMap: { [key: string]: string } = {
     'Not specified': 'bg-red-100 text-red-700',

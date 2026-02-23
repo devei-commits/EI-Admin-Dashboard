@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import type { Role, RoleUser } from './ViewRoles';
 import PermissionMatrix from './PermissionMatrix';
+import { UnifiedButton, inputClassName, selectClassName, textareaClassName } from '../ui';
 import {
   ModulePermission,
   GlobalSettings,
   DEFAULT_MODULE_PERMISSIONS,
   DEFAULT_GLOBAL_SETTINGS,
   createFullAccessPermissions,
-  getRolePermissions,
-  saveRolePermission,
-  RolePermissions,
 } from './types/permissions.types';
+import { parseApiPermissions, flattenPermissionsToGranted } from './types/permissionKeys';
+import { getRoleById, updateRole as updateRoleApi } from '../../services/role.service';
 
 interface EditRoleFullPageProps {
   role: Role;
@@ -30,41 +30,46 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<'settings' | 'permissions' | 'users'>('settings');
   
-  // Load permissions for this role
-  const [permissions, setPermissions] = useState<ModulePermission[]>(() => {
-    const existingPermissions = getRolePermissions(role.id);
-    if (existingPermissions) {
-      return existingPermissions.modules;
-    }
-    // Default: full access for admin, empty for others
-    if (role.roleLevel === 'admin') {
-      return createFullAccessPermissions();
-    }
-    return JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS));
-  });
+  const [permissions, setPermissions] = useState<ModulePermission[]>(() => JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>(() => ({ ...DEFAULT_GLOBAL_SETTINGS }));
+  const [roleCode, setRoleCode] = useState('');
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
-  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>(() => {
-    const existingPermissions = getRolePermissions(role.id);
-    if (existingPermissions) {
-      return existingPermissions.globalSettings;
-    }
-    // Default: full access for admin
-    if (role.roleLevel === 'admin') {
-      return {
-        ...DEFAULT_GLOBAL_SETTINGS,
-        accessToAllModules: true,
-        allowLogin: true,
-        allowMultipleSessions: true,
-        canChangePassword: true,
-        enableAuditLog: true,
-        canExportData: true,
-        canImportData: true,
-        canAccessReports: true,
-        canAccessSettings: true,
-      };
-    }
-    return { ...DEFAULT_GLOBAL_SETTINGS };
-  });
+  useEffect(() => {
+    let cancelled = false;
+    setPermissionsLoading(true);
+    getRoleById(role.id)
+      .then((r) => {
+        if (cancelled) return;
+        setRoleCode(r.role_code ?? '');
+        const { modules: mods, globalSettings: gs } = parseApiPermissions(
+          r.permissions,
+          DEFAULT_MODULE_PERMISSIONS,
+          DEFAULT_GLOBAL_SETTINGS
+        );
+        if (role.roleLevel === 'admin') {
+          setPermissions(createFullAccessPermissions());
+          setGlobalSettings({
+            ...DEFAULT_GLOBAL_SETTINGS,
+            accessToAllModules: true,
+            allowLogin: true,
+            allowMultipleSessions: true,
+            canChangePassword: true,
+            enableAuditLog: true,
+            canExportData: true,
+            canImportData: true,
+            canAccessReports: true,
+            canAccessSettings: true,
+          });
+        } else {
+          setPermissions(mods);
+          setGlobalSettings(gs);
+        }
+      })
+      .catch(() => { if (!cancelled) setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS))); })
+      .finally(() => { if (!cancelled) setPermissionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [role.id, role.roleLevel]);
   
   // Users assigned to this role (loaded from parent/localStorage or fallback to mock data)
   const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => {
@@ -179,27 +184,32 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const dateTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const updatedRole = {
-      ...editedRole,
-      roleUpdatedAt: dateTimeStr
-    };
-    
-    // Save role permissions
-    const rolePermissionsData: RolePermissions = {
-      roleId: role.id,
-      roleName: editedRole.roleName,
-      modules: permissions,
-      globalSettings,
-      lastUpdated: dateTimeStr,
-      updatedBy: 'Admin'
-    };
-    saveRolePermission(rolePermissionsData);
-    
-    onSave(updatedRole, roleUsers);
-    handleClose();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const { granted, globalSettings: gs } = flattenPermissionsToGranted(permissions, globalSettings);
+      await updateRoleApi(role.id, {
+        role_code: roleCode || editedRole.roleName.toLowerCase().replace(/\s+/g, '_'),
+        role_name: editedRole.roleName,
+        description: editedRole.description || undefined,
+        level: editedRole.roleLevel,
+        status: editedRole.roleStatus,
+        permissions: { granted, globalSettings: gs },
+      });
+      const dateTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const updatedRole = { ...editedRole, roleUpdatedAt: dateTimeStr };
+      onSave(updatedRole, roleUsers);
+      handleClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save role');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getAvailableRoles = () => {
@@ -300,15 +310,21 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                 <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Manage role settings and assigned users</p>
               </div>
             </div>
-            <button
+            <UnifiedButton
+              variant="primary"
+              size="sm"
               onClick={handleSubmit}
-              className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium flex items-center justify-center space-x-2"
+              className="w-full sm:w-auto"
+              disabled={saving}
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              }
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Save Changes</span>
-            </button>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </UnifiedButton>
+            {saveError && <p className="text-red-600 text-sm mt-2">{saveError}</p>}
           </div>
 
           {/* Tab Navigation - Responsive scrollable */}
@@ -412,7 +428,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       name="roleLevel"
                       value={editedRole.roleLevel}
                       onChange={handleInputChange}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                      className={selectClassName}
                     >
                       {roleLevels.map((level) => (
                         <option key={level} value={level}>{level}</option>
@@ -426,7 +442,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       name="roleName"
                       value={editedRole.roleName}
                       onChange={handleInputChange}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                      className={selectClassName}
                     >
                       <option value="">Select Role Name</option>
                       {getAvailableRoles().map((roleName) => (
@@ -441,7 +457,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       name="roleStatus"
                       value={editedRole.roleStatus}
                       onChange={handleInputChange}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                      className={selectClassName}
                     >
                       {statusOptions.map((status) => (
                         <option key={status} value={status}>{status}</option>
@@ -456,7 +472,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       value={editedRole.description}
                       onChange={handleInputChange}
                       rows={2}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all resize-none"
+                      className={textareaClassName}
                       placeholder="Enter role description..."
                     />
                   </div>
@@ -533,7 +549,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       type="text"
                       value={newUserName}
                       onChange={(e) => setNewUserName(e.target.value)}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                      className={inputClassName}
                       placeholder="John Doe"
                     />
                   </div>
@@ -543,7 +559,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                       type="email"
                       value={newUserEmail}
                       onChange={(e) => setNewUserEmail(e.target.value)}
-                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                      className={inputClassName}
                       placeholder="user@example.com"
                     />
                   </div>
@@ -554,7 +570,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                         type={showNewPassword ? 'text' : 'password'}
                         value={newUserPassword}
                         onChange={(e) => setNewUserPassword(e.target.value)}
-                        className="w-full px-3 sm:px-4 py-2 sm:py-2.5 pr-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all"
+                        className={`${inputClassName} pr-10`}
                         placeholder="••••••••"
                       />
                       <button
@@ -697,13 +713,13 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                               {user.addedAt}
                             </td>
                             <td className="px-4 py-4">
-                              <button
-                                type="button"
+                              <UnifiedButton
+                                variant="danger"
+                                size="sm"
                                 onClick={() => handleRemoveUser(user.id)}
-                                className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
                               >
                                 Remove
-                              </button>
+                              </UnifiedButton>
                             </td>
                           </tr>
                         ))}

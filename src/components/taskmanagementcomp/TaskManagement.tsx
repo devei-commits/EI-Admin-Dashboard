@@ -12,9 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Calendar,
   User,
-  Users,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -23,7 +21,6 @@ import {
   Eye,
   Edit3,
   Trash2,
-  MoreVertical,
   Download,
   TrendingUp,
   BarChart2,
@@ -31,13 +28,10 @@ import {
   Check,
   X,
   PlayCircle,
-  ArrowRight,
-  Tag,
   Building2,
   FolderKanban,
   Target,
   Layers,
-  Activity,
 } from 'lucide-react';
 import {
   Task,
@@ -54,7 +48,6 @@ import {
   Team,
   TeamMember,
   ROLE_PERMISSIONS,
-  DEFAULT_TASK_STAGES,
 } from '../../types/task.types';
 import * as taskService from '../../services/task.service';
 
@@ -303,7 +296,7 @@ const TaskDetailModal: React.FC<{
   onLogTime: (taskId: string, hours: number, description: string) => void;
   onCompleteStage: (taskId: string, stageId: string) => void;
   currentUser: CurrentUser;
-}> = ({ task, isOpen, onClose, onUpdate, onLogTime, onCompleteStage, currentUser }) => {
+}> = ({ task, isOpen, onClose, _onUpdate, onLogTime, onCompleteStage, currentUser }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'stages' | 'time'>('details');
   const [logHours, setLogHours] = useState<string>('');
   const [logDescription, setLogDescription] = useState<string>('');
@@ -813,7 +806,7 @@ const TaskManagement: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -871,7 +864,7 @@ const TaskManagement: React.FC = () => {
       if (membersResult.success && membersResult.data) {
         setMembers(membersResult.data);
       }
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to fetch data');
     } finally {
       setLoading(false);

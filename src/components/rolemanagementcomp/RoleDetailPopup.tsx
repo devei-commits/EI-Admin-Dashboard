@@ -1,6 +1,6 @@
 import React from 'react';
 import RolePermissionsDisplay from './RolePermissionsDisplay';
-import { UnifiedBadge, UnifiedModal, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
+import { UnifiedBadge, UnifiedButton, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
 
 interface Role {
   id: string;
@@ -81,12 +81,9 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
         </div>
 
         <div className="p-6 border-t-2 border-gray-200 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium tracking-wider"
-          >
+          <UnifiedButton variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </UnifiedButton>
         </div>
       </div>
     </div>

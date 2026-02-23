@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { OrderTable } from '../components/ordermanagementcomp';
+import { UnifiedButton } from '../components/ui';
 
 const Ordermanagement = () => {
   return (
@@ -21,16 +22,16 @@ const Ordermanagement = () => {
               <span className="text-gray-600">Orders</span>
             </div>
           </div>
-          <button
+          <UnifiedButton
+            variant="primary"
             onClick={(e) => {
               e.preventDefault();
               const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
               window.open(`/order-hub?role=${userRole}`, '_blank', 'noopener,noreferrer');
             }}
-            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors cursor-pointer"
           >
             Open Tracker
-          </button>
+          </UnifiedButton>
         </div>
       </div>
 

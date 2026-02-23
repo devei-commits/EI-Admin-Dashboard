@@ -247,7 +247,7 @@ export default function MRNFGs() {
 
   // Filter data based on search
   const filteredData = useMemo(() => {
-    return MOCK_MRN_FGS.filter((item, index) => {
+    return MOCK_MRN_FGS.filter((item, _index) => {
       const matchesSearch =
         item.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.mrnId.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Package, Search, Plus, Eye, Edit, Trash2, MoreVertical, FlaskConical, Tag, ArrowUpDown, Filter } from 'lucide-react';
+import { Package, Search, Plus, Eye, Edit, Trash2, MoreVertical, FlaskConical, Tag, ArrowUpDown } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -20,7 +20,7 @@ interface ProductsViewProps {
 }
 
 export function ProductsView({ currentRole }: ProductsViewProps) {
-  const { products, addProduct, updateProduct, deleteProduct, isLoading } = usePIS();
+  const { products, addProduct, _updateProduct, deleteProduct, _isLoading } = usePIS();
   const permissions = getRolePermissions(currentRole);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

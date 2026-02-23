@@ -127,7 +127,7 @@ async function apiRequest<T>(
             });
           }
         }
-      } catch (refreshError) {
+      } catch (_refreshError) {
         // Refresh failed, clear tokens and throw
         clearTokens();
         throw new Error('Session expired. Please login again.');

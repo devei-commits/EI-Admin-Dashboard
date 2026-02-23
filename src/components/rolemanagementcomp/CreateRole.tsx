@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Role, loadRolesFromStorage, saveRolesToStorage } from './ViewRoles';
 import { UnifiedButton, UnifiedLabel, UnifiedCard } from '../ui';
 import PermissionMatrix from './PermissionMatrix';
 import {
@@ -8,9 +7,9 @@ import {
   DEFAULT_MODULE_PERMISSIONS,
   DEFAULT_GLOBAL_SETTINGS,
   createFullAccessPermissions,
-  saveRolePermission,
-  RolePermissions,
 } from './types/permissions.types';
+import { flattenPermissionsToGranted } from './types/permissionKeys';
+import { createRole as createRoleApi } from '../../services/role.service';
 
 const CreateRole: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -72,71 +71,39 @@ const CreateRole: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Load existing roles from localStorage
-    const existingRoles = loadRolesFromStorage();
-    
-    // Check if role with same name already exists
-    const roleExists = existingRoles.some(
-      (role) => role.roleName.toLowerCase() === formData.roleName.toLowerCase()
-    );
-    
-    if (roleExists) {
-      alert('A role with this name already exists!');
+    setSubmitError(null);
+    setSubmitting(true);
+    const roleCode = formData.roleName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (!roleCode) {
+      setSubmitError('Role name must contain at least one letter or number.');
+      setSubmitting(false);
       return;
     }
-    
-    // Generate new role ID
-    const maxId = existingRoles.reduce((max, role) => {
-      const num = parseInt(role.id.replace('ROLE', ''));
-      return num > max ? num : max;
-    }, 0);
-    const newId = `ROLE${String(maxId + 1).padStart(3, '0')}`;
-    
-    // Create new role object
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const dateTimeStr = now.toISOString().replace('T', ' ').slice(0, 19);
-    
-    const newRole: Role = {
-      id: newId,
-      roleName: formData.roleName,
-      roleLevel: formData.roleLevel,
-      roleStatus: formData.roleStatus,
-      roleCreatedAt: dateStr,
-      roleUpdatedAt: dateTimeStr,
-      description: formData.description || `${formData.roleName} role`
-    };
-
-    // Save role permissions
-    const rolePermissions: RolePermissions = {
-      roleId: newId,
-      roleName: formData.roleName,
-      modules: permissions,
-      globalSettings,
-      lastUpdated: dateTimeStr,
-      updatedBy: 'Admin'
-    };
-
-    // Save to localStorage
-    const updatedRoles = [...existingRoles, newRole];
-    saveRolesToStorage(updatedRoles);
-    saveRolePermission(rolePermissions);
-    
-    // Reset form
-    setFormData({
-      roleName: '',
-      roleLevel: '',
-      roleStatus: 'active',
-      description: ''
-    });
-    setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
-    setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
-    setActiveStep('basic');
-    
-    alert('Role created successfully with detailed permissions! View it in the "View Roles" tab.');
+    try {
+      const { granted, globalSettings: gs } = flattenPermissionsToGranted(permissions, globalSettings);
+      await createRoleApi({
+        role_code: roleCode,
+        role_name: formData.roleName,
+        description: formData.description || undefined,
+        level: formData.roleLevel,
+        status: formData.roleStatus,
+        permissions: { granted, globalSettings: gs },
+      });
+      setFormData({ roleName: '', roleLevel: '', roleStatus: 'active', description: '' });
+      setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
+      setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
+      setActiveStep('basic');
+      alert('Role created successfully! View it in the "View Roles" tab.');
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create role. Role code may already exist.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getAvailableRoles = () => {
@@ -362,7 +329,8 @@ const CreateRole: React.FC = () => {
                 Back
               </button>
               
-              <UnifiedButton type="submit" variant="primary" size="lg">
+              {submitError && <p className="text-red-600 text-sm mb-2">{submitError}</p>}
+              <UnifiedButton type="submit" variant="primary" size="lg" disabled={submitting}>
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>

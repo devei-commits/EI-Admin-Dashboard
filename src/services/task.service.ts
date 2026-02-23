@@ -100,7 +100,7 @@ const generateMockTasks = (): Task[] => {
   const priorities: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
   const categories: TaskCategory[] = ['formulation', 'testing', 'quality', 'packaging', 'documentation', 'production', 'regulatory', 'sourcing'];
   
-  const allMembers = mockTeams.flatMap(team => [
+  const _allMembers = mockTeams.flatMap(team => [
     ...team.members,
     { id: team.managerId, name: team.managerName, email: `${team.managerId}@eisthetic.com`, role: 'manager' as UserRole, department: team.department, activeTasks: 1 },
     ...(team.teamLeadId ? [{ id: team.teamLeadId, name: team.teamLeadName || '', email: `${team.teamLeadId}@eisthetic.com`, role: 'team-lead' as UserRole, department: team.department, managerId: team.managerId, activeTasks: 2 }] : []),
@@ -427,7 +427,7 @@ export const getTasks = async (
         success: true,
       },
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -478,7 +478,7 @@ export const getTaskById = async (
       success: true,
       data: task,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -530,7 +530,7 @@ export const createTask = async (
       };
     }
     
-    const stages = DEFAULT_TASK_STAGES.map((stage, index) => ({
+    const stages = DEFAULT_TASK_STAGES.map((stage, _index) => ({
       ...stage,
       id: generateId(),
       isCompleted: false,
@@ -580,7 +580,7 @@ export const createTask = async (
       success: true,
       data: newTask,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -638,7 +638,7 @@ export const updateTask = async (
       success: true,
       data: mockTasks[taskIndex],
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -710,7 +710,7 @@ export const completeStage = async (
       success: true,
       data: task,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -763,7 +763,7 @@ export const logTime = async (
       success: true,
       data: mockTasks[taskIndex],
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -841,7 +841,7 @@ export const getTaskDashboardStats = async (
       success: true,
       data: stats,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -863,7 +863,7 @@ export const getTeams = async (): Promise<ServiceResult<Team[]>> => {
       success: true,
       data: mockTeams,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -897,7 +897,7 @@ export const getTeamMembers = async (teamId?: string): Promise<ServiceResult<Tea
       success: true,
       data: members,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {
@@ -949,7 +949,7 @@ export const deleteTask = async (
       success: true,
       data: true,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       error: {

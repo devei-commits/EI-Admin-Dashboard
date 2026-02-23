@@ -17,7 +17,6 @@ import type {
   AuditLog,
 } from '../types/order.types';
 import type { 
-  ApiResponse, 
   PaginatedResponse, 
   QueryParams,
   ServiceResult,
@@ -30,7 +29,7 @@ import type {
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrders(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<Order>>> {
   // TODO: Replace with actual API call
   // return apiClient.get<PaginatedResponse<Order>>('/orders', { params });
@@ -48,7 +47,7 @@ export async function fetchOrders(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderById(
-  orderId: string
+  _orderId: string
 ): Promise<ServiceResult<Order>> {
   // TODO: Replace with actual API call
   // return apiClient.get<Order>(`/orders/${orderId}`);
@@ -66,7 +65,7 @@ export async function fetchOrderById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createOrder(
-  orderData: Partial<Order>
+  _orderData: Partial<Order>
 ): Promise<ServiceResult<Order>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Order>('/orders', orderData);
@@ -84,8 +83,8 @@ export async function createOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrder(
-  orderId: string,
-  orderData: Partial<Order>
+  _orderId: string,
+  _orderData: Partial<Order>
 ): Promise<ServiceResult<Order>> {
   // TODO: Replace with actual API call
   // return apiClient.put<Order>(`/orders/${orderId}`, orderData);
@@ -103,7 +102,7 @@ export async function updateOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteOrder(
-  orderId: string
+  _orderId: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/orders/${orderId}`);
@@ -123,9 +122,9 @@ export async function deleteOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrderStatus(
-  orderId: string,
-  status: Order['orderStatus'],
-  notes?: string
+  _orderId: string,
+  _status: Order['orderStatus'],
+  _notes?: string
 ): Promise<ServiceResult<Order>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<Order>(`/orders/${orderId}/status`, { status, notes });
@@ -143,8 +142,8 @@ export async function updateOrderStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function bulkUpdateOrderStatus(
-  orderIds: string[],
-  status: Order['orderStatus']
+  _orderIds: string[],
+  _status: Order['orderStatus']
 ): Promise<ServiceResult<{ updated: number; failed: number }>> {
   // TODO: Replace with actual API call
   // return apiClient.patch('/orders/bulk-status', { orderIds, status });
@@ -164,7 +163,7 @@ export async function bulkUpdateOrderStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderHubItems(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<OrderHubItem[]>> {
   // TODO: Replace with actual API call
   // return apiClient.get<OrderHubItem[]>('/order-hub/items', { params });
@@ -182,7 +181,7 @@ export async function fetchOrderHubItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderReviews(
-  stage?: number
+  _stage?: number
 ): Promise<ServiceResult<OrderReview[]>> {
   // TODO: Replace with actual API call
   // return apiClient.get<OrderReview[]>('/order-hub/reviews', { params: { stage } });
@@ -200,9 +199,9 @@ export async function fetchOrderReviews(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrderStage(
-  orderId: string,
-  stage: number,
-  progress: Record<number, 'pending' | 'in-progress' | 'completed'>
+  _orderId: string,
+  _stage: number,
+  _progress: Record<number, 'pending' | 'in-progress' | 'completed'>
 ): Promise<ServiceResult<OrderHubItem>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<OrderHubItem>(`/order-hub/${orderId}/stage`, { stage, progress });
@@ -222,7 +221,7 @@ export async function updateOrderStage(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchBOMItems(
-  orderId: string
+  _orderId: string
 ): Promise<ServiceResult<BOMItem[]>> {
   // TODO: Replace with actual API call
   // return apiClient.get<BOMItem[]>(`/orders/${orderId}/bom`);
@@ -240,8 +239,8 @@ export async function fetchBOMItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateBOMItemStatus(
-  bomItemId: string,
-  status: BOMItem['status']
+  _bomItemId: string,
+  _status: BOMItem['status']
 ): Promise<ServiceResult<BOMItem>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<BOMItem>(`/bom/${bomItemId}/status`, { status });
@@ -261,7 +260,7 @@ export async function updateBOMItemStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchGoodReceivingRecords(
-  params?: QueryParams
+  _params?: QueryParams
 ): Promise<ServiceResult<GoodReceivingRecord[]>> {
   // TODO: Replace with actual API call
   // return apiClient.get<GoodReceivingRecord[]>('/good-receiving', { params });
@@ -279,7 +278,7 @@ export async function fetchGoodReceivingRecords(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createGoodReceivingRecord(
-  record: Partial<GoodReceivingRecord>
+  _record: Partial<GoodReceivingRecord>
 ): Promise<ServiceResult<GoodReceivingRecord>> {
   // TODO: Replace with actual API call
   // return apiClient.post<GoodReceivingRecord>('/good-receiving', record);
@@ -297,8 +296,8 @@ export async function createGoodReceivingRecord(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateGoodReceivingStatus(
-  recordId: string,
-  status: GoodReceivingRecord['status']
+  _recordId: string,
+  _status: GoodReceivingRecord['status']
 ): Promise<ServiceResult<GoodReceivingRecord>> {
   // TODO: Replace with actual API call
   // return apiClient.patch<GoodReceivingRecord>(`/good-receiving/${recordId}/status`, { status });
@@ -334,7 +333,7 @@ export async function fetchSavedFilters(): Promise<ServiceResult<SavedFilter[]>>
  * @placeholder Returns mock data - replace with API call
  */
 export async function saveFilter(
-  filter: Omit<SavedFilter, 'id'>
+  _filter: Omit<SavedFilter, 'id'>
 ): Promise<ServiceResult<SavedFilter>> {
   // TODO: Replace with actual API call
   // return apiClient.post<SavedFilter>('/orders/filters', filter);
@@ -352,7 +351,7 @@ export async function saveFilter(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteFilter(
-  filterId: string
+  _filterId: string
 ): Promise<ServiceResult<void>> {
   // TODO: Replace with actual API call
   // return apiClient.delete(`/orders/filters/${filterId}`);
@@ -372,7 +371,7 @@ export async function deleteFilter(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderAuditLogs(
-  orderId: string
+  _orderId: string
 ): Promise<ServiceResult<AuditLog[]>> {
   // TODO: Replace with actual API call
   // return apiClient.get<AuditLog[]>(`/orders/${orderId}/audit-logs`);
@@ -392,8 +391,8 @@ export async function fetchOrderAuditLogs(
  * @placeholder Returns mock data - replace with API call
  */
 export async function exportOrders(
-  format: 'csv' | 'xlsx' | 'pdf',
-  filters?: OrderFilter
+  _format: 'csv' | 'xlsx' | 'pdf',
+  _filters?: OrderFilter
 ): Promise<ServiceResult<Blob>> {
   // TODO: Replace with actual API call
   // return apiClient.post<Blob>('/orders/export', { format, filters }, { responseType: 'blob' });

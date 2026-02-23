@@ -4,8 +4,6 @@ import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { 
-  addToArray, 
-  removeFromArray, 
   getPrimaryFields,
   validatePrimaryFields 
 } from '../utils/masterFormUtils';
@@ -14,7 +12,6 @@ const PackagingRefactored: React.FC = () => {
   const { addItem } = useItems();
   const { addToast } = useToast();
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
 
   // Simplified primary data - no temp fields mixed in

@@ -147,16 +147,6 @@ const ItemsMaster: React.FC = () => {
     }
   }, [editedData, editMode, selectedItem, addToast]);
 
-  // Load draft if exists
-  const loadDraft = (itemId: string) => {
-    const draftKey = `draft_${itemId}`;
-    const draft = localStorage.getItem(draftKey);
-    if (draft) {
-      return JSON.parse(draft);
-    }
-    return null;
-  };
-
   const handleExportExcel = () => {
     try {
       // Create CSV data
@@ -187,7 +177,7 @@ const ItemsMaster: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       addToast('success', 'Excel file exported successfully');
-    } catch (error) {
+    } catch (_error) {
       addToast('error', 'Failed to export Excel');
     }
   };

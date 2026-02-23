@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { GoodReceiving, PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
+import { PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
 
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UnifiedButton, inputClassName, selectClassName } from '../ui';
 
 const AddUser: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -59,7 +60,7 @@ const AddUser: React.FC = () => {
               name="firstName"
               value={formData.firstName}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={inputClassName}
               required
             />
           </div>
@@ -74,7 +75,7 @@ const AddUser: React.FC = () => {
               name="lastName"
               value={formData.lastName}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={inputClassName}
               required
             />
           </div>
@@ -89,7 +90,7 @@ const AddUser: React.FC = () => {
               name="email"
               value={formData.email}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={inputClassName}
               required
             />
           </div>
@@ -104,7 +105,7 @@ const AddUser: React.FC = () => {
               name="mobile"
               value={formData.mobile}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={inputClassName}
               required
             />
           </div>
@@ -118,7 +119,7 @@ const AddUser: React.FC = () => {
               name="department"
               value={formData.department}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={selectClassName}
               required
             >
               <option value="">Select Department</option>
@@ -139,7 +140,7 @@ const AddUser: React.FC = () => {
               name="userRole"
               value={formData.userRole}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={selectClassName}
               required
             >
               <option value="">Select User Role</option>
@@ -161,7 +162,7 @@ const AddUser: React.FC = () => {
               name="password"
               value={formData.password}
               onChange={handleInputChange}
-              className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+              className={inputClassName}
               required
             />
           </div>
@@ -183,12 +184,9 @@ const AddUser: React.FC = () => {
         </div>
 
         <div className="mt-8 pt-6">
-          <button
-            type="submit"
-            className="w-full md:w-auto px-7 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-all font-semibold tracking-wider uppercase"
-          >
+          <UnifiedButton type="submit" variant="primary">
             Add User
-          </button>
+          </UnifiedButton>
         </div>
       </form>
     </div>

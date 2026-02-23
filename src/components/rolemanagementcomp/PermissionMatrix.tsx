@@ -2,12 +2,9 @@ import React, { useState, useMemo, ReactNode } from 'react';
 import {
   ModulePermission,
   SubModulePermission,
-  ColumnPermission,
   GlobalSettings,
-  DEFAULT_MODULE_PERMISSIONS,
-  DEFAULT_GLOBAL_SETTINGS,
 } from './types/permissions.types';
-import { Role, loadRolesFromStorage } from './ViewRoles';
+
 
 interface PermissionMatrixProps {
   selectedRoleId?: string;
@@ -19,7 +16,6 @@ interface PermissionMatrixProps {
 }
 
 const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
-  selectedRoleId,
   permissions,
   globalSettings,
   onPermissionChange,
@@ -31,9 +27,6 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'enabled' | 'disabled'>('all');
   const [activeTab, setActiveTab] = useState<'modules' | 'global'>('modules');
-
-  // Get all roles for comparison view
-  const allRoles = useMemo(() => loadRolesFromStorage(), []);
 
   // Toggle module expansion
   const toggleModule = (moduleId: string) => {

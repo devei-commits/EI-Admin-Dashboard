@@ -2,8 +2,6 @@
  * API utilities with error handling and retry logic
  */
 
-import { parseError, ApiError as ParsedApiError, retryWithBackoff } from './errorHandler';
-
 interface ApiError extends Error {
   status?: number;
   code?: string;

@@ -1,18 +1,18 @@
 /**
  * Role-Based Permission Hook
- * Use this hook to check if the current user has permission to access modules/actions
+ * Uses user.roleId from AuthContext (from backend /me). Loads permissions from GET /api/v1/roles/:roleId when not admin.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/apiClient';
 import { 
-  ModulePermission, 
   RolePermissions, 
   GlobalSettings,
-  loadRolePermissionsFromStorage,
   DEFAULT_MODULE_PERMISSIONS,
   DEFAULT_GLOBAL_SETTINGS
 } from '../components/rolemanagementcomp/types/permissions.types';
+import { parseApiPermissions } from '../components/rolemanagementcomp/types/permissionKeys';
 
 export interface PermissionCheck {
   canView: boolean;
@@ -60,43 +60,68 @@ export interface UsePermissionsReturn {
   isLoading: boolean;
 }
 
-// Local storage key for user-role mapping
-const USER_ROLE_MAPPING_KEY = 'eisthetic_user_role_mapping';
+/** Backend GET /roles/:id response — permissions are minimal state only (granted[] + globalSettings) */
+interface RoleApiResponse {
+  role_id: number;
+  role_code: string;
+  role_name: string;
+  permissions?: { granted?: string[]; globalSettings?: GlobalSettings; modules?: RolePermissions['modules'] };
+}
 
-// Get user's assigned role ID
-const getUserRoleId = (userId: string): string | null => {
-  try {
-    const mapping = localStorage.getItem(USER_ROLE_MAPPING_KEY);
-    if (mapping) {
-      const parsed = JSON.parse(mapping);
-      return parsed[userId] || null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
+function toRolePermissions(roleId: string, roleName: string, res: RoleApiResponse): RolePermissions {
+  const { modules, globalSettings } = parseApiPermissions(
+    res.permissions,
+    DEFAULT_MODULE_PERMISSIONS,
+    DEFAULT_GLOBAL_SETTINGS
+  );
+  return {
+    roleId,
+    roleName,
+    modules,
+    globalSettings,
+    lastUpdated: new Date().toISOString(),
+    updatedBy: 'api'
+  };
+}
 
 export const usePermissions = (): UsePermissionsReturn => {
   const { user, isLoading: authLoading } = useAuth();
+  const [rolePermissionsFromApi, setRolePermissionsFromApi] = useState<RolePermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+  const isAdminByRole = useMemo(() => {
+    if (!user) return false;
+    return user.roleName === 'Super Admin' || user.roleName === 'SUPER_ADMIN' || user.roleName === 'Admin';
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || isAdminByRole || !user.roleId) {
+      setRolePermissionsFromApi(null);
+      return;
+    }
+    const roleId = String(user.roleId);
+    setPermissionsLoading(true);
+    api.get<RoleApiResponse>(`/api/v1/roles/${roleId}`)
+      .then((res) => {
+        setRolePermissionsFromApi(toRolePermissions(roleId, user.roleName || res.role_name, res));
+      })
+      .catch(() => setRolePermissionsFromApi(null))
+      .finally(() => setPermissionsLoading(false));
+  }, [user?.id, user?.roleId, user?.roleName, isAdminByRole]);
 
   const { userPermissions, globalSettings, isAdmin } = useMemo(() => {
     if (!user) {
       return {
-        userPermissions: null,
+        userPermissions: null as RolePermissions | null,
         globalSettings: DEFAULT_GLOBAL_SETTINGS,
         isAdmin: false
       };
     }
 
-    // Check if user is super admin (using roleName from AuthUser)
-    const isSuperAdmin = user.roleName === 'Super Admin' || user.roleName === 'SUPER_ADMIN' || user.roleName === 'Admin';
-    
-    if (isSuperAdmin) {
-      // Super admin has full access
+    if (isAdminByRole) {
       const fullAccessPermissions: RolePermissions = {
-        roleId: 'super-admin',
-        roleName: 'Super Admin',
+        roleId: String(user.roleId || 'super-admin'),
+        roleName: user.roleName || 'Super Admin',
         modules: DEFAULT_MODULE_PERMISSIONS.map(module => ({
           ...module,
           subModules: module.subModules.map(sub => ({
@@ -117,7 +142,6 @@ export const usePermissions = (): UsePermissionsReturn => {
         lastUpdated: new Date().toISOString(),
         updatedBy: 'system'
       };
-      
       return {
         userPermissions: fullAccessPermissions,
         globalSettings: fullAccessPermissions.globalSettings,
@@ -125,28 +149,20 @@ export const usePermissions = (): UsePermissionsReturn => {
       };
     }
 
-    // Get user's role ID
-    const roleId = getUserRoleId(user.id || user.email || '');
-    
-    if (!roleId) {
-      // No role assigned - return minimal permissions (view dashboard only)
+    if (rolePermissionsFromApi) {
       return {
-        userPermissions: null,
-        globalSettings: DEFAULT_GLOBAL_SETTINGS,
-        isAdmin: false
+        userPermissions: rolePermissionsFromApi,
+        globalSettings: rolePermissionsFromApi.globalSettings,
+        isAdmin: rolePermissionsFromApi.globalSettings.accessToAllModules || false
       };
     }
 
-    // Load role permissions
-    const allPermissions = loadRolePermissionsFromStorage();
-    const rolePerms = allPermissions.find(p => p.roleId === roleId);
-
     return {
-      userPermissions: rolePerms || null,
-      globalSettings: rolePerms?.globalSettings || DEFAULT_GLOBAL_SETTINGS,
-      isAdmin: rolePerms?.globalSettings.accessToAllModules || false
+      userPermissions: null,
+      globalSettings: DEFAULT_GLOBAL_SETTINGS,
+      isAdmin: false
     };
-  }, [user]);
+  }, [user, isAdminByRole, rolePermissionsFromApi]);
 
   // Check if user has access to a module (at least one view permission)
   const hasModuleAccess = (moduleId: string): boolean => {
@@ -282,7 +298,7 @@ export const usePermissions = (): UsePermissionsReturn => {
     isAdmin,
     hasAnyPermission,
     getVisibleModules,
-    isLoading: authLoading
+    isLoading: authLoading || permissionsLoading
   };
 };
 

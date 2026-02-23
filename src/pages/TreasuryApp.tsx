@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import logoFull from '../assets/logo/eilogofull.svg';
 
-// Mobile menu state
-const useTreasuryMobileMenu = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  return { isMobileMenuOpen, setIsMobileMenuOpen };
-};
-
 interface Notification {
   id: string;
   type: 'alert' | 'warning' | 'success' | 'info';
@@ -26,28 +20,6 @@ interface Payment {
   approvals: { level: number; status: 'pending' | 'approved' | 'rejected'; by?: string; date?: string }[];
 }
 
-interface Vendor {
-  id: string;
-  name: string;
-  category: string;
-  totalPaid: number;
-  lastPayment: string;
-  nextDue: string;
-  avgPayment: number;
-  paymentFrequency: string;
-  isFavorite: boolean;
-}
-
-interface AlertRule {
-  id: string;
-  name: string;
-  condition: string;
-  threshold: string;
-  notificationMethods: string[];
-  active: boolean;
-  escalateAfterDays: number;
-}
-
 interface Settings {
   currency: string;
   dateFormat: string;
@@ -60,10 +32,6 @@ interface Settings {
 
 const TreasuryApp = () => {
   const [currentScreen, setCurrentScreen] = useState('dashboard');
-  const [activeTab, setActiveTab] = useState<{ [key: string]: string }>({
-    reqtabs: 'single',
-    inftabs: 'so'
-  });
   const [notifications, setNotifications] = useState<Notification[]>([
     { id: '1', type: 'alert', title: 'Low Cash Balance', message: 'Cash position below ₹50L', timestamp: new Date(), read: false },
     { id: '2', type: 'warning', title: 'Overdue Payable', message: 'Radcom Packaging payment overdue by 3 days', timestamp: new Date(Date.now() - 3600000), read: false },
@@ -74,26 +42,8 @@ const TreasuryApp = () => {
     { id: 'P001', vendor: 'Radcom Packaging', amount: 650000, dueDate: '2026-01-25', status: 'pending', priority: 'high', approvals: [{ level: 1, status: 'pending' }, { level: 2, status: 'pending' }] },
     { id: 'P002', vendor: 'SkinKraft Supplies', amount: 450000, dueDate: '2026-01-28', status: 'approved', priority: 'medium', approvals: [{ level: 1, status: 'approved', by: 'Priya', date: '2026-01-20' }, { level: 2, status: 'pending' }] },
   ]);
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
-  const [reportType, setReportType] = useState('daily');
-  const [vendors, setVendors] = useState<Vendor[]>([
-    { id: 'V001', name: 'GMP Packaging', category: 'Packaging', totalPaid: 2500000, lastPayment: '15 Jan 2025', nextDue: '22 Jan 2025', avgPayment: 350000, paymentFrequency: 'Weekly', isFavorite: true },
-    { id: 'V002', name: 'Elite Chemicals', category: 'Raw Materials', totalPaid: 4200000, lastPayment: '10 Jan 2025', nextDue: '20 Jan 2025', avgPayment: 420000, paymentFrequency: 'Bi-Weekly', isFavorite: false },
-    { id: 'V003', name: 'FastEx Logistics', category: 'Services', totalPaid: 1800000, lastPayment: '18 Jan 2025', nextDue: '25 Jan 2025', avgPayment: 200000, paymentFrequency: 'Monthly', isFavorite: true },
-    { id: 'V004', name: 'Premier Labeling', category: 'Packaging', totalPaid: 890000, lastPayment: '16 Jan 2025', nextDue: '23 Jan 2025', avgPayment: 125000, paymentFrequency: 'Weekly', isFavorite: false },
-    { id: 'V005', name: 'Pure Extracts Ltd', category: 'Raw Materials', totalPaid: 5600000, lastPayment: '12 Jan 2025', nextDue: '26 Jan 2025', avgPayment: 560000, paymentFrequency: 'Monthly', isFavorite: true }
-  ]);
-  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [filterAmount, setFilterAmount] = useState('all');
-  const [recentVendors, setRecentVendors] = useState<string[]>(['V001', 'V003', 'V005']);
-  const [alertRules, setAlertRules] = useState<AlertRule[]>([
-    { id: 'R001', name: 'Overdue Payment Alert', condition: 'Payment Due', threshold: '0 days', notificationMethods: ['email', 'in-app'], active: true, escalateAfterDays: 3 },
-    { id: 'R002', name: 'Large Payment Alert', condition: 'Amount >', threshold: '₹50L', notificationMethods: ['sms', 'email', 'push'], active: true, escalateAfterDays: 1 },
-    { id: 'R003', name: 'Pending Approval Alert', condition: 'Status = Pending', threshold: '> 1 day', notificationMethods: ['email'], active: false, escalateAfterDays: 2 }
-  ]);
-  const [settings, setSettings] = useState<Settings>({
+  const [_selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [settings, _setSettings] = useState<Settings>({
     currency: 'INR',
     dateFormat: 'DD/MM/YYYY',
     timezone: 'IST',
@@ -129,11 +79,6 @@ const TreasuryApp = () => {
   });
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
   const notificationRef = useRef<HTMLDivElement>(null);
-  const [savedFilters, setSavedFilters] = useState<any[]>([
-    { name: 'All Overdue', filter: { type: 'overdue' } },
-    { name: 'Pending Approval', filter: { type: 'pending' } },
-    { name: 'High Priority', filter: { type: 'high_priority' } }
-  ]);
 
   // Close notifications when clicking outside or navigating screens
   useEffect(() => {
@@ -153,13 +98,6 @@ const TreasuryApp = () => {
   useEffect(() => {
     setShowNotifications(false);
   }, [currentScreen]);
-  const [notificationHistory, setNotificationHistory] = useState<any[]>([
-    { id: 1, date: '19 Jan 2025, 2:45 PM', rule: 'Overdue Payment Alert', status: 'Sent', method: 'email' },
-    { id: 2, date: '19 Jan 2025, 1:30 PM', rule: 'Large Payment Alert', status: 'Sent', method: 'sms' },
-    { id: 3, date: '18 Jan 2025, 4:15 PM', rule: 'Pending Approval Alert', status: 'Sent', method: 'email' },
-    { id: 4, date: '18 Jan 2025, 10:00 AM', rule: 'Overdue Payment Alert', status: 'Escalated', method: 'in-app' },
-    { id: 5, date: '17 Jan 2025, 3:20 PM', rule: 'Large Payment Alert', status: 'Sent', method: 'push' },
-  ]);
 
   const screenTitles: { [key: string]: string } = {
     'dashboard': 'Control Center',
@@ -174,10 +112,6 @@ const TreasuryApp = () => {
     'inflows-funding': 'Banks & Investors Inflows',
     'budgets': 'Budgets & Allocation',
     'settings': 'Admin & Zoho Books Sync',
-  };
-
-  const handleTabChange = (group: string, tab: string) => {
-    setActiveTab(prev => ({ ...prev, [group]: tab }));
   };
 
   const handleApproval = (paymentId: string, approved: boolean) => {

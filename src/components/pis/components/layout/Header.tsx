@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Menu, User, LogOut, Bell, Shield, FileText, Clock, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Menu, User, LogOut, Bell, Shield, FileText, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
-import { UserRole, PISRecord } from '../../types/pis';
+import { UserRole } from '../../types/pis';
 import { getRoleLabel, getStageLabel } from '../../utils/permissions';
 import { usePIS } from '../../context/PISContext';
 import {
@@ -29,7 +29,7 @@ interface HeaderProps {
   onMenuToggle: () => void;
 }
 
-export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps) {
+export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle }: HeaderProps) {
   const { currentUser, logout, pisRecords } = usePIS();
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -68,7 +68,7 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
     });
 
     // Add pending notifications
-    pendingPIS.slice(0, 3).forEach((pis, idx) => {
+    pendingPIS.slice(0, 3).forEach((pis, _idx) => {
       notifs.push({
         id: `pending-${pis.id}`,
         type: 'pending',
@@ -80,7 +80,7 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
     });
 
     // Add in-progress notifications
-    inProgressPIS.slice(0, 2).forEach((pis, idx) => {
+    inProgressPIS.slice(0, 2).forEach((pis, _idx) => {
       notifs.push({
         id: `progress-${pis.id}`,
         type: 'progress',
@@ -92,7 +92,7 @@ export function Header({ currentRole, onRoleChange, onMenuToggle }: HeaderProps)
     });
 
     // Add completed notifications
-    recentlyCompleted.slice(0, 2).forEach((pis, idx) => {
+    recentlyCompleted.slice(0, 2).forEach((pis, _idx) => {
       notifs.push({
         id: `completed-${pis.id}`,
         type: 'completed',

@@ -60,22 +60,6 @@ const NetworkStatus = ({ isOnline }: { isOnline: boolean }) => {
   );
 }
 
-// Protected Route component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
-
-  if (isLoading) {
-    return <PageLoader />;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return <>{children}</>;
-};
-
 // Layout component that conditionally renders the sidebar
 const AppLayout = () => {
   const location = useLocation();

@@ -763,128 +763,6 @@ interface PISContextType {
 
 const PISContext = createContext<PISContextType | undefined>(undefined);
 
-// Seed records to ensure BD Managers always see some workload in their dashboard
-const bdManagerSeedRecords: PISRecord[] = [
-  {
-    id: 'bd-manager-seed-001',
-    pisCode: 'EI/PIS/BDM/24/1001',
-    formulation: 'BDM-FRM-001',
-    customer: 'Strategic Enterprise Client',
-    costName: 'Key Account Launch',
-    rdStaff: 'Not Assigned',
-    stage: 'BD_INTAKE',
-    status: 'PENDING',
-    m1: false,
-    v1: false,
-    rdO1: false,
-    regulatory: false,
-    inventory: false,
-    formLabel: 'New Category Brief',
-    sop: false,
-    ac: false,
-    oc: false,
-    mop: false,
-    coa: false,
-    pre: false,
-    stabilityMatch: false,
-    prs: false,
-    sensory: false,
-    bdTeam: 'BD Manager Queue',
-    assignedBdRole: 'BD_MANAGER',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'bd-manager-seed-002',
-    pisCode: 'EI/PIS/BDM/24/1002',
-    formulation: 'BDM-FRM-002',
-    customer: 'Regional Client Group',
-    costName: 'Line Extension',
-    rdStaff: 'Not Assigned',
-    stage: 'BD_WFP_REVIEW',
-    status: 'IN_PROGRESS',
-    m1: false,
-    v1: false,
-    rdO1: false,
-    regulatory: false,
-    inventory: false,
-    formLabel: 'Way Forward Review',
-    sop: false,
-    ac: false,
-    oc: false,
-    mop: false,
-    coa: false,
-    pre: false,
-    stabilityMatch: false,
-    prs: false,
-    sensory: false,
-    bdTeam: 'BD Manager Queue',
-    assignedBdRole: 'BD_MANAGER',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'bd-manager-seed-003',
-    pisCode: 'EI/PIS/BDM/24/1003',
-    formulation: 'BDM-FRM-003',
-    customer: 'Key Strategic Account',
-    costName: 'Feedback Loop',
-    rdStaff: 'Not Assigned',
-    stage: 'CLIENT_FEEDBACK',
-    status: 'PENDING',
-    m1: true,
-    v1: false,
-    rdO1: false,
-    regulatory: false,
-    inventory: false,
-    formLabel: 'Awaiting Client Feedback',
-    sop: true,
-    ac: true,
-    oc: true,
-    mop: true,
-    coa: true,
-    pre: true,
-    stabilityMatch: false,
-    prs: true,
-    sensory: true,
-    bdTeam: 'BD Manager Queue',
-    assignedBdRole: 'BD_MANAGER',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
-
-// Helper to normalize PIS records read from localStorage
-const normalizePISRecord = (record: any): PISRecord => {
-  return {
-    ...record,
-    createdAt: new Date(record.createdAt),
-    updatedAt: new Date(record.updatedAt),
-    tentativeTimeline: record.tentativeTimeline ? new Date(record.tentativeTimeline) : undefined,
-    history: Array.isArray(record.history)
-      ? record.history.map((h: any) => ({
-          ...h,
-          timestamp: new Date(h.timestamp),
-        }))
-      : record.history,
-    wfp: record.wfp
-      ? {
-          ...record.wfp,
-          createdAt: record.wfp.createdAt ? new Date(record.wfp.createdAt) : undefined,
-          approvedAt: record.wfp.approvedAt ? new Date(record.wfp.approvedAt) : undefined,
-        }
-      : undefined,
-    sampleSubmission: record.sampleSubmission
-      ? {
-          ...record.sampleSubmission,
-          submittedAt: record.sampleSubmission.submittedAt
-            ? new Date(record.sampleSubmission.submittedAt)
-            : undefined,
-        }
-      : undefined,
-  };
-};
-
 const SESSION_USER_KEY = 'pis_current_user_id';
 const SESSION_ROLE_KEY = 'pis_current_role';
 
@@ -1080,7 +958,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
               setSystemUsers(dummyBdStaff);
               console.log(`✓ Using ${dummyBdStaff.length} dummy BD staff users for BD_MANAGER`);
             }
-          } catch (apiError) {
+          } catch (_apiError) {
             // API might not be accessible or permission denied - use dummy data
             const dummyBdStaff = mockUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
             setSystemUsers(dummyBdStaff);
@@ -1110,7 +988,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
               setSystemUsers(dummyRndStaff);
               console.log(`✓ Using ${dummyRndStaff.length} dummy RND staff users for RND_LEAD`);
             }
-          } catch (apiError) {
+          } catch (_apiError) {
             // API might not be accessible - use dummy data
             const dummyRndStaff = mockUsers.filter(u => u.role === 'RND_STAFF' && u.status === 'ACTIVE');
             setSystemUsers(dummyRndStaff);
@@ -1219,7 +1097,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
             }
             return;
           }
-        } catch (error) {
+        } catch (_error) {
           // Token might be expired, try to refresh
           console.log('🔄 Access token expired, attempting refresh...');
           const refreshToken = getRefreshToken();
@@ -1308,7 +1186,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
-      const { user: apiUser, accessToken, refreshToken } = response.data;
+      const { user: apiUser, accessToken: _accessToken, refreshToken: _refreshToken } = response.data;
 
       // Convert API user to SystemUser format
       const systemUser: SystemUser = {
@@ -1482,7 +1360,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addHistoryEntry = async (id: string, entry: PISHistoryEntry) => {
+  const addHistoryEntry = async (id: string, _entry: PISHistoryEntry) => {
     // History entries are created automatically by the backend when transitions happen
     // This function is kept for compatibility but will refresh from API
     try {

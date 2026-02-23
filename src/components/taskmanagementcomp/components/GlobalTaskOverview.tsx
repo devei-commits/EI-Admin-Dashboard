@@ -10,8 +10,6 @@ import {
   Clock,
   CheckCircle2,
   PlayCircle,
-  Pause,
-  XCircle,
   AlertTriangle,
   Calendar,
   User,
@@ -20,11 +18,8 @@ import {
   TrendingUp,
   RefreshCw,
   Download,
-  MoreVertical,
   X,
   Save,
-  Users,
-  FileText,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
@@ -1507,7 +1502,7 @@ export function GlobalTaskOverview() {
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-3">Stage Progress</p>
                 <div className="flex items-center gap-2">
-                  {STAGES.slice(0, 6).map((stage, index) => {
+                  {STAGES.slice(0, 6).map((stage, _index) => {
                     const progress = selectedTask.stageProgress[stage.id];
                     return (
                       <div key={stage.id} className="flex-1 relative">
