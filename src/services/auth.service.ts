@@ -48,7 +48,7 @@ interface LoginResponse {
   otp?: unknown;
 }
 
-/** Backend /me response (staff gets roleId, roleName, roleLevel, department) */
+/** Backend /me response (staff gets roleId, roleName, roleLevel, department, allowedModules) */
 interface MeResponse {
   userid: number;
   fname?: string;
@@ -62,6 +62,8 @@ interface MeResponse {
   roleName?: string;
   roleLevel?: string;
   department?: string;
+  /** Module IDs this role can access; '*' = all. Used for sidebar and API 403. */
+  allowedModules?: string[];
   addresses?: unknown[];
 }
 
@@ -137,26 +139,40 @@ export async function refreshToken(
   }
 }
 
+// Map backend usertype to display roleName and roleId (when /me does not return them)
+const USERTYPE_TO_ROLE: Record<string, { roleId: number; roleName: string; roleLevel: string }> = {
+  super_admin: { roleId: 1, roleName: 'Super Admin', roleLevel: 'admin' },
+  admin: { roleId: 2, roleName: 'Admin', roleLevel: 'admin' },
+  bd_manager: { roleId: 3, roleName: 'BD Manager', roleLevel: 'manager' },
+  doctor: { roleId: 4, roleName: 'Doctor', roleLevel: 'staff' },
+  customer: { roleId: 5, roleName: 'Customer', roleLevel: 'client' },
+};
+
 /**
- * Get current user (GET /api/v1/users/me). Staff get roleId, roleName, roleLevel, department.
+ * Get current user (GET /api/v1/users/me). Staff get roleId, roleName, roleLevel from usertype when not in response.
  */
 export async function getCurrentUser(): Promise<ServiceResult<User>> {
   try {
     const me = await api.get<MeResponse>('/api/v1/users/me');
+    const fromUsertype = me.usertype ? USERTYPE_TO_ROLE[me.usertype] : null;
+    const roleId = me.roleId ?? fromUsertype?.roleId;
+    const roleName = me.roleName ?? fromUsertype?.roleName ?? '';
+    const roleLevel = me.roleLevel ?? fromUsertype?.roleLevel ?? '';
     const user: User = {
       id: String(me.userid),
       username: me.email,
       email: me.email,
       fullName: me.display_name ?? ([me.fname, me.lname].filter(Boolean).join(' ') || me.email),
-      role: (me.roleName as User['role']) ?? 'VIEWER',
+      role: (roleName as User['role']) || (me.usertype as User['role']) || 'VIEWER',
       status: (me.status === 'active' ? 'Active' : me.status === 'inactive' ? 'Inactive' : 'Pending') as User['status'],
       department: me.department,
       phone: me.mobile,
       createdAt: '',
       updatedAt: '',
-      roleId: me.roleId,
-      roleName: me.roleName,
-      roleLevel: me.roleLevel,
+      roleId,
+      roleName,
+      roleLevel,
+      allowedModules: me.allowedModules,
     };
     return { data: user, error: null, success: true };
   } catch (err: unknown) {

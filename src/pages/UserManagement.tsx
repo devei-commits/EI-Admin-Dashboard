@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Filter,
   Plus,
@@ -21,6 +21,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
+import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, type StaffUserFromApi } from '../services/user.service';
+import { listRoles } from '../services/role.service';
 
 // ==================== TYPES ====================
 interface User {
@@ -50,36 +52,32 @@ const DEPARTMENTS = [
   'Administration',
 ] as const;
 
-const ROLES = [
-  'Super Admin',
-  'Admin',
-  'Manager',
-  'Team Lead',
-  'Senior Staff',
-  'Staff',
-  'Intern',
-] as const;
-
-// ==================== MOCK DATA ====================
-const INITIAL_USERS: User[] = [
-  { id: 'USR001', firstName: 'Rajesh', lastName: 'Kumar', email: 'rajesh.kumar@eisthetic.com', mobile: '+91 98765 43210', role: 'Super Admin', department: 'Administration', status: 'active', createdAt: '2024-01-15', lastLogin: '2026-01-25 09:30' },
-  { id: 'USR002', firstName: 'Priya', lastName: 'Sharma', email: 'priya.sharma@eisthetic.com', mobile: '+91 98765 43211', role: 'Manager', department: 'Business Development', status: 'active', createdAt: '2024-02-20', lastLogin: '2026-01-25 08:15' },
-  { id: 'USR003', firstName: 'Amit', lastName: 'Patel', email: 'amit.patel@eisthetic.com', mobile: '+91 98765 43212', role: 'Team Lead', department: 'Quality Assurance', status: 'active', createdAt: '2024-03-10', lastLogin: '2026-01-24 17:45' },
-  { id: 'USR004', firstName: 'Neha', lastName: 'Singh', email: 'neha.singh@eisthetic.com', mobile: '+91 98765 43213', role: 'Staff', department: 'Research & Development', status: 'suspended', createdAt: '2024-04-05', lastLogin: '2026-01-20 14:20' },
-  { id: 'USR005', firstName: 'Kavita', lastName: 'Desai', email: 'kavita.desai@eisthetic.com', mobile: '+91 98765 43214', role: 'Senior Staff', department: 'Design', status: 'active', createdAt: '2024-05-12', lastLogin: '2026-01-25 10:00' },
-  { id: 'USR006', firstName: 'Ravi', lastName: 'Verma', email: 'ravi.verma@eisthetic.com', mobile: '+91 98765 43215', role: 'Staff', department: 'Manufacturing', status: 'inactive', createdAt: '2024-06-18', lastLogin: '2026-01-10 11:30' },
-  { id: 'USR007', firstName: 'Sunita', lastName: 'Joshi', email: 'sunita.joshi@eisthetic.com', mobile: '+91 98765 43216', role: 'Manager', department: 'Procurement', status: 'active', createdAt: '2024-07-22', lastLogin: '2026-01-25 07:45' },
-  { id: 'USR008', firstName: 'Anil', lastName: 'Mehta', email: 'anil.mehta@eisthetic.com', mobile: '+91 98765 43217', role: 'Team Lead', department: 'Logistics', status: 'active', createdAt: '2024-08-30', lastLogin: '2026-01-24 16:00' },
-  { id: 'USR009', firstName: 'Deepa', lastName: 'Rao', email: 'deepa.rao@eisthetic.com', mobile: '+91 98765 43218', role: 'Staff', department: 'Sales', status: 'active', createdAt: '2024-09-15', lastLogin: '2026-01-25 09:00' },
-  { id: 'USR010', firstName: 'Vijay', lastName: 'Iyer', email: 'vijay.iyer@eisthetic.com', mobile: '+91 98765 43219', role: 'Admin', department: 'Administration', status: 'inactive', createdAt: '2024-10-01', lastLogin: '2025-12-15 13:20' },
-  { id: 'USR011', firstName: 'Meera', lastName: 'Nair', email: 'meera.nair@eisthetic.com', mobile: '+91 98765 43220', role: 'Senior Staff', department: 'Quality Assurance', status: 'active', createdAt: '2024-11-08', lastLogin: '2026-01-25 08:30' },
-  { id: 'USR012', firstName: 'Kiran', lastName: 'Kulkarni', email: 'kiran.kulkarni@eisthetic.com', mobile: '+91 98765 43221', role: 'Intern', department: 'Research & Development', status: 'active', createdAt: '2025-01-05', lastLogin: '2026-01-24 15:00' },
-];
+/** Map API staff user to page User type */
+function mapStaffToUser(r: StaffUserFromApi): User {
+  const name = (r.display_name || '').trim();
+  const [firstName, ...rest] = name.split(/\s+/);
+  const lastName = rest.length ? rest.join(' ') : '';
+  const status = (r.status === 'active' ? 'active' : r.status === 'suspended' ? 'suspended' : 'inactive') as User['status'];
+  return {
+    id: String(r.userid ?? r.id),
+    firstName: firstName || '—',
+    lastName: lastName || '',
+    email: r.email ?? '',
+    mobile: r.mobile ?? '',
+    role: r.role_name ?? '',
+    department: r.department ?? '',
+    status,
+    createdAt: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : '',
+    lastLogin: '',
+  };
+}
 
 // ==================== COMPONENT ====================
 const UserManagement = () => {
-  // State
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Array<{ role_id: number; role_name: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
@@ -92,6 +90,57 @@ const UserManagement = () => {
   const [modalType, setModalType] = useState<'view' | 'add' | 'edit' | 'delete' | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({});
   const itemsPerPage = 8;
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [usersRes, rolesList] = await Promise.all([
+        fetchStaffUsers(),
+        listRoles(),
+      ]);
+      if (usersRes.success && usersRes.data) {
+        setUsers(usersRes.data.map(mapStaffToUser));
+      }
+      if (rolesList?.length) {
+        setRoles(rolesList.map((r) => ({ role_id: r.role_id, role_name: r.role_name })));
+      }
+    } catch {
+      setError('Failed to load users');
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  // When edit modal opens, sync form to selected user so the form always shows current user data
+  useEffect(() => {
+    if (modalType === 'edit' && selectedUser) {
+      setFormData({
+        id: selectedUser.id,
+        firstName: selectedUser.firstName ?? '',
+        lastName: selectedUser.lastName ?? '',
+        email: selectedUser.email ?? '',
+        mobile: selectedUser.mobile ?? '',
+        role: selectedUser.role ?? '',
+        department: selectedUser.department ?? '',
+        status: selectedUser.status ?? 'active',
+        createdAt: selectedUser.createdAt ?? '',
+        lastLogin: selectedUser.lastLogin ?? '',
+      });
+    }
+  }, [modalType, selectedUser?.id]);
+
+  // Role options for filter: from API roles + any role names present in users
+  const roleFilterOptions = useMemo(() => {
+    const fromRoles = roles.map((r) => r.role_name);
+    const fromUsers = [...new Set(users.map((u) => u.role).filter(Boolean))];
+    return [...new Set([...fromRoles, ...fromUsers])].sort();
+  }, [roles, users]);
 
   // Filter and sort users
   const filteredUsers = useMemo(() => {
@@ -135,9 +184,26 @@ const UserManagement = () => {
   }), [users]);
 
   const handleOpenModal = useCallback((type: 'view' | 'add' | 'edit' | 'delete', user?: User) => {
+    setSaveError(null);
     setModalType(type);
-    if (user) { setSelectedUser(user); setFormData({ ...user }); }
-    else { setSelectedUser(null); setFormData({ status: 'active' }); }
+    if (user) {
+      setSelectedUser(user);
+      setFormData({
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        mobile: user.mobile,
+        role: user.role,
+        department: user.department,
+        status: user.status,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+      });
+    } else {
+      setSelectedUser(null);
+      setFormData({ status: 'active' });
+    }
   }, []);
 
   const handleCloseModal = useCallback(() => {
@@ -146,37 +212,76 @@ const UserManagement = () => {
     setFormData({});
   }, []);
 
-  const handleSaveUser = useCallback(() => {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSaveUser = useCallback(async () => {
     if (modalType === 'add') {
-      const newUser: User = {
-        id: `USR${String(users.length + 1).padStart(3, '0')}`,
-        firstName: formData.firstName || '',
-        lastName: formData.lastName || '',
-        email: formData.email || '',
-        mobile: formData.mobile || '',
-        role: formData.role || 'Staff',
-        department: formData.department || 'Administration',
-        status: formData.status as User['status'] || 'active',
-        createdAt: new Date().toISOString().split('T')[0],
-        lastLogin: 'Never',
-      };
-      setUsers(prev => [...prev, newUser]);
-    } else if (modalType === 'edit' && selectedUser) {
-      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, ...formData } as User : u));
+      setSaveError('Adding new staff users is not available yet. Use the backend or contact an admin.');
+      return;
     }
-    handleCloseModal();
-  }, [modalType, formData, selectedUser, users.length, handleCloseModal]);
-
-  const handleDeleteUser = useCallback(() => {
-    if (selectedUser) {
-      setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-      handleCloseModal();
+    if (modalType === 'edit' && selectedUser) {
+      setSaving(true);
+      setSaveError(null);
+      const roleId = roles.find((r) => r.role_name === formData.role)?.role_id;
+      try {
+        if (roleId != null) {
+          const roleRes = await updateUserRole(selectedUser.id, {
+            roleId,
+            department: formData.department || undefined,
+          });
+          if (!roleRes.success) {
+            setSaveError(roleRes.error ?? 'Failed to update role');
+            setSaving(false);
+            return;
+          }
+        }
+        const profileRes = await updateUserProfile(selectedUser.id, {
+          name: [formData.firstName, formData.lastName].filter(Boolean).join(' ').trim() || undefined,
+          email: formData.email,
+          mobile: formData.mobile,
+          status: formData.status,
+        });
+        if (!profileRes.success) {
+          setSaveError(profileRes.error ?? 'Failed to update profile');
+          setSaving(false);
+          return;
+        }
+        await loadUsers();
+        handleCloseModal();
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : 'Failed to save');
+      } finally {
+        setSaving(false);
+      }
     }
-  }, [selectedUser, handleCloseModal]);
+  }, [modalType, formData, selectedUser, roles, loadUsers, handleCloseModal]);
 
-  const handleToggleStatus = useCallback((user: User) => {
-    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' } : u));
-  }, []);
+  const handleDeleteUser = useCallback(async () => {
+    if (!selectedUser) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await deleteUserApi(selectedUser.id);
+      if (res.success) {
+        await loadUsers();
+        handleCloseModal();
+      } else {
+        const errMsg = typeof res.error === 'string' ? res.error : (res.error && typeof res.error === 'object' && 'message' in res.error ? (res.error as { message: string }).message : null);
+        setSaveError(errMsg ?? 'Failed to delete user');
+      }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to delete user');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedUser, loadUsers, handleCloseModal]);
+
+  const handleToggleStatus = useCallback(async (user: User) => {
+    const newStatus = user.status === 'active' ? 'inactive' : 'active';
+    const res = await updateUserProfile(user.id, { status: newStatus });
+    if (res.success) await loadUsers();
+  }, [loadUsers]);
 
   const toggleSort = (field: typeof sortBy) => {
     if (sortBy === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
@@ -189,6 +294,7 @@ const UserManagement = () => {
     setDepartmentFilter('all');
     setRoleFilter('all');
     setCurrentPage(1);
+    loadUsers();
   };
 
   const getStatusColor = (status: string) => {
@@ -274,7 +380,7 @@ const UserManagement = () => {
             {[
               { label: 'Status', value: statusFilter, setter: setStatusFilter, options: ['all', 'active', 'inactive', 'suspended'] },
               { label: 'Department', value: departmentFilter, setter: setDepartmentFilter, options: ['all', ...DEPARTMENTS] },
-              { label: 'Role', value: roleFilter, setter: setRoleFilter, options: ['all', ...ROLES] },
+              { label: 'Role', value: roleFilter, setter: setRoleFilter, options: ['all', ...roleFilterOptions] },
             ].map(({ label, value, setter, options }) => (
               <div key={label}>
                 <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
@@ -283,7 +389,10 @@ const UserManagement = () => {
                   onChange={(e) => { setter(e.target.value); setCurrentPage(1); }}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 >
-                  {options.map(o => <option key={o} value={o}>{o === 'all' ? `All ${label}s` : o}</option>)}
+                  <option value="all">All {label}s</option>
+                  {(label === 'Role' ? roleFilterOptions : options.filter((o) => o !== 'all')).map((o) => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
                 </select>
               </div>
             ))}
@@ -291,7 +400,17 @@ const UserManagement = () => {
         )}
       </div>
 
+      {loading && (
+        <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-8 text-center">
+          <p className="text-gray-500">Loading users…</p>
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+      )}
+
       {/* Users Table */}
+      {!loading && (
       <div className="bg-white rounded-xl shadow-sm border border-amber-100 overflow-hidden">
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
@@ -404,6 +523,7 @@ const UserManagement = () => {
           />
         </div>
       </div>
+      )}
 
       {/* View Modal */}
       {modalType === 'view' && selectedUser && (
@@ -465,12 +585,13 @@ const UserManagement = () => {
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Mobile *</label><input type="tel" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Department *</label><select value={formData.department || ''} onChange={(e) => setFormData(p => ({ ...p, department: e.target.value }))} className={selectClassName} required><option value="">Select</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required><option value="">Select</option>{ROLES.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
+              {saveError && <p className="text-sm text-red-600">{saveError}</p>}
               <div className="flex gap-3 pt-4">
-                <button onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50">Cancel</button>
-                <button onClick={handleSaveUser} className="flex-1 px-4 py-2.5 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 flex items-center justify-center gap-2"><Save className="w-4 h-4" /> {modalType === 'add' ? 'Add User' : 'Save'}</button>
+                <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50" disabled={saving}>Cancel</button>
+                <button type="button" onClick={() => handleSaveUser()} className="flex-1 px-4 py-2.5 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 flex items-center justify-center gap-2 disabled:opacity-50" disabled={saving}>{saving ? 'Saving…' : (modalType === 'add' ? 'Add User' : 'Save')} {modalType === 'edit' && <Save className="w-4 h-4" />}</button>
               </div>
             </div>
           </div>
@@ -483,9 +604,10 @@ const UserManagement = () => {
         onClose={handleCloseModal}
         onConfirm={handleDeleteUser}
         title="Delete User?"
-        message={selectedUser ? (<>Are you sure you want to delete <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>? This action cannot be undone.</>) : ''}
+        message={selectedUser ? (<>Are you sure you want to delete <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>? This action cannot be undone.{saveError && <p className="text-red-600 mt-2">{saveError}</p>}</>) : ''}
         confirmText="Delete"
         variant="danger"
+        isLoading={saving}
       />
     </div>
   );

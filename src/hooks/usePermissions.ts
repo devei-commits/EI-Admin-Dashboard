@@ -91,7 +91,13 @@ export const usePermissions = (): UsePermissionsReturn => {
 
   const isAdminByRole = useMemo(() => {
     if (!user) return false;
-    return user.roleName === 'Super Admin' || user.roleName === 'SUPER_ADMIN' || user.roleName === 'Admin';
+    const name = (user.roleName ?? '').toLowerCase();
+    const roleLevel = (user.roleLevel ?? '').toLowerCase();
+    return (
+      name === 'super admin' || name === 'super_admin' || name === 'superadmin' ||
+      name === 'admin' ||
+      roleLevel === 'admin'
+    );
   }, [user]);
 
   useEffect(() => {
@@ -115,6 +121,15 @@ export const usePermissions = (): UsePermissionsReturn => {
         userPermissions: null as RolePermissions | null,
         globalSettings: DEFAULT_GLOBAL_SETTINGS,
         isAdmin: false
+      };
+    }
+
+    // Backend /me returns allowedModules: only show sidebar items and allow API calls for those modules
+    if (user.allowedModules && user.allowedModules.length > 0) {
+      return {
+        userPermissions: null as RolePermissions | null,
+        globalSettings: DEFAULT_GLOBAL_SETTINGS,
+        isAdmin: user.allowedModules.includes('*')
       };
     }
 
@@ -164,8 +179,11 @@ export const usePermissions = (): UsePermissionsReturn => {
     };
   }, [user, isAdminByRole, rolePermissionsFromApi]);
 
-  // Check if user has access to a module (at least one view permission)
+  // Check if user has access to a module (allowedModules from /me, or role permissions)
   const hasModuleAccess = (moduleId: string): boolean => {
+    if (user?.allowedModules?.length) {
+      return user.allowedModules!.includes('*') || user.allowedModules!.includes(moduleId);
+    }
     if (isAdmin) return true;
     if (!userPermissions) return false;
 

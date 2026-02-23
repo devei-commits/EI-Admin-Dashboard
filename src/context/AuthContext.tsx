@@ -11,6 +11,8 @@ export interface AuthUser {
   roleId: string;
   roleName: string;
   roleLevel: string;
+  /** Module IDs this role can access; '*' = all. From backend /me. */
+  allowedModules?: string[];
   loginTime: string;
 }
 
@@ -32,6 +34,7 @@ function userToAuthUser(u: User): AuthUser {
     roleId: String(u.roleId ?? ''),
     roleName: u.roleName ?? '',
     roleLevel: u.roleLevel ?? '',
+    allowedModules: u.allowedModules,
     loginTime: new Date().toISOString(),
   };
 }

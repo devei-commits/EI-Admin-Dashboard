@@ -104,40 +104,59 @@ export async function createUser(
 }
 
 /**
- * Update an existing user
- * @placeholder Returns mock data - replace with API call
+ * Update user profile (name, email, mobile, status). Backend: PATCH /api/v1/users/:id
+ */
+export async function updateUserProfile(
+  userId: string,
+  payload: { display_name?: string; name?: string; email?: string; mobile?: string; status?: string }
+): Promise<ServiceResult<StaffUserFromApi>> {
+  try {
+    const body = { ...payload };
+    if (body.name !== undefined) body.display_name = body.name;
+    const res = await api.patch<StaffUserFromApi>(`/api/v1/users/${userId}`, body);
+    return { data: res, error: null, success: true };
+  } catch (err) {
+    const body = err && typeof err === 'object' && 'body' in err ? (err as { body?: { error?: string } }).body : undefined;
+    return {
+      data: null,
+      error: body?.error ?? (err instanceof Error ? err.message : 'Failed to update user'),
+      success: false,
+    };
+  }
+}
+
+/**
+ * Update an existing user (alias: use updateUserProfile + updateUserRole as needed)
  */
 export async function updateUser(
   _userId: string,
   _userData: UserUpdatePayload
 ): Promise<ServiceResult<User>> {
-  // TODO: Replace with actual API call
-  // return apiClient.put<User>(`/users/${userId}`, userData);
-  
-  console.warn('[UserService] updateUser: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+  const profileRes = await updateUserProfile(userId, {
+    name: userData.fullName,
+    email: userData.email,
+    mobile: userData.phone,
+    status: userData.status,
+  });
+  if (!profileRes.success) return { data: null, error: profileRes.error, success: false };
+  return { data: null, error: null, success: true };
 }
 
 /**
- * Delete a user
- * @placeholder Returns mock data - replace with API call
+ * Delete a user. Backend: DELETE /api/v1/users/:id
  */
-export async function deleteUser(
-  _userId: string
-): Promise<ServiceResult<void>> {
-  // TODO: Replace with actual API call
-  // return apiClient.delete(`/users/${userId}`);
-  
-  console.warn('[UserService] deleteUser: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+export async function deleteUser(userId: string): Promise<ServiceResult<void>> {
+  try {
+    await api.delete(`/api/v1/users/${userId}`);
+    return { data: undefined, error: null, success: true };
+  } catch (err) {
+    const body = err && typeof err === 'object' && 'body' in err ? (err as { body?: { error?: string } }).body : undefined;
+    return {
+      data: null,
+      error: (body && typeof body === 'object' && 'error' in body ? (body as { error?: string }).error : null) ?? (err instanceof Error ? err.message : 'Failed to delete user'),
+      success: false,
+    };
+  }
 }
 
 /**

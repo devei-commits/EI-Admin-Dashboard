@@ -30,6 +30,8 @@ export interface User {
   roleId?: string | number;
   roleName?: string;
   roleLevel?: string;
+  /** Module IDs this role can access; '*' = all. From backend /me. */
+  allowedModules?: string[];
 }
 
 export interface UserCreatePayload {
