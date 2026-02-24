@@ -21,7 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
-import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, type StaffUserFromApi } from '../services/user.service';
+import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, createStaffUser, type StaffUserFromApi } from '../services/user.service';
 import { listRoles } from '../services/role.service';
 
 // ==================== TYPES ====================
@@ -88,7 +88,7 @@ const UserManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [modalType, setModalType] = useState<'view' | 'add' | 'edit' | 'delete' | null>(null);
-  const [formData, setFormData] = useState<Partial<User>>({});
+  const [formData, setFormData] = useState<Partial<User> & { password?: string }>({});
   const itemsPerPage = 8;
 
   const loadUsers = useCallback(async () => {
@@ -202,7 +202,7 @@ const UserManagement = () => {
       });
     } else {
       setSelectedUser(null);
-      setFormData({ status: 'active' });
+      setFormData({ status: 'active', password: '' });
     }
   }, []);
 
@@ -217,7 +217,48 @@ const UserManagement = () => {
 
   const handleSaveUser = useCallback(async () => {
     if (modalType === 'add') {
-      setSaveError('Adding new staff users is not available yet. Use the backend or contact an admin.');
+      setSaving(true);
+      setSaveError(null);
+      const roleId = roles.find((r) => r.role_name === formData.role)?.role_id;
+      const password = formData.password?.trim();
+      if (!password || password.length < 6) {
+        setSaveError('Password is required (min 6 characters).');
+        setSaving(false);
+        return;
+      }
+      if (!formData.email?.trim()) {
+        setSaveError('Email is required.');
+        setSaving(false);
+        return;
+      }
+      if (!roleId) {
+        setSaveError('Role is required.');
+        setSaving(false);
+        return;
+      }
+      try {
+        const res = await createStaffUser({
+          firstName: formData.firstName?.trim() ?? '',
+          lastName: formData.lastName?.trim() ?? '',
+          email: formData.email.trim(),
+          mobile: formData.mobile?.trim() ?? '',
+          password,
+          roleId,
+          department: formData.department || undefined,
+          status: formData.status || 'active',
+        });
+        if (res.success) {
+          await loadUsers();
+          handleCloseModal();
+        } else {
+          const errMsg = typeof res.error === 'string' ? res.error : (res.error && typeof res.error === 'object' && 'message' in res.error ? (res.error as { message: string }).message : null) ?? 'Failed to create user';
+          setSaveError(errMsg);
+        }
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : 'Failed to create user');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     if (modalType === 'edit' && selectedUser) {
@@ -231,7 +272,8 @@ const UserManagement = () => {
             department: formData.department || undefined,
           });
           if (!roleRes.success) {
-            setSaveError(roleRes.error ?? 'Failed to update role');
+            const errMsg = typeof roleRes.error === 'string' ? roleRes.error : (roleRes.error && typeof roleRes.error === 'object' && 'message' in roleRes.error ? (roleRes.error as { message: string }).message : null) ?? 'Failed to update role';
+            setSaveError(errMsg);
             setSaving(false);
             return;
           }
@@ -243,7 +285,8 @@ const UserManagement = () => {
           status: formData.status,
         });
         if (!profileRes.success) {
-          setSaveError(profileRes.error ?? 'Failed to update profile');
+          const errMsg = typeof profileRes.error === 'string' ? profileRes.error : (profileRes.error && typeof profileRes.error === 'object' && 'message' in profileRes.error ? (profileRes.error as { message: string }).message : null) ?? 'Failed to update profile';
+          setSaveError(errMsg);
           setSaving(false);
           return;
         }
@@ -583,6 +626,9 @@ const UserManagement = () => {
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" value={formData.email || ''} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} className={inputClassName} required /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Mobile *</label><input type="tel" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
+              {modalType === 'add' && (
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Password *</label><input type="password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Department *</label><select value={formData.department || ''} onChange={(e) => setFormData(p => ({ ...p, department: e.target.value }))} className={selectClassName} required><option value="">Select</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>

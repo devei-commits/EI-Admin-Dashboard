@@ -74,8 +74,7 @@ const CreateRole: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const createRoleWithPermissions = async () => {
     setSubmitError(null);
     setSubmitting(true);
     const roleCode = formData.roleName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -104,6 +103,10 @@ const CreateRole: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
   };
 
   const getAvailableRoles = () => {
@@ -164,7 +167,7 @@ const CreateRole: React.FC = () => {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleFormSubmit}>
         {/* Step 1: Basic Information */}
         {activeStep === 'basic' && (
           <UnifiedCard>
@@ -330,7 +333,13 @@ const CreateRole: React.FC = () => {
               </button>
               
               {submitError && <p className="text-red-600 text-sm mb-2">{submitError}</p>}
-              <UnifiedButton type="submit" variant="primary" size="lg" disabled={submitting}>
+              <UnifiedButton
+                type="button"
+                variant="primary"
+                size="lg"
+                disabled={submitting}
+                onClick={createRoleWithPermissions}
+              >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>

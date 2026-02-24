@@ -86,21 +86,40 @@ export async function fetchUserById(
 }
 
 /**
- * Create a new user
- * @placeholder Returns mock data - replace with API call
+ * Create a staff user. Backend: POST /api/v1/users/create
+ * Body: firstName, lastName, email, mobile, password, roleId, department?, status?
  */
-export async function createUser(
-  _userData: UserCreatePayload
-): Promise<ServiceResult<User>> {
-  // TODO: Replace with actual API call
-  // return apiClient.post<User>('/users', userData);
-  
-  console.warn('[UserService] createUser: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+export async function createStaffUser(payload: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  mobile: string;
+  password: string;
+  roleId: number;
+  department?: string;
+  status?: string;
+}): Promise<ServiceResult<StaffUserFromApi>> {
+  try {
+    const body = {
+      firstName: payload.firstName.trim(),
+      lastName: payload.lastName.trim(),
+      email: payload.email.trim(),
+      mobile: payload.mobile.trim(),
+      password: payload.password,
+      roleId: payload.roleId,
+      department: payload.department?.trim() || undefined,
+      status: payload.status || 'active',
+    };
+    const res = await api.post<StaffUserFromApi>('/api/v1/users/create', body);
+    return { data: res, error: null, success: true };
+  } catch (err) {
+    const body = err && typeof err === 'object' && 'body' in err ? (err as { body?: { error?: string } }).body : undefined;
+    return {
+      data: null,
+      error: body?.error ?? (err instanceof Error ? err.message : 'Failed to create user'),
+      success: false,
+    };
+  }
 }
 
 /**
