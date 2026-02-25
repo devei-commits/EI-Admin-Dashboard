@@ -32,7 +32,7 @@ interface Settings {
 }
 
 const TreasuryApp = () => {
-  const { state } = useGlobalState();
+  const { state, dispatch } = useGlobalState();
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [notifications, setNotifications] = useState<Notification[]>([
     { id: '1', type: 'alert', title: 'Low Cash Balance', message: 'Cash position below ₹50L', timestamp: new Date(), read: false },
@@ -114,6 +114,7 @@ const TreasuryApp = () => {
     'inflows-funding': 'Banks & Investors Inflows',
     'budgets': 'Budgets & Allocation',
     'settings': 'Admin & Zoho Books Sync',
+    'po-advances': 'PO Advance Requests',
   };
 
   const handleApproval = (paymentId: string, approved: boolean) => {
@@ -191,8 +192,8 @@ const TreasuryApp = () => {
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
                 }`}
             >
               {screenTitles[screen]}
@@ -206,13 +207,26 @@ const TreasuryApp = () => {
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
                 }`}
             >
               {screenTitles[screen]}
             </button>
           ))}
+          {/* PO Advances (linked from Procurement) */}
+          <button
+            onClick={() => { setCurrentScreen('po-advances'); setIsMobileMenuOpen(false); }}
+            className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between ${currentScreen === 'po-advances'
+              ? 'bg-slate-800 text-white shadow-lg'
+              : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+              }`}
+          >
+            PO Advance Requests
+            {(state.po?.treasury?.length || 0) > 0 && (
+              <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{state.po.treasury.length}</span>
+            )}
+          </button>
 
           {/* Inward */}
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest px-4 mb-3 mt-6">Inward</p>
@@ -221,8 +235,8 @@ const TreasuryApp = () => {
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
                 }`}
             >
               {screenTitles[screen]}
@@ -236,8 +250,8 @@ const TreasuryApp = () => {
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
-                  ? 'bg-slate-800 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
                 }`}
             >
               {screenTitles[screen]}
@@ -294,14 +308,14 @@ const TreasuryApp = () => {
                     ) : (
                       notifications.map(notif => (
                         <div key={notif.id} className={`p-4 border-b transition-colors ${notif.type === 'alert' ? 'bg-red-50 border-red-100 hover:bg-red-100' :
-                            notif.type === 'warning' ? 'bg-yellow-50 border-yellow-100 hover:bg-yellow-100' :
-                              notif.type === 'success' ? 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100' :
-                                'bg-blue-50 border-blue-100 hover:bg-blue-100'
+                          notif.type === 'warning' ? 'bg-yellow-50 border-yellow-100 hover:bg-yellow-100' :
+                            notif.type === 'success' ? 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100' :
+                              'bg-blue-50 border-blue-100 hover:bg-blue-100'
                           }`}>
                           <div className="flex items-start gap-3">
                             <div className={`px-2.5 py-1.5 rounded-lg flex-shrink-0 ${notif.type === 'alert' ? 'bg-red-200 text-red-700' :
-                                notif.type === 'warning' ? 'bg-yellow-200 text-yellow-700' :
-                                  notif.type === 'success' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
+                              notif.type === 'warning' ? 'bg-yellow-200 text-yellow-700' :
+                                notif.type === 'success' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
                               }`}>
                               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -309,16 +323,16 @@ const TreasuryApp = () => {
                             </div>
                             <div className="flex-1">
                               <p className={`font-semibold text-sm ${notif.type === 'alert' ? 'text-red-900' :
-                                  notif.type === 'warning' ? 'text-yellow-900' :
-                                    notif.type === 'success' ? 'text-emerald-900' : 'text-blue-900'
+                                notif.type === 'warning' ? 'text-yellow-900' :
+                                  notif.type === 'success' ? 'text-emerald-900' : 'text-blue-900'
                                 }`}>{notif.title}</p>
                               <p className={`text-xs mt-1 ${notif.type === 'alert' ? 'text-red-700' :
-                                  notif.type === 'warning' ? 'text-yellow-700' :
-                                    notif.type === 'success' ? 'text-emerald-700' : 'text-blue-700'
+                                notif.type === 'warning' ? 'text-yellow-700' :
+                                  notif.type === 'success' ? 'text-emerald-700' : 'text-blue-700'
                                 }`}>{notif.message}</p>
                               <p className={`text-xs mt-2 ${notif.type === 'alert' ? 'text-red-600' :
-                                  notif.type === 'warning' ? 'text-yellow-600' :
-                                    notif.type === 'success' ? 'text-emerald-600' : 'text-blue-600'
+                                notif.type === 'warning' ? 'text-yellow-600' :
+                                  notif.type === 'success' ? 'text-emerald-600' : 'text-blue-600'
                                 }`}>{notif.timestamp.toLocaleTimeString()}</p>
                             </div>
                           </div>
@@ -533,15 +547,15 @@ const TreasuryApp = () => {
                         <div className="flex items-center gap-3 mb-3">
                           <h3 className="font-bold text-lg text-gray-900">{payment.vendor}</h3>
                           <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${payment.priority === 'high' ? 'bg-red-100 text-red-700 border-red-300' :
-                              payment.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                                'bg-gray-100 text-gray-700 border-gray-300'
+                            payment.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                              'bg-gray-100 text-gray-700 border-gray-300'
                             }`}>
                             {payment.priority === 'high' ? 'High Priority' : payment.priority === 'medium' ? 'Medium Priority' : 'Low Priority'}
                           </span>
                           <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${payment.status === 'pending' ? 'bg-blue-100 text-blue-700 border-blue-300' :
-                              payment.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                                payment.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
-                                  'bg-purple-100 text-purple-700 border-purple-300'
+                            payment.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                              payment.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
+                                'bg-purple-100 text-purple-700 border-purple-300'
                             }`}>
                             {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                           </span>
@@ -574,8 +588,8 @@ const TreasuryApp = () => {
                         {payment.approvals.map((approval, idx) => (
                           <div key={idx} className="flex items-center gap-3">
                             <div className={`px-3 py-2 rounded-lg text-xs font-medium border ${approval.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                                approval.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
-                                  'bg-gray-100 text-gray-700 border-gray-300'
+                              approval.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
+                                'bg-gray-100 text-gray-700 border-gray-300'
                               }`}>
                               Level {approval.level}
                             </div>
@@ -677,6 +691,79 @@ const TreasuryApp = () => {
           )}
 
 
+
+          {/* PO Advance Requests Screen */}
+          {currentScreen === 'po-advances' && (() => {
+            const treasuryPOs: any[] = state.po?.treasury || [];
+            const plannedPOs: any[] = state.po?.planned || [];
+
+            const issuePO = (po: any) => {
+              const itemUpdates = (po.lines || []).map((l: any) => ({
+                itemId: l.itemId,
+                inTransitDelta: l.qty,
+              }));
+              dispatch({ type: 'ISSUE_PO_FROM_TREASURY', payload: { poId: po.id, itemUpdates } });
+            };
+
+            const fmtMoney = (n: number) => '₹' + new Intl.NumberFormat('en-IN').format(Math.round(n));
+
+            return (
+              <div className="space-y-6">
+                {/* Treasury POs awaiting advance approval */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">POs Awaiting Advance Approval</h3>
+                  {treasuryPOs.length === 0 ? (
+                    <p className="text-gray-400 text-sm py-6 text-center">No POs awaiting advance payment. Create planned lines from Procurement → SalesAndPurchase.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {treasuryPOs.map((po: any) => {
+                        const total = (po.lines || []).reduce((s: number, l: any) => s + l.qty * l.unit, 0);
+                        const advPct = state.masters?.paymentTerms?.find((t: any) => t.id === po.termsId)?.advancePct || 0;
+                        const advAmt = Math.round(total * advPct / 100);
+                        return (
+                          <div key={po.id} className="border border-gray-200 rounded-xl p-4">
+                            <div className="flex items-start justify-between flex-wrap gap-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="font-mono font-bold text-gray-800">{po.id}</span>
+                                  <span className="font-semibold text-gray-700">{po.vendor}</span>
+                                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium">Advance Pending</span>
+                                </div>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                  {(po.lines || []).map((l: any) => (
+                                    <p key={l.itemId}>{l.itemName} — {new Intl.NumberFormat('en-IN').format(l.qty)} {l.uom} @ ₹{l.unit}</p>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">PO Value</p>
+                                <p className="text-xl font-bold text-gray-800">{fmtMoney(total)}</p>
+                                {advPct > 0 && <p className="text-sm text-orange-600 font-medium">{advPct}% advance = {fmtMoney(advAmt)}</p>}
+                                <button
+                                  onClick={() => issuePO(po)}
+                                  className="mt-3 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition"
+                                >
+                                  ✓ Approve & Issue PO
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Planned lines waiting to be converted to Draft POs */}
+                {plannedPOs.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <h4 className="font-semibold text-blue-800 mb-2 text-sm">📋 PO Planned Stage — {plannedPOs.length} lines pending Draft conversion</h4>
+                    <p className="text-xs text-blue-600">These planned lines from Procurement are waiting to be grouped into Draft POs. Visit Procurement tab in Sales & Purchase to manage them.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Budgets Screen */}
           {currentScreen === 'budgets' && (

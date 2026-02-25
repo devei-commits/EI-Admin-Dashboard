@@ -12,6 +12,16 @@ export type GlobalAction =
     | { type: 'ADD_PO'; payload: { stage: 'planned' | 'drafts' | 'treasury' | 'issued', po: any } }
     | { type: 'MOVE_PO_STAGE'; payload: { poId: string, from: string, to: string } }
     | { type: 'COMPLETE_GRN'; payload: { poId: string, lineItemId: string, grnData: any } }
+    // v15f business logic actions
+    | { type: 'CREATE_SO_FROM_CPO'; payload: { cpoId: string; soData: any; orderedProduct: any } }
+    | { type: 'ADD_ORDERED_PRODUCT'; payload: any }
+    | { type: 'ADD_PLANNED_LINE'; payload: { line: any; itemId: string; qty: number } }
+    | { type: 'MOVE_PLANNED_TO_DRAFT'; payload: { vendor: string; draftPO: any; plannedLineIds: string[] } }
+    | { type: 'ADD_TREASURY_REQUEST'; payload: any }
+    | { type: 'ISSUE_PO_FROM_TREASURY'; payload: { poId: string; itemUpdates: { itemId: string; inTransitDelta: number }[] } }
+    | { type: 'CREATE_BMR_BATCH'; payload: { batch: any; bmr: any; bpr?: any } }
+    | { type: 'ADVANCE_BMR_STAGE'; payload: { bmrId: string; newStage: number } }
+    | { type: 'COMPLETE_BPR_QC'; payload: { bprId: string; bmrId: string } }
     ;
 
 const initialState: GlobalState = {
@@ -342,8 +352,17 @@ const globalReducer = (state: GlobalState, action: GlobalAction): GlobalState =>
         }
         case 'COMPLETE_GRN': {
             const { poId: grnPoId, lineItemId, grnData } = action.payload;
+            // Also update item stock if receivedQty is provided in grnData
+            const newItems = grnData.receivedQty
+                ? state.items.map((item: any) =>
+                    item.id === lineItemId
+                        ? { ...item, stock: (item.stock || 0) + grnData.receivedQty }
+                        : item
+                )
+                : state.items;
             return {
                 ...state,
+                items: newItems,
                 po: {
                     ...state.po,
                     issued: state.po.issued.map((po: any) =>
@@ -361,10 +380,141 @@ const globalReducer = (state: GlobalState, action: GlobalAction): GlobalState =>
                 },
             };
         }
+        case 'CREATE_SO_FROM_CPO': {
+            const { cpoId, soData, orderedProduct } = action.payload;
+            const today = new Date().toISOString().slice(0, 10);
+            const updatedCPOs = state.orders.customerPOs.map((cpo: any) =>
+                cpo.po === cpoId
+                    ? {
+                        ...cpo,
+                        status: 'so_created',
+                        soRef: soData.so,
+                        timeline: (cpo.timeline || []).map((t: any) =>
+                            t.stage === 'SO Created' ? { ...t, date: today, done: true } : t
+                        ),
+                    }
+                    : cpo
+            );
+            return {
+                ...state,
+                orders: {
+                    ...state.orders,
+                    customerPOs: updatedCPOs,
+                    salesOrders: [...state.orders.salesOrders, soData],
+                    orderedProducts: [...state.orders.orderedProducts, orderedProduct],
+                },
+            };
+        }
+        case 'ADD_ORDERED_PRODUCT':
+            return {
+                ...state,
+                orders: {
+                    ...state.orders,
+                    orderedProducts: [...state.orders.orderedProducts, action.payload],
+                },
+            };
+        case 'ADD_PLANNED_LINE': {
+            const { line, itemId, qty } = action.payload;
+            return {
+                ...state,
+                items: state.items.map((item: any) =>
+                    item.id === itemId
+                        ? { ...item, poQty: (item.poQty || 0) + qty }
+                        : item
+                ),
+                po: {
+                    ...state.po,
+                    planned: [...(state.po.planned || []), line],
+                },
+            };
+        }
+        case 'MOVE_PLANNED_TO_DRAFT': {
+            const { vendor, draftPO, plannedLineIds } = action.payload;
+            const remainingPlanned = (state.po.planned || []).filter(
+                (l: any) => !plannedLineIds.includes(l.id)
+            );
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    planned: remainingPlanned,
+                    drafts: [...(state.po.drafts || []), draftPO],
+                },
+            };
+        }
+        case 'ADD_TREASURY_REQUEST':
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    treasury: [...(state.po.treasury || []), action.payload],
+                },
+            };
+        case 'ISSUE_PO_FROM_TREASURY': {
+            const { poId: issuePOId, itemUpdates } = action.payload;
+            // Move PO from treasury → issued
+            const poToIssue = (state.po.treasury || []).find((p: any) => p.id === issuePOId);
+            if (!poToIssue) return state;
+            const issuedPO = { ...poToIssue, status: 'ISSUED', issuedAt: new Date().toISOString().slice(0, 10) };
+            const updatedItemsAfterIssue = state.items.map((item: any) => {
+                const update = itemUpdates.find((u: any) => u.itemId === item.id);
+                return update ? { ...item, inTransit: (item.inTransit || 0) + update.inTransitDelta } : item;
+            });
+            return {
+                ...state,
+                items: updatedItemsAfterIssue,
+                po: {
+                    ...state.po,
+                    treasury: (state.po.treasury || []).filter((p: any) => p.id !== issuePOId),
+                    issued: [...(state.po.issued || []), issuedPO],
+                },
+            };
+        }
+        case 'CREATE_BMR_BATCH': {
+            const { batch, bmr, bpr } = action.payload;
+            const newBPRs = bpr ? [...(state.mfg.bprs || []), bpr] : state.mfg.bprs || [];
+            return {
+                ...state,
+                mfg: {
+                    ...state.mfg,
+                    batches: [...(state.mfg.batches || []), batch],
+                    bmrs: [...(state.mfg.bmrs || []), bmr],
+                    bprs: newBPRs,
+                },
+            };
+        }
+        case 'ADVANCE_BMR_STAGE': {
+            const { bmrId, newStage } = action.payload;
+            return {
+                ...state,
+                mfg: {
+                    ...state.mfg,
+                    bmrs: (state.mfg.bmrs || []).map((b: any) =>
+                        b.id === bmrId ? { ...b, stage: newStage } : b
+                    ),
+                },
+            };
+        }
+        case 'COMPLETE_BPR_QC': {
+            const { bprId, bmrId } = action.payload;
+            return {
+                ...state,
+                mfg: {
+                    ...state.mfg,
+                    bmrs: (state.mfg.bmrs || []).map((b: any) =>
+                        b.id === bmrId ? { ...b, stage: 8, completedAt: new Date().toISOString().slice(0, 10) } : b
+                    ),
+                    bprs: (state.mfg.bprs || []).map((b: any) =>
+                        b.id === bprId ? { ...b, stage: 4, completedAt: new Date().toISOString().slice(0, 10) } : b
+                    ),
+                },
+            };
+        }
         default:
             return state;
     }
 };
+
 
 const GlobalStateContext = createContext<{
     state: GlobalState;

@@ -528,7 +528,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Create New Order</h2>
                 <button
                   onClick={handleCloseCreateModal}
-                  className="text-slate-500 hover:text-slate-300 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -537,10 +537,10 @@ const OrderTable: React.FC = () => {
               <div className="space-y-6">
                 {/* Company Information */}
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-300 mb-3">Company Information</h3>
+                  <h3 className="text-lg font-semibold text-gray-700 mb-3">Company Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Company Name *
                       </label>
                       <input
@@ -552,7 +552,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Address *
                       </label>
                       <input
@@ -564,7 +564,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Contact Person
                       </label>
                       <input
@@ -576,7 +576,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Email
                       </label>
                       <input
@@ -588,7 +588,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Phone
                       </label>
                       <input
@@ -600,7 +600,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Priority
                       </label>
                       <select
@@ -620,7 +620,7 @@ const OrderTable: React.FC = () => {
                 {/* Products */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-semibold text-slate-300">Products *</h3>
+                    <h3 className="text-lg font-semibold text-gray-700">Products *</h3>
                     <button
                       onClick={addProduct}
                       className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
@@ -691,7 +691,7 @@ const OrderTable: React.FC = () => {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Notes
                   </label>
                   <textarea
@@ -733,7 +733,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Edit Order</h2>
                 <button
                   onClick={handleCloseEditModal}
-                  className="text-slate-500 hover:text-slate-300 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -742,10 +742,10 @@ const OrderTable: React.FC = () => {
               <div className="space-y-6">
                 {/* Company Information */}
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-300 mb-3">Company Information</h3>
+                  <h3 className="text-lg font-semibold text-gray-700 mb-3">Company Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Company Name *
                       </label>
                       <input
@@ -757,7 +757,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Address *
                       </label>
                       <input
@@ -769,7 +769,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Contact Person
                       </label>
                       <input
@@ -781,7 +781,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Email
                       </label>
                       <input
@@ -793,7 +793,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Phone
                       </label>
                       <input
@@ -805,7 +805,7 @@ const OrderTable: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Priority
                       </label>
                       <select
@@ -825,7 +825,7 @@ const OrderTable: React.FC = () => {
                 {/* Products */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-semibold text-slate-300">Products *</h3>
+                    <h3 className="text-lg font-semibold text-gray-700">Products *</h3>
                     <button
                       onClick={addProduct}
                       className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
@@ -896,7 +896,7 @@ const OrderTable: React.FC = () => {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Notes
                   </label>
                   <textarea
@@ -938,7 +938,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
                 <button
                   onClick={handleCloseDetailsModal}
-                  className="text-slate-500 hover:text-slate-300 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -1000,15 +1000,15 @@ const OrderTable: React.FC = () => {
                 {/* Products */}
                 {selectedOrder.products && selectedOrder.products.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-300 mb-3">Products</h3>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-3">Products</h3>
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-slate-300">Product</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-slate-300">Quantity</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-slate-300">Unit Price</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-slate-300">Total</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Product</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Quantity</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Unit Price</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -1023,7 +1023,7 @@ const OrderTable: React.FC = () => {
                         </tbody>
                         <tfoot className="bg-slate-50">
                           <tr>
-                            <td colSpan={3} className="px-4 py-2 text-right font-semibold text-slate-300">Grand Total:</td>
+                            <td colSpan={3} className="px-4 py-2 text-right font-semibold text-gray-700">Grand Total:</td>
                             <td className="px-4 py-2 text-right font-bold text-gray-900">₹{selectedOrder.totalAmount.toLocaleString()}</td>
                           </tr>
                         </tfoot>
@@ -1035,7 +1035,7 @@ const OrderTable: React.FC = () => {
                 {/* Status History Timeline */}
                 {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-300 mb-3">Order Timeline</h3>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-3">Order Timeline</h3>
                     <div className="space-y-3">
                       {selectedOrder.statusHistory.map((history, index) => (
                         <div key={index} className="flex gap-3">
@@ -1053,7 +1053,7 @@ const OrderTable: React.FC = () => {
                               <span className="text-xs text-slate-500">{history.timestamp}</span>
                             </div>
                             <p className="text-sm text-slate-400 mt-1">Changed by: {history.changedBy}</p>
-                            {history.notes && <p className="text-sm text-slate-300 mt-1">{history.notes}</p>}
+                            {history.notes && <p className="text-sm text-gray-700 mt-1">{history.notes}</p>}
                           </div>
                         </div>
                       ))}
@@ -1064,8 +1064,8 @@ const OrderTable: React.FC = () => {
                 {/* Notes */}
                 {selectedOrder.notes && (
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-300 mb-2">Notes</h3>
-                    <p className="text-slate-300 bg-slate-50 p-3 rounded-lg">{selectedOrder.notes}</p>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Notes</h3>
+                    <p className="text-gray-700 bg-slate-50 p-3 rounded-lg">{selectedOrder.notes}</p>
                   </div>
                 )}
 
@@ -1073,7 +1073,7 @@ const OrderTable: React.FC = () => {
                 {selectedOrder.cancellationReason && (
                   <div>
                     <h3 className="text-lg font-semibold text-red-700 mb-2">Cancellation Reason</h3>
-                    <p className="text-slate-300 bg-red-50 p-3 rounded-lg border border-red-200">{selectedOrder.cancellationReason}</p>
+                    <p className="text-gray-700 bg-red-50 p-3 rounded-lg border border-red-200">{selectedOrder.cancellationReason}</p>
                   </div>
                 )}
 
@@ -1098,12 +1098,12 @@ const OrderTable: React.FC = () => {
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6">
               <h2 className="text-xl font-bold text-red-600 mb-4">Cancel Order</h2>
-              <p className="text-slate-300 mb-4">
+              <p className="text-gray-700 mb-4">
                 Are you sure you want to cancel order <strong>{selectedOrder.orderId}</strong>?
                 This action cannot be undone.
               </p>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Cancellation Reason *
                 </label>
                 <textarea
@@ -1174,7 +1174,7 @@ const OrderTable: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {/* Quick Search */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Quick Search
               </label>
               <input
@@ -1191,7 +1191,7 @@ const OrderTable: React.FC = () => {
 
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Order Status
               </label>
               <select
@@ -1216,7 +1216,7 @@ const OrderTable: React.FC = () => {
 
             {/* Product Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Product Type
               </label>
               <select
@@ -1239,7 +1239,7 @@ const OrderTable: React.FC = () => {
 
             {/* Priority Filter */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Priority
               </label>
               <select
@@ -1260,7 +1260,7 @@ const OrderTable: React.FC = () => {
 
             {/* Date From */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Date From
               </label>
               <input
@@ -1276,7 +1276,7 @@ const OrderTable: React.FC = () => {
 
             {/* Date To */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Date To
               </label>
               <input
@@ -1295,7 +1295,7 @@ const OrderTable: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleClearFilters}
-              className="px-4 py-2 bg-gray-200 text-slate-300 rounded-lg hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
             >
               Clear All Filters
             </button>
@@ -1310,7 +1310,7 @@ const OrderTable: React.FC = () => {
           {/* Save Filter Form */}
           {showSaveFilter && (
             <div className="mt-4 p-4 bg-white rounded-lg border">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Filter Name
               </label>
               <div className="flex gap-2">
@@ -1334,7 +1334,7 @@ const OrderTable: React.FC = () => {
           {/* Saved Filters */}
           {savedFilters.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-300 mb-2">Saved Filters</h3>
+              <h3 className="text-sm font-medium text-gray-600 mb-2">Saved Filters</h3>
               <div className="flex flex-wrap gap-2">
                 {savedFilters.map(filter => (
                   <div key={filter.id} className="flex items-center gap-1 bg-blue-100 px-3 py-1 rounded-full">
@@ -1360,7 +1360,7 @@ const OrderTable: React.FC = () => {
         {/* Bulk Actions */}
         {selectedOrders.length > 0 && (
           <div className="p-4 bg-blue-50 border-b flex flex-wrap items-center gap-4">
-            <span className="text-sm font-medium text-slate-300">
+            <span className="text-sm font-medium text-gray-700">
               {selectedOrders.length} order(s) selected
             </span>
             <div className="flex gap-2">
@@ -1405,31 +1405,31 @@ const OrderTable: React.FC = () => {
                     className="rounded border-gray-300"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="orderId" label="Order ID" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="companyName" label="Company" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="productType" label="Product Type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="quantity" label="Quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="totalAmount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="priority" label="Priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="dateRegistered" label="Date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                   <OrderSortButton field="orderStatus" label="Status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-300">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
                   Actions
                 </th>
               </tr>
@@ -1446,14 +1446,14 @@ const OrderTable: React.FC = () => {
                     />
                   </td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.orderId}</td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{order.companyName}</td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{order.productType}</td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{order.quantity}</td>
-                  <td className="px-4 py-3 text-sm text-slate-300 font-medium">₹{order.totalAmount.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{order.companyName}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{order.productType}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{order.quantity}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 font-medium">₹{order.totalAmount.toLocaleString()}</td>
                   <td className={`px - 4 py - 3 text - sm font - medium ${getPriorityColor(order.priority)} `}>
                     {order.priority}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-300">{order.dateRegistered}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{order.dateRegistered}</td>
                   <td className="px-4 py-3">
                     <UnifiedBadge variant={getStatusBadgeColor(order.orderStatus)}>
                       {order.orderStatus}
@@ -1494,7 +1494,7 @@ const OrderTable: React.FC = () => {
                       {order.orderStatus}
                     </UnifiedBadge>
                   </div>
-                  <div className="space-y-1 text-sm text-slate-300">
+                  <div className="space-y-1 text-sm text-gray-600">
                     <div><strong>Company:</strong> {order.companyName}</div>
                     <div><strong>Product:</strong> {order.productType}</div>
                     <div><strong>Quantity:</strong> {order.quantity}</div>
@@ -1522,14 +1522,14 @@ const OrderTable: React.FC = () => {
 
         {/* Pagination */}
         <div className="p-4 border-t flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-sm text-slate-400">
+          <div className="text-sm text-gray-500">
             Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, sortedOrders.length)} of {sortedOrders.length} orders
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 bg-gray-200 text-slate-300 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
@@ -1539,7 +1539,7 @@ const OrderTable: React.FC = () => {
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="px-4 py-2 bg-gray-200 text-slate-300 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>

@@ -38,7 +38,7 @@ const SalesAndPurchase: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<'sales' | 'purchase'>('sales');
-  const [viewMode, setViewMode] = useState<'dashboard' | 'form'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'form' | 'procurement'>('dashboard');
   const [orderType, setOrderType] = useState<'SO' | 'PO' | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -352,8 +352,8 @@ const SalesAndPurchase: React.FC = () => {
         <button
           onClick={() => setViewMode('dashboard')}
           className={`px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all flex items-center gap-1 sm:gap-2 text-sm sm:text-base ${viewMode === 'dashboard'
-              ? 'bg-slate-800 text-white shadow-md'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            ? 'bg-slate-800 text-white shadow-md'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
             }`}
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -365,8 +365,8 @@ const SalesAndPurchase: React.FC = () => {
         <button
           onClick={() => setViewMode('form')}
           className={`px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all flex items-center gap-1 sm:gap-2 text-sm sm:text-base ${viewMode === 'form'
-              ? 'bg-slate-800 text-white shadow-md'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            ? 'bg-slate-800 text-white shadow-md'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
             }`}
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -374,7 +374,22 @@ const SalesAndPurchase: React.FC = () => {
           </svg>
           Form
         </button>
+        <button
+          onClick={() => setViewMode('procurement')}
+          className={`px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium transition-all flex items-center gap-1 sm:gap-2 text-sm sm:text-base ${viewMode === 'procurement'
+            ? 'bg-slate-800 text-white shadow-md'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          Procurement
+        </button>
       </div>
+
+      {/* Procurement View */}
+      {viewMode === 'procurement' && <ProcurementView state={state} dispatch={dispatch} />}
 
       {/* Dashboard View */}
       {viewMode === 'dashboard' && (
@@ -416,8 +431,8 @@ const SalesAndPurchase: React.FC = () => {
               <button
                 onClick={() => setActiveTab('sales')}
                 className={`flex-1 px-3 sm:px-6 py-2 sm:py-3 font-medium transition-all text-sm sm:text-base ${activeTab === 'sales'
-                    ? 'text-slate-800 border-b-2 border-amber-600 bg-gray-50'
-                    : 'text-gray-600 hover:text-gray-900'
+                  ? 'text-slate-800 border-b-2 border-amber-600 bg-gray-50'
+                  : 'text-gray-600 hover:text-gray-900'
                   }`}
               >
                 <span className="hidden sm:inline">Sales Orders</span>
@@ -426,8 +441,8 @@ const SalesAndPurchase: React.FC = () => {
               <button
                 onClick={() => setActiveTab('purchase')}
                 className={`flex-1 px-3 sm:px-6 py-2 sm:py-3 font-medium transition-all text-sm sm:text-base ${activeTab === 'purchase'
-                    ? 'text-slate-800 border-b-2 border-amber-600 bg-gray-50'
-                    : 'text-gray-600 hover:text-gray-900'
+                  ? 'text-slate-800 border-b-2 border-amber-600 bg-gray-50'
+                  : 'text-gray-600 hover:text-gray-900'
                   }`}
               >
                 <span className="hidden sm:inline">Purchase Orders</span>
@@ -1637,3 +1652,265 @@ const SalesAndPurchase: React.FC = () => {
 };
 
 export default SalesAndPurchase;
+
+// ══════════════════════════════════════════════════════════════
+// ProcurementView — shows item-level gap analysis + PO planning
+// mirrors v15f Procurement Item Dashboard
+// ══════════════════════════════════════════════════════════════
+const ProcurementView: React.FC<{ state: any; dispatch: any }> = ({ state, dispatch }) => {
+  const [planItemId, setPlanItemId] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState({ vendor: '', moq: '', qty: '', price: '', termsId: '' });
+
+  const items: any[] = state.items || [];
+  const planned: any[] = state.po?.planned || [];
+  const termOptions: any[] = state.masters?.paymentTerms || [];
+
+  const vendorByName = (name: string, item: any) =>
+    item?.vendors?.find((v: any) => v.vendor === name);
+
+  const getPlanItem = () => items.find((it: any) => it.id === planItemId);
+
+  const openPlanModal = (itemId: string) => {
+    setPlanItemId(itemId);
+    setPlanForm({ vendor: '', moq: '', qty: '', price: '', termsId: '' });
+  };
+
+  const handlePushPlanned = () => {
+    const item = getPlanItem();
+    if (!item) return;
+    if (!planForm.vendor || !planForm.moq || !planForm.qty || !planForm.price) {
+      alert('Fill all procurement fields.');
+      return;
+    }
+    const v = vendorByName(planForm.vendor, item);
+    const slab = v?.slabs?.find((s: any) => s.moq === Number(planForm.moq)) || v?.slabs?.[0];
+    const leadDays = slab?.leadDays || 10;
+    const qty = Number(planForm.qty);
+
+    const line = {
+      id: 'PLAN-' + Math.random().toString(16).slice(2, 8).toUpperCase(),
+      vendor: planForm.vendor,
+      vendorId: v?.vendorId || null,
+      itemId: item.id,
+      itemName: item.name,
+      uom: item.uom,
+      moq: Number(planForm.moq),
+      qty,
+      unit: Number(planForm.price),
+      leadDays,
+      termsId: planForm.termsId,
+      createdAt: new Date().toISOString().slice(0, 10),
+      status: 'PLANNED',
+    };
+
+    dispatch({ type: 'ADD_PLANNED_LINE', payload: { line, itemId: item.id, qty } });
+    setPlanItemId(null);
+  };
+
+  const fmt = (n: number) => new Intl.NumberFormat('en-IN').format(Math.round(n));
+
+  // Group planned lines by vendor for the summary panel
+  const plannedByVendor: Record<string, any[]> = {};
+  planned.forEach((l: any) => {
+    if (!plannedByVendor[l.vendor]) plannedByVendor[l.vendor] = [];
+    plannedByVendor[l.vendor].push(l);
+  });
+
+  const planItem = getPlanItem();
+
+  return (
+    <div className="space-y-6 pt-2">
+      {/* Header */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Procurement Dashboard</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Item-level stock gap analysis · Release to Planned PO</p>
+        </div>
+        <div className="text-right text-sm">
+          <p className="text-gray-500">{planned.length} planned lines</p>
+          <p className="font-semibold text-slate-800">{Object.keys(plannedByVendor).length} vendors</p>
+        </div>
+      </div>
+
+      {/* Items Table */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                {['Item', 'Type', 'Stock', 'Reserved', 'Free', 'In Transit', 'PO Qty', 'Required', 'Gap', 'Priority Qty', ''].map((h) => (
+                  <th key={h} className="text-left px-3 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any) => {
+                const free = (item.stock || 0) - (item.reserved || 0);
+                const incoming = (item.poQty || 0) + (item.inTransit || 0);
+                const gap = (item.required || 0) - free - incoming;
+                const priorityOrders = (item.orders || []).filter((o: any) => (o.planning || 0) >= 80);
+                const priorityQty = priorityOrders.reduce((s: number, o: any) => s + o.required, 0);
+                const isGap = gap > 0;
+                const isBlocker = (item.orders || []).some((o: any) => o.pendingBlocker);
+
+                return (
+                  <tr key={item.id} className={`border-b border-gray-100 hover:bg-gray-50 ${isGap ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold text-gray-800">{item.name}</p>
+                      <p className="text-xs text-gray-400">{item.id}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${item.type === 'RM' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>{item.type}</span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-gray-700">{fmt(item.stock || 0)}</td>
+                    <td className="px-3 py-3 font-mono text-orange-600">{fmt(item.reserved || 0)}</td>
+                    <td className={`px-3 py-3 font-mono font-semibold ${free < 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(free)}</td>
+                    <td className="px-3 py-3 font-mono text-blue-600">{fmt(item.inTransit || 0)}</td>
+                    <td className="px-3 py-3 font-mono text-indigo-600">{fmt(item.poQty || 0)}</td>
+                    <td className="px-3 py-3 font-mono text-gray-700">{fmt(item.required || 0)}</td>
+                    <td className="px-3 py-3">
+                      <span className={`font-mono font-bold ${isGap ? 'text-red-600' : 'text-green-600'}`}>{isGap ? `▲ ${fmt(gap)}` : '✓ OK'}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      {isBlocker ? (
+                        <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">{fmt(priorityQty)} {item.uom}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">{fmt(priorityQty)} {item.uom}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {(item.vendors || []).length > 0 && (
+                        <button
+                          onClick={() => openPlanModal(item.id)}
+                          className="px-3 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg hover:bg-slate-700 transition whitespace-nowrap"
+                        >
+                          + Plan PO
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Planned Lines Summary */}
+      {planned.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <h3 className="font-semibold text-gray-700 mb-3 text-sm">PO Planned Stage — {planned.length} lines</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs uppercase text-gray-500 border-b border-gray-100">
+                <th className="text-left pb-2">Vendor</th>
+                <th className="text-left pb-2">Items</th>
+                <th className="text-left pb-2">Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(plannedByVendor).map(([vendor, lines]) => {
+                const total = lines.reduce((s: number, l: any) => s + l.qty * l.unit, 0);
+                return (
+                  <tr key={vendor} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-2 font-semibold text-gray-800">{vendor}</td>
+                    <td className="py-2 text-gray-600">{lines.map((l: any) => `${l.itemName} (${fmt(l.qty)} ${l.uom})`).join(', ')}</td>
+                    <td className="py-2 font-bold text-gray-800">₹{fmt(total)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ══ Plan PO Modal ══ */}
+      {planItemId && planItem && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-start justify-between p-6 border-b">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Release to Planned</h2>
+                <p className="text-sm text-gray-500">{planItem.name} · {planItem.uom}</p>
+              </div>
+              <button onClick={() => setPlanItemId(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Vendor picker with price slabs */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Vendor</label>
+                <select
+                  value={planForm.vendor}
+                  onChange={(e) => {
+                    const v = vendorByName(e.target.value, planItem);
+                    const slab = v?.slabs?.[0];
+                    setPlanForm((p) => ({ ...p, vendor: e.target.value, moq: slab?.moq?.toString() || '', price: slab?.price?.toString() || '' }));
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="">Select vendor…</option>
+                  {(planItem.vendors || []).map((v: any) => <option key={v.vendor} value={v.vendor}>{v.vendor}</option>)}
+                </select>
+              </div>
+
+              {planForm.vendor && (() => {
+                const v = vendorByName(planForm.vendor, planItem);
+                return (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">MOQ / Slab</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {(v?.slabs || []).map((s: any) => (
+                        <button
+                          key={s.moq}
+                          onClick={() => setPlanForm((p) => ({ ...p, moq: s.moq.toString(), price: s.price.toString() }))}
+                          className={`px-3 py-1.5 text-xs rounded-lg border transition ${planForm.moq === s.moq.toString() ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                          MOQ {s.moq} · ₹{s.price}/{planItem.uom} · {s.leadDays}d
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Order Qty ({planItem.uom})</label>
+                  <input type="number" value={planForm.qty} onChange={(e) => setPlanForm((p) => ({ ...p, qty: e.target.value }))}
+                    placeholder="0" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Unit Price (₹)</label>
+                  <input type="number" value={planForm.price} onChange={(e) => setPlanForm((p) => ({ ...p, price: e.target.value }))}
+                    placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                </div>
+              </div>
+
+              {planForm.qty && planForm.price && (
+                <div className="bg-gray-50 rounded-xl p-3 text-sm flex justify-between">
+                  <span className="text-gray-600">Estimated Value</span>
+                  <span className="font-bold text-gray-800">₹{fmt(Number(planForm.qty) * Number(planForm.price))}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Terms</label>
+                <select value={planForm.termsId} onChange={(e) => setPlanForm((p) => ({ ...p, termsId: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                  <option value="">Select terms…</option>
+                  {termOptions.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setPlanItemId(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+              <button onClick={handlePushPlanned} className="px-5 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition">Release to Planned</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
