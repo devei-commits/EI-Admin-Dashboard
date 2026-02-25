@@ -1,0 +1,56 @@
+# Migration Plan: Present Website → New Functionality (v15f)
+
+This plan outlines the steps to migrate the interconnected functionality established in the `v15f (1).html` prototype into the current React application.
+
+## User Review Required
+> [!IMPORTANT]
+> The v15f HTML prototype relies on a **highly interconnected, synchronous global state** (`S` object), meaning a change in one module (like creating a Sales Order) instantly impacts Procurement and Manufacturing modules. 
+> 
+> The current React app uses a series of independent pages with disconnected local or context states. **To support the new functionality, we will need to introduce a unified global state manager** (like `React Context` combined with `useReducer`, or `Zustand`) that will replace the independent mock data inside individual pages. Please review and confirm you agree with this architectural shift.
+
+## Proposed Changes
+
+### 1. Unified Global State Context (State Architecture)
+The biggest change is the underlying data model. We will create a `GlobalStateContext` that holds the entire mocked DB structure shown in the v15f HTML.
+
+#### [NEW] `src/context/GlobalStateContext.tsx`
+- Implement the [init()](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#842-1178) data from v15f containing `masters`, `items`, `orders`, [po](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#2562-2566), and `mfg`.
+- Supply reducer functions/actions that mimic the Vanilla JS functions from v15f (e.g. [saveNewCPO](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#4321-4386), [pushPlannedLine](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#3522-3552), [submitBMRSchedule](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#1859-1873), [initiateTransfer](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#1350-1359), [completeBPRQC](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#2317-2343)).
+
+### 2. Updating Core Modules to Use Global State
+
+#### [MODIFY] [src/pages/Dashboard.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/Dashboard.tsx)
+- Replace isolated logic with data drawn from the new Global Context to show the "Command Center" KPIs and "Queues" (Treasury Requests, Issued PO Alerts) exactly as designed in v15f.
+
+#### [MODIFY] [src/pages/OrderManagement.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/OrderManagement.tsx) & [src/pages/OrderHub.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/OrderHub.tsx)
+- Connect to `states.orders.customerPOs` and `states.orders.salesOrders`.
+- Implement the creation flow: New CPO Modal -> Finance Review -> SO Created -> Ordered Products generated.
+- Hook up "Items Involved" calculation based on BOMs from the new `items` state.
+
+#### [MODIFY] [src/pages/SalesAndPurchase.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/SalesAndPurchase.tsx)
+- Integrate with Procurement logic: check inventory gaps ([lineAvailability](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#808-816)), calculate `Priority Qty`.
+- Implement logic to Release to "PO Planned Stage" from the item dashboard.
+
+#### [MODIFY] [src/pages/TreasuryApp.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/TreasuryApp.tsx)
+- Connect Treasury requests directly to the Draft PO transition when advance payment is required, matching the v15f HTML logic.
+
+#### [MODIFY] [src/pages/GoodReceivingPage.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/GoodReceivingPage.tsx) & PO Logic
+- Hook up to `states.po.issued`.
+- Support PO receiving, GRN validations, and stock updates that will immediately reflect in the [Items](file:///h:/Eisthetic/eiadmin/eiadmin/v15f%20%281%29.html#4769-4780) state, unblocking BMRs/BPRs.
+
+#### [MODIFY] [src/pages/BOMRefactored.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/BOMRefactored.tsx) & [PackagingRefactored.tsx](file:///h:/Eisthetic/eiadmin/eiadmin/src/pages/PackagingRefactored.tsx) (BMR & BPR)
+- Implement the comprehensive timeline stages (Pending → Confirmed → Reserved → Scheduled → Sourced → Dispensed → Production → QC → Completed).
+- Connect Batch Splitting logic from `modalBatchSplit` of v15f.
+- Implement material reservations logic (`items[].reservations.rmBMR`).
+
+#### [NEW] Warehouse Tab Functionality
+- If there is not a dedicated WH route, we might append it or inject it into an existing module to handle "Material Transfer Requests" from Main WH to Factory as defined in v15f.
+
+### 3. Verification Plan
+- **Automated tests (if applicable):** Create integration test wrappers verifying state transitions (e.g., CPO -> SO -> Procurement triggers PO requirement).
+- **Manual Verification:** 
+  1. Boot up the app (`npm run dev`).
+  2. Create a new Customer PO. Verify it creates a Sales Order.
+  3. Verify that new Ordered Products appear in the Procurement module as shortages.
+  4. Create a PO for the exact shortage amount, run it through Treasury, and Issue it.
+  5. Verify that performing the GRN adds the stock and clears the shortage flag in the BMR/BPR module.

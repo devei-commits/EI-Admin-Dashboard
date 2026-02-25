@@ -6,7 +6,7 @@ import { visualizer } from 'rollup-plugin-visualizer'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(), 
+    react(),
     tailwindcss(),
     // Bundle analyzer - generates stats.html after build
     visualizer({
@@ -14,7 +14,7 @@ export default defineConfig({
       open: false,
       gzipSize: true,
       brotliSize: true,
-    }),
+    }) as any,
   ],
   build: {
     // Target modern browsers for smaller bundles
@@ -24,9 +24,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           // React core libraries
-          if (id.includes('node_modules/react/') || 
-              id.includes('node_modules/react-dom/') || 
-              id.includes('node_modules/react-router-dom/')) {
+          if (id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router-dom/')) {
             return 'react-vendor';
           }
           // Radix UI components

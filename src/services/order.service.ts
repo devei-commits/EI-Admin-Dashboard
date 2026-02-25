@@ -7,19 +7,19 @@
  */
 
 import type {
-  Order,
-  OrderHubItem,
-  OrderReview,
-  BOMItem,
-  GoodReceivingRecord,
-  OrderFilter,
-  SavedFilter,
-  AuditLog,
+ Order,
+ OrderHubItem,
+ OrderReview,
+ BOMItem,
+ GoodReceivingRecord,
+ OrderFilter,
+ SavedFilter,
+ AuditLog,
 } from '../types/order.types';
 import type { 
-  PaginatedResponse, 
-  QueryParams,
-  ServiceResult,
+ PaginatedResponse, 
+ QueryParams,
+ ServiceResult,
 } from '../types/api.types';
 
 // ==================== Order CRUD Operations ====================
@@ -29,17 +29,17 @@ import type {
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrders(
-  _params?: QueryParams
+ _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<Order>>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<PaginatedResponse<Order>>('/orders', { params });
-  
-  console.warn('[OrderService] fetchOrders: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<PaginatedResponse<Order>>('/orders', { params });
+ 
+ console.warn('[OrderService] fetchOrders: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -47,17 +47,17 @@ export async function fetchOrders(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderById(
-  _orderId: string
+ _orderId: string
 ): Promise<ServiceResult<Order>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<Order>(`/orders/${orderId}`);
-  
-  console.warn('[OrderService] fetchOrderById: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<Order>(`/orders/${orderId}`);
+ 
+ console.warn('[OrderService] fetchOrderById: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -65,17 +65,17 @@ export async function fetchOrderById(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createOrder(
-  _orderData: Partial<Order>
+ _orderData: Partial<Order>
 ): Promise<ServiceResult<Order>> {
-  // TODO: Replace with actual API call
-  // return apiClient.post<Order>('/orders', orderData);
-  
-  console.warn('[OrderService] createOrder: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.post<Order>('/orders', orderData);
+ 
+ console.warn('[OrderService] createOrder: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -83,18 +83,18 @@ export async function createOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrder(
-  _orderId: string,
-  _orderData: Partial<Order>
+ _orderId: string,
+ _orderData: Partial<Order>
 ): Promise<ServiceResult<Order>> {
-  // TODO: Replace with actual API call
-  // return apiClient.put<Order>(`/orders/${orderId}`, orderData);
-  
-  console.warn('[OrderService] updateOrder: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.put<Order>(`/orders/${orderId}`, orderData);
+ 
+ console.warn('[OrderService] updateOrder: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -102,17 +102,17 @@ export async function updateOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteOrder(
-  _orderId: string
+ _orderId: string
 ): Promise<ServiceResult<void>> {
-  // TODO: Replace with actual API call
-  // return apiClient.delete(`/orders/${orderId}`);
-  
-  console.warn('[OrderService] deleteOrder: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.delete(`/orders/${orderId}`);
+ 
+ console.warn('[OrderService] deleteOrder: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Order Status Operations ====================
@@ -122,19 +122,19 @@ export async function deleteOrder(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrderStatus(
-  _orderId: string,
-  _status: Order['orderStatus'],
-  _notes?: string
+ _orderId: string,
+ _status: Order['orderStatus'],
+ _notes?: string
 ): Promise<ServiceResult<Order>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch<Order>(`/orders/${orderId}/status`, { status, notes });
-  
-  console.warn('[OrderService] updateOrderStatus: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.patch<Order>(`/orders/${orderId}/status`, { status, notes });
+ 
+ console.warn('[OrderService] updateOrderStatus: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -142,18 +142,18 @@ export async function updateOrderStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function bulkUpdateOrderStatus(
-  _orderIds: string[],
-  _status: Order['orderStatus']
+ _orderIds: string[],
+ _status: Order['orderStatus']
 ): Promise<ServiceResult<{ updated: number; failed: number }>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch('/orders/bulk-status', { orderIds, status });
-  
-  console.warn('[OrderService] bulkUpdateOrderStatus: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.patch('/orders/bulk-status', { orderIds, status });
+ 
+ console.warn('[OrderService] bulkUpdateOrderStatus: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Order Hub Operations ====================
@@ -163,17 +163,17 @@ export async function bulkUpdateOrderStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderHubItems(
-  _params?: QueryParams
+ _params?: QueryParams
 ): Promise<ServiceResult<OrderHubItem[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<OrderHubItem[]>('/order-hub/items', { params });
-  
-  console.warn('[OrderService] fetchOrderHubItems: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<OrderHubItem[]>('/order-hub/items', { params });
+ 
+ console.warn('[OrderService] fetchOrderHubItems: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -181,17 +181,17 @@ export async function fetchOrderHubItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderReviews(
-  _stage?: number
+ _stage?: number
 ): Promise<ServiceResult<OrderReview[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<OrderReview[]>('/order-hub/reviews', { params: { stage } });
-  
-  console.warn('[OrderService] fetchOrderReviews: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<OrderReview[]>('/order-hub/reviews', { params: { stage } });
+ 
+ console.warn('[OrderService] fetchOrderReviews: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -199,19 +199,19 @@ export async function fetchOrderReviews(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateOrderStage(
-  _orderId: string,
-  _stage: number,
-  _progress: Record<number, 'pending' | 'in-progress' | 'completed'>
+ _orderId: string,
+ _stage: number,
+ _progress: Record<number, 'pending' | 'in-progress' | 'completed'>
 ): Promise<ServiceResult<OrderHubItem>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch<OrderHubItem>(`/order-hub/${orderId}/stage`, { stage, progress });
-  
-  console.warn('[OrderService] updateOrderStage: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.patch<OrderHubItem>(`/order-hub/${orderId}/stage`, { stage, progress });
+ 
+ console.warn('[OrderService] updateOrderStage: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== BOM Operations ====================
@@ -221,17 +221,17 @@ export async function updateOrderStage(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchBOMItems(
-  _orderId: string
+ _orderId: string
 ): Promise<ServiceResult<BOMItem[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<BOMItem[]>(`/orders/${orderId}/bom`);
-  
-  console.warn('[OrderService] fetchBOMItems: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<BOMItem[]>(`/orders/${orderId}/bom`);
+ 
+ console.warn('[OrderService] fetchBOMItems: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -239,18 +239,18 @@ export async function fetchBOMItems(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateBOMItemStatus(
-  _bomItemId: string,
-  _status: BOMItem['status']
+ _bomItemId: string,
+ _status: BOMItem['status']
 ): Promise<ServiceResult<BOMItem>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch<BOMItem>(`/bom/${bomItemId}/status`, { status });
-  
-  console.warn('[OrderService] updateBOMItemStatus: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.patch<BOMItem>(`/bom/${bomItemId}/status`, { status });
+ 
+ console.warn('[OrderService] updateBOMItemStatus: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Good Receiving Operations ====================
@@ -260,17 +260,17 @@ export async function updateBOMItemStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchGoodReceivingRecords(
-  _params?: QueryParams
+ _params?: QueryParams
 ): Promise<ServiceResult<GoodReceivingRecord[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<GoodReceivingRecord[]>('/good-receiving', { params });
-  
-  console.warn('[OrderService] fetchGoodReceivingRecords: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<GoodReceivingRecord[]>('/good-receiving', { params });
+ 
+ console.warn('[OrderService] fetchGoodReceivingRecords: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -278,17 +278,17 @@ export async function fetchGoodReceivingRecords(
  * @placeholder Returns mock data - replace with API call
  */
 export async function createGoodReceivingRecord(
-  _record: Partial<GoodReceivingRecord>
+ _record: Partial<GoodReceivingRecord>
 ): Promise<ServiceResult<GoodReceivingRecord>> {
-  // TODO: Replace with actual API call
-  // return apiClient.post<GoodReceivingRecord>('/good-receiving', record);
-  
-  console.warn('[OrderService] createGoodReceivingRecord: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.post<GoodReceivingRecord>('/good-receiving', record);
+ 
+ console.warn('[OrderService] createGoodReceivingRecord: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -296,18 +296,18 @@ export async function createGoodReceivingRecord(
  * @placeholder Returns mock data - replace with API call
  */
 export async function updateGoodReceivingStatus(
-  _recordId: string,
-  _status: GoodReceivingRecord['status']
+ _recordId: string,
+ _status: GoodReceivingRecord['status']
 ): Promise<ServiceResult<GoodReceivingRecord>> {
-  // TODO: Replace with actual API call
-  // return apiClient.patch<GoodReceivingRecord>(`/good-receiving/${recordId}/status`, { status });
-  
-  console.warn('[OrderService] updateGoodReceivingStatus: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.patch<GoodReceivingRecord>(`/good-receiving/${recordId}/status`, { status });
+ 
+ console.warn('[OrderService] updateGoodReceivingStatus: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Saved Filters ====================
@@ -317,15 +317,15 @@ export async function updateGoodReceivingStatus(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchSavedFilters(): Promise<ServiceResult<SavedFilter[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<SavedFilter[]>('/orders/filters');
-  
-  console.warn('[OrderService] fetchSavedFilters: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<SavedFilter[]>('/orders/filters');
+ 
+ console.warn('[OrderService] fetchSavedFilters: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -333,17 +333,17 @@ export async function fetchSavedFilters(): Promise<ServiceResult<SavedFilter[]>>
  * @placeholder Returns mock data - replace with API call
  */
 export async function saveFilter(
-  _filter: Omit<SavedFilter, 'id'>
+ _filter: Omit<SavedFilter, 'id'>
 ): Promise<ServiceResult<SavedFilter>> {
-  // TODO: Replace with actual API call
-  // return apiClient.post<SavedFilter>('/orders/filters', filter);
-  
-  console.warn('[OrderService] saveFilter: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.post<SavedFilter>('/orders/filters', filter);
+ 
+ console.warn('[OrderService] saveFilter: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 /**
@@ -351,17 +351,17 @@ export async function saveFilter(
  * @placeholder Returns mock data - replace with API call
  */
 export async function deleteFilter(
-  _filterId: string
+ _filterId: string
 ): Promise<ServiceResult<void>> {
-  // TODO: Replace with actual API call
-  // return apiClient.delete(`/orders/filters/${filterId}`);
-  
-  console.warn('[OrderService] deleteFilter: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.delete(`/orders/filters/${filterId}`);
+ 
+ console.warn('[OrderService] deleteFilter: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Audit Log Operations ====================
@@ -371,17 +371,17 @@ export async function deleteFilter(
  * @placeholder Returns mock data - replace with API call
  */
 export async function fetchOrderAuditLogs(
-  _orderId: string
+ _orderId: string
 ): Promise<ServiceResult<AuditLog[]>> {
-  // TODO: Replace with actual API call
-  // return apiClient.get<AuditLog[]>(`/orders/${orderId}/audit-logs`);
-  
-  console.warn('[OrderService] fetchOrderAuditLogs: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.get<AuditLog[]>(`/orders/${orderId}/audit-logs`);
+ 
+ console.warn('[OrderService] fetchOrderAuditLogs: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }
 
 // ==================== Export Operations ====================
@@ -391,16 +391,16 @@ export async function fetchOrderAuditLogs(
  * @placeholder Returns mock data - replace with API call
  */
 export async function exportOrders(
-  _format: 'csv' | 'xlsx' | 'pdf',
-  _filters?: OrderFilter
+ _format: 'csv' | 'xlsx' | 'pdf',
+ _filters?: OrderFilter
 ): Promise<ServiceResult<Blob>> {
-  // TODO: Replace with actual API call
-  // return apiClient.post<Blob>('/orders/export', { format, filters }, { responseType: 'blob' });
-  
-  console.warn('[OrderService] exportOrders: Using placeholder implementation');
-  return {
-    data: null,
-    error: null,
-    success: true,
-  };
+ // TODO: Replace with actual API call
+ // return apiClient.post<Blob>('/orders/export', { format, filters }, { responseType: 'blob' });
+ 
+ console.warn('[OrderService] exportOrders: Using placeholder implementation');
+ return {
+  data: null,
+  error: null,
+  success: true,
+ };
 }

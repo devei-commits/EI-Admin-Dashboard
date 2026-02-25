@@ -16,25 +16,25 @@ import { useState, useEffect, useRef } from 'react';
  * 
  * // Use debouncedQuery for API calls or filtering
  * useEffect(() => {
- *   fetchSearchResults(debouncedQuery);
+ *  fetchSearchResults(debouncedQuery);
  * }, [debouncedQuery]);
  */
 export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+ const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
-  useEffect(() => {
-    // Set up the timeout to update the debounced value
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
+ useEffect(() => {
+  // Set up the timeout to update the debounced value
+  const handler = setTimeout(() => {
+   setDebouncedValue(value);
+  }, delay);
 
-    // Clean up the timeout if value changes before delay completes
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
+  // Clean up the timeout if value changes before delay completes
+  return () => {
+   clearTimeout(handler);
+  };
+ }, [value, delay]);
 
-  return debouncedValue;
+ return debouncedValue;
 }
 
 /**
@@ -49,43 +49,43 @@ export function useDebounce<T>(value: T, delay: number): T {
  * 
  * @example
  * const handleSearch = useDebouncedCallback((query: string) => {
- *   fetchSearchResults(query);
+ *  fetchSearchResults(query);
  * }, 300);
  * 
  * // Call handleSearch on each keystroke - it will only execute after 300ms of no calls
  * <input onChange={(e) => handleSearch(e.target.value)} />
  */
 export function useDebouncedCallback<T extends (...args: unknown[]) => void>(
-  callback: T,
-  delay: number
+ callback: T,
+ delay: number
 ): T {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbackRef = useRef(callback);
+ const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+ const callbackRef = useRef(callback);
 
-  // Update callback ref when callback changes
-  useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
+ // Update callback ref when callback changes
+ useEffect(() => {
+  callbackRef.current = callback;
+ }, [callback]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
+ // Cleanup on unmount
+ useEffect(() => {
+  return () => {
+   if (timeoutRef.current) {
+    clearTimeout(timeoutRef.current);
+   }
+  };
+ }, []);
 
-  const debouncedCallback = ((...args: Parameters<T>) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => {
-      callbackRef.current(...args);
-    }, delay);
-  }) as T;
+ const debouncedCallback = ((...args: Parameters<T>) => {
+  if (timeoutRef.current) {
+   clearTimeout(timeoutRef.current);
+  }
+  timeoutRef.current = setTimeout(() => {
+   callbackRef.current(...args);
+  }, delay);
+ }) as T;
 
-  return debouncedCallback;
+ return debouncedCallback;
 }
 
 export default useDebounce;

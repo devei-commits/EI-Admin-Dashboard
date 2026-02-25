@@ -5,6 +5,7 @@ import { queryClient } from './lib/queryClient'
 import { ItemsProvider } from './context/ItemsContext'
 import { ToastProvider } from './context/ToastContext'
 import { VendorClientProvider } from './context/VendorClientContext'
+import { GlobalStateProvider } from './context/GlobalStateContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
@@ -42,259 +43,260 @@ const PIS = lazy(() => import('./pages/PIS'))
 
 // Loading spinner component
 const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-gray-50">
-    <div className="flex flex-col items-center gap-4">
-      <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
-      <p className="text-gray-500 font-medium">Loading...</p>
-    </div>
-  </div>
+       <div className="flex items-center justify-center min-h-screen bg-background">
+              <div className="flex flex-col items-center gap-4">
+                     <div className="w-12 h-12 border-4 border-gray-200 border-t-amber-500 rounded-full animate-spin"></div>
+                     <p className="text-gray-500 font-medium">Loading...</p>
+              </div>
+       </div>
 )
 
 // Network status indicator
 const NetworkStatus = ({ isOnline }: { isOnline: boolean }) => {
-  if (isOnline) return null;
-  return (
-    <div className="fixed top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-center text-sm font-medium z-[9999]">
-      ⚠️ You are offline. Some features may be limited.
-    </div>
-  );
+       if (isOnline) return null;
+       return (
+              <div className="fixed top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-center text-sm font-medium z-[9999]">
+                     ⚠️ You are offline. Some features may be limited.
+              </div>
+       );
 }
 
 // Layout component that conditionally renders the sidebar
 const AppLayout = () => {
-  const location = useLocation();
-  const { isAuthenticated, isLoading } = useAuth();
-  const [, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+       const location = useLocation();
+       const { isAuthenticated, isLoading } = useAuth();
+       const [, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  useEffect(() => {
-    const cleanup = monitorConnection(setIsOnline);
-    return cleanup;
-  }, []);
+       useEffect(() => {
+              const cleanup = monitorConnection(setIsOnline);
+              return cleanup;
+       }, []);
 
-  // Handle login route
-  if (location.pathname === '/login') {
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <Login />
-      </Suspense>
-    );
-  }
+       // Handle login route
+       if (location.pathname === '/login') {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <Login />
+                     </Suspense>
+              );
+       }
 
-  // If not authenticated and not on login page, redirect to login
-  if (!isAuthenticated && !isLoading) {
-    return <Navigate to="/login" replace />;
-  }
+       // If not authenticated and not on login page, redirect to login
+       if (!isAuthenticated && !isLoading) {
+              return <Navigate to="/login" replace />;
+       }
 
-  // Show loader while checking auth
-  if (isLoading) {
-    return <PageLoader />;
-  }
+       // Show loader while checking auth
+       if (isLoading) {
+              return <PageLoader />;
+       }
 
-  const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
-  const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
-  const isOrderHubRoute = location.pathname === '/order-hub' || location.pathname.startsWith('/order-hub/');
+       const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
+       const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
+       const isOrderHubRoute = location.pathname === '/order-hub' || location.pathname.startsWith('/order-hub/');
 
-  // If it's a PIS route, render PIS standalone without admin sidebar
-  if (isPISRoute) {
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <ErrorBoundary>
-          <Routes>
-            <Route path="/pis/*" element={<PIS />} />
-          </Routes>
-        </ErrorBoundary>
-      </Suspense>
-    );
-  }
+       // If it's a PIS route, render PIS standalone without admin sidebar
+       if (isPISRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/pis/*" element={<PIS />} />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
 
-  // If it's an Order Hub route, render Order Hub standalone without admin sidebar
-  if (isOrderHubRoute) {
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <ErrorBoundary>
-          <Routes>
-            <Route path="/order-hub/*" element={<OrderHubPage />} />
-          </Routes>
-        </ErrorBoundary>
-      </Suspense>
-    );
-  }
+       // If it's an Order Hub route, render Order Hub standalone without admin sidebar
+       if (isOrderHubRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/order-hub/*" element={<OrderHubPage />} />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
 
-  // If it's a Treasury route, render Treasury standalone without admin sidebar
-  if (isTreasuryRoute) {
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <ErrorBoundary>
-          <Routes>
-            <Route path="/treasury/*" element={<TreasuryApp />} />
-          </Routes>
-        </ErrorBoundary>
-      </Suspense>
-    );
-  }
+       // If it's a Treasury route, render Treasury standalone without admin sidebar
+       if (isTreasuryRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/treasury/*" element={<TreasuryApp />} />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
 
-  // Otherwise render with admin sidebar
-  return (
-    <div className="flex flex-row min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 pt-14 md:pt-0 overflow-auto">
-        <Suspense fallback={<PageLoader />}>
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/role-management" element={
-                <ProtectedModuleRoute moduleId="role-management">
-                  <RoleManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/user-management" element={
-                <ProtectedModuleRoute moduleId="user-management">
-                  <UserManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/order-management" element={
-                <ProtectedModuleRoute moduleId="order-management">
-                  <OrderManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/good-receiving" element={
-                <ProtectedModuleRoute moduleId="order-management" subModuleId="goods-receiving">
-                  <GoodReceivingPage />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/order-list" element={
-                <ProtectedModuleRoute moduleId="order-list">
-                  <OrderList />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/coupon-management" element={
-                <ProtectedModuleRoute moduleId="coupon-management">
-                  <CouponManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/discount-management" element={
-                <ProtectedModuleRoute moduleId="discount-management">
-                  <DiscountManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/catalogue-management" element={
-                <ProtectedModuleRoute moduleId="catalogue-management">
-                  <CatalogueManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/active-ingredients" element={
-                <ProtectedModuleRoute moduleId="active-ingredients">
-                  <ActiveIngredients />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/enquiry-management" element={
-                <ProtectedModuleRoute moduleId="enquiry-management">
-                  <EnquiryManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/doctor-appointments" element={
-                <ProtectedModuleRoute moduleId="doctor-appointments">
-                  <DoctorAppointments />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/contact-enquiry" element={
-                <ProtectedModuleRoute moduleId="contact-enquiry">
-                  <ContactEnquiry />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/new-developments" element={
-                <ProtectedModuleRoute moduleId="new-developments">
-                  <NewDevelopments />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/product-samples" element={
-                <ProtectedModuleRoute moduleId="product-samples">
-                  <ProductSamples />
-                </ProtectedModuleRoute>
-              } />
+       // Otherwise render with admin sidebar
+       return (
+              <div className="flex flex-row min-h-screen bg-background">
+                     <Sidebar />
+                     <div className="flex-1 pt-14 md:pt-0 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/" element={<Dashboard />} />
+                                                 <Route path="/role-management" element={
+                                                        <ProtectedModuleRoute moduleId="role-management">
+                                                               <RoleManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/user-management" element={
+                                                        <ProtectedModuleRoute moduleId="user-management">
+                                                               <UserManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/order-management" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <OrderManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/good-receiving" element={
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="goods-receiving">
+                                                               <GoodReceivingPage />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/order-list" element={
+                                                        <ProtectedModuleRoute moduleId="order-list">
+                                                               <OrderList />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/coupon-management" element={
+                                                        <ProtectedModuleRoute moduleId="coupon-management">
+                                                               <CouponManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/discount-management" element={
+                                                        <ProtectedModuleRoute moduleId="discount-management">
+                                                               <DiscountManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/catalogue-management" element={
+                                                        <ProtectedModuleRoute moduleId="catalogue-management">
+                                                               <CatalogueManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/active-ingredients" element={
+                                                        <ProtectedModuleRoute moduleId="active-ingredients">
+                                                               <ActiveIngredients />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/enquiry-management" element={
+                                                        <ProtectedModuleRoute moduleId="enquiry-management">
+                                                               <EnquiryManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/doctor-appointments" element={
+                                                        <ProtectedModuleRoute moduleId="doctor-appointments">
+                                                               <DoctorAppointments />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/contact-enquiry" element={
+                                                        <ProtectedModuleRoute moduleId="contact-enquiry">
+                                                               <ContactEnquiry />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/new-developments" element={
+                                                        <ProtectedModuleRoute moduleId="new-developments">
+                                                               <NewDevelopments />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/product-samples" element={
+                                                        <ProtectedModuleRoute moduleId="product-samples">
+                                                               <ProductSamples />
+                                                        </ProtectedModuleRoute>
+                                                 } />
 // ...existing code...
-              <Route path="/treasury" element={
-                <ProtectedModuleRoute moduleId="treasury">
-                  <TreasuryApp />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/packaging-management" element={
-                <ProtectedModuleRoute moduleId="packaging-management">
-                  <PackagingManagement />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/packaging" element={
-                <ProtectedModuleRoute moduleId="inventory" subModuleId="packaging">
-                  <PackagingRefactored />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/raw-material" element={
-                <ProtectedModuleRoute moduleId="inventory" subModuleId="raw-materials">
-                  <RawMaterialRefactored />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/bom" element={
-                <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
-                  <BOMRefactored />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/items-master" element={
-                <ProtectedModuleRoute moduleId="items-master">
-                  <ItemsMaster />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/vendor-client" element={
-                <ProtectedModuleRoute moduleId="vendor-client">
-                  <VendorClient />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/sales-and-purchase" element={
-                <ProtectedModuleRoute moduleId="sales-purchase">
-                  <SalesAndPurchase />
-                </ProtectedModuleRoute>
-              } />
-              <Route path="/task-management" element={
-                <ProtectedModuleRoute moduleId="task-management">
-                  <TaskManagement />
-                </ProtectedModuleRoute>
-              } />
-              {/* Catch-all route */}
-              <Route path="*" element={<Dashboard />} />
-            </Routes>
-          </ErrorBoundary>
-        </Suspense>
-      </div>
-    </div>
-  );
+                                                 <Route path="/treasury" element={
+                                                        <ProtectedModuleRoute moduleId="treasury">
+                                                               <TreasuryApp />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/packaging-management" element={
+                                                        <ProtectedModuleRoute moduleId="packaging-management">
+                                                               <PackagingManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/packaging" element={
+                                                        <ProtectedModuleRoute moduleId="inventory" subModuleId="packaging">
+                                                               <PackagingRefactored />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/raw-material" element={
+                                                        <ProtectedModuleRoute moduleId="inventory" subModuleId="raw-materials">
+                                                               <RawMaterialRefactored />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/bom" element={
+                                                        <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
+                                                               <BOMRefactored />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/items-master" element={
+                                                        <ProtectedModuleRoute moduleId="items-master">
+                                                               <ItemsMaster />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/vendor-client" element={
+                                                        <ProtectedModuleRoute moduleId="vendor-client">
+                                                               <VendorClient />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/sales-and-purchase" element={
+                                                        <ProtectedModuleRoute moduleId="sales-purchase">
+                                                               <SalesAndPurchase />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/task-management" element={
+                                                        <ProtectedModuleRoute moduleId="task-management">
+                                                               <TaskManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 {/* Catch-all route */}
+                                                 <Route path="*" element={<Dashboard />} />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </div>
+              </div>
+       );
 };
 
 const App = () => {
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+       const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  useEffect(() => {
-    const cleanup = monitorConnection(setIsOnline);
-    return cleanup;
-  }, []);
+       useEffect(() => {
+              const cleanup = monitorConnection(setIsOnline);
+              return cleanup;
+       }, []);
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <NetworkStatus isOnline={isOnline} />
-          <ToastProvider>
-            <VendorClientProvider>
-              <ItemsProvider>
-                <ErrorBoundary>
-                  <AppLayout />
-                </ErrorBoundary>
-              </ItemsProvider>
-            </VendorClientProvider>
-          </ToastProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
-  )
+       return (
+              <QueryClientProvider client={queryClient}>
+                     <BrowserRouter>
+                            <AuthProvider>
+                                   <NetworkStatus isOnline={isOnline} />
+                                   <ToastProvider>
+                                          <VendorClientProvider>
+                                                 <ItemsProvider>
+                                                        <GlobalStateProvider>
+                                                               <ErrorBoundary>
+                                                                      <AppLayout />
+                                                               </ErrorBoundary>
+                                                        </GlobalStateProvider>
+                                                 </ItemsProvider>
+                                          </VendorClientProvider>
+                                   </ToastProvider>
+                            </AuthProvider>
+                     </BrowserRouter>
+              </QueryClientProvider>
+       )
 }
 
 export default App
-

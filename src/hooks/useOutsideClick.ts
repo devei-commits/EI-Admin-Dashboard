@@ -16,44 +16,44 @@ import { useEffect, useCallback, RefObject } from 'react';
  * useOutsideClick(isOpen, () => setIsOpen(false), [dropdownRef]);
  * 
  * return (
- *   <div ref={dropdownRef}>
- *     {isOpen && <Dropdown />}
- *   </div>
+ *  <div ref={dropdownRef}>
+ *   {isOpen && <Dropdown />}
+ *  </div>
  * );
  */
 export function useOutsideClick(
-  isActive: boolean,
-  onOutsideClick: () => void,
-  excludeRefs?: RefObject<HTMLElement | null>[]
+ isActive: boolean,
+ onOutsideClick: () => void,
+ excludeRefs?: RefObject<HTMLElement | null>[]
 ): void {
-  const handleClick = useCallback(
-    (event: MouseEvent) => {
-      // Check if click is inside any of the excluded refs
-      if (excludeRefs?.length) {
-        const isInsideExcluded = excludeRefs.some(
-          (ref) => ref.current && ref.current.contains(event.target as Node)
-        );
-        if (isInsideExcluded) return;
-      }
-      
-      onOutsideClick();
-    },
-    [onOutsideClick, excludeRefs]
-  );
+ const handleClick = useCallback(
+  (event: MouseEvent) => {
+   // Check if click is inside any of the excluded refs
+   if (excludeRefs?.length) {
+    const isInsideExcluded = excludeRefs.some(
+     (ref) => ref.current && ref.current.contains(event.target as Node)
+    );
+    if (isInsideExcluded) return;
+   }
+   
+   onOutsideClick();
+  },
+  [onOutsideClick, excludeRefs]
+ );
 
-  useEffect(() => {
-    if (!isActive) return;
+ useEffect(() => {
+  if (!isActive) return;
 
-    // Add listener on next tick to avoid immediate trigger
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleClick);
-    }, 0);
+  // Add listener on next tick to avoid immediate trigger
+  const timeoutId = setTimeout(() => {
+   document.addEventListener('click', handleClick);
+  }, 0);
 
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('click', handleClick);
-    };
-  }, [isActive, handleClick]);
+  return () => {
+   clearTimeout(timeoutId);
+   document.removeEventListener('click', handleClick);
+  };
+ }, [isActive, handleClick]);
 }
 
 /**
@@ -67,35 +67,35 @@ export function useOutsideClick(
  * const ref = useRef<HTMLDivElement>(null);
  * 
  * useClickAway(ref, () => {
- *   console.log('Clicked outside!');
+ *  console.log('Clicked outside!');
  * });
  * 
  * return <div ref={ref}>Click outside me</div>;
  */
 export function useClickAway<T extends HTMLElement = HTMLElement>(
-  ref: RefObject<T | null>,
-  handler: (event: MouseEvent | TouchEvent) => void
+ ref: RefObject<T | null>,
+ handler: (event: MouseEvent | TouchEvent) => void
 ): void {
-  useEffect(() => {
-    const listener = (event: MouseEvent | TouchEvent) => {
-      const el = ref.current;
-      
-      // Do nothing if clicking ref's element or descendent elements
-      if (!el || el.contains(event.target as Node)) {
-        return;
-      }
+ useEffect(() => {
+  const listener = (event: MouseEvent | TouchEvent) => {
+   const el = ref.current;
+   
+   // Do nothing if clicking ref's element or descendent elements
+   if (!el || el.contains(event.target as Node)) {
+    return;
+   }
 
-      handler(event);
-    };
+   handler(event);
+  };
 
-    document.addEventListener('mousedown', listener);
-    document.addEventListener('touchstart', listener);
+  document.addEventListener('mousedown', listener);
+  document.addEventListener('touchstart', listener);
 
-    return () => {
-      document.removeEventListener('mousedown', listener);
-      document.removeEventListener('touchstart', listener);
-    };
-  }, [ref, handler]);
+  return () => {
+   document.removeEventListener('mousedown', listener);
+   document.removeEventListener('touchstart', listener);
+  };
+ }, [ref, handler]);
 }
 
 export default useOutsideClick;

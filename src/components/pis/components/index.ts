@@ -12,22 +12,22 @@ export { DashboardStats, ImprovedDashboard } from './dashboard';
 
 // PIS management components
 export { 
-  ImprovedPISManagement, 
-  EnhancedPISTable, 
-  PISDetailsDialog, 
-  CreatePISDialog, 
-  AdvancedFilters,
-  type PISManagementPreset,
-  type FilterState 
+ ImprovedPISManagement, 
+ EnhancedPISTable, 
+ PISDetailsDialog, 
+ CreatePISDialog, 
+ AdvancedFilters,
+ type PISManagementPreset,
+ type FilterState 
 } from './pis';
 
 // Views
 export { 
-  TasksView, 
-  CustomersView, 
-  ProductsView, 
-  AnalyticsView, 
-  SettingsView 
+ TasksView, 
+ CustomersView, 
+ ProductsView, 
+ AnalyticsView, 
+ SettingsView 
 } from './views';
 
 // UI components

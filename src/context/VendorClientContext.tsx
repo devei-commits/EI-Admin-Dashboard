@@ -1,80 +1,80 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export interface VendorClient {
-  id: string;
-  type: 'vendor' | 'client';
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  country: string;
-  city: string;
-  category: string;
-  rating: number;
-  status: 'active' | 'inactive' | 'pending';
-  moq: string;
-  leadTime: string;
-  paymentTerms: string;
-  notes: string;
-  createdAt: string;
-  lastModified: string;
-  data: Record<string, any>;
+ id: string;
+ type: 'vendor' | 'client';
+ name: string;
+ email: string;
+ phone: string;
+ location: string;
+ country: string;
+ city: string;
+ category: string;
+ rating: number;
+ status: 'active' | 'inactive' | 'pending';
+ moq: string;
+ leadTime: string;
+ paymentTerms: string;
+ notes: string;
+ createdAt: string;
+ lastModified: string;
+ data: Record<string, any>;
 }
 
 interface VendorClientContextType {
-  vendorClients: VendorClient[];
-  addVendorClient: (vendorClient: VendorClient) => void;
-  updateVendorClient: (id: string, vendorClient: Partial<VendorClient>) => void;
-  deleteVendorClient: (id: string) => void;
+ vendorClients: VendorClient[];
+ addVendorClient: (vendorClient: VendorClient) => void;
+ updateVendorClient: (id: string, vendorClient: Partial<VendorClient>) => void;
+ deleteVendorClient: (id: string) => void;
 }
 
 const VendorClientContext = createContext<VendorClientContextType | undefined>(undefined);
 
 export const VendorClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [vendorClients, setVendorClients] = useState<VendorClient[]>([]);
+ const [vendorClients, setVendorClients] = useState<VendorClient[]>([]);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('vendorClients');
-    if (stored) {
-      try {
-        setVendorClients(JSON.parse(stored));
-      } catch (error) {
-        console.error('Failed to load vendor clients:', error);
-      }
-    }
-  }, []);
+ // Load from localStorage on mount
+ useEffect(() => {
+  const stored = localStorage.getItem('vendorClients');
+  if (stored) {
+   try {
+    setVendorClients(JSON.parse(stored));
+   } catch (error) {
+    console.error('Failed to load vendor clients:', error);
+   }
+  }
+ }, []);
 
-  // Save to localStorage whenever changed
-  useEffect(() => {
-    localStorage.setItem('vendorClients', JSON.stringify(vendorClients));
-  }, [vendorClients]);
+ // Save to localStorage whenever changed
+ useEffect(() => {
+  localStorage.setItem('vendorClients', JSON.stringify(vendorClients));
+ }, [vendorClients]);
 
-  const addVendorClient = (vendorClient: VendorClient) => {
-    setVendorClients(prev => [...prev, vendorClient]);
-  };
+ const addVendorClient = (vendorClient: VendorClient) => {
+  setVendorClients(prev => [...prev, vendorClient]);
+ };
 
-  const updateVendorClient = (id: string, updates: Partial<VendorClient>) => {
-    setVendorClients(prev =>
-      prev.map(vc => vc.id === id ? { ...vc, ...updates, lastModified: new Date().toISOString() } : vc)
-    );
-  };
-
-  const deleteVendorClient = (id: string) => {
-    setVendorClients(prev => prev.filter(vc => vc.id !== id));
-  };
-
-  return (
-    <VendorClientContext.Provider value={{ vendorClients, addVendorClient, updateVendorClient, deleteVendorClient }}>
-      {children}
-    </VendorClientContext.Provider>
+ const updateVendorClient = (id: string, updates: Partial<VendorClient>) => {
+  setVendorClients(prev =>
+   prev.map(vc => vc.id === id ? { ...vc, ...updates, lastModified: new Date().toISOString() } : vc)
   );
+ };
+
+ const deleteVendorClient = (id: string) => {
+  setVendorClients(prev => prev.filter(vc => vc.id !== id));
+ };
+
+ return (
+  <VendorClientContext.Provider value={{ vendorClients, addVendorClient, updateVendorClient, deleteVendorClient }}>
+   {children}
+  </VendorClientContext.Provider>
+ );
 };
 
 export const useVendorClient = () => {
-  const context = useContext(VendorClientContext);
-  if (!context) {
-    throw new Error('useVendorClient must be used within VendorClientProvider');
-  }
-  return context;
+ const context = useContext(VendorClientContext);
+ if (!context) {
+  throw new Error('useVendorClient must be used within VendorClientProvider');
+ }
+ return context;
 };

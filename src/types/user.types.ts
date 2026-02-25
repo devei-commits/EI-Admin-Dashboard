@@ -7,103 +7,103 @@
 export type UserStatus = 'Active' | 'Inactive' | 'Pending' | 'Suspended';
 
 export type UserRole = 
-  | 'SUPER_ADMIN' 
-  | 'ADMIN' 
-  | 'MANAGER' 
-  | 'USER' 
-  | 'VIEWER';
+ | 'SUPER_ADMIN' 
+ | 'ADMIN' 
+ | 'MANAGER' 
+ | 'USER' 
+ | 'VIEWER';
 
 export interface User {
-  id: string;
-  username: string;
-  email: string;
-  fullName: string;
-  role: UserRole;
-  status: UserStatus;
-  department?: string;
-  phone?: string;
-  avatar?: string;
-  createdAt: string;
-  updatedAt: string;
-  lastLogin?: string;
-  /** From backend /me when user has staff_profile (admin dashboard RBAC) */
-  roleId?: string | number;
-  roleName?: string;
-  roleLevel?: string;
-  /** Module IDs this role can access; '*' = all. From backend /me. */
-  allowedModules?: string[];
+ id: string;
+ username: string;
+ email: string;
+ fullName: string;
+ role: UserRole;
+ status: UserStatus;
+ department?: string;
+ phone?: string;
+ avatar?: string;
+ createdAt: string;
+ updatedAt: string;
+ lastLogin?: string;
+ /** From backend /me when user has staff_profile (admin dashboard RBAC) */
+ roleId?: string | number;
+ roleName?: string;
+ roleLevel?: string;
+ /** Module IDs this role can access; '*' = all. From backend /me. */
+ allowedModules?: string[];
 }
 
 export interface UserCreatePayload {
-  username: string;
-  email: string;
-  fullName: string;
-  role: UserRole;
-  department?: string;
-  phone?: string;
-  password: string;
+ username: string;
+ email: string;
+ fullName: string;
+ role: UserRole;
+ department?: string;
+ phone?: string;
+ password: string;
 }
 
 export interface UserUpdatePayload {
-  email?: string;
-  fullName?: string;
-  role?: UserRole;
-  status?: UserStatus;
-  department?: string;
-  phone?: string;
+ email?: string;
+ fullName?: string;
+ role?: UserRole;
+ status?: UserStatus;
+ department?: string;
+ phone?: string;
 }
 
 // ==================== Role Types ====================
 export interface Permission {
-  id: string;
-  name: string;
-  description: string;
-  module: string;
-  actions: PermissionAction[];
+ id: string;
+ name: string;
+ description: string;
+ module: string;
+ actions: PermissionAction[];
 }
 
 export type PermissionAction = 'create' | 'read' | 'update' | 'delete' | 'export';
 
 export interface Role {
-  id: string;
-  name: string;
-  description: string;
-  permissions: Permission[];
-  userCount: number;
-  createdAt: string;
-  updatedAt: string;
-  isSystem: boolean;
+ id: string;
+ name: string;
+ description: string;
+ permissions: Permission[];
+ userCount: number;
+ createdAt: string;
+ updatedAt: string;
+ isSystem: boolean;
 }
 
 export interface RoleCreatePayload {
-  name: string;
-  description: string;
-  permissions: string[];
+ name: string;
+ description: string;
+ permissions: string[];
 }
 
 export interface RoleUpdatePayload {
-  name?: string;
-  description?: string;
-  permissions?: string[];
+ name?: string;
+ description?: string;
+ permissions?: string[];
 }
 
 // ==================== Authentication Types ====================
 export interface AuthState {
-  isAuthenticated: boolean;
-  user: User | null;
-  role: UserRole | null;
-  permissions: Permission[];
+ isAuthenticated: boolean;
+ user: User | null;
+ role: UserRole | null;
+ permissions: Permission[];
 }
 
 export interface LoginCredentials {
-  username: string;
-  password: string;
-  rememberMe?: boolean;
+ username: string;
+ password: string;
+ rememberMe?: boolean;
 }
 
 export interface AuthResponse {
-  user: User;
-  token: string;
-  refreshToken: string;
-  expiresIn: number;
+ user: User;
+ token: string;
+ refreshToken: string;
+ expiresIn: number;
 }

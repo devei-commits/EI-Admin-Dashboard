@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
+import { useGlobalState } from '../context/GlobalStateContext';
 
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 
 const GoodReceivingPage = () => {
+  const { state } = useGlobalState();
+  const issuedPOs = state.po?.issued || [];
   const [activeTab, setActiveTab] = useState<TabType>('po-requests');
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
@@ -54,11 +57,11 @@ const GoodReceivingPage = () => {
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Good Receiving</h1>
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
-              <Link to="/" className="text-amber-600 hover:text-amber-800 hover:underline">
+              <Link to="/" className="text-slate-800 hover:text-amber-800 hover:underline">
                 Dashboard
               </Link>
               <span className="text-gray-400">/</span>
-              <Link to="/order-management" className="text-amber-600 hover:text-amber-800 hover:underline">
+              <Link to="/order-management" className="text-slate-800 hover:text-amber-800 hover:underline">
                 Order Management
               </Link>
               <span className="text-gray-400">/</span>
@@ -77,11 +80,10 @@ const GoodReceivingPage = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 px-4 md:px-6 py-4 font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-b-2 border-amber-600'
+                className={`flex-1 px-4 md:px-6 py-4 font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${activeTab === tab.id
+                    ? 'bg-slate-800 text-white border-b-2 border-amber-600'
                     : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 <span className="hidden sm:inline">{tab.icon}</span>
                 {tab.label}

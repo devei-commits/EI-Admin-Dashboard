@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useGlobalState } from '../context/GlobalStateContext';
 import {
   LayoutDashboard,
   Package,
@@ -83,18 +84,6 @@ interface PendingItem {
 }
 
 // ==================== MOCK DATA ====================
-const STATS = {
-  totalOrders: 156,
-  pendingOrders: 23,
-  activeUsers: 42,
-  totalEnquiries: 89,
-  openTasks: 18,
-  completedTasks: 127,
-  totalProducts: 234,
-  lowStock: 12,
-  todayRevenue: 245000,
-  monthlyGrowth: 12.5,
-};
 
 const RECENT_ACTIVITY: RecentActivity[] = [
   { id: '1', action: 'New order ORD-2026-0125 created', module: 'Orders', user: 'Priya Sharma', time: '5 mins ago', type: 'order' },
@@ -106,6 +95,7 @@ const RECENT_ACTIVITY: RecentActivity[] = [
   { id: '7', action: 'Packaging specs updated for PKG-112', module: 'Packaging', user: 'Anil Mehta', time: '4 hours ago', type: 'system' },
 ];
 
+// Will be replaced by dynamic data later if needed
 const PENDING_ITEMS: PendingItem[] = [
   { id: '1', title: 'Review order ORD-2026-0118', module: 'Orders', priority: 'high', dueDate: 'Today' },
   { id: '2', title: 'Approve GRN for Raw Materials', module: 'Receiving', priority: 'high', dueDate: 'Today' },
@@ -312,12 +302,12 @@ const MODULE_CARDS: ModuleCard[] = [
 // ==================== HELPER COMPONENTS ====================
 const StatCard = ({ title, value, icon, change, changeType, color, link }: StatCardProps) => {
   const colorClasses: Record<string, { bg: string; icon: string }> = {
-    amber: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-500' },
+    amber: { bg: 'bg-gray-50 border-gray-100', icon: 'text-slate-700' },
     blue: { bg: 'bg-blue-50 border-blue-100', icon: 'text-blue-500' },
     green: { bg: 'bg-green-50 border-green-100', icon: 'text-green-500' },
     purple: { bg: 'bg-purple-50 border-purple-100', icon: 'text-purple-500' },
     red: { bg: 'bg-red-50 border-red-100', icon: 'text-red-500' },
-    orange: { bg: 'bg-orange-50 border-orange-100', icon: 'text-orange-500' },
+    orange: { bg: 'bg-orange-50 border-orange-100', icon: 'text-slate-700' },
   };
   const colors = colorClasses[color] || colorClasses.amber;
 
@@ -364,7 +354,7 @@ const getActivityIcon = (type: RecentActivity['type']) => {
 
 const getActivityColor = (type: RecentActivity['type']) => {
   const colors = {
-    order: 'bg-amber-100 text-amber-600',
+    order: 'bg-gray-100 text-slate-800',
     user: 'bg-blue-100 text-blue-600',
     enquiry: 'bg-purple-100 text-purple-600',
     task: 'bg-green-100 text-green-600',
@@ -376,7 +366,7 @@ const getActivityColor = (type: RecentActivity['type']) => {
 const getPriorityColor = (priority: PendingItem['priority']) => {
   const colors = {
     high: 'bg-red-100 text-red-700 border-red-200',
-    medium: 'bg-amber-100 text-amber-700 border-amber-200',
+    medium: 'bg-gray-100 text-slate-900 border-gray-200',
     low: 'bg-gray-100 text-gray-600 border-gray-200',
   };
   return colors[priority];
@@ -385,6 +375,7 @@ const getPriorityColor = (priority: PendingItem['priority']) => {
 // ==================== MAIN COMPONENT ====================
 const Dashboard = () => {
   const { user } = useAuth();
+  const { state } = useGlobalState();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -421,27 +412,27 @@ const Dashboard = () => {
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
+      <div className="bg-gray-900 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div>
-            <p className="text-amber-100 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="text-gray-300 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
             <h1 className="text-2xl md:text-3xl font-bold mt-1">{greeting}, {user?.name || 'Admin'}!</h1>
-            <p className="text-amber-100 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
+            <p className="text-gray-100 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
-              <p className="text-3xl font-bold">{STATS.totalOrders}</p>
-              <p className="text-xs text-amber-100">Total Orders</p>
+              <p className="text-3xl font-bold">{state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0}</p>
+              <p className="text-xs text-gray-100">Total Orders</p>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
-              <p className="text-3xl font-bold">{STATS.activeUsers}</p>
-              <p className="text-xs text-amber-100">Active Users</p>
+              <p className="text-3xl font-bold">{state.items?.filter((i: any) => i.stock < 500).length || 0}</p>
+              <p className="text-xs text-gray-100">Low Stock</p>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
-              <p className="text-3xl font-bold">{STATS.openTasks}</p>
-              <p className="text-xs text-amber-100">Open Tasks</p>
+              <p className="text-3xl font-bold">{state.po?.issued?.length || 0}</p>
+              <p className="text-xs text-gray-100">Issued POs</p>
             </div>
           </div>
         </div>
@@ -449,21 +440,21 @@ const Dashboard = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <StatCard title="Total Orders" value={STATS.totalOrders} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/order-management" />
-        <StatCard title="Pending Review" value={STATS.pendingOrders} icon={<Clock className="w-6 h-6" />} change="5 urgent" changeType="down" color="orange" link="/order-hub" />
-        <StatCard title="Active Users" value={STATS.activeUsers} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
-        <StatCard title="Open Enquiries" value={STATS.totalEnquiries} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
-        <StatCard title="Open Tasks" value={STATS.openTasks} icon={<CheckSquare className="w-6 h-6" />} change={`${STATS.completedTasks} completed`} changeType="neutral" color="green" link="/task-management" />
-        <StatCard title="Low Stock Items" value={STATS.lowStock} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/items-master" />
+        <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/order-management" />
+        <StatCard title="Pending Review" value={state.orders?.customerPOs?.filter((po: any) => po.status.includes('pending')).length || 0} icon={<Clock className="w-6 h-6" />} change="urgent" changeType="down" color="orange" link="/order-hub" />
+        <StatCard title="Active Users" value={42} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
+        <StatCard title="Open Enquiries" value={89} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
+        <StatCard title="Open Tasks" value={18} icon={<CheckSquare className="w-6 h-6" />} change={`127 completed`} changeType="neutral" color="green" link="/task-management" />
+        <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/items-master" />
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-amber-500" /> Quick Actions
+            <Zap className="w-5 h-5 text-slate-700" /> Quick Actions
           </h2>
-          <button className="text-sm text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
+          <button className="text-sm text-slate-800 hover:text-slate-900 font-medium flex items-center gap-1">
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
         </div>
@@ -472,9 +463,9 @@ const Dashboard = () => {
             <Link
               key={action.label}
               to={action.href}
-              className="flex flex-col items-center p-4 bg-gray-50 hover:bg-amber-50 rounded-xl border border-gray-100 hover:border-amber-200 transition-all duration-200 group"
+              className="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-all duration-200 group"
             >
-              <div className="p-3 bg-white rounded-xl shadow-sm text-amber-500 group-hover:text-amber-600 group-hover:shadow-md transition-all">
+              <div className="p-3 bg-white rounded-xl shadow-sm text-slate-700 group-hover:text-slate-800 group-hover:shadow-md transition-all">
                 {action.icon}
               </div>
               <span className="text-sm font-medium text-gray-700 mt-2 text-center">{action.label}</span>
@@ -487,12 +478,12 @@ const Dashboard = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Recent Activity */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-amber-500" /> Recent Activity
+              <Activity className="w-5 h-5 text-slate-700" /> Recent Activity
             </h2>
-            <button className="text-sm text-amber-600 hover:text-amber-700 font-medium">View All</button>
+            <button className="text-sm text-slate-800 hover:text-slate-900 font-medium">View All</button>
           </div>
           <div className="space-y-3">
             {RECENT_ACTIVITY.map((activity) => (
@@ -511,16 +502,16 @@ const Dashboard = () => {
         </div>
 
         {/* Pending Items */}
-        <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" /> Pending Items
+              <AlertCircle className="w-5 h-5 text-slate-700" /> Pending Items
             </h2>
             <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">{PENDING_ITEMS.length} items</span>
           </div>
           <div className="space-y-3">
             {PENDING_ITEMS.map((item) => (
-              <div key={item.id} className="p-3 rounded-lg border border-gray-100 hover:border-amber-200 hover:bg-amber-50/50 transition-all cursor-pointer">
+              <div key={item.id} className="p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-gray-700">{item.title}</p>
@@ -542,10 +533,10 @@ const Dashboard = () => {
       </div>
 
       {/* All Modules Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-amber-100 p-5">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <LayoutDashboard className="w-5 h-5 text-amber-500" /> All Modules
+            <LayoutDashboard className="w-5 h-5 text-slate-700" /> All Modules
           </h2>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative">
@@ -555,7 +546,7 @@ const Dashboard = () => {
                 placeholder="Search modules..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full sm:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
               />
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -563,11 +554,10 @@ const Dashboard = () => {
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
-                    selectedCategory === cat.id
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${selectedCategory === cat.id
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   {cat.label}
                 </button>
@@ -579,7 +569,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filteredModules.map((module) => {
             const colorMap: Record<string, string> = {
-              amber: 'from-amber-400 to-orange-500',
+              amber: 'bg-slate-800 ',
               blue: 'from-blue-400 to-blue-600',
               green: 'from-green-400 to-green-600',
               purple: 'from-purple-400 to-purple-600',
@@ -592,7 +582,7 @@ const Dashboard = () => {
               pink: 'from-pink-400 to-pink-600',
               rose: 'from-rose-400 to-rose-600',
               red: 'from-red-400 to-red-600',
-              orange: 'from-orange-400 to-orange-600',
+              orange: 'from-orange-400 ',
               violet: 'from-violet-400 to-violet-600',
               sky: 'from-sky-400 to-sky-600',
               fuchsia: 'from-fuchsia-400 to-fuchsia-600',
@@ -605,12 +595,12 @@ const Dashboard = () => {
               <Link
                 key={module.title}
                 to={module.href}
-                className="group p-4 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-lg transition-all duration-200 bg-white"
+                className="group p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-200 bg-white"
               >
                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
                   {module.icon}
                 </div>
-                <h3 className="font-semibold text-gray-800 group-hover:text-amber-600 transition-colors">{module.title}</h3>
+                <h3 className="font-semibold text-gray-800 group-hover:text-slate-800 transition-colors">{module.title}</h3>
                 <p className="text-xs text-gray-500 mt-1">{module.description}</p>
                 {module.stats && (
                   <div className="flex gap-3 mt-3 pt-3 border-t border-gray-100">
@@ -622,7 +612,7 @@ const Dashboard = () => {
                     ))}
                   </div>
                 )}
-                <div className="mt-3 flex items-center justify-between text-xs text-gray-400 group-hover:text-amber-500 transition-colors">
+                <div className="mt-3 flex items-center justify-between text-xs text-gray-400 group-hover:text-slate-700 transition-colors">
                   <span>Open</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </div>
