@@ -21,7 +21,14 @@ export type GlobalAction =
     | { type: 'ISSUE_PO_FROM_TREASURY'; payload: { poId: string; itemUpdates: { itemId: string; inTransitDelta: number }[] } }
     | { type: 'CREATE_BMR_BATCH'; payload: { batch: any; bmr: any; bpr?: any } }
     | { type: 'ADVANCE_BMR_STAGE'; payload: { bmrId: string; newStage: number } }
+    | { type: 'ADVANCE_BPR_STAGE'; payload: { bprId: string; newStage: number } }
     | { type: 'COMPLETE_BPR_QC'; payload: { bprId: string; bmrId: string } }
+    | { type: 'ADD_MATERIAL_REQUEST'; payload: any }
+    | { type: 'SPLIT_DRAFT_PO'; payload: { draftId: string; newDrafts: any[] } }
+    | { type: 'RELEASE_DRAFT_PO'; payload: { draftId: string } }
+    | { type: 'MARK_TREASURY_PAID'; payload: { reqId: string } }
+    | { type: 'CONFIRM_PO'; payload: { poId: string; confAt: string } }
+    | { type: 'DISPATCH_PO'; payload: { poId: string } }
     ;
 
 const initialState: GlobalState = {
@@ -282,6 +289,7 @@ const initialState: GlobalState = {
         batches: [],
         bmrs: [],
         bprs: [],
+        materialRequests: [],
         seq: { batch: 1, bmr: 1001, bpr: 2001 }
     }
 };
@@ -506,6 +514,144 @@ const globalReducer = (state: GlobalState, action: GlobalAction): GlobalState =>
                     ),
                     bprs: (state.mfg.bprs || []).map((b: any) =>
                         b.id === bprId ? { ...b, stage: 4, completedAt: new Date().toISOString().slice(0, 10) } : b
+                    ),
+                },
+            };
+        }
+        case 'ADVANCE_BPR_STAGE': {
+            const { bprId: advBprId, newStage: bprNewStage } = action.payload;
+            return {
+                ...state,
+                mfg: {
+                    ...state.mfg,
+                    bprs: (state.mfg.bprs || []).map((b: any) =>
+                        b.id === advBprId ? { ...b, stage: bprNewStage } : b
+                    ),
+                },
+            };
+        }
+        case 'ADD_MATERIAL_REQUEST': {
+            return {
+                ...state,
+                mfg: {
+                    ...state.mfg,
+                    materialRequests: [...(state.mfg.materialRequests || []), action.payload],
+                },
+            };
+        }
+        case 'SPLIT_DRAFT_PO': {
+            const { draftId: splitId, newDrafts } = action.payload;
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    drafts: [
+                        ...(state.po.drafts || []).filter((d: any) => d.id !== splitId),
+                        ...newDrafts,
+                    ],
+                },
+            };
+        }
+        case 'RELEASE_DRAFT_PO': {
+            const { draftId: relId } = action.payload;
+            const draftToRelease = (state.po.drafts || []).find((d: any) => d.id === relId);
+            if (!draftToRelease) return state;
+            const terms = state.masters?.paymentTerms?.find((t: any) => t.id === draftToRelease.termsId);
+            const advPct = terms?.advancePct || 0;
+            if (advPct > 0) {
+                const total = (draftToRelease.lines || []).reduce((s: number, l: any) => s + l.qty * l.unit, 0);
+                const amount = Math.round(total * (advPct / 100));
+                const req = {
+                    reqId: 'TR-' + Math.random().toString(16).slice(2, 6).toUpperCase(),
+                    poId: relId,
+                    vendor: draftToRelease.vendor,
+                    advancePct: advPct,
+                    amount,
+                    status: 'Pending',
+                    createdAt: new Date().toISOString(),
+                };
+                return {
+                    ...state,
+                    po: {
+                        ...state.po,
+                        drafts: (state.po.drafts || []).map((d: any) =>
+                            d.id === relId ? { ...d, status: 'AWAITING_ADVANCE' } : d
+                        ),
+                        treasury: [...(state.po.treasury || []), req],
+                    },
+                };
+            } else {
+                // Direct issue
+                const poSeq = (state.po.seq?.po || 250023);
+                const newPOId = 'PO-' + poSeq;
+                const minDate = (arr: string[]) => {
+                    const dates = arr.map(d => new Date(d).getTime());
+                    return new Date(Math.min(...dates)).toISOString().slice(0, 10);
+                };
+                const issuedPO = {
+                    id: newPOId,
+                    vendor: draftToRelease.vendor,
+                    vendorId: draftToRelease.vendorId,
+                    status: 'ISSUED',
+                    issuedAt: new Date().toISOString().slice(0, 10),
+                    confirmation: 'Pending',
+                    confAt: null,
+                    expectedConnectivity: minDate((draftToRelease.lines || []).map((l: any) => l.expectedConnectivity || new Date().toISOString())),
+                    expectedDelivery: minDate((draftToRelease.lines || []).map((l: any) => l.expectedDelivery || new Date().toISOString())),
+                    expectedStockUpdate: minDate((draftToRelease.lines || []).map((l: any) => l.expectedStockUpdate || new Date().toISOString())),
+                    dispatchStatus: 'Not dispatched',
+                    delayed: false,
+                    delayedTo: null,
+                    termsId: draftToRelease.termsId,
+                    notes: draftToRelease.notes || '—',
+                    lines: (draftToRelease.lines || []).map((l: any) => ({
+                        ...l,
+                        grn: { status: 'Pending', validations: null, labels: [] },
+                    })),
+                };
+                return {
+                    ...state,
+                    po: {
+                        ...state.po,
+                        drafts: (state.po.drafts || []).filter((d: any) => d.id !== relId),
+                        issued: [...(state.po.issued || []), issuedPO],
+                        seq: { ...state.po.seq, po: poSeq + 1 },
+                    },
+                };
+            }
+        }
+        case 'MARK_TREASURY_PAID': {
+            const { reqId: trReqId } = action.payload;
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    treasury: (state.po.treasury || []).map((r: any) =>
+                        r.reqId === trReqId ? { ...r, status: 'Paid' } : r
+                    ),
+                },
+            };
+        }
+        case 'CONFIRM_PO': {
+            const { poId: confPoId, confAt } = action.payload;
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    issued: (state.po.issued || []).map((p: any) =>
+                        p.id === confPoId ? { ...p, confirmation: 'Confirmed', confAt } : p
+                    ),
+                },
+            };
+        }
+        case 'DISPATCH_PO': {
+            const { poId: dispPoId } = action.payload;
+            return {
+                ...state,
+                po: {
+                    ...state.po,
+                    issued: (state.po.issued || []).map((p: any) =>
+                        p.id === dispPoId ? { ...p, dispatchStatus: 'In transit' } : p
                     ),
                 },
             };

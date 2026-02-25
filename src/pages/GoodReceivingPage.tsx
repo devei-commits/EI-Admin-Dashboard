@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PORequests, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
 import { useGlobalState } from '../context/GlobalStateContext';
+import GRNWizardModal from '../components/ordermanagementcomp/GRNWizardModal';
 
 type TabType = 'po-requests' | 'issued-pos' | 'ongoing-grns' | 'mrn-fgs' | 'print-labels' | 'grn' | 'proofing';
 
@@ -10,6 +11,7 @@ const IssuedPOsView: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const issuedPOs: any[] = state.po?.issued || [];
   const [grnInputs, setGrnInputs] = useState<Record<string, string>>({});
+  const [grnWizard, setGrnWizard] = useState<{ poId: string; lineItemId: string } | null>(null);
 
   const completeGRN = (poId: string, lineItemId: string, receivedQty: number) => {
     dispatch({
@@ -111,16 +113,24 @@ const IssuedPOsView: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       {!isDone ? (
-                        <button
-                          onClick={() => {
-                            const qty = Number(grnInputs[key] ?? line.qty);
-                            if (qty <= 0) { alert('Enter a valid received quantity'); return; }
-                            completeGRN(po.id, line.itemId, qty);
-                          }}
-                          className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition"
-                        >
-                          ✓ Complete GRN
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setGrnWizard({ poId: po.id, lineItemId: line.itemId })}
+                            className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
+                          >
+                            📋 GRN Wizard
+                          </button>
+                          <button
+                            onClick={() => {
+                              const qty = Number(grnInputs[key] ?? line.qty);
+                              if (qty <= 0) { alert('Enter a valid received quantity'); return; }
+                              completeGRN(po.id, line.itemId, qty);
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition"
+                          >
+                            ✓ Quick GRN
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-xs text-green-600 font-medium">GRN Done</span>
                       )}
@@ -132,6 +142,15 @@ const IssuedPOsView: React.FC = () => {
           </table>
         </div>
       ))}
+
+      {/* GRN Wizard Modal */}
+      {grnWizard && (
+        <GRNWizardModal
+          poId={grnWizard.poId}
+          lineItemId={grnWizard.lineItemId}
+          onClose={() => setGrnWizard(null)}
+        />
+      )}
     </div>
   );
 };
@@ -158,7 +177,7 @@ const GoodReceivingPage = () => {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Good Receiving</h1>
-            <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+            <div className="flex items-center gap-2 mt-2 text-sm bg-linear-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
               <Link to="/" className="text-slate-800 hover:text-amber-800 hover:underline">Dashboard</Link>
               <span className="text-gray-400">/</span>
               <Link to="/order-management" className="text-slate-800 hover:text-amber-800 hover:underline">Order Management</Link>

@@ -55,7 +55,7 @@ const PageLoader = () => (
 const NetworkStatus = ({ isOnline }: { isOnline: boolean }) => {
        if (isOnline) return null;
        return (
-              <div className="fixed top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-center text-sm font-medium z-[9999]">
+              <div className="fixed top-0 left-0 right-0 bg-red-500 text-white px-4 py-2 text-center text-sm font-medium z-9999">
                      ⚠️ You are offline. Some features may be limited.
               </div>
        );

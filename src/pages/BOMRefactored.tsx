@@ -5,6 +5,9 @@ import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
 import { useGlobalState } from '../context/GlobalStateContext';
+import BMRPrintTemplate from '../components/ordermanagementcomp/BMRPrintTemplate';
+import ConsolidatedMRModal from '../components/ordermanagementcomp/ConsolidatedMRModal';
+import { BMR_STAGES } from '../utils/manufacturing';
 
 const BOMRefactored: React.FC = () => {
   const { addItem } = useItems();
@@ -12,6 +15,9 @@ const BOMRefactored: React.FC = () => {
   const [pageTab, setPageTab] = useState<'bom' | 'bmr'>('bmr');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentStage, setCurrentStage] = useState(0);
+  const [printBmr, setPrintBmr] = useState<any>(null);
+  const [consolidatedMRIds, setConsolidatedMRIds] = useState<string[] | null>(null);
+  const [selectedBmrIds, setSelectedBmrIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     // Primary Info
@@ -409,6 +415,9 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ soId: '', batchSize: '', area: '', startDate: '', notes: '' });
+  const [printBmr, setPrintBmr] = useState<any>(null);
+  const [consolidatedMRIds, setConsolidatedMRIds] = useState<string[] | null>(null);
+  const [selectedBmrIds, setSelectedBmrIds] = useState<string[]>([]);
 
   const selectedSO = salesOrders.find((s) => s.so === form.soId);
 
@@ -529,7 +538,7 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
               <div className="px-5 py-3">
                 <div className="flex items-center gap-0.5 overflow-x-auto">
                   {BMR_STAGES.map((s, i) => (
-                    <div key={s} className="flex-1 flex flex-col items-center min-w-[60px]">
+                    <div key={s} className="flex-1 flex flex-col items-center min-w-15">
                       <div className={`w-full h-2 rounded-sm ${i < bmr.stage ? 'bg-emerald-400' : i === bmr.stage ? 'bg-blue-500' : 'bg-gray-200'
                         }`} />
                       <span className={`text-[10px] mt-1 text-center leading-tight ${i === bmr.stage ? 'text-blue-600 font-semibold' : 'text-gray-400'
@@ -540,7 +549,16 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
               </div>
 
               {/* Actions */}
-              <div className="px-5 py-3 bg-gray-50/50 flex gap-2 flex-wrap">
+              <div className="px-5 py-3 bg-gray-50/50 flex gap-2 flex-wrap items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedBmrIds.includes(bmr.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelectedBmrIds(prev => [...prev, bmr.id]);
+                    else setSelectedBmrIds(prev => prev.filter(id => id !== bmr.id));
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
                 {bmr.stage < 6 && (
                   <button onClick={() => advanceStage(bmr)}
                     className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition">
@@ -556,10 +574,27 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
                 {bmr.stage === 7 && (
                   <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg">✓ BMR Completed</span>
                 )}
+                <button onClick={() => setPrintBmr(bmr)}
+                  className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-300 transition">
+                  🖨 Print BMR
+                </button>
                 {bmr.notes && <span className="text-xs text-gray-400 self-center ml-2">📝 {bmr.notes}</span>}
               </div>
             </div>
           ))}
+
+          {/* Consolidated Material Request button */}
+          {selectedBmrIds.length > 0 && (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-sm text-gray-500">{selectedBmrIds.length} BMR(s) selected</span>
+              <button
+                onClick={() => setConsolidatedMRIds(selectedBmrIds)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+              >
+                📋 Consolidated Material Request
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -649,6 +684,19 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
             </div>
           </div>
         </div>
+      )}
+
+      {/* BMR Print Template Modal */}
+      {printBmr && (
+        <BMRPrintTemplate bmr={printBmr} onClose={() => setPrintBmr(null)} />
+      )}
+
+      {/* Consolidated Material Request Modal */}
+      {consolidatedMRIds && (
+        <ConsolidatedMRModal
+          bmrIds={consolidatedMRIds}
+          onClose={() => { setConsolidatedMRIds(null); setSelectedBmrIds([]); }}
+        />
       )}
     </div>
   );

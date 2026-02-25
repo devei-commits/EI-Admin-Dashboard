@@ -8,6 +8,8 @@ import {
   validatePrimaryFields
 } from '../utils/masterFormUtils';
 import { useGlobalState } from '../context/GlobalStateContext';
+import BPRPrintTemplate from '../components/ordermanagementcomp/BPRPrintTemplate';
+import { BPR_STAGES } from '../utils/manufacturing';
 
 const PackagingRefactored: React.FC = () => {
   const { addItem } = useItems();
@@ -622,6 +624,7 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
   const bprs: any[] = state.mfg?.bprs || [];
   const bmrs: any[] = state.mfg?.bmrs || [];
   const salesOrders: any[] = state.orders?.salesOrders || [];
+  const [printBpr, setPrintBpr] = useState<any>(null);
 
   const stageColor = (stage: number) => {
     if (stage === 0) return 'bg-gray-100 text-gray-700';
@@ -707,7 +710,7 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
                 <div className="px-5 py-3">
                   <div className="flex items-center gap-0.5 overflow-x-auto">
                     {BPR_STAGES.map((s, i) => (
-                      <div key={s} className="flex-1 flex flex-col items-center min-w-[70px]">
+                      <div key={s} className="flex-1 flex flex-col items-center min-w-17.5">
                         <div className={`w-full h-2 rounded-sm ${i < (bpr.stage || 0) ? 'bg-emerald-400' : i === (bpr.stage || 0) ? 'bg-indigo-500' : 'bg-gray-200'
                           }`} />
                         <span className={`text-[10px] mt-1 text-center ${i === (bpr.stage || 0) ? 'text-indigo-600 font-semibold' : 'text-gray-400'
@@ -727,12 +730,19 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
                   ) : (
                     <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg">✓ BPR Completed</span>
                   )}
+                  <button onClick={() => setPrintBpr({ ...bpr, product: linkedBMR?.product, batchSize: linkedBMR?.batchSize, client: linkedSO?.clientName })}
+                    className="px-4 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition">
+                    🖨 Print BPR
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* BPR Print Modal */}
+      {printBpr && <BPRPrintTemplate bpr={printBpr} onClose={() => setPrintBpr(null)} />}
     </div>
   );
 };

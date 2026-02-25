@@ -71,11 +71,11 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom', 'lucide-react', 'sonner'],
   },
-  // Dev server: proxy API to backend (backend on port 3000)
+  // Dev server: proxy API to backend (backend on port 5000)
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
     },

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
+import ItemDetailModal from '../components/ordermanagementcomp/ItemDetailModal';
+import DraftSplitModal from '../components/ordermanagementcomp/DraftSplitModal';
+import DelayImpactModal from '../components/ordermanagementcomp/DelayImpactModal';
 
 interface OrderStatus {
   orderStatus: 'pending' | 'processing' | 'completed' | '';
@@ -46,6 +49,9 @@ const SalesAndPurchase: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<string[]>(['All']);
   const [customField, setCustomField] = useState('');
+  const [itemDetailModalId, setItemDetailModalId] = useState<string | null>(null);
+  const [draftSplitModalId, setDraftSplitModalId] = useState<string | null>(null);
+  const [delayImpactModalPoId, setDelayImpactModalPoId] = useState<string | null>(null);
 
   // Load orders from localStorage on mount AND merge with global state
   useEffect(() => {
@@ -389,7 +395,7 @@ const SalesAndPurchase: React.FC = () => {
       </div>
 
       {/* Procurement View */}
-      {viewMode === 'procurement' && <ProcurementView state={state} dispatch={dispatch} />}
+      {viewMode === 'procurement' && <ProcurementView state={state} dispatch={dispatch} onItemDetail={setItemDetailModalId} />}
 
       {/* Dashboard View */}
       {viewMode === 'dashboard' && (
@@ -765,7 +771,7 @@ const SalesAndPurchase: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="flex-1 sm:flex-none bg-gradient-to-r from-blue-500 to-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
+                      <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="flex-1 sm:flex-none bg-linear-to-r from-blue-500 to-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
                         <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
@@ -864,12 +870,30 @@ const SalesAndPurchase: React.FC = () => {
                                 </td>
                                 <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.items.length}</td>
                                 <td className="py-4 px-5 text-center">
-                                  <button
-                                    onClick={() => openDetailModal(order)}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium tracking-wider"
-                                  >
-                                    View
-                                  </button>
+                                  <div className="flex justify-center gap-1.5">
+                                    <button
+                                      onClick={() => openDetailModal(order)}
+                                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium tracking-wider"
+                                    >
+                                      View
+                                    </button>
+                                    {order.status === 'Draft' && (
+                                      <button
+                                        onClick={() => setDraftSplitModalId(order.id)}
+                                        className="px-3 py-2 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
+                                      >
+                                        ✂ Split
+                                      </button>
+                                    )}
+                                    {order.status !== 'Draft' && (
+                                      <button
+                                        onClick={() => setDelayImpactModalPoId(order.id)}
+                                        className="px-3 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-50 transition"
+                                      >
+                                        ⏱ Delay
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -941,12 +965,30 @@ const SalesAndPurchase: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <button
-                              onClick={() => openDetailModal(order)}
-                              className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium"
-                            >
-                              View Details
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => openDetailModal(order)}
+                                className="flex-1 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium"
+                              >
+                                View Details
+                              </button>
+                              {order.status === 'Draft' && (
+                                <button
+                                  onClick={() => setDraftSplitModalId(order.id)}
+                                  className="px-3 py-2 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
+                                >
+                                  ✂ Split
+                                </button>
+                              )}
+                              {order.status !== 'Draft' && (
+                                <button
+                                  onClick={() => setDelayImpactModalPoId(order.id)}
+                                  className="px-3 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-50 transition"
+                                >
+                                  ⏱ Delay
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -968,7 +1010,7 @@ const SalesAndPurchase: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               onClick={() => setOrderType('SO')}
-              className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-green-500 cursor-pointer"
+              className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-green-500 cursor-pointer"
             >
               <div className="flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -981,7 +1023,7 @@ const SalesAndPurchase: React.FC = () => {
 
             <button
               onClick={() => setOrderType('PO')}
-              className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-blue-500 cursor-pointer"
+              className="bg-linear-to-br from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-blue-500 cursor-pointer"
             >
               <div className="flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -998,7 +1040,7 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - SO Form */}
       {viewMode === 'form' && orderType === 'SO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-8 py-4 flex justify-between items-center">
+          <div className="bg-linear-to-r from-green-500 to-emerald-500 px-8 py-4 flex justify-between items-center">
             <h2 className="text-xl font-bold text-white">Create New Sales Order</h2>
             <button
               onClick={() => setOrderType(null)}
@@ -1223,7 +1265,7 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - PO Form */}
       {viewMode === 'form' && orderType === 'PO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-500 to-cyan-500 px-8 py-4 flex justify-between items-center">
+          <div className="bg-linear-to-r from-blue-500 to-cyan-500 px-8 py-4 flex justify-between items-center">
             <h2 className="text-xl font-bold text-white">Create New Purchase Order</h2>
             <button
               onClick={() => setOrderType(null)}
@@ -1449,7 +1491,7 @@ const SalesAndPurchase: React.FC = () => {
       {showDetailModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className={`bg-gradient-to-r ${selectedOrder.type === 'SO' ? 'from-green-500 to-emerald-500' : 'from-blue-500 to-cyan-500'} px-8 py-4 flex justify-between items-center sticky top-0`}>
+            <div className={`bg-linear-to-r ${selectedOrder.type === 'SO' ? 'from-green-500 to-emerald-500' : 'from-blue-500 to-cyan-500'} px-8 py-4 flex justify-between items-center sticky top-0`}>
               <h2 className="text-2xl font-bold text-white">{selectedOrder.type === 'SO' ? 'Sales Order' : 'Purchase Order'} Details</h2>
               <button
                 onClick={() => setShowDetailModal(false)}
@@ -1647,6 +1689,27 @@ const SalesAndPurchase: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* === Integrated modals === */}
+      {itemDetailModalId && (
+        <ItemDetailModal
+          itemId={itemDetailModalId}
+          onClose={() => setItemDetailModalId(null)}
+          onReleaseToPlan={(id) => { setItemDetailModalId(null); setViewMode('procurement'); }}
+        />
+      )}
+      {draftSplitModalId && (
+        <DraftSplitModal
+          draftId={draftSplitModalId}
+          onClose={() => setDraftSplitModalId(null)}
+        />
+      )}
+      {delayImpactModalPoId && (
+        <DelayImpactModal
+          poId={delayImpactModalPoId}
+          onClose={() => setDelayImpactModalPoId(null)}
+        />
+      )}
     </div>
   );
 };
@@ -1657,7 +1720,7 @@ export default SalesAndPurchase;
 // ProcurementView — shows item-level gap analysis + PO planning
 // mirrors v15f Procurement Item Dashboard
 // ══════════════════════════════════════════════════════════════
-const ProcurementView: React.FC<{ state: any; dispatch: any }> = ({ state, dispatch }) => {
+const ProcurementView: React.FC<{ state: any; dispatch: any; onItemDetail?: (id: string) => void }> = ({ state, dispatch, onItemDetail }) => {
   const [planItemId, setPlanItemId] = useState<string | null>(null);
   const [planForm, setPlanForm] = useState({ vendor: '', moq: '', qty: '', price: '', termsId: '' });
 
@@ -1778,7 +1841,15 @@ const ProcurementView: React.FC<{ state: any; dispatch: any }> = ({ state, dispa
                         <span className="text-xs text-gray-400">{fmt(priorityQty)} {item.uom}</span>
                       )}
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 flex gap-1.5">
+                      {onItemDetail && (
+                        <button
+                          onClick={() => onItemDetail(item.id)}
+                          className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition whitespace-nowrap"
+                        >
+                          📋 Detail
+                        </button>
+                      )}
                       {(item.vendors || []).length > 0 && (
                         <button
                           onClick={() => openPlanModal(item.id)}

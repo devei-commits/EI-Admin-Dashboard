@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
+import BatchPlannerModal from '../components/ordermanagementcomp/BatchPlannerModal';
 
 const CPO_STATUS_MAP: Record<string, { label: string; color: string }> = {
     draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
@@ -19,6 +20,7 @@ const OrderManagement: React.FC = () => {
     const [showNewCPO, setShowNewCPO] = useState(false);
     const [selectedCPOId, setSelectedCPOId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [batchPlannerSO, setBatchPlannerSO] = useState<string | null>(null);
 
     // ─── New CPO form state ────────────────────────────────────────────────────
     const [newCPO, setNewCPO] = useState({
@@ -246,7 +248,7 @@ const OrderManagement: React.FC = () => {
                 <div className="flex justify-between items-start flex-wrap gap-3">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Customer Purchase Orders</h1>
-                        <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+                        <div className="flex items-center gap-2 mt-2 text-sm bg-linear-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
                             <Link to="/" className="text-blue-600 hover:underline">Dashboard</Link>
                             <span className="text-gray-400">/</span>
                             <span className="text-gray-600">Order Management</span>
@@ -488,7 +490,7 @@ const OrderManagement: React.FC = () => {
                                 <div className="space-y-2">
                                     {(selectedCPO.timeline || []).map((t: any, i: number) => (
                                         <div key={i} className={`flex items-center gap-3 p-2 rounded-lg text-sm ${t.done ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-500'}`}>
-                                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${t.done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${t.done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
                                                 {t.done ? '✓' : i + 1}
                                             </span>
                                             <span className="font-medium flex-1">{t.stage}</span>
@@ -530,6 +532,12 @@ const OrderManagement: React.FC = () => {
                                     🏭 Create Sales Order
                                 </button>
                             )}
+                            {selectedCPO.soRef && (
+                                <button onClick={() => { setBatchPlannerSO(selectedCPO.soRef); setSelectedCPOId(null); }}
+                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-medium text-sm hover:bg-indigo-700 transition">
+                                    📦 Plan Batches
+                                </button>
+                            )}
                             <button onClick={() => setSelectedCPOId(null)}
                                 className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition">
                                 Close
@@ -537,6 +545,14 @@ const OrderManagement: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Batch Planner Modal */}
+            {batchPlannerSO && (
+                <BatchPlannerModal
+                    soNumber={batchPlannerSO}
+                    onClose={() => setBatchPlannerSO(null)}
+                />
             )}
         </div>
     );

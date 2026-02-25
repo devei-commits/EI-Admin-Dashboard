@@ -422,15 +422,15 @@ const Dashboard = () => {
             <p className="text-gray-100 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
               <p className="text-3xl font-bold">{state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0}</p>
               <p className="text-xs text-gray-100">Total Orders</p>
             </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
               <p className="text-3xl font-bold">{state.items?.filter((i: any) => i.stock < 500).length || 0}</p>
               <p className="text-xs text-gray-100">Low Stock</p>
             </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-[120px]">
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
               <p className="text-3xl font-bold">{state.po?.issued?.length || 0}</p>
               <p className="text-xs text-gray-100">Issued POs</p>
             </div>
@@ -597,7 +597,7 @@ const Dashboard = () => {
                 to={module.href}
                 className="group p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-200 bg-white"
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
+                <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
                   {module.icon}
                 </div>
                 <h3 className="font-semibold text-gray-800 group-hover:text-slate-800 transition-colors">{module.title}</h3>
