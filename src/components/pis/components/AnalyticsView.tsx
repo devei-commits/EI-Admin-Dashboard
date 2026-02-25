@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { BarChart3, TrendingUp, TrendingDown, Calendar, Download, RefreshCw, FileText, PieChart, Activity, Clock } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -417,7 +417,7 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
         return (
          <div key={idx} className="flex-1 flex flex-col items-center gap-2">
           <div 
-           className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all duration-500 relative group"
+           className="w-full bg-blue-600 rounded-t-lg transition-all duration-500 relative group"
            style={{ height: `${Math.max(height, 5)}%` }}
           >
            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
@@ -453,7 +453,7 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
          </div>
          <div className="w-full bg-gray-100 rounded-full h-3">
           <div 
-           className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full"
+           className="bg-blue-500 h-3 rounded-full"
            style={{ width: `${progress}%` }}
           />
          </div>

@@ -4,7 +4,7 @@
  */
 import { useState, useMemo } from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
-import { fmtNum, round2, addDaysISO, todayISO, formatDate } from '../../utils/manufacturing';
+import { fmtNum, round2, addDaysISO, todayISO } from '../../utils/manufacturing';
 
 interface Props {
   bmrIds: string[];

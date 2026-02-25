@@ -190,8 +190,6 @@ export async function updateProfile(
 ): Promise<ServiceResult<User>> {
  // TODO: Replace with actual API call
  // return apiClient.put<User>('/auth/profile', data);
-
- console.warn('[AuthService] updateProfile: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -210,8 +208,6 @@ export async function requestPasswordReset(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.post('/auth/password-reset/request', payload);
-
- console.warn('[AuthService] requestPasswordReset: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -229,8 +225,6 @@ export async function resetPassword(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.post('/auth/password-reset/confirm', { token, newPassword });
-
- console.warn('[AuthService] resetPassword: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -247,8 +241,6 @@ export async function changePassword(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.post('/auth/change-password', payload);
-
- console.warn('[AuthService] changePassword: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -265,8 +257,6 @@ export async function changePassword(
 export async function getActiveSessions(): Promise<ServiceResult<SessionInfo[]>> {
  // TODO: Replace with actual API call
  // return apiClient.get<SessionInfo[]>('/auth/sessions');
-
- console.warn('[AuthService] getActiveSessions: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -283,8 +273,6 @@ export async function revokeSession(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/auth/sessions/${sessionId}`);
-
- console.warn('[AuthService] revokeSession: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -299,8 +287,6 @@ export async function revokeSession(
 export async function revokeAllSessions(): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete('/auth/sessions/all');
-
- console.warn('[AuthService] revokeAllSessions: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -319,8 +305,6 @@ export async function validateToken(
 ): Promise<ServiceResult<{ valid: boolean; expiresAt?: string }>> {
  // TODO: Replace with actual API call
  // return apiClient.post('/auth/validate', { token });
-
- console.warn('[AuthService] validateToken: Using placeholder implementation');
  return {
   data: { valid: true },
   error: null,
@@ -336,8 +320,6 @@ export function getStoredAuthState(): AuthState | null {
  // TODO: Implement actual storage retrieval
  // const stored = localStorage.getItem('authState');
  // return stored ? JSON.parse(stored) : null;
-
- console.warn('[AuthService] getStoredAuthState: Using placeholder implementation');
  return null;
 }
 
@@ -348,8 +330,6 @@ export function getStoredAuthState(): AuthState | null {
 export function storeAuthState(_state: AuthState): void {
  // TODO: Implement actual storage
  // localStorage.setItem('authState', JSON.stringify(state));
-
- console.warn('[AuthService] storeAuthState: Using placeholder implementation');
 }
 
 /**
@@ -359,6 +339,4 @@ export function storeAuthState(_state: AuthState): void {
 export function clearStoredAuthState(): void {
  // TODO: Implement actual storage clearing
  // localStorage.removeItem('authState');
-
- console.warn('[AuthService] clearStoredAuthState: Using placeholder implementation');
 }

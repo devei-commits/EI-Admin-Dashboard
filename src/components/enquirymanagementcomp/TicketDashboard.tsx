@@ -22,12 +22,12 @@ const StatCard: React.FC<StatCardProps> = ({
  title, value, subtitle, icon, trend, color, onClick 
 }) => {
  const colorClasses = {
-  blue: 'from-blue-50 to-blue-100 border-blue-200',
-  amber: 'bg-slate-800 to-amber-100 border-gray-200',
-  emerald: 'from-emerald-50 to-emerald-100 border-emerald-200',
-  red: 'from-red-50 to-red-100 border-red-200',
-  purple: 'from-purple-50 to-purple-100 border-purple-200',
-  gray: 'from-gray-50 to-gray-100 border-gray-200',
+  blue: 'bg-blue-50 border-blue-200',
+  amber: 'bg-amber-50 border-amber-200',
+  emerald: 'bg-emerald-50 border-emerald-200',
+  red: 'bg-red-50 border-red-200',
+  purple: 'bg-purple-50 border-purple-200',
+  gray: 'bg-gray-50 border-gray-200',
  };
 
  const iconBgClasses = {
@@ -59,7 +59,7 @@ const StatCard: React.FC<StatCardProps> = ({
 
  return (
   <div 
-   className={`bg-gradient-to-r ${colorClasses[color]} rounded-xl p-5 border transition-all hover:shadow-md ${onClick ? 'cursor-pointer' : ''}`}
+   className={`${colorClasses[color]} rounded-xl p-5 border transition-all hover:shadow-md ${onClick ? 'cursor-pointer' : ''}`}
    onClick={onClick}
   >
    <div className="flex items-start justify-between">
@@ -370,7 +370,6 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
     setStaffMetrics(staffResult.data);
    }
   } catch (error) {
-   console.error('Error loading dashboard data:', error);
   } finally {
    setLoading(false);
   }

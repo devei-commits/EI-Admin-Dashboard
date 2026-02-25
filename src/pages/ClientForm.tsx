@@ -210,7 +210,6 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     if (parsed.banks) setBanks(parsed.banks);
     if (parsed.productInterests) setProductInterests(parsed.productInterests);
    } catch (e) {
-    console.error('Failed to load draft:', e);
    }
   }
  }, [existingClient, draftKey]);

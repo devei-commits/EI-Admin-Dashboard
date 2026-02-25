@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const CouponManagement = () => {
@@ -28,7 +28,7 @@ const CouponManagement = () => {
    <div className="mb-6">
     <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Coupon Management</h1>
     {/* Breadcrumb */}
-    <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+    <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
      <Link to="/" className="text-blue-600 hover:text-blue-800 hover:underline">
       Dashboard
      </Link>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -57,7 +57,6 @@ export function Login({ onLogin, onSignup }: LoginProps) {
    }
   } catch (error) {
    setIsLoginLoading(false);
-   console.error('Login error:', error);
    setLoginError(error instanceof Error ? error.message : 'An error occurred during login. Please try again.');
   }
  };
@@ -97,18 +96,17 @@ export function Login({ onLogin, onSignup }: LoginProps) {
    }
   } catch (error) {
    setIsSignupLoading(false);
-   console.error('Signup error:', error);
    setSignupError(error instanceof Error ? error.message : 'An error occurred during signup. Please try again.');
   }
  };
 
 
  return (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+  <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
    <div className="w-full max-w-md">
     {/* Logo/Brand Section */}
     <div className="text-center mb-8">
-     <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl mb-4 shadow-lg">
+     <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-600 rounded-2xl mb-4 shadow-lg">
       <Building2 className="h-10 w-10 text-white" />
      </div>
      <h1 className="text-3xl font-bold text-gray-900 mb-2">

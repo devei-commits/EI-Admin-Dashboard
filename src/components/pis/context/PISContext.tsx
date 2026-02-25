@@ -790,7 +790,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     setDashboardStats(stats.data);
    }
   } catch (error) {
-   console.error('Error fetching dashboard stats:', error);
   }
  }, [isAuthenticated]);
 
@@ -803,7 +802,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(SESSION_ROLE_KEY);
   }
  } catch (e) {
-   console.error('Error persisting current role:', e);
   }
  };
 
@@ -833,19 +831,14 @@ export function PISProvider({ children }: { children: ReactNode }) {
      const pisRecords = pisResponse.data.pisRecords || [];
      const convertedPis = pisRecords.map(convertApiPISToFrontend);
      setPisRecords(convertedPis);
-     console.log(`✓ Fetched ${convertedPis.length} PIS records from database (Total available: ${pisResponse.data.pagination?.total || convertedPis.length})`);
-     
      // If pagination shows more records than returned, log a warning
      if (pisResponse.data.pagination && pisResponse.data.pagination.total > convertedPis.length) {
-      console.warn(`⚠️ Warning: Only fetched ${convertedPis.length} of ${pisResponse.data.pagination.total} total PIS records. Consider implementing pagination.`);
      }
     } else {
      // Only use mock data if API response indicates failure (not just empty data)
-     console.warn('API response not successful, using empty array');
      setPisRecords([]);
     }
    } catch (error) {
-    console.error('Error fetching PIS records:', error);
     // Only use mock data in development mode, not for CLIENT users in production
     // For CLIENT users, empty array is correct if no records are assigned
     if (currentUser?.role === 'CLIENT') {
@@ -880,7 +873,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
      setCustomers(mockCustomersData);
     }
    } catch (error) {
-    console.error('Error fetching customers, using mock data:', error);
     // Use mock data as fallback
     setCustomers(mockCustomersData);
    }
@@ -908,7 +900,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
      setProducts(mockProductsData);
     }
    } catch (error) {
-    console.error('Error fetching products, using mock data:', error);
     // Use mock data as fallback
     setProducts(mockProductsData);
    }
@@ -951,18 +942,15 @@ export function PISProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date(u.updatedAt),
        }));
        setSystemUsers(convertedUsers);
-       console.log(`✓ Fetched ${convertedUsers.length} BD_STAFF users from API for BD_MANAGER`);
       } else {
        // Fallback to dummy data
        const dummyBdStaff = mockUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
        setSystemUsers(dummyBdStaff);
-       console.log(`✓ Using ${dummyBdStaff.length} dummy BD staff users for BD_MANAGER`);
       }
      } catch (_apiError) {
       // API might not be accessible or permission denied - use dummy data
       const dummyBdStaff = mockUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
       setSystemUsers(dummyBdStaff);
-      console.log(`✓ Using ${dummyBdStaff.length} dummy BD staff users for BD_MANAGER (API unavailable)`);
      }
     } else if (currentUser && currentUser.role === 'RND_LEAD') {
      // For RND_LEAD, try to fetch RND_STAFF from API, fallback to dummy data
@@ -981,35 +969,28 @@ export function PISProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date(u.updatedAt),
        }));
        setSystemUsers(convertedUsers);
-       console.log(`✓ Fetched ${convertedUsers.length} RND_STAFF users from API for RND_LEAD`);
       } else {
        // Fallback to dummy data
        const dummyRndStaff = mockUsers.filter(u => u.role === 'RND_STAFF' && u.status === 'ACTIVE');
        setSystemUsers(dummyRndStaff);
-       console.log(`✓ Using ${dummyRndStaff.length} dummy RND staff users for RND_LEAD`);
       }
      } catch (_apiError) {
       // API might not be accessible - use dummy data
       const dummyRndStaff = mockUsers.filter(u => u.role === 'RND_STAFF' && u.status === 'ACTIVE');
       setSystemUsers(dummyRndStaff);
-      console.log(`✓ Using ${dummyRndStaff.length} dummy RND staff users for RND_LEAD (API unavailable)`);
      }
     }
    } catch (error) {
-    console.error('Error fetching users:', error);
     // Fallback to dummy data for managers if API fails
     if (currentUser && currentUser.role === 'BD_MANAGER') {
      const dummyBdStaff = mockUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
      setSystemUsers(dummyBdStaff);
-     console.log(`✓ Fallback: Using ${dummyBdStaff.length} dummy BD staff users for BD_MANAGER`);
     } else if (currentUser && currentUser.role === 'RND_LEAD') {
      const dummyRndStaff = mockUsers.filter(u => u.role === 'RND_STAFF' && u.status === 'ACTIVE');
      setSystemUsers(dummyRndStaff);
-     console.log(`✓ Fallback: Using ${dummyRndStaff.length} dummy RND staff users for RND_LEAD`);
     }
    }
   } catch (error) {
-   console.error('Error fetching data:', error);
   } finally {
    setIsLoading(false);
   }
@@ -1018,8 +999,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
  // Fetch data when authenticated and keep it fresh with light polling
  useEffect(() => {
   if (!isAuthenticated || !currentUser) return;
-
-  console.log(`[PISContext] Fetching data for user: ${currentUser.email} (${currentUser.role})`);
   fetchData();
 
   const intervalMs = 60000; // 60 seconds - reduced frequency to minimize unwanted updates
@@ -1089,17 +1068,13 @@ export function PISProvider({ children }: { children: ReactNode }) {
        try {
         localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
        } catch (e) {
-        console.error('Error storing role:', e);
        }
-       
-       console.log('✅ Session restored from token');
        setHasInitializedSession(true);
       }
       return;
      }
     } catch (_error) {
      // Token might be expired, try to refresh
-     console.log('🔄 Access token expired, attempting refresh...');
      const refreshToken = getRefreshToken();
      if (refreshToken) {
       try {
@@ -1130,17 +1105,13 @@ export function PISProvider({ children }: { children: ReactNode }) {
          try {
           localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
          } catch (e) {
-          console.error('Error storing role:', e);
          }
-         
-         console.log('✅ Session restored via refresh token');
          setHasInitializedSession(true);
         }
         return;
        }
       } catch (refreshError) {
        // Refresh failed, clear tokens and log out
-       console.error('❌ Refresh token expired:', refreshError);
        clearTokens();
        localStorage.removeItem(SESSION_USER_KEY);
        localStorage.removeItem(SESSION_ROLE_KEY);
@@ -1158,7 +1129,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
      setHasInitializedSession(true);
     }
    } catch (e) {
-    console.error('Error checking auth session:', e);
     // Clear invalid tokens
     clearTokens();
     localStorage.removeItem(SESSION_USER_KEY);
@@ -1182,7 +1152,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    const response = await authApi.login(email, password);
    
    if (!response.success || !response.data) {
-    console.error('❌ Login failed');
    return null;
   }
 
@@ -1211,12 +1180,10 @@ export function PISProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SESSION_USER_KEY, systemUser.id);
     localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
   } catch (e) {
-   console.error('Error persisting auth session:', e);
   }
 
    return systemUser;
   } catch (error) {
-   console.error('❌ Login error:', error);
    return null;
   }
  };
@@ -1256,13 +1223,11 @@ export function PISProvider({ children }: { children: ReactNode }) {
    localStorage.setItem(SESSION_USER_KEY, newUser.id);
    localStorage.removeItem(SESSION_ROLE_KEY);
   } catch (e) {
-   console.error('Error persisting signup session:', e);
   }
   return newUser;
    }
    return null;
   } catch (error) {
-   console.error('Signup error:', error);
    return null;
   }
  };
@@ -1271,7 +1236,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
   try {
    await authApi.logout();
   } catch (error) {
-   console.error('Logout error:', error);
   } finally {
   setCurrentUser(null);
   setIsAuthenticated(false);
@@ -1284,7 +1248,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    localStorage.removeItem(SESSION_USER_KEY);
    localStorage.removeItem(SESSION_ROLE_KEY);
   } catch (e) {
-   console.error('Error clearing auth session:', e);
    }
   }
  };
@@ -1299,7 +1262,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error creating PIS:', error);
    throw error;
   }
  };
@@ -1316,7 +1278,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error updating PIS:', error);
    throw error;
   }
  };
@@ -1326,7 +1287,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    await pisApi.delete(id);
   setPisRecords(prev => prev.filter(pis => pis.id !== id));
   } catch (error) {
-   console.error('Error deleting PIS:', error);
    throw error;
   }
  };
@@ -1354,7 +1314,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error fetching PIS:', error);
    // Fallback to local state
   return pisRecords.find(pis => pis.id === id);
   }
@@ -1372,7 +1331,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     );
    }
   } catch (error) {
-   console.error('Error adding history entry:', error);
   }
  };
 
@@ -1392,7 +1350,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error transitioning PIS:', error);
    throw error;
   }
  };
@@ -1426,7 +1383,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error creating customer:', error);
    throw error;
   }
  };
@@ -1443,7 +1399,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error updating customer:', error);
    throw error;
   }
  };
@@ -1453,7 +1408,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    await customersApi.delete(id);
   setCustomers(prev => prev.filter(c => c.id !== id));
   } catch (error) {
-   console.error('Error deleting customer:', error);
    throw error;
   }
  };
@@ -1481,7 +1435,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error creating product:', error);
    throw error;
   }
  };
@@ -1498,7 +1451,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     return converted;
    }
   } catch (error) {
-   console.error('Error updating product:', error);
    throw error;
   }
  };
@@ -1508,7 +1460,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    await productsApi.delete(id);
   setProducts(prev => prev.filter(p => p.id !== id));
   } catch (error) {
-   console.error('Error deleting product:', error);
    throw error;
   }
  };
@@ -1536,7 +1487,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
      }
    }
   } catch (error) {
-   console.error('Error assigning user role:', error);
    throw error;
   }
  };
@@ -1574,7 +1524,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
     }
    }
   } catch (error) {
-   console.error('Error updating user status:', error);
    throw error;
   }
  };
@@ -1585,7 +1534,6 @@ export function PISProvider({ children }: { children: ReactNode }) {
    await usersApi.delete(userIdNum);
   setSystemUsers(prev => prev.filter(user => user.id !== userId));
   } catch (error) {
-   console.error('Error deleting user:', error);
    throw error;
   }
  };

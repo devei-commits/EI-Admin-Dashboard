@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 import { OrderTable } from '../components/ordermanagementcomp';
 import { UnifiedButton } from '../components/ui';
 
@@ -10,7 +10,7 @@ const OrderList = () => {
      <div>
       <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Order Management</h1>
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+      <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
        <Link to="/" className="text-blue-600 hover:text-blue-800 hover:underline">
         Dashboard
        </Link>

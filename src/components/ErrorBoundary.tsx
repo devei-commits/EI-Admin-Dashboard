@@ -22,9 +22,6 @@ class ErrorBoundary extends Component<Props, State> {
  }
 
  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-  console.error('Uncaught error:', error, errorInfo);
-  console.error('Component stack:', errorInfo.componentStack);
-  console.error('Error stack:', error.stack);
   this.props.onError?.(error, errorInfo);
   
   // You can send to error tracking service here
@@ -42,7 +39,7 @@ class ErrorBoundary extends Component<Props, State> {
    }
 
    return (
-    <div className="min-h-[400px] flex items-center justify-center p-8">
+    <div className="min-h-100 flex items-center justify-center p-8">
      <div className="text-center max-w-md">
       <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
        <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

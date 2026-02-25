@@ -223,7 +223,6 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
     try {
      await transitionPIS(pis.id, 'RND_LEAD_REVIEW', 'APPROVED', `${decision}${comments ? ` - ${comments}` : ''}`);
     } catch (error) {
-     console.error('Error transitioning PIS:', error);
     }
    },
   });
@@ -252,7 +251,6 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
     try {
      await updatePIS(pis.id, updates);
     } catch (error) {
-     console.error('Error requesting missing info:', error);
     }
 
     // Trigger a refresh of history from backend so comments are visible where supported
@@ -269,7 +267,6 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
       comments,
      });
     } catch (error) {
-     console.error('Error refreshing history after missing-info request:', error);
     }
    },
   });

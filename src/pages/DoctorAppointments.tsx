@@ -137,7 +137,7 @@ const DoctorAppointments = () => {
    className="flex items-center gap-1 hover:bg-gray-50 p-2 rounded transition-colors min-w-0 w-full justify-start"
   >
    <span className="truncate">{children}</span>
-   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     {sortField === field ? (
      sortDirection === 'asc' ? (
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -199,28 +199,28 @@ const DoctorAppointments = () => {
       <table className="w-full table-auto">
        <thead className="bg-gray-50">
         <tr>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[60px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-15">
           <SortButton field="id">S No</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
           <SortButton field="doctorName">Doctor Name</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[110px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-27.5">
           <SortButton field="mobileNo">Mobile No</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
           <SortButton field="clinicName">Clinic Name</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
           <SortButton field="date">Date</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[130px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32.5">
           <SortButton field="confirmationStatus">Confirmation</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
           <SortButton field="status">Status</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
+         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-30">
           <SortButton field="assignTo">Assign To</SortButton>
          </th>
         </tr>
@@ -232,7 +232,7 @@ const DoctorAppointments = () => {
            {appointment.id}
           </td>
           <td className="px-2 sm:px-4 py-4 text-sm font-medium text-gray-900">
-           <div className="max-w-[140px] truncate" title={appointment.doctorName}>
+           <div className="max-w-35 truncate" title={appointment.doctorName}>
             {appointment.doctorName}
            </div>
           </td>
@@ -240,7 +240,7 @@ const DoctorAppointments = () => {
            {appointment.mobileNo}
           </td>
           <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
-           <div className="max-w-[140px] truncate" title={appointment.clinicName}>
+           <div className="max-w-35 truncate" title={appointment.clinicName}>
             {appointment.clinicName}
            </div>
           </td>
@@ -258,7 +258,7 @@ const DoctorAppointments = () => {
            </span>
           </td>
           <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
-           <div className="max-w-[120px] truncate" title={appointment.assignTo}>
+           <div className="max-w-30 truncate" title={appointment.assignTo}>
             {appointment.assignTo}
            </div>
           </td>

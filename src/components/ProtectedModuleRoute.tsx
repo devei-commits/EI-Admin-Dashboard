@@ -89,7 +89,7 @@ export const AccessDenied: React.FC<{ message?: string }> = ({
  message = "You don't have permission to access this resource." 
 }) => {
  return (
-  <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
+    <div className="flex flex-col items-center justify-center min-h-100 p-8">
    <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center max-w-md">
     <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
      <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

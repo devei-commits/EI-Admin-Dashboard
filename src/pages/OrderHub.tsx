@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
 import { useDebounce } from '../hooks/useDebounce';
 import { PORequests, IssuedPOS, OngoingGRNs, MRNFGs, GRNList, Proofing } from '../components/ordermanagementcomp';
@@ -749,7 +749,6 @@ const fetchOrders = async (): Promise<Order[]> => {
     const syncedOrders = JSON.parse(localStorage.getItem('eisthetic_order_hub_orders') || '[]');
     allOrders = [...allOrders, ...syncedOrders];
    } catch (error) {
-    console.error('Error loading synced orders:', error);
    }
    
    resolve(initializeOrderStages(allOrders));
@@ -1092,7 +1091,6 @@ const OrderHub = () => {
    const data = await fetchOrders();
    setOrders(data);
   } catch (error) {
-   console.error('Failed to fetch orders:', error);
   } finally {
    setLoading(false);
   }
@@ -1135,7 +1133,6 @@ const OrderHub = () => {
    }));
    setReviewOrders(reviewOrders);
   } catch (error) {
-   console.error('Failed to fetch review orders:', error);
   } finally {
    setLoading(false);
   }
@@ -1178,7 +1175,6 @@ const OrderHub = () => {
    ];
    setAuditLogs(mockLogs);
   } catch (error) {
-   console.error('Failed to load audit logs:', error);
   }
  };
 
@@ -1360,7 +1356,6 @@ const OrderHub = () => {
   try {
    await updateOrderType(orderId, newType);
   } catch (error) {
-   console.error('Failed to update order type:', error);
    // Revert on error
    loadOrders();
    loadReviewOrders();
@@ -1827,7 +1822,7 @@ const OrderHub = () => {
           : 'text-slate-400 hover:bg-slate-50 border-l-4 border-transparent hover:text-gray-900'
         }`}
        >
-        <span className="flex-shrink-0">{task.icon}</span>
+        <span className="shrink-0">{task.icon}</span>
         <span className="flex-1">{task.label}</span>
         {task.id !== 'all' && task.id !== 'goods-receiving' && (
          <svg
@@ -2002,10 +1997,28 @@ const OrderHub = () => {
        {/* Tasks Header */}
        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center gap-3 mb-2">
-         <span className="text-slate-700">{tasks.find(t => t.id === activeTask)?.icon}</span>
-         <h1 className="text-2xl font-bold text-gray-800 capitalize">{tasks.find(t => t.id === activeTask)?.label} Tasks</h1>
+           {(() => {
+            const activeTaskMeta = tasks.find(t => t.id === activeTask);
+            const rawLabel = (activeTaskMeta?.label ?? '').trim();
+            const baseLabel = rawLabel.replace(/\s*tasks\s*$/i, '').trim();
+            const headerLabel = baseLabel ? `${baseLabel} Tasks` : (rawLabel || 'Tasks');
+
+            return (
+             <>
+              <span className="text-slate-700">{activeTaskMeta?.icon}</span>
+              <h1 className="text-2xl font-bold text-gray-800 capitalize">{headerLabel}</h1>
+              </>
+            );
+           })()}
         </div>
-        <p className="text-slate-500 text-sm">View and manage all {tasks.find(t => t.id === activeTask)?.label.toLowerCase()} related tasks</p>
+          {(() => {
+           const rawLabel = (tasks.find(t => t.id === activeTask)?.label ?? '').trim();
+           const baseLabel = rawLabel.replace(/\s*tasks\s*$/i, '').trim();
+           const descriptionLabel = (baseLabel || rawLabel || 'selected').toLowerCase();
+           return (
+            <p className="text-slate-500 text-sm">View and manage all {descriptionLabel} related tasks</p>
+           );
+          })()}
        </div>
 
        {/* Stats Cards */}
@@ -2040,7 +2053,7 @@ const OrderHub = () => {
          </div>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 shadow-sm border border-blue-200 hover:shadow-md transition-shadow duration-200">
+        <div className="bg-blue-50 rounded-xl p-6 shadow-sm border border-blue-200 hover:shadow-md transition-shadow duration-200">
          <div className="flex items-center gap-4">
           <div className="bg-blue-500 rounded-lg p-3">
            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2070,7 +2083,7 @@ const OrderHub = () => {
          </div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 shadow-sm border border-green-200 hover:shadow-md transition-shadow duration-200">
+        <div className="bg-green-50 rounded-xl p-6 shadow-sm border border-green-200 hover:shadow-md transition-shadow duration-200">
          <div className="flex items-center gap-4">
           <div className="bg-green-500 rounded-lg p-3">
            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2101,7 +2114,7 @@ const OrderHub = () => {
         </div>
 
         {/* High Priority Count */}
-        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 shadow-sm border border-red-200 hover:shadow-md transition-shadow duration-200">
+        <div className="bg-red-50 rounded-xl p-6 shadow-sm border border-red-200 hover:shadow-md transition-shadow duration-200">
          <div className="flex items-center gap-4">
           <div className="bg-red-500 rounded-lg p-3">
            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2294,7 +2307,7 @@ const OrderHub = () => {
              {/* Progress Bar */}
              <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-               className="h-full bg-gradient-to-r from-green-500 to-green-400"
+               className="h-full bg-green-500"
                style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
               />
              </div>
@@ -3204,7 +3217,7 @@ const OrderHub = () => {
     
     {/* Stage Action Buttons - Common for All Stages except Orders Tracker and Goods Receiving */}
     {['orders-review', 'purchase-plan', 'purchase-planner', 'production-planner', 'production-tracker', 'order-closure'].includes(activeTab) && (
-     <div className="p-3 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-white flex items-center gap-2">
+     <div className="p-3 border-t border-gray-100 bg-gray-50 flex items-center gap-2">
       {isViewOnly && (
        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium rounded-lg">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3517,7 +3530,7 @@ const OrderHub = () => {
 
       {/* Order Details Modal */}
       {selectedOrderDetails && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setSelectedOrderDetails(null)}>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => setSelectedOrderDetails(null)}>
         <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-4xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
          <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-slate-50">
           <div>
@@ -3743,7 +3756,7 @@ const OrderHub = () => {
          <tbody>
           {filteredReviewOrders.map((order) => {
            return (
-            <tr key={order.id} className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${openOrderTypeDropdown === order.id ? 'relative z-[9998]' : ''}`}>
+            <tr key={order.id} className={`border-b border-gray-100 hover:bg-slate-50 transition-colors ${openOrderTypeDropdown === order.id ? 'relative z-9998' : ''}`}>
              <td className="px-3 py-2.5 bg-white hover:bg-slate-50">
               <input 
                type="checkbox" 
@@ -3756,7 +3769,7 @@ const OrderHub = () => {
               />
              </td>
              <td className={`px-3 py-2.5 whitespace-nowrap ${openOrderTypeDropdown === order.id ? 'static' : ''}`}>
-              <div className={`${openOrderTypeDropdown === order.id ? 'relative z-[9999]' : 'relative'} inline-block`}>
+              <div className={`${openOrderTypeDropdown === order.id ? 'relative z-9999' : 'relative'} inline-block`}>
                <button
                 disabled={isViewOnly}
                 data-order-id={order.id}
@@ -3781,7 +3794,7 @@ const OrderHub = () => {
                {openOrderTypeDropdown === order.id && !isViewOnly && (
                 <div 
                  ref={dropdownRef} 
-                 className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[160px] flex flex-col"
+                 className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-9999 min-w-40 flex flex-col"
                 >
                  {ORDER_TYPE_OPTIONS.map((type) => (
                   <button
@@ -3806,8 +3819,8 @@ const OrderHub = () => {
              <td className="px-3 py-2.5 whitespace-nowrap">
               <button className="text-blue-600 hover:underline">{order.productSku}</button>
              </td>
-             <td className="px-3 py-2.5 text-slate-300 min-w-[200px]">{order.compatibleItem}</td>
-             <td className="px-3 py-2.5 text-slate-300 min-w-[180px]">{order.brandName}</td>
+             <td className="px-3 py-2.5 text-slate-300 min-w-50">{order.compatibleItem}</td>
+             <td className="px-3 py-2.5 text-slate-300 min-w-45">{order.brandName}</td>
              <td className="px-3 py-2.5 whitespace-nowrap text-slate-300">{order.qty}</td>
              <td className="px-3 py-2.5 whitespace-nowrap text-slate-300">{order.unitRate}</td>
              <td className="px-3 py-2.5 whitespace-nowrap text-slate-300">{order.odrDate}</td>
@@ -3831,7 +3844,7 @@ const OrderHub = () => {
                 </svg>
                </button>
                {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'cmt' && !isViewOnly && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-9999 min-w-50">
                  {teams.find(t => t.category === 'CMT')?.staff.map((member) => (
                   <button
                    key={member.id}
@@ -3870,7 +3883,7 @@ const OrderHub = () => {
                 </svg>
                </button>
                {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'rnd' && !isViewOnly && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-9999 min-w-50">
                  {teams.find(t => t.category === 'RND_PRODUCT')?.staff.map((member) => (
                   <button
                    key={member.id}
@@ -3909,7 +3922,7 @@ const OrderHub = () => {
                 </svg>
                </button>
                {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'quality' && !isViewOnly && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-9999 min-w-50">
                  {teams.find(t => t.category === 'QUALITY_COMPLIANCE')?.staff.map((member) => (
                   <button
                    key={member.id}
@@ -3948,7 +3961,7 @@ const OrderHub = () => {
                 </svg>
                </button>
                {openPocDropdown?.orderId === order.id && openPocDropdown?.type === 'label' && !isViewOnly && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-[9999] min-w-[200px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-2xl z-9999 min-w-50">
                  {teams.find(t => t.category === 'LABEL_DESIGN')?.staff.map((member) => (
                   <button
                    key={member.id}
@@ -4034,7 +4047,7 @@ const OrderHub = () => {
       
       {/* Audit History Popup */}
       {viewHistoryOrderId && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]" onClick={handleCloseHistory}>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10000" onClick={handleCloseHistory}>
         <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-4xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <div>
@@ -4098,9 +4111,9 @@ const OrderHub = () => {
       
       {/* Conso Report Modal */}
       {consoReportModal && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setConsoReportModal(null)}>
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => setConsoReportModal(null)}>
         <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-100">
+         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-blue-50">
           <div>
            <h2 className="text-2xl font-bold text-gray-800">Consolidation Report - BOM Summary</h2>
            <p className="text-sm text-slate-400 mt-1">Selected Orders: {selectedOrderIds.size} | Total BOM Items: {getSelectedOrdersBOM().length}</p>
@@ -4210,9 +4223,9 @@ const OrderHub = () => {
 
       {/* Price Report Modal */}
       {priceReportModal && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setPriceReportModal(null)}>
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => setPriceReportModal(null)}>
         <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-2xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100">
+         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-purple-50">
           <div>
            <h2 className="text-2xl font-bold text-gray-800">Price Report</h2>
            <p className="text-sm text-slate-400 mt-1">View pricing and cost analysis</p>
@@ -4265,9 +4278,9 @@ const OrderHub = () => {
 
       {/* Change Status Modal */}
       {changeStatusModal && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setChangeStatusModal(null)}>
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => setChangeStatusModal(null)}>
         <div className="bg-white rounded-xl shadow-2xl w-[90%] max-w-md" onClick={(e) => e.stopPropagation()}>
-         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-green-100">
+         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-green-50">
           <div>
            <h2 className="text-2xl font-bold text-gray-800">Change Status</h2>
            <p className="text-sm text-slate-400 mt-1">Update order status</p>
@@ -4319,9 +4332,9 @@ const OrderHub = () => {
 
       {/* Stock Planning Modal */}
       {stockPlanModal && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => setStockPlanModal(false)}>
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => setStockPlanModal(false)}>
         <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-7xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-purple-100">
+         <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-purple-50">
           <div>
            <h2 className="text-2xl font-bold text-gray-800">Stock Planning & Procurement</h2>
            <p className="text-sm text-slate-400 mt-1">Manage and plan required stock levels</p>
@@ -4611,7 +4624,7 @@ const OrderHub = () => {
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-12 z-10 bg-white hover:bg-slate-50">{order.id}</td>
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-28 z-10 bg-white hover:bg-slate-50">{order.orderNo}</td>
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-64 z-10 bg-white hover:bg-slate-50">{order.sku}</td>
-               <td className="px-4 py-3.5 text-sm text-gray-900 min-w-[300px] sticky left-80 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
+               <td className="px-4 py-3.5 text-sm text-gray-900 min-w-75 sticky left-80 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.qty}</td>
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.unitRate}</td>
                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">
@@ -5080,7 +5093,7 @@ const OrderHub = () => {
              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-slate-50">{order.id}</td>
              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-12 z-10 bg-white hover:bg-slate-50">{order.orderNo}</td>
              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-28 z-10 bg-white hover:bg-slate-50">{order.sku}</td>
-             <td className="px-4 py-3.5 text-sm text-slate-300 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
+             <td className="px-4 py-3.5 text-sm text-slate-300 min-w-50 sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.qty}</td>
              <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">₹{order.unitRate}</td>
              <td className="px-4 py-3.5 whitespace-nowrap text-sm">
@@ -5449,7 +5462,7 @@ const OrderHub = () => {
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-slate-50">{order.id}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-12 z-10 bg-white hover:bg-slate-50">{order.orderNo}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-28 z-10 bg-white hover:bg-slate-50">{order.sku}</td>
-            <td className="px-4 py-3.5 text-sm text-slate-300 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
+            <td className="px-4 py-3.5 text-sm text-slate-300 min-w-50 sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.qty}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.unitRate}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">-</td>
@@ -5819,7 +5832,7 @@ const OrderHub = () => {
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-900 font-medium sticky left-0 z-10 bg-white hover:bg-slate-50">{order.id}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-12 z-10 bg-white hover:bg-slate-50">{order.orderNo}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300 sticky left-28 z-10 bg-white hover:bg-slate-50">{order.sku}</td>
-            <td className="px-4 py-3.5 text-sm text-slate-300 min-w-[200px] sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
+            <td className="px-4 py-3.5 text-sm text-slate-300 min-w-50 sticky left-48 z-10 bg-white hover:bg-slate-50">{order.itemName}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.qty}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">{order.unitRate}</td>
             <td className="px-4 py-3.5 whitespace-nowrap text-sm text-slate-300">-</td>
@@ -6251,7 +6264,7 @@ const OrderHub = () => {
        </div>
 
        {/* Status */}
-       <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+       <div className="bg-green-50 rounded-lg p-4 border border-green-200">
         <p className="text-sm text-green-600 font-medium mb-1">Current Status</p>
         <p className="text-gray-800 font-semibold text-lg">{selectedTaskDetail.currentStatus}</p>
         {selectedTaskDetail.pocForCurrentStatus && (
@@ -6352,7 +6365,7 @@ const OrderHub = () => {
          <div className="space-y-4 max-h-60 overflow-y-auto">
           {selectedTaskDetail.activityLog.slice().reverse().map((activity) => (
            <div key={activity.id} className="flex gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+            <div className="shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
              {activity.action === 'Status Changed' && (
               <svg className="w-4 h-4 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -6515,9 +6528,9 @@ const OrderHub = () => {
 
    {/* Reassign Task Modal */}
    {showReassignModal && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-t-2xl">
+      <div className="bg-blue-500 text-white p-6 rounded-t-2xl">
        <div className="flex items-start justify-between">
         <div>
          <h2 className="text-xl font-bold mb-1">Reassign Task</h2>
@@ -6600,9 +6613,9 @@ const OrderHub = () => {
 
    {/* Team Management Modal */}
    {teamManagementModal && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]" onClick={() => { setTeamManagementModal(false); setEditingMember(null); setEditingTeamName(null); }}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10001" onClick={() => { setTeamManagementModal(false); setEditingMember(null); setEditingTeamName(null); }}>
      <div className="bg-white rounded-xl shadow-2xl w-[95%] max-w-6xl max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-      <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-indigo-100">
+      <div className="p-6 border-b border-gray-200 flex items-center justify-between bg-indigo-50">
        <div>
         <h2 className="text-2xl font-bold text-gray-800">Team Management</h2>
         <p className="text-sm text-slate-400 mt-1">Manage team leads and staff assignments</p>
@@ -6619,7 +6632,7 @@ const OrderHub = () => {
       <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 180px)' }}>
        <div className="space-y-6">
         {teams.map((team) => (
-         <div key={team.id} className="border border-gray-200 rounded-lg p-5 bg-gradient-to-br from-white to-gray-50">
+           <div key={team.id} className="border border-gray-200 rounded-lg p-5 bg-white">
           <div className="flex items-center justify-between mb-4">
            <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-100 rounded-lg">
@@ -6765,9 +6778,9 @@ const OrderHub = () => {
 
    {/* Add/Edit Member Modal */}
    {editingMember && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10002]" onClick={() => setEditingMember(null)}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10002" onClick={() => setEditingMember(null)}>
      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-      <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100">
+      <div className="p-6 border-b border-gray-200 bg-indigo-50">
        <h3 className="text-lg font-bold text-gray-800">
         {editingMember.member ? 'Edit' : 'Add'} {editingMember.isLead ? 'Team Lead' : 'Staff Member'}
        </h3>

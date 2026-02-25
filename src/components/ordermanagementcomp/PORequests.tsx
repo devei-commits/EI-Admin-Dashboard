@@ -725,7 +725,7 @@ export default function PORequests() {
       <div className="p-4 space-y-4">
        {/* ZohoBills */}
        <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
          ZohoBills -
         </label>
         <div className="flex items-center gap-2">
@@ -733,7 +733,7 @@ export default function PORequests() {
           type="text"
           value={updateFormData.zoho}
           onChange={(e) => setUpdateFormData({ ...updateFormData, zoho: e.target.value })}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
           placeholder="Enter ZohoBills ID"
          />
          <button className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors" title="Refresh">
@@ -747,25 +747,25 @@ export default function PORequests() {
        {/* Display Info */}
        <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-lg">
         <div>
-         <p className="text-xs text-slate-400">MOQ</p>
+         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">MOQ</p>
          <p className="font-semibold text-gray-800">{selectedPO.moq}</p>
         </div>
         <div>
-         <p className="text-xs text-slate-400">Unit Rate</p>
+         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Unit Rate</p>
          <p className="font-semibold text-gray-800">{selectedPO.unitPrice}</p>
         </div>
        </div>
 
        {/* Preferred Vendor */}
        <div>
-        <label htmlFor="vendor" className="block text-sm font-medium text-slate-300 mb-1">
+        <label htmlFor="vendor" className="block text-sm font-medium text-gray-700 mb-1">
          Preferred Vendor
         </label>
         <select
          id="vendor"
          value={updateFormData.preferredVendor}
          onChange={(e) => setUpdateFormData({ ...updateFormData, preferredVendor: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
         >
          <option value="">--Select Vendor--</option>
          {Array.from(new Set(MOCK_PO_REQUESTS.map(po => po.vendorName))).map((vendor) => (
@@ -778,7 +778,7 @@ export default function PORequests() {
 
        {/* Outstanding Payables */}
        <div>
-        <label htmlFor="payables" className="block text-sm font-medium text-slate-300 mb-1">
+        <label htmlFor="payables" className="block text-sm font-medium text-gray-700 mb-1">
          Outstanding Payables
         </label>
         <input
@@ -786,7 +786,7 @@ export default function PORequests() {
          type="text"
          value={updateFormData.outstandingPayables}
          onChange={(e) => setUpdateFormData({ ...updateFormData, outstandingPayables: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
         />
        </div>
 
@@ -794,7 +794,7 @@ export default function PORequests() {
        <div className="grid grid-cols-2 gap-3">
         {/* PO Quantity */}
         <div>
-         <label htmlFor="poQty" className="block text-sm font-medium text-slate-300 mb-1">
+         <label htmlFor="poQty" className="block text-sm font-medium text-gray-700 mb-1">
           PO Quantity
          </label>
          <input
@@ -802,13 +802,13 @@ export default function PORequests() {
           type="number"
           value={updateFormData.poQuantity}
           onChange={(e) => setUpdateFormData({ ...updateFormData, poQuantity: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
          />
         </div>
 
         {/* Unit Rate */}
         <div>
-         <label htmlFor="unitRate" className="block text-sm font-medium text-slate-300 mb-1">
+         <label htmlFor="unitRate" className="block text-sm font-medium text-gray-700 mb-1">
           Unit Rate
          </label>
          <input
@@ -816,14 +816,14 @@ export default function PORequests() {
           type="number"
           value={updateFormData.unitRate}
           onChange={(e) => setUpdateFormData({ ...updateFormData, unitRate: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
          />
         </div>
        </div>
 
        {/* Budget */}
        <div>
-        <label htmlFor="budget" className="block text-sm font-medium text-slate-300 mb-1">
+        <label htmlFor="budget" className="block text-sm font-medium text-gray-700 mb-1">
          Budget
         </label>
         <input
@@ -831,13 +831,13 @@ export default function PORequests() {
          type="number"
          value={updateFormData.budget}
          onChange={(e) => setUpdateFormData({ ...updateFormData, budget: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
         />
        </div>
 
        {/* Release Date */}
        <div>
-        <label htmlFor="releaseDate" className="block text-sm font-medium text-slate-300 mb-1">
+        <label htmlFor="releaseDate" className="block text-sm font-medium text-gray-700 mb-1">
          Release Date
         </label>
         <input
@@ -845,7 +845,7 @@ export default function PORequests() {
          type="date"
          value={updateFormData.releaseDate}
          onChange={(e) => setUpdateFormData({ ...updateFormData, releaseDate: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm text-gray-800"
         />
        </div>
       </div>
@@ -854,7 +854,7 @@ export default function PORequests() {
       <div className="border-t border-gray-200 p-4 flex justify-end gap-2">
        <button
         onClick={() => setIsUpdateModalOpen(false)}
-        className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-50"
+        className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
        >
         Cancel
        </button>

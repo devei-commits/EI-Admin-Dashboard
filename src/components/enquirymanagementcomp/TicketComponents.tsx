@@ -552,7 +552,7 @@ export const TicketRow: React.FC<TicketRowProps> = ({
  ticket,
  onSelect,
  onStatusChange,
- onPriorityChange,
+ onPriorityChange: _onPriorityChange,
  isSelected = false,
 }) => {
  const timeAgo = (dateStr: string): string => {
@@ -619,7 +619,7 @@ export const TicketRow: React.FC<TicketRowProps> = ({
     </div>
 
     {/* Right: Assignee & Actions */}
-    <div className="flex items-center gap-4 lg:flex-shrink-0">
+    <div className="flex items-center gap-4 lg:shrink-0">
      {/* Assignee */}
      {ticket.currentAssignee ? (
       <div className="flex items-center gap-2">

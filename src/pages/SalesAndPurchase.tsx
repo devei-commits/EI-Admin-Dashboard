@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 import ItemDetailModal from '../components/ordermanagementcomp/ItemDetailModal';
 import DraftSplitModal from '../components/ordermanagementcomp/DraftSplitModal';
@@ -60,7 +60,6 @@ const SalesAndPurchase: React.FC = () => {
       try {
         setOrders(JSON.parse(savedOrders));
       } catch (error) {
-        console.error('Error loading orders:', error);
       }
     }
     // Also merge global state sales orders into the local list if they exist
@@ -270,7 +269,6 @@ const SalesAndPurchase: React.FC = () => {
       orderHubOrders.push(orderHubOrder);
       localStorage.setItem('eisthetic_order_hub_orders', JSON.stringify(orderHubOrders));
     } catch (error) {
-      console.error('Error syncing to OrderHub:', error);
     }
   };
 
@@ -568,7 +566,15 @@ const SalesAndPurchase: React.FC = () => {
                                 <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.customerName || 'N/A'}</td>
                                 <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.orderDate}</td>
                                 <td className="py-4 px-5 leading-relaxed">
-                                  <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                                  <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium tracking-wide ${
+                                    order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' :
+                                    order.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
+                                    order.status === 'Batch created' ? 'bg-blue-100 text-blue-800' :
+                                    order.status === 'BMR active' ? 'bg-purple-100 text-purple-800' :
+                                    order.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                                    order.status === 'Submitted' ? 'bg-sky-100 text-sky-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
                                     {order.status}
                                   </span>
                                 </td>
@@ -644,7 +650,15 @@ const SalesAndPurchase: React.FC = () => {
                                 </div>
                                 <p className="text-sm text-gray-600">{order.customerName || 'N/A'}</p>
                               </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                              <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${
+                                order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' :
+                                order.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
+                                order.status === 'Batch created' ? 'bg-blue-100 text-blue-800' :
+                                order.status === 'BMR active' ? 'bg-purple-100 text-purple-800' :
+                                order.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                                order.status === 'Submitted' ? 'bg-sky-100 text-sky-800' :
+                                'bg-green-100 text-green-800'
+                              }`}>
                                 {order.status}
                               </span>
                             </div>
@@ -771,7 +785,7 @@ const SalesAndPurchase: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="flex-1 sm:flex-none bg-linear-to-r from-blue-500 to-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
+                      <button onClick={() => { setOrderType('PO'); setViewMode('form'); }} className="flex-1 sm:flex-none bg-blue-500 text-white px-3 sm:px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-sm sm:text-base">
                         <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
@@ -1010,7 +1024,7 @@ const SalesAndPurchase: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               onClick={() => setOrderType('SO')}
-              className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-green-500 cursor-pointer"
+              className="bg-green-50 border-2 border-green-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-green-500 cursor-pointer"
             >
               <div className="flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1023,7 +1037,7 @@ const SalesAndPurchase: React.FC = () => {
 
             <button
               onClick={() => setOrderType('PO')}
-              className="bg-linear-to-br from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-blue-500 cursor-pointer"
+              className="bg-blue-50 border-2 border-blue-300 rounded-lg p-8 hover:shadow-lg transition-all hover:border-blue-500 cursor-pointer"
             >
               <div className="flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1040,7 +1054,7 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - SO Form */}
       {viewMode === 'form' && orderType === 'SO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-linear-to-r from-green-500 to-emerald-500 px-8 py-4 flex justify-between items-center">
+          <div className="bg-green-500 px-8 py-4 flex justify-between items-center">
             <h2 className="text-xl font-bold text-white">Create New Sales Order</h2>
             <button
               onClick={() => setOrderType(null)}
@@ -1265,7 +1279,7 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - PO Form */}
       {viewMode === 'form' && orderType === 'PO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-linear-to-r from-blue-500 to-cyan-500 px-8 py-4 flex justify-between items-center">
+          <div className="bg-blue-500 px-8 py-4 flex justify-between items-center">
             <h2 className="text-xl font-bold text-white">Create New Purchase Order</h2>
             <button
               onClick={() => setOrderType(null)}
@@ -1491,7 +1505,7 @@ const SalesAndPurchase: React.FC = () => {
       {showDetailModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className={`bg-linear-to-r ${selectedOrder.type === 'SO' ? 'from-green-500 to-emerald-500' : 'from-blue-500 to-cyan-500'} px-8 py-4 flex justify-between items-center sticky top-0`}>
+            <div className={`${selectedOrder.type === 'SO' ? 'bg-green-600' : 'bg-blue-600'} px-8 py-4 flex justify-between items-center sticky top-0`}>
               <h2 className="text-2xl font-bold text-white">{selectedOrder.type === 'SO' ? 'Sales Order' : 'Purchase Order'} Details</h2>
               <button
                 onClick={() => setShowDetailModal(false)}
@@ -1695,7 +1709,7 @@ const SalesAndPurchase: React.FC = () => {
         <ItemDetailModal
           itemId={itemDetailModalId}
           onClose={() => setItemDetailModalId(null)}
-          onReleaseToPlan={(id) => { setItemDetailModalId(null); setViewMode('procurement'); }}
+          onReleaseToPlan={(_id) => { setItemDetailModalId(null); setViewMode('procurement'); }}
         />
       )}
       {draftSplitModalId && (

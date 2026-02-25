@@ -126,12 +126,6 @@ export default function Proofing() {
 
  const handleEditUpdate = () => {
   // Here you would typically update the item in your backend
-  console.log('Updating item:', {
-   id: editingItem?.id,
-   status: editStatus,
-   comments: editComments,
-   attachment: editAttachment,
-  });
   handleEditClose();
  };
 

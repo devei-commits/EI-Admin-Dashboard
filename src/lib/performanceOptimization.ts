@@ -85,7 +85,6 @@ export const createInfiniteScrollObserver = (
  options = { threshold: 0.1, rootMargin: '100px' }
 ) => {
  if (!('IntersectionObserver' in window)) {
-  console.warn('IntersectionObserver not supported');
   return null;
  }
 

@@ -3,7 +3,7 @@
  * Backend abstraction layer for ticket/enquiry management operations
  */
 
-import type { ServiceResult, PaginatedResponse, QueryParams } from './index';
+import type { ServiceResult, PaginatedResponse, QueryParams } from '../types/api.types';
 import type {
  Ticket,
  TicketStatus,
@@ -219,8 +219,6 @@ export async function createTicket(
  // TODO: Implement API call
  // const response = await axios.post('/api/tickets', payload);
  // return { success: true, data: response.data };
-
- console.log('Creating ticket:', payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -238,8 +236,6 @@ export async function updateTicket(
  // TODO: Implement API call
  // const response = await axios.patch(`/api/tickets/${ticketId}`, payload);
  // return { success: true, data: response.data };
-
- console.log('Updating ticket:', ticketId, payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -256,8 +252,6 @@ export async function deleteTicket(
  // TODO: Implement API call
  // await axios.delete(`/api/tickets/${ticketId}`);
  // return { success: true };
-
- console.log('Deleting ticket:', ticketId);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -278,8 +272,6 @@ export async function updateTicketStatus(
  // TODO: Implement API call
  // const response = await axios.patch(`/api/tickets/${ticketId}/status`, { status, notes });
  // return { success: true, data: response.data };
-
- console.log('Updating ticket status:', ticketId, status, notes);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -296,8 +288,6 @@ export async function updateTicketPriority(
  reason?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Updating ticket priority:', ticketId, priority, reason);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -317,8 +307,6 @@ export async function assignTicket(
  //  notes: payload.notes,
  // });
  // return { success: true, data: response.data };
-
- console.log('Assigning ticket:', payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -334,8 +322,6 @@ export async function unassignTicket(
  reason?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Unassigning ticket:', ticketId, reason);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -352,8 +338,6 @@ export async function transferTicket(
  notes?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Transferring ticket:', ticketId, toDepartment, notes);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -370,8 +354,6 @@ export async function escalateTicket(
  escalateTo?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Escalating ticket:', ticketId, reason, escalateTo);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -388,8 +370,6 @@ export async function resolveTicket(
  payload: ResolveTicketPayload
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Resolving ticket:', payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -405,8 +385,6 @@ export async function reopenTicket(
  reason: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Reopening ticket:', ticketId, reason);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -422,8 +400,6 @@ export async function closeTicket(
  notes?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
-
- console.log('Closing ticket:', ticketId, notes);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -440,8 +416,6 @@ export async function addTicketMessage(
  payload: AddMessagePayload
 ): Promise<ServiceResult<TicketMessage>> {
  // TODO: Implement API call
-
- console.log('Adding message to ticket:', payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -456,8 +430,6 @@ export async function fetchTicketMessages(
  ticketId: string
 ): Promise<ServiceResult<TicketMessage[]>> {
  // TODO: Implement API call
-
- console.log('Fetching messages for ticket:', ticketId);
  return { success: true, data: [] };
 }
 
@@ -470,8 +442,6 @@ export async function addTicketNote(
  note: string
 ): Promise<ServiceResult<TicketActivity>> {
  // TODO: Implement API call
-
- console.log('Adding note to ticket:', ticketId, note);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -488,8 +458,6 @@ export async function linkOrderToTicket(
  payload: LinkOrderPayload
 ): Promise<ServiceResult<LinkedOrder>> {
  // TODO: Implement API call
-
- console.log('Linking order to ticket:', payload);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -505,8 +473,6 @@ export async function unlinkOrderFromTicket(
  orderId: string
 ): Promise<ServiceResult<void>> {
  // TODO: Implement API call
-
- console.log('Unlinking order from ticket:', ticketId, orderId);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -522,8 +488,6 @@ export async function fetchLinkableOrders(
  searchTerm?: string
 ): Promise<ServiceResult<LinkedOrder[]>> {
  // TODO: Implement API call
-
- console.log('Fetching linkable orders:', ticketId, searchTerm);
  return { success: true, data: [] };
 }
 
@@ -537,8 +501,6 @@ export async function fetchTicketActivities(
  ticketId: string
 ): Promise<ServiceResult<TicketActivity[]>> {
  // TODO: Implement API call
-
- console.log('Fetching activities for ticket:', ticketId);
  return { success: true, data: [] };
 }
 
@@ -640,8 +602,6 @@ export async function markNotificationAsRead(
  notificationId: string
 ): Promise<ServiceResult<void>> {
  // TODO: Implement API call
-
- console.log('Marking notification as read:', notificationId);
  return { success: true };
 }
 
@@ -656,8 +616,6 @@ export async function exportTickets(
  format: 'excel' | 'csv'
 ): Promise<ServiceResult<Blob>> {
  // TODO: Implement API call
-
- console.log('Exporting tickets:', filters, format);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -673,8 +631,6 @@ export async function generateTicketReport(
  dateRange: { from: string; to: string }
 ): Promise<ServiceResult<Blob>> {
  // TODO: Implement API call
-
- console.log('Generating report:', reportType, dateRange);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -692,8 +648,6 @@ export async function bulkUpdateTicketStatus(
  status: TicketStatus
 ): Promise<ServiceResult<{ success: number; failed: number }>> {
  // TODO: Implement API call
-
- console.log('Bulk updating ticket status:', ticketIds, status);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },
@@ -709,8 +663,6 @@ export async function bulkAssignTickets(
  staffId: string
 ): Promise<ServiceResult<{ success: number; failed: number }>> {
  // TODO: Implement API call
-
- console.log('Bulk assigning tickets:', ticketIds, staffId);
  return {
   success: false,
   error: { code: 'NOT_IMPLEMENTED', message: 'API not implemented yet', timestamp: new Date().toISOString() },

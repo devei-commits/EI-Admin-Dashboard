@@ -250,7 +250,7 @@ function AppContent() {
  };
 
  return (
-  <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+  <div className="flex min-h-screen bg-gray-50">
    <Sidebar
     currentRole={currentRole}
     activeView={activeView}
@@ -267,7 +267,7 @@ function AppContent() {
     />
     
     <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10">
-     <div className="max-w-[1920px] mx-auto">
+    <div className="max-w-480 mx-auto">
       {renderContent()}
      </div>
     </main>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+﻿import { useEffect, useMemo, useState, useCallback } from 'react';
 import { UserRole, PISRecord, PISStage } from '../types/pis';
 import { DashboardStats } from './DashboardStats';
 import { usePIS } from '../context/PISContext';
@@ -105,7 +105,6 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
    }
   } catch (e: unknown) {
    const error = e as Error;
-   console.error('Failed to load pending uploads:', error);
    setPendingUploads([]);
    // Only show toast for non-permission errors
    const errorMessage = error.message || 'Unknown error';
@@ -855,7 +854,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
        {recentActivity.map((pis) => (
         <div
          key={pis.id}
-         className="flex items-center justify-between p-3 sm:p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border hover:shadow-md transition-all cursor-pointer group"
+         className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg border hover:shadow-md transition-all cursor-pointer group"
          onClick={() => handleOpenDetails(pis)}
         >
          <div className="flex-1 min-w-0">

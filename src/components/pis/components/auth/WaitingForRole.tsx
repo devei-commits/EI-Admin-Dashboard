@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Clock, LogOut, Mail, RefreshCw, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
@@ -62,12 +62,12 @@ export function WaitingForRole({ onLogout }: WaitingForRoleProps) {
  // Show success state when role is assigned
  if (roleAssigned && assignedRole) {
   return (
-   <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 p-4">
+   <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <Card className="max-w-lg w-full p-8 md:p-12 shadow-2xl border-0 text-center">
      <div className="flex justify-center mb-6">
       <div className="relative">
        <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-20" />
-       <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+       <div className="relative w-24 h-24 bg-green-400 rounded-full flex items-center justify-center shadow-lg">
         <CheckCircle className="h-12 w-12 text-white" />
        </div>
       </div>
@@ -98,7 +98,7 @@ export function WaitingForRole({ onLogout }: WaitingForRoleProps) {
  }
 
  return (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
+  <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
    <Card className="max-w-lg w-full p-8 md:p-12 shadow-2xl border-0 text-center">
     {/* Animated Clock Icon */}
     <div className="flex justify-center mb-6">

@@ -33,7 +33,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
  const [permissions, setPermissions] = useState<ModulePermission[]>(() => JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>(() => ({ ...DEFAULT_GLOBAL_SETTINGS }));
  const [roleCode, setRoleCode] = useState('');
- const [permissionsLoading, setPermissionsLoading] = useState(true);
+ const [_permissionsLoading, setPermissionsLoading] = useState(true);
 
  useEffect(() => {
   let cancelled = false;
@@ -299,7 +299,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
       <div className="flex items-center space-x-3 sm:space-x-4">
        <button
         onClick={handleClose}
-        className="p-1.5 sm:p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors flex-shrink-0"
+         className="p-1.5 sm:p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
        >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -733,7 +733,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
        {/* Info Card - Responsive */}
        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 sm:p-4">
         <div className="flex items-start space-x-2 sm:space-x-3">
-         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
          </svg>
          <div>

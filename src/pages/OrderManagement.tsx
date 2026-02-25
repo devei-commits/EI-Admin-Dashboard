@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
 import BatchPlannerModal from '../components/ordermanagementcomp/BatchPlannerModal';
@@ -21,6 +22,12 @@ const OrderManagement: React.FC = () => {
     const [selectedCPOId, setSelectedCPOId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [batchPlannerSO, setBatchPlannerSO] = useState<string | null>(null);
+
+    const batchPlannerOrderedProduct = useMemo(() => {
+        if (!batchPlannerSO) return null;
+        const orderedProducts: any[] = state.orders?.orderedProducts || [];
+        return orderedProducts.find((op) => op.so === batchPlannerSO) || null;
+    }, [state.orders?.orderedProducts, batchPlannerSO]);
 
     // ─── New CPO form state ────────────────────────────────────────────────────
     const [newCPO, setNewCPO] = useState({
@@ -248,7 +255,7 @@ const OrderManagement: React.FC = () => {
                 <div className="flex justify-between items-start flex-wrap gap-3">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Customer Purchase Orders</h1>
-                        <div className="flex items-center gap-2 mt-2 text-sm bg-linear-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+                        <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
                             <Link to="/" className="text-blue-600 hover:underline">Dashboard</Link>
                             <span className="text-gray-400">/</span>
                             <span className="text-gray-600">Order Management</span>
@@ -548,9 +555,9 @@ const OrderManagement: React.FC = () => {
             )}
 
             {/* Batch Planner Modal */}
-            {batchPlannerSO && (
+            {batchPlannerSO && batchPlannerOrderedProduct && (
                 <BatchPlannerModal
-                    soNumber={batchPlannerSO}
+                    orderedProduct={batchPlannerOrderedProduct}
                     onClose={() => setBatchPlannerSO(null)}
                 />
             )}

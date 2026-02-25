@@ -34,7 +34,6 @@ export const ItemsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
      localStorage.removeItem('mastersItems');
     }
    } catch (error) {
-    console.error('Failed to parse stored items:', error);
     localStorage.removeItem('mastersItems');
    }
   }

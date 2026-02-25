@@ -60,13 +60,6 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
 
  // Log for debugging CLIENT dashboard
  if (currentRole === 'CLIENT' && import.meta.env.NODE_ENV === 'development') {
-  console.log('[DashboardStats] CLIENT user - Total data received:', data.length);
-  console.log('[DashboardStats] Status breakdown:', {
-   IN_PROGRESS: data.filter(p => p.status === 'IN_PROGRESS').length,
-   PENDING: data.filter(p => p.status === 'PENDING').length,
-   COMPLETED: data.filter(p => p.status === 'COMPLETED').length,
-   TERMINATED: data.filter(p => p.status === 'TERMINATED').length,
-  });
  }
 
  // SUPER_ADMIN and ADMIN see all PIS records (no filtering)

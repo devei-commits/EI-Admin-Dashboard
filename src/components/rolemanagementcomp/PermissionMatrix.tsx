@@ -488,7 +488,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
        <select
         value={filterType}
         onChange={(e) => setFilterType(e.target.value as typeof filterType)}
-        className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 bg-gray-50/50 text-sm whitespace-nowrap flex-shrink-0"
+        className="px-3 sm:px-4 py-2 sm:py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 bg-gray-50/50 text-sm whitespace-nowrap shrink-0"
        >
         <option value="all">All</option>
         <option value="enabled">Enabled</option>
@@ -502,7 +502,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
           permissions.flatMap(m => m.subModules.map(s => s.subModuleId))
          ));
         }}
-        className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap flex-shrink-0"
+        className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap shrink-0"
        >
         <span className="hidden sm:inline">Expand All</span>
         <span className="sm:hidden">Expand</span>
@@ -513,7 +513,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
          setExpandedModules(new Set());
          setExpandedSubModules(new Set());
         }}
-        className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap flex-shrink-0"
+        className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap shrink-0"
        >
         <span className="hidden sm:inline">Collapse All</span>
         <span className="sm:hidden">Collapse</span>
@@ -559,7 +559,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
           onClick={() => toggleModule(module.moduleId)}
          >
           <div className="flex items-center gap-2 sm:gap-3">
-           <div className={`p-1.5 sm:p-2 rounded-lg flex-shrink-0 ${hasPermissions ? 'bg-gray-100 text-slate-800' : 'bg-gray-100 text-gray-500'}`}>
+           <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${hasPermissions ? 'bg-gray-100 text-slate-800' : 'bg-gray-100 text-gray-500'}`}>
             {getModuleIcon(module.icon)}
            </div>
            <div className="min-w-0">
@@ -601,7 +601,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
            )}
            
            <svg
-            className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -643,7 +643,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
                <div className="flex items-center gap-2 sm:gap-3">
                 <button
                  onClick={() => toggleSubModule(subModule.subModuleId)}
-                 className="p-1 rounded hover:bg-gray-100 transition-colors flex-shrink-0"
+                 className="p-1 rounded hover:bg-gray-100 transition-colors shrink-0"
                 >
                  <svg
                   className={`w-4 h-4 text-gray-400 transition-transform ${isSubExpanded ? 'rotate-180' : ''}`}
@@ -666,7 +666,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
                {/* Action Checkboxes - Responsive Grid */}
                <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 overflow-x-auto pb-1 lg:pb-0">
                 {(Object.entries(actionLabels) as [keyof SubModulePermission['actions'], string][]).map(([action, label]) => (
-                 <div key={action} className="flex flex-col items-center gap-0.5 sm:gap-1 flex-shrink-0">
+                 <div key={action} className="flex flex-col items-center gap-0.5 sm:gap-1 shrink-0">
                   <span className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">{label}</span>
                   <Checkbox
                    checked={subModule.actions[action]}
@@ -676,7 +676,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
                 ))}
                 
                 {!readOnly && (
-                 <div className="flex gap-1 ml-2 sm:ml-4 flex-shrink-0">
+                 <div className="flex gap-1 ml-2 sm:ml-4 shrink-0">
                   <button
                    onClick={() => toggleAllSubModuleActions(module.moduleId, subModule.subModuleId, true)}
                    className="p-1 sm:p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"

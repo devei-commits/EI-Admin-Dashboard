@@ -43,8 +43,6 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
  // Get permissions for future use (currently used for role-based UI decisions)
  const permissions = getRolePermissions(currentRole);
  // Log permissions to verify role-based access
- console.debug('[EnhancedPISTable] Permissions for', currentRole, ':', permissions.canCreatePIS ? 'Can create' : 'Read only');
-
  const handleManualRefresh = async () => {
   setIsRefreshing(true);
   try {

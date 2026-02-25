@@ -53,7 +53,6 @@ const getInitialSettings = (storageKey: string) => {
    return { ...defaults, ...parsed };
   }
  } catch (e) {
-  console.error('Error reading stored settings:', e);
  }
  return defaults;
 };

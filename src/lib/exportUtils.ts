@@ -6,7 +6,6 @@ import { saveAs } from 'file-saver';
  */
 export const exportToCSV = (data: Record<string, unknown>[], filename: string) => {
  if (!data.length) {
-  console.warn('No data to export');
   return;
  }
 
@@ -38,7 +37,6 @@ export const exportToExcel = (
  sheetName: string = 'Sheet1'
 ) => {
  if (!data.length) {
-  console.warn('No data to export');
   return;
  }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination, inputClassName, selectClassName } from '../components/ui';
 
@@ -38,7 +38,7 @@ const ActiveIngredients = () => {
   try {
    const stored = localStorage.getItem(INGREDIENTS_STORAGE_KEY);
    if (stored) return JSON.parse(stored);
-  } catch (error) { console.error('Error loading ingredients:', error); }
+  } catch (_error) { /* parse error — fall back to defaults */ }
   return defaultIngredients;
  });
 
@@ -120,7 +120,7 @@ const ActiveIngredients = () => {
    {/* Header */}
    <div className="mb-6">
     <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Active Ingredients</h1>
-    <div className="flex items-center gap-2 mt-2 text-sm bg-gradient-to-r from-gray-100 to-gray-50 px-4 py-2 rounded-lg">
+    <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
      <Link to="/" className="text-slate-800 hover:text-amber-800 hover:underline">Dashboard</Link>
      <span className="text-gray-400">/</span>
      <span className="text-gray-600">Active Ingredients</span>

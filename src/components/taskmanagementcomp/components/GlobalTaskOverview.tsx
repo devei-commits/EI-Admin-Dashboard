@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import {
  Search,
  Filter,
@@ -1197,7 +1197,7 @@ export function GlobalTaskOverview() {
            <div className="text-xs text-gray-500">{task.orderType}</div>
           </td>
           <td className="px-4 py-3">
-           <div className="text-sm font-medium text-gray-800 truncate max-w-[200px]" title={task.itemName}>
+           <div className="text-sm font-medium text-gray-800 truncate max-w-50" title={task.itemName}>
             {task.itemName}
            </div>
            <div className="text-xs text-gray-500">{task.sku}</div>
@@ -1529,7 +1529,7 @@ export function GlobalTaskOverview() {
          <div className="space-y-2 max-h-40 overflow-y-auto">
           {selectedTask.activityLog.slice(-5).reverse().map(log => (
            <div key={log.id} className="flex items-start gap-3 text-sm">
-            <div className="w-2 h-2 rounded-full bg-slate-800 mt-1.5 flex-shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-slate-800 mt-1.5 shrink-0" />
             <div>
              <p className="text-gray-800">{log.action}</p>
              <p className="text-xs text-gray-500">{log.performedBy} • {new Date(log.performedAt).toLocaleString()}</p>
@@ -1668,7 +1668,7 @@ export function GlobalTaskOverview() {
    {showPushModal && selectedTask && (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-      <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-5 rounded-t-2xl">
+      <div className="bg-green-500 p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Push Task to Next Stage</h2>
         <button

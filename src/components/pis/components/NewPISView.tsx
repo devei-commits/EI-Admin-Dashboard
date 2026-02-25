@@ -120,7 +120,15 @@ export function NewPISView() {
  }, [systemUsers]);
  
  // Check if user can create PIS - moved after all hooks
- if (!permissions?.canCreatePIS && !isBDManager) {
+ // Also accept admin panel roles as fallback when PIS context has no logged-in user
+ const adminPanelRole = localStorage.getItem('adminUserRole') || '';
+ const normalizedAdminRole = adminPanelRole.toLowerCase().trim();
+ const isAdminPanelUser = [
+  'super admin', 'superadmin', 'super_admin', 'admin',
+  'bd manager', 'bd_manager', 'bd staff', 'bd_staff',
+ ].some(r => normalizedAdminRole.includes(r.replace(' ', '')) || normalizedAdminRole === r);
+
+ if (!permissions?.canCreatePIS && !isBDManager && !isAdminPanelUser) {
   return (
    <div className="space-y-6">
     <div>
@@ -340,7 +348,6 @@ export function NewPISView() {
    setCreated((createdRecord as PISRecord) ?? newPIS);
    toast.success('PIS request submitted. Our team will take it forward.');
   } catch (err) {
-   console.error(err);
    toast.error('Failed to create PIS');
   } finally {
    setIsCreating(false);

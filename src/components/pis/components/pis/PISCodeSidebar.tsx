@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { PISRecord } from '../../types/pis';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
@@ -172,7 +172,7 @@ export function PISCodeSidebar({
  return (
   <div className="w-72 bg-white border-r flex flex-col h-full shadow-sm animate-in slide-in-from-left-2 fade-in-0 duration-300">
    {/* Header */}
-   <div className="p-3 border-b bg-gradient-to-r from-[#2C3E50] to-[#34495E]">
+   <div className="p-3 border-b bg-[#2C3E50]">
     <div className="flex items-center justify-between mb-2">
      <h3 className="font-semibold text-white flex items-center gap-2">
       <FileText className="h-4 w-4" />

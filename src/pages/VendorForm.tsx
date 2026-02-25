@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useVendorClient } from '../context/VendorClientContext';
 import { useToast } from '../context/ToastContext';
 
@@ -190,7 +190,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     if (parsed.banks) setBanks(parsed.banks);
     if (parsed.vendorItems) setVendorItems(parsed.vendorItems);
    } catch (e) {
-    console.error('Failed to load draft:', e);
    }
   }
  }, [existingVendor, draftKey]);
@@ -1076,7 +1075,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <button
         type="submit"
         disabled={isSaving}
-        className="px-8 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
+        className="px-8 py-2.5 bg-green-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
        >
         {isSaving ? 'Saving...' : 'Submit Vendor'}
        </button>

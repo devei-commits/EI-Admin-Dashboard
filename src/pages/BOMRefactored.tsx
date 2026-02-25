@@ -7,7 +7,6 @@ import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtil
 import { useGlobalState } from '../context/GlobalStateContext';
 import BMRPrintTemplate from '../components/ordermanagementcomp/BMRPrintTemplate';
 import ConsolidatedMRModal from '../components/ordermanagementcomp/ConsolidatedMRModal';
-import { BMR_STAGES } from '../utils/manufacturing';
 
 const BOMRefactored: React.FC = () => {
   const { addItem } = useItems();
@@ -15,9 +14,9 @@ const BOMRefactored: React.FC = () => {
   const [pageTab, setPageTab] = useState<'bom' | 'bmr'>('bmr');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentStage, setCurrentStage] = useState(0);
-  const [printBmr, setPrintBmr] = useState<any>(null);
-  const [consolidatedMRIds, setConsolidatedMRIds] = useState<string[] | null>(null);
-  const [selectedBmrIds, setSelectedBmrIds] = useState<string[]>([]);
+  const [_printBmr, _setPrintBmr] = useState<any>(null);
+  const [_consolidatedMRIds, _setConsolidatedMRIds] = useState<string[] | null>(null);
+  const [_selectedBmrIds, _setSelectedBmrIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     // Primary Info
@@ -113,7 +112,6 @@ const BOMRefactored: React.FC = () => {
       try {
         setFormData(JSON.parse(draft));
       } catch (e) {
-        console.error('Failed to load draft', e);
       }
     }
   }, []);
@@ -449,7 +447,7 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
   };
 
   const completeQC = (bmr: any) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const _today = new Date().toISOString().slice(0, 10);
     const bprSeq = (state.mfg?.seq?.bpr || 2001) + bprs.length;
     const bprId = `BPR-${bprSeq}`;
     dispatch({

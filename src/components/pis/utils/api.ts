@@ -43,7 +43,7 @@ export interface ApiResponse<T> {
  data: T;
 }
 
-export interface PaginatedResponse<T> {
+export interface PaginatedResponse<_T> {
  success: boolean;
  data: {
   [key: string]: any;
@@ -236,7 +236,6 @@ export const authApi = {
     });
    }
   } catch (error) {
-   console.error('Logout error:', error);
   } finally {
    clearTokens();
   }

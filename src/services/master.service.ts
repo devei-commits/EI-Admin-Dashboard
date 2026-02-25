@@ -85,8 +85,6 @@ export async function fetchRawMaterials(
 ): Promise<ServiceResult<PaginatedResponse<RawMaterial>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<RawMaterial>>('/raw-materials', { params });
- 
- console.warn('[MasterService] fetchRawMaterials: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -103,8 +101,6 @@ export async function fetchRawMaterialById(
 ): Promise<ServiceResult<RawMaterial>> {
  // TODO: Replace with actual API call
  // return apiClient.get<RawMaterial>(`/raw-materials/${id}`);
- 
- console.warn('[MasterService] fetchRawMaterialById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -121,8 +117,6 @@ export async function createRawMaterial(
 ): Promise<ServiceResult<RawMaterial>> {
  // TODO: Replace with actual API call
  // return apiClient.post<RawMaterial>('/raw-materials', data);
- 
- console.warn('[MasterService] createRawMaterial: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -140,8 +134,6 @@ export async function updateRawMaterial(
 ): Promise<ServiceResult<RawMaterial>> {
  // TODO: Replace with actual API call
  // return apiClient.put<RawMaterial>(`/raw-materials/${id}`, data);
- 
- console.warn('[MasterService] updateRawMaterial: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -158,8 +150,6 @@ export async function deleteRawMaterial(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/raw-materials/${id}`);
- 
- console.warn('[MasterService] deleteRawMaterial: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -178,8 +168,6 @@ export async function fetchPackagingItems(
 ): Promise<ServiceResult<PaginatedResponse<PackagingItem>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<PackagingItem>>('/packaging', { params });
- 
- console.warn('[MasterService] fetchPackagingItems: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -196,8 +184,6 @@ export async function fetchPackagingItemById(
 ): Promise<ServiceResult<PackagingItem>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PackagingItem>(`/packaging/${id}`);
- 
- console.warn('[MasterService] fetchPackagingItemById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -214,8 +200,6 @@ export async function createPackagingItem(
 ): Promise<ServiceResult<PackagingItem>> {
  // TODO: Replace with actual API call
  // return apiClient.post<PackagingItem>('/packaging', data);
- 
- console.warn('[MasterService] createPackagingItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -233,8 +217,6 @@ export async function updatePackagingItem(
 ): Promise<ServiceResult<PackagingItem>> {
  // TODO: Replace with actual API call
  // return apiClient.put<PackagingItem>(`/packaging/${id}`, data);
- 
- console.warn('[MasterService] updatePackagingItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -251,8 +233,6 @@ export async function deletePackagingItem(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/packaging/${id}`);
- 
- console.warn('[MasterService] deletePackagingItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -271,8 +251,6 @@ export async function fetchVendors(
 ): Promise<ServiceResult<PaginatedResponse<Vendor>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<Vendor>>('/vendors', { params });
- 
- console.warn('[MasterService] fetchVendors: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -289,8 +267,6 @@ export async function fetchVendorById(
 ): Promise<ServiceResult<Vendor>> {
  // TODO: Replace with actual API call
  // return apiClient.get<Vendor>(`/vendors/${id}`);
- 
- console.warn('[MasterService] fetchVendorById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -307,8 +283,6 @@ export async function createVendor(
 ): Promise<ServiceResult<Vendor>> {
  // TODO: Replace with actual API call
  // return apiClient.post<Vendor>('/vendors', data);
- 
- console.warn('[MasterService] createVendor: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -326,8 +300,6 @@ export async function updateVendor(
 ): Promise<ServiceResult<Vendor>> {
  // TODO: Replace with actual API call
  // return apiClient.put<Vendor>(`/vendors/${id}`, data);
- 
- console.warn('[MasterService] updateVendor: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -344,8 +316,6 @@ export async function deleteVendor(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/vendors/${id}`);
- 
- console.warn('[MasterService] deleteVendor: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -364,8 +334,6 @@ export async function fetchClients(
 ): Promise<ServiceResult<PaginatedResponse<Client>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<Client>>('/clients', { params });
- 
- console.warn('[MasterService] fetchClients: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -382,8 +350,6 @@ export async function fetchClientById(
 ): Promise<ServiceResult<Client>> {
  // TODO: Replace with actual API call
  // return apiClient.get<Client>(`/clients/${id}`);
- 
- console.warn('[MasterService] fetchClientById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -400,8 +366,6 @@ export async function createClient(
 ): Promise<ServiceResult<Client>> {
  // TODO: Replace with actual API call
  // return apiClient.post<Client>('/clients', data);
- 
- console.warn('[MasterService] createClient: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -419,8 +383,6 @@ export async function updateClient(
 ): Promise<ServiceResult<Client>> {
  // TODO: Replace with actual API call
  // return apiClient.put<Client>(`/clients/${id}`, data);
- 
- console.warn('[MasterService] updateClient: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -437,8 +399,6 @@ export async function deleteClient(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/clients/${id}`);
- 
- console.warn('[MasterService] deleteClient: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -457,8 +417,6 @@ export async function fetchItems(
 ): Promise<ServiceResult<PaginatedResponse<unknown>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<Item>>('/items', { params });
- 
- console.warn('[MasterService] fetchItems: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -475,8 +433,6 @@ export async function fetchItemById(
 ): Promise<ServiceResult<unknown>> {
  // TODO: Replace with actual API call
  // return apiClient.get<Item>(`/items/${id}`);
- 
- console.warn('[MasterService] fetchItemById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -493,8 +449,6 @@ export async function createItem(
 ): Promise<ServiceResult<unknown>> {
  // TODO: Replace with actual API call
  // return apiClient.post<Item>('/items', data);
- 
- console.warn('[MasterService] createItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -512,8 +466,6 @@ export async function updateItem(
 ): Promise<ServiceResult<unknown>> {
  // TODO: Replace with actual API call
  // return apiClient.put<Item>(`/items/${id}`, data);
- 
- console.warn('[MasterService] updateItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -530,8 +482,6 @@ export async function deleteItem(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/items/${id}`);
- 
- console.warn('[MasterService] deleteItem: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -550,8 +500,6 @@ export async function fetchActiveIngredients(
 ): Promise<ServiceResult<PaginatedResponse<unknown>>> {
  // TODO: Replace with actual API call
  // return apiClient.get<PaginatedResponse<ActiveIngredient>>('/active-ingredients', { params });
- 
- console.warn('[MasterService] fetchActiveIngredients: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -568,8 +516,6 @@ export async function createActiveIngredient(
 ): Promise<ServiceResult<unknown>> {
  // TODO: Replace with actual API call
  // return apiClient.post<ActiveIngredient>('/active-ingredients', data);
- 
- console.warn('[MasterService] createActiveIngredient: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -587,8 +533,6 @@ export async function updateActiveIngredient(
 ): Promise<ServiceResult<unknown>> {
  // TODO: Replace with actual API call
  // return apiClient.put<ActiveIngredient>(`/active-ingredients/${id}`, data);
- 
- console.warn('[MasterService] updateActiveIngredient: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -605,8 +549,6 @@ export async function deleteActiveIngredient(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/active-ingredients/${id}`);
- 
- console.warn('[MasterService] deleteActiveIngredient: Using placeholder implementation');
  return {
   data: null,
   error: null,

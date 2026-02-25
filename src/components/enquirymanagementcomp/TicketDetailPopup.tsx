@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import type { 
  Ticket, 
  TicketActivity,
@@ -396,7 +396,6 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
  const handleUnassign = useCallback(async () => {
   // TODO: Implement unassign
-  console.log('Unassign ticket');
  }, []);
 
  const handleStatusChange = useCallback(async (status: TicketStatus) => {
@@ -426,12 +425,10 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
  const handleLinkOrder = useCallback(() => {
   // TODO: Open order search modal
-  console.log('Link order');
  }, []);
 
  const handleUnlinkOrder = useCallback(async (orderId: string) => {
   // TODO: Implement unlink order
-  console.log('Unlink order:', orderId);
  }, []);
 
  const handleResolve = useCallback(async () => {
@@ -509,7 +506,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        </h4>
        <div className="bg-white rounded-lg p-4 border border-gray-200">
         <div className="flex items-center gap-3 mb-3">
-         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 flex items-center justify-center text-white font-semibold">
+         <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-white font-semibold">
           {ticket.customer.name.split(' ').map(n => n[0]).join('')}
          </div>
          <div>

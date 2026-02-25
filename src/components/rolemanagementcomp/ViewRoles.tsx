@@ -178,7 +178,6 @@ export const loadRoleUsersMapFromStorage = (): RoleUsersMap => {
    return JSON.parse(stored) as RoleUsersMap;
   }
  } catch (error) {
-  console.error('Error loading role users from localStorage:', error);
  }
  return {};
 };
@@ -187,7 +186,6 @@ export const saveRoleUsersMapToStorage = (roleUsersMap: RoleUsersMap): void => {
  try {
   localStorage.setItem(ROLE_USERS_STORAGE_KEY, JSON.stringify(roleUsersMap));
  } catch (error) {
-  console.error('Error saving role users to localStorage:', error);
  }
 };
 

@@ -569,25 +569,25 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filteredModules.map((module) => {
             const colorMap: Record<string, string> = {
-              amber: 'bg-slate-800 ',
-              blue: 'from-blue-400 to-blue-600',
-              green: 'from-green-400 to-green-600',
-              purple: 'from-purple-400 to-purple-600',
-              indigo: 'from-indigo-400 to-indigo-600',
-              teal: 'from-teal-400 to-teal-600',
-              emerald: 'from-emerald-400 to-emerald-600',
-              cyan: 'from-cyan-400 to-cyan-600',
-              lime: 'from-lime-400 to-lime-600',
-              yellow: 'from-yellow-400 to-yellow-600',
-              pink: 'from-pink-400 to-pink-600',
-              rose: 'from-rose-400 to-rose-600',
-              red: 'from-red-400 to-red-600',
-              orange: 'from-orange-400 ',
-              violet: 'from-violet-400 to-violet-600',
-              sky: 'from-sky-400 to-sky-600',
-              fuchsia: 'from-fuchsia-400 to-fuchsia-600',
-              slate: 'from-slate-400 to-slate-600',
-              gray: 'from-gray-400 to-gray-600',
+              amber: 'bg-amber-500',
+              blue: 'bg-blue-500',
+              green: 'bg-green-600',
+              purple: 'bg-purple-600',
+              indigo: 'bg-indigo-500',
+              teal: 'bg-teal-500',
+              emerald: 'bg-emerald-500',
+              cyan: 'bg-cyan-500',
+              lime: 'bg-lime-500',
+              yellow: 'bg-yellow-500',
+              pink: 'bg-pink-500',
+              rose: 'bg-rose-500',
+              red: 'bg-red-500',
+              orange: 'bg-orange-500',
+              violet: 'bg-violet-500',
+              sky: 'bg-sky-500',
+              fuchsia: 'bg-fuchsia-500',
+              slate: 'bg-slate-500',
+              gray: 'bg-gray-500',
             };
             const gradient = colorMap[module.color] || colorMap.amber;
 
@@ -597,7 +597,7 @@ const Dashboard = () => {
                 to={module.href}
                 className="group p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-200 bg-white"
               >
-                <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
+                <div className={`w-12 h-12 rounded-xl ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
                   {module.icon}
                 </div>
                 <h3 className="font-semibold text-gray-800 group-hover:text-slate-800 transition-colors">{module.title}</h3>

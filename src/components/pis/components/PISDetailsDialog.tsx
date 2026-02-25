@@ -197,7 +197,6 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     setAttachments(resp.data as AttachmentData[]);
    }
   } catch (e: unknown) {
-   console.error('Failed to load attachments:', e);
    toast.error('Failed to load attachments');
   } finally {
    setIsAttachmentsLoading(false);
@@ -344,7 +343,6 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
    setUploadDescription('');
    await fetchAttachments();
   } catch (e: any) {
-   console.error('Upload failed:', e);
    toast.error(e?.message || 'Upload failed');
   } finally {
    setIsUploadingAttachment(false);
@@ -358,7 +356,6 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
    await pisApi.confirmClientMilestone(pis.id, milestone);
    toast.success('Confirmation recorded');
   } catch (e: any) {
-   console.error('Confirm milestone failed:', e);
    toast.error(e?.message || 'Failed to confirm');
   }
  };
@@ -478,7 +475,6 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      await /* getPISById */ (pis.id);
     }
    } catch (error) {
-    console.error('Error making way forward decision:', error);
    }
    return;
   }
@@ -537,7 +533,6 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     }
    }
   } catch (error) {
-   console.error('Error transitioning PIS stage from details view:', error);
   }
  };
 

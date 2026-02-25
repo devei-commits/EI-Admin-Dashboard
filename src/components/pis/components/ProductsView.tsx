@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
 import { Package, Search, Plus, Eye, Edit, Trash2, MoreVertical, FlaskConical, Tag, ArrowUpDown } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -20,7 +20,7 @@ interface ProductsViewProps {
 }
 
 export function ProductsView({ currentRole }: ProductsViewProps) {
- const { products, addProduct, updateProduct, deleteProduct, isLoading } = usePIS();
+ const { products, addProduct, updateProduct: _updateProduct, deleteProduct, isLoading: _isLoading } = usePIS();
  const permissions = getRolePermissions(currentRole);
  const [searchQuery, setSearchQuery] = useState('');
  const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -302,7 +302,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
       {filteredProducts.map((product) => (
        <TableRow key={product.id} className="hover:bg-gray-50">
         <TableCell>
-         <div className="h-10 w-10 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
+         <div className="h-10 w-10 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center">
           {(product as any).imageUrl ? (
            <img
             src={(product as any).imageUrl}
@@ -316,7 +316,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
         </TableCell>
         <TableCell>
          <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
+          <div className="h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center">
            <Package className="h-5 w-5 text-indigo-600" />
           </div>
           <div>
@@ -484,7 +484,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
      </DialogHeader>
      {selectedProduct && (
       <div className="space-y-4 py-4">
-       <div className="flex items-start gap-4 p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg">
+       <div className="flex items-start gap-4 p-4 bg-indigo-50 rounded-lg">
         <div className="h-16 w-16 bg-white rounded-xl flex items-center justify-center shadow-sm">
          <Package className="h-8 w-8 text-indigo-600" />
         </div>

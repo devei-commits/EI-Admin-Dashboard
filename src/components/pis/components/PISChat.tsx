@@ -53,7 +53,6 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
     setTimeout(scrollToBottom, 100);
    }
   } catch (error: any) {
-   console.error('Error fetching messages:', error);
    toast.error('Failed to load messages');
   } finally {
    setIsLoading(false);
@@ -82,7 +81,6 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
     scrollToBottom();
    }
   } catch (error: any) {
-   console.error('Error sending message:', error);
    toast.error('Failed to send message');
   } finally {
    setIsSending(false);
@@ -102,7 +100,6 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
     setEditText('');
    }
   } catch (error: any) {
-   console.error('Error updating message:', error);
    toast.error('Failed to update message');
   }
  };
@@ -117,7 +114,6 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
     toast.success('Message deleted');
    }
   } catch (error: any) {
-   console.error('Error deleting message:', error);
    toast.error('Failed to delete message');
   }
  };

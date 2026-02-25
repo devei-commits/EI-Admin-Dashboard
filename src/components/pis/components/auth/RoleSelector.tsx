@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { UserRole } from '../../types/pis';
 import { getRoleLabel } from '../../utils/permissions';
 import { Card } from '../ui/card';
@@ -63,7 +63,6 @@ export function RoleSelector({ onRoleSelect, currentUserRole: _currentUserRole }
      setRoles(activeRoles);
     }
    } catch (error) {
-    console.error('Error fetching roles:', error);
     // Fallback to default roles if API fails
     setRoles([
      { role: 'SUPER_ADMIN', icon: ShieldCheck, color: 'bg-purple-700', description: 'Super Admin console', roleLevel: 'SUPER_ADMIN' },
@@ -85,7 +84,7 @@ export function RoleSelector({ onRoleSelect, currentUserRole: _currentUserRole }
   fetchRoles();
  }, []);
  return (
-  <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-6">
+  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
    <Card className="max-w-5xl w-full p-8 md:p-12 shadow-2xl border-0 animate-fade-in">
     <div className="text-center mb-10">
      <div className="flex justify-center mb-2">
@@ -126,7 +125,7 @@ export function RoleSelector({ onRoleSelect, currentUserRole: _currentUserRole }
      </div>
     )}
 
-    <div className="mt-10 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+    <div className="mt-10 p-6 bg-blue-50 rounded-lg border border-blue-100">
      <div className="flex items-start gap-3">
       <div className="bg-blue-600 text-white p-2 rounded-lg mt-1">
        <ShieldCheck className="h-5 w-5" />

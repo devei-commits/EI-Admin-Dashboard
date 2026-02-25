@@ -321,7 +321,6 @@ const EnquiryManagementEnhanced: React.FC = () => {
     // setTickets(result.data.data);
    }
   } catch (error) {
-   console.error('Error loading tickets:', error);
   } finally {
    setLoading(false);
   }

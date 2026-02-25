@@ -13,9 +13,12 @@ const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boole
  );
 };
 
-const VendorClientSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+const VendorClientSection: React.FC<{ title: string; icon?: string; children: React.ReactNode }> = ({ title, icon, children }) => (
  <div className="mt-6">
-  <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">{title}</div>
+  <div className="flex items-center gap-2 mb-3">
+   {icon && <span className="text-base leading-none">{icon}</span>}
+   <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">{title}</div>
+  </div>
   <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">{children}</div>
  </div>
 );
@@ -65,10 +68,10 @@ const VendorClient: React.FC = () => {
  };
 
  const tabs = [
-  { id: 'vendor-master', label: 'Vendor Master', icon: 'ðŸ­' },
-  { id: 'client-master', label: 'Client Master', icon: 'ðŸ‘¥' },
-  { id: 'vendor-form', label: 'Vendor Form', icon: 'ðŸ“‹' },
-  { id: 'client-form', label: 'Client Form', icon: 'ðŸ“' },
+  { id: 'vendor-master', label: 'Vendor Master', icon: '🏭' },
+  { id: 'client-master', label: 'Client Master', icon: '👥' },
+  { id: 'vendor-form', label: 'Vendor Form', icon: '📋' },
+  { id: 'client-form', label: 'Client Form', icon: '📝' },
  ] as const;
 
  const vendors = useMemo(
@@ -438,7 +441,7 @@ const VendorClient: React.FC = () => {
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
        <div className="text-sm text-gray-600">
-        Page {Math.min(vendorPage, vendorTotalPages)} of {vendorTotalPages} â€¢ Showing {pagedVendors.length} of {filteredVendors.length}
+        Page {Math.min(vendorPage, vendorTotalPages)} of {vendorTotalPages} • Showing {pagedVendors.length} of {filteredVendors.length}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select
@@ -691,7 +694,7 @@ const VendorClient: React.FC = () => {
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
        <div className="text-sm text-gray-600">
-        Page {Math.min(clientPage, clientTotalPages)} of {clientTotalPages} â€¢ Showing {pagedClients.length} of {filteredClients.length}
+        Page {Math.min(clientPage, clientTotalPages)} of {clientTotalPages} • Showing {pagedClients.length} of {filteredClients.length}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select
@@ -788,9 +791,9 @@ const VendorClient: React.FC = () => {
      aria-modal="true"
     >
      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-      <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gradient-to-r bg-slate-800 to-white">
+      <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
        <div>
-        <h3 className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
+        <h3 className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? '🏭' : '👥'} {viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
         <p className="text-sm text-gray-500 font-mono">{String(viewing.data?.entityCode || viewing.id)}</p>
        </div>
        <button
@@ -818,7 +821,7 @@ const VendorClient: React.FC = () => {
         <VendorClientField label="Last Updated" value={viewing.lastModified ? new Date(viewing.lastModified).toLocaleString() : ''} />
        </div>
 
-       <VendorClientSection title="Setup & Coding">
+       <VendorClientSection title="Setup & Coding" icon="⚙️">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
          <VendorClientField label="Entity Type" value={viewing.data?.setupType} />
          <VendorClientField label="Setup Category" value={viewing.data?.setupCategory} />
@@ -831,7 +834,7 @@ const VendorClient: React.FC = () => {
         </div>
        </VendorClientSection>
 
-       <VendorClientSection title="Organization Details">
+       <VendorClientSection title="Organization Details" icon="🏢">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
          <VendorClientField label="Billing Address" value={viewing.data?.billingAddress} />
          <VendorClientField label="Shipping Address" value={viewing.data?.shippingAddress} />
@@ -849,7 +852,7 @@ const VendorClient: React.FC = () => {
         </div>
        </VendorClientSection>
 
-       <VendorClientSection title="Tax, Compliance & Documents">
+       <VendorClientSection title="Tax, Compliance & Documents" icon="🛡️">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
          <VendorClientField label="GSTIN" value={viewing.data?.gstin} mono />
          <VendorClientField label="PAN" value={viewing.data?.pan} mono />
@@ -873,14 +876,14 @@ const VendorClient: React.FC = () => {
         )}
        </VendorClientSection>
 
-       <VendorClientSection title="Multi-level POCs">
+       <VendorClientSection title="Multi-level POCs" icon="👤">
         {renderListTable(
          ['Name', 'Role', 'Email', 'Phone', 'Level', 'Preferred', 'Notes'],
          (Array.isArray(viewing.data?.pocs) ? viewing.data.pocs : []).map((p: any) => [p.name, p.role, p.email, p.phone, p.level, p.preferred, p.notes])
         )}
        </VendorClientSection>
 
-       <VendorClientSection title="Bank Details">
+       <VendorClientSection title="Bank Details" icon="🏦">
         {renderListTable(
          ['Beneficiary', 'Bank', 'Account No', 'IFSC', 'Branch', 'Type', 'UPI', 'Default', 'Notes'],
          (Array.isArray(viewing.data?.banks) ? viewing.data.banks : []).map((b: any) => [
@@ -897,7 +900,7 @@ const VendorClient: React.FC = () => {
         )}
        </VendorClientSection>
 
-       <VendorClientSection title="Payment Terms & Credit">
+       <VendorClientSection title="Payment Terms & Credit" icon="💳">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
          <VendorClientField label="Payment Terms" value={viewing.data?.paymentTerms} />
          <VendorClientField label="Custom Terms" value={viewing.data?.customTerms} />
@@ -914,7 +917,7 @@ const VendorClient: React.FC = () => {
        </VendorClientSection>
 
        {viewing.type === 'vendor' ? (
-        <VendorClientSection title="Vendor Items & Price List">
+        <VendorClientSection title="Vendor Items & Price List" icon="📦">
          {renderListTable(
           ['Type', 'Code', 'Name', 'UoM', 'MOQ', 'Unit Price', 'Lead Time', 'Valid Till', 'GST', 'HSN', 'Payment Override'],
           (Array.isArray(viewing.data?.vendorItems) ? viewing.data.vendorItems : []).map((it: any) => [
@@ -933,7 +936,7 @@ const VendorClient: React.FC = () => {
          )}
         </VendorClientSection>
        ) : (
-        <VendorClientSection title="Product Interest & Requirements">
+        <VendorClientSection title="Product Interest & Requirements" icon="🎯">
          {renderListTable(
           ['Category', 'Type', 'Expected Volume', 'Frequency', 'Target Price', 'Specifications', 'Priority'],
           (Array.isArray(viewing.data?.productInterests) ? viewing.data.productInterests : []).map((pi: any) => [
@@ -949,7 +952,7 @@ const VendorClient: React.FC = () => {
         </VendorClientSection>
        )}
 
-       <VendorClientSection title="Agreements & Status">
+       <VendorClientSection title="Agreements & Status" icon="🤝">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
          <VendorClientField label="Agreement Type" value={viewing.data?.agreementType} />
          <VendorClientField label="Agreement Status" value={viewing.data?.agreementStatus} />
@@ -962,7 +965,7 @@ const VendorClient: React.FC = () => {
        </VendorClientSection>
 
        {viewing.type === 'client' && (
-        <VendorClientSection title="Client Lifecycle & Ownership">
+        <VendorClientSection title="Client Lifecycle & Ownership" icon="📈">
          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <VendorClientField label="Sales Owner" value={viewing.data?.salesOwner} />
           <VendorClientField label="Account Manager" value={viewing.data?.accountManager} />

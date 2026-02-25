@@ -145,7 +145,6 @@ const RawMaterialRefactored: React.FC = () => {
     setFormData(JSON.parse(draft));
     addToast('info', 'Raw Material draft loaded');
    } catch (e) {
-    console.error('Failed to load draft', e);
    }
   }
  }, []);

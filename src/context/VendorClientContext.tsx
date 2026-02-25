@@ -40,7 +40,6 @@ export const VendorClientProvider: React.FC<{ children: React.ReactNode }> = ({ 
    try {
     setVendorClients(JSON.parse(stored));
    } catch (error) {
-    console.error('Failed to load vendor clients:', error);
    }
   }
  }, []);

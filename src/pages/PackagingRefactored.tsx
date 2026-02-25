@@ -9,7 +9,6 @@ import {
 } from '../utils/masterFormUtils';
 import { useGlobalState } from '../context/GlobalStateContext';
 import BPRPrintTemplate from '../components/ordermanagementcomp/BPRPrintTemplate';
-import { BPR_STAGES } from '../utils/manufacturing';
 
 const PackagingRefactored: React.FC = () => {
   const { addItem } = useItems();
@@ -184,7 +183,6 @@ const PackagingRefactored: React.FC = () => {
         setFormData(JSON.parse(draft));
         addToast('info', 'Packaging draft loaded');
       } catch (e) {
-        console.error('Failed to load draft', e);
       }
     }
   }, []);

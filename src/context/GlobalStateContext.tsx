@@ -437,7 +437,7 @@ const globalReducer = (state: GlobalState, action: GlobalAction): GlobalState =>
             };
         }
         case 'MOVE_PLANNED_TO_DRAFT': {
-            const { vendor, draftPO, plannedLineIds } = action.payload;
+            const { vendor: _vendor, draftPO, plannedLineIds } = action.payload;
             const remainingPlanned = (state.po.planned || []).filter(
                 (l: any) => !plannedLineIds.includes(l.id)
             );

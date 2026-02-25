@@ -1,4 +1,4 @@
-import { 
+﻿import { 
  LayoutDashboard, 
  FileText, 
  Users, 
@@ -235,7 +235,7 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
     </div>
 
     {/* Logo Section */}
-    <div className="hidden lg:flex p-6 items-center justify-center border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+    <div className="hidden lg:flex p-6 items-center justify-center border-b border-gray-100 bg-gray-50">
      <img src={eilogofull} alt="Esthetic Insights" className="h-10 max-w-full object-contain" />
     </div>
 
@@ -269,11 +269,11 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
           "p-2 rounded-lg transition-colors",
           activeView === item.id ? "bg-gray-100" : "bg-gray-100"
          )}>
-          <Icon className="h-4 w-4 flex-shrink-0" />
+          <Icon className="h-4 w-4 shrink-0" />
          </div>
          <span className="flex-1 text-left text-sm">{item.label}</span>
          {badgeCount > 0 && (
-          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium min-w-[1.5rem] h-6 px-2 shadow-sm">
+          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium min-w-6 h-6 px-2 shadow-sm">
            {badgeCount}
           </span>
          )}

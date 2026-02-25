@@ -6,7 +6,6 @@
 import { api } from '../lib/apiClient';
 import type {
  User,
- UserCreatePayload,
  UserUpdatePayload,
  Role,
  RoleCreatePayload,
@@ -59,7 +58,6 @@ export async function fetchStaffUsers(): Promise<ServiceResult<StaffUserFromApi[
 export async function fetchUsers(
  _params?: QueryParams
 ): Promise<ServiceResult<PaginatedResponse<User>>> {
- console.warn('[UserService] fetchUsers: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -76,8 +74,6 @@ export async function fetchUserById(
 ): Promise<ServiceResult<User>> {
  // TODO: Replace with actual API call
  // return apiClient.get<User>(`/users/${userId}`);
-
- console.warn('[UserService] fetchUserById: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -188,8 +184,6 @@ export async function updateUserStatus(
 ): Promise<ServiceResult<User>> {
  // TODO: Replace with actual API call
  // return apiClient.patch<User>(`/users/${userId}/status`, { status });
-
- console.warn('[UserService] updateUserStatus: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -224,11 +218,10 @@ export async function updateUserRole(
  * Assign role to user (alias for updateUserRole)
  */
 export async function assignUserRole(
- userId: string,
- role: UserRole
+ _userId: string,
+ _role: UserRole
 ): Promise<ServiceResult<User>> {
  // Backend expects roleId (number). UserRole is string enum - would need role list to resolve.
- console.warn('[UserService] assignUserRole: Prefer updateUserRole(userId, { roleId, department })');
  return {
   data: null,
   error: null,
@@ -299,8 +292,6 @@ export async function createRole(
 ): Promise<ServiceResult<Role>> {
  // TODO: Replace with actual API call
  // return apiClient.post<Role>('/roles', roleData);
-
- console.warn('[UserService] createRole: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -318,8 +309,6 @@ export async function updateRole(
 ): Promise<ServiceResult<Role>> {
  // TODO: Replace with actual API call
  // return apiClient.put<Role>(`/roles/${roleId}`, roleData);
-
- console.warn('[UserService] updateRole: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -336,8 +325,6 @@ export async function deleteRole(
 ): Promise<ServiceResult<void>> {
  // TODO: Replace with actual API call
  // return apiClient.delete(`/roles/${roleId}`);
-
- console.warn('[UserService] deleteRole: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -354,8 +341,6 @@ export async function deleteRole(
 export async function fetchPermissions(): Promise<ServiceResult<Role['permissions']>> {
  // TODO: Replace with actual API call
  // return apiClient.get<Permission[]>('/permissions');
-
- console.warn('[UserService] fetchPermissions: Using placeholder implementation');
  return {
   data: null,
   error: null,
@@ -373,8 +358,6 @@ export async function updateRolePermissions(
 ): Promise<ServiceResult<Role>> {
  // TODO: Replace with actual API call
  // return apiClient.patch<Role>(`/roles/${roleId}/permissions`, { permissions });
-
- console.warn('[UserService] updateRolePermissions: Using placeholder implementation');
  return {
   data: null,
   error: null,

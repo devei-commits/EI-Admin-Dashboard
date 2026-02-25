@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import logoFull from '../assets/logo/eilogofull.svg';
 import { useGlobalState } from '../context/GlobalStateContext';
 
@@ -143,7 +143,7 @@ const TreasuryApp = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="flex h-screen bg-gray-50">
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
         <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
@@ -172,7 +172,7 @@ const TreasuryApp = () => {
       {/* Sidebar Navigation */}
       <aside className={`
     fixed md:static inset-y-0 left-0 z-50
-    w-64 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl
+    w-64 bg-slate-800 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl
     transform transition-transform duration-300 ease-in-out
     ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
     md:flex
@@ -261,7 +261,7 @@ const TreasuryApp = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100 pt-14 md:pt-0">
+      <main className="flex-1 overflow-y-auto bg-gray-50 pt-14 md:pt-0">
         <div className="p-4 md:p-8">
           {/* Header with Notifications & Search */}
           <div className="mb-6 md:mb-8">
@@ -292,14 +292,14 @@ const TreasuryApp = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                   {unreadCount > 0 && (
-                    <span className="absolute top-0 right-0 px-2 py-1 bg-gradient-to-r from-red-600 to-red-500 text-white text-xs rounded-full font-bold shadow-lg">{unreadCount}</span>
+                    <span className="absolute top-0 right-0 px-2 py-1 bg-red-600 text-white text-xs rounded-full font-bold shadow-lg">{unreadCount}</span>
                   )}
                 </button>
 
                 {/* Notifications Dropdown - stays open until bell is clicked again */}
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-                    <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-xl">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl">
                       <h3 className="font-bold text-gray-900">Notifications</h3>
                       {unreadCount > 0 && <p className="text-xs text-blue-600 font-medium mt-1">{unreadCount} new</p>}
                     </div>
@@ -313,7 +313,7 @@ const TreasuryApp = () => {
                               'bg-blue-50 border-blue-100 hover:bg-blue-100'
                           }`}>
                           <div className="flex items-start gap-3">
-                            <div className={`px-2.5 py-1.5 rounded-lg flex-shrink-0 ${notif.type === 'alert' ? 'bg-red-200 text-red-700' :
+                            <div className={`px-2.5 py-1.5 rounded-lg shrink-0 ${notif.type === 'alert' ? 'bg-red-200 text-red-700' :
                               notif.type === 'warning' ? 'bg-yellow-200 text-yellow-700' :
                                 notif.type === 'success' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
                               }`}>
@@ -350,9 +350,9 @@ const TreasuryApp = () => {
             <>
               {/* Alert Bar */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-red-50 border border-red-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
-                    <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6 text-red-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     <div>
@@ -361,9 +361,9 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                 </div>
-                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
-                    <svg className="w-6 h-6 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6 text-yellow-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     <div>
@@ -376,7 +376,7 @@ const TreasuryApp = () => {
 
               {/* Advanced Dashboard Widgets */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-red-50 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-red-600 uppercase tracking-wide">Outstanding Payables</div>
@@ -390,12 +390,12 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-red-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-red-500 to-red-600 w-3/4"></div>
+                    <div className="h-full bg-red-500 w-3/4"></div>
                   </div>
                   <p className="text-xs text-red-600 font-medium mt-3">↑ 12% from last month</p>
                 </div>
 
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-blue-600 uppercase tracking-wide">Outstanding Receivables</div>
@@ -409,7 +409,7 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-blue-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-blue-600 w-1/2"></div>
+                    <div className="h-full bg-blue-500 w-1/2"></div>
                   </div>
                   <p className="text-xs text-blue-600 font-medium mt-3">↓ 5% from last month</p>
                 </div>
@@ -433,7 +433,7 @@ const TreasuryApp = () => {
                   <p className="text-xs text-slate-800 font-medium mt-3">3 high priority</p>
                 </div>
 
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-emerald-600 uppercase tracking-wide">Net 30-Day</div>
@@ -447,7 +447,7 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-emerald-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 w-full"></div>
+                    <div className="h-full bg-emerald-500 w-full"></div>
                   </div>
                   <p className="text-xs text-emerald-600 font-medium mt-3">Comfortable position</p>
                 </div>
@@ -460,12 +460,12 @@ const TreasuryApp = () => {
                   <p className="text-3xl font-bold text-gray-900 mt-3">5</p>
                   <p className="text-xs text-slate-800 font-medium mt-2">Action required</p>
                 </div>
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
+                <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
                   <p className="text-xs font-bold text-blue-600 uppercase">This Month Paid</p>
                   <p className="text-3xl font-bold text-gray-900 mt-3">₹ 65.5L</p>
                   <p className="text-xs text-blue-600 font-medium mt-2">Across 42 vendors</p>
                 </div>
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
+                <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
                   <p className="text-xs font-bold text-emerald-600 uppercase">Avg. Days to Pay</p>
                   <p className="text-3xl font-bold text-gray-900 mt-3">24 days</p>
                   <p className="text-xs text-emerald-600 font-medium mt-2">Within target</p>
@@ -479,17 +479,17 @@ const TreasuryApp = () => {
           {/* Cashflow Screen */}
           {currentScreen === 'cashflow' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-emerald-600 uppercase tracking-wide">Expected Inflows</div>
                 <div className="text-3xl font-bold text-emerald-700 mt-3">₹ 1,30,50,000</div>
                 <div className="text-sm text-gray-600 mt-2">Clients · Investors · Banks</div>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-red-50 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-red-600 uppercase tracking-wide">Scheduled Outflows</div>
                 <div className="text-3xl font-bold text-red-700 mt-3">₹ 88,30,000</div>
                 <div className="text-sm text-gray-600 mt-2">Vendors + Salaries + Statutory</div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-blue-600 uppercase tracking-wide">Projected Net</div>
                 <div className="text-3xl font-bold text-blue-700 mt-3">+ ₹ 42,20,000</div>
                 <div className="text-sm text-gray-600 mt-2">Comfortable position</div>
@@ -502,7 +502,7 @@ const TreasuryApp = () => {
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-x-auto hover:shadow-lg transition-all">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-300 bg-gradient-to-r from-gray-50 to-blue-50">
+                  <tr className="border-b border-gray-300 bg-gray-50">
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Account</th>
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Type</th>
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Balance</th>
@@ -534,7 +534,7 @@ const TreasuryApp = () => {
           {currentScreen === 'approvals' && (
             <>
               <div className="flex gap-2 mb-6 flex-wrap">
-                <button className="px-5 py-2.5 bg-slate-800 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-600">Pending (5)</button>
+                <button className="px-5 py-2.5 bg-slate-800 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all">Pending (5)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Approved (12)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Rejected (2)</button>
               </div>
@@ -615,7 +615,7 @@ const TreasuryApp = () => {
                             setSelectedPayment(payment);
                             handleApproval(payment.id, true);
                           }}
-                          className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white text-sm font-bold rounded-lg transition-all hover:shadow-lg"
+                          className="flex-1 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-lg transition-all hover:shadow-lg"
                         >
                           ✓ Approve Payment
                         </button>
