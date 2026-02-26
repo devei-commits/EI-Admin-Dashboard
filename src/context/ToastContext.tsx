@@ -17,14 +17,14 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
  const [toasts, setToasts] = useState<Toast[]>([]);
 
- const addToast = useCallback((type: Toast['type'], message: string) => {
+  const addToast = useCallback((type: Toast['type'], message: string) => {
   const id = Date.now().toString();
   setToasts((prev) => [...prev, { id, type, message }]);
   
-  // Auto remove after 4 seconds
+  // Auto remove quickly (1 second) for snappy notifications
   setTimeout(() => {
    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, 4000);
+  }, 1000);
  }, []);
 
  const removeToast = useCallback((id: string) => {
@@ -35,7 +35,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
    {children}
    {/* Toast Container */}
-   <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2">
+   <div className="fixed top-4 right-4 z-100 flex flex-col gap-2">
     {toasts.map((toast) => (
      <div
       key={toast.id}

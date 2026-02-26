@@ -238,6 +238,64 @@ const ItemsMaster: React.FC = () => {
   return sortDirection === 'asc' ? '↑' : '↓';
  };
 
+ const formatKeyLabel = (rawKey: string): string => {
+  if (!rawKey) return '';
+
+  // First, remove all spaces around single characters (e.g., "C F. Y I E L D P E R C E N T A G E" -> "CF.YIELDPERCENTAGE")
+  let normalized = rawKey.replace(/\s+/g, ' ').trim(); // normalize multiple spaces to single space
+  normalized = normalized.replace(/(\s)([A-Z])(\s)/g, '$2'); // remove spaces around single capital letters
+  normalized = normalized.replace(/\s+/g, ''); // remove all remaining spaces
+  
+  // Handle custom-field prefix from Zoho like "CF.MFG Date" or "CF.YIELDPERCENTAGE"
+  if (normalized.toUpperCase().startsWith('CF.')) {
+   const withoutPrefix = normalized.slice(3);
+   
+   // Convert common patterns to readable labels
+   const labelMap: Record<string, string> = {
+    'YIELDPERCENTAGE': 'Yield Percentage',
+    'TARGETDEVELOPMENTPRICE': 'Target Development Price',
+    'PRICEPERKG': 'Price Per KG',
+    'ITEMSTATUS': 'Item Status',
+    'MKTBRANDNAME': 'Market Brand Name',
+    'SALESPERSONNAME': 'Sales Person Name',
+    'OLDSKU': 'Old SKU',
+    'PREVIOUSSKU': 'Previous SKU',
+    'INCINAME': 'INCI Name',
+    'MONOCARTONSTATUS': 'Monocarton Status',
+    'MONOCARTONPRICE': 'Monocarton Price',
+    'IS_GROUP_ITEM': 'Is Group Item',
+   };
+   
+   const upperKey = withoutPrefix.toUpperCase().replace(/[_\s]+/g, '');
+   if (labelMap[upperKey]) {
+    return labelMap[upperKey];
+   }
+   
+   // If not in map, format by adding spaces before capitals and after dots
+   let label = withoutPrefix.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+   label = label.replace(/[_\s]+/g, ' ');
+   return label.trim();
+  }
+
+  // If key already has spaces, just normalise them
+  if (normalized.includes(' ')) {
+   return normalized.replace(/\s+/g, ' ').trim();
+  }
+
+  // Normalise snake / kebab
+  let label = normalized.replace(/[_-]+/g, ' ');
+
+  // If the whole thing is uppercase (an acronym), avoid inserting spaces between each letter
+  if (/^[A-Z0-9\s]+$/.test(label)) {
+   return label.trim();
+  }
+
+  // Add space before capital letters in camelCase or PascalCase
+  label = label.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+
+  return label.trim();
+ };
+
  const clearFilters = () => {
   setSearchQuery('');
   setTypeFilters([]);
@@ -654,8 +712,8 @@ const ItemsMaster: React.FC = () => {
              if (value.length === 0) return null;
              return (
               <div key={key} className="border-t pt-4">
-               <h4 className="text-md font-semibold text-gray-800 mb-3 capitalize">
-                {key.replace(/([A-Z])/g, ' $1').trim()}
+               <h4 className="text-md font-semibold text-gray-800 mb-3">
+                {formatKeyLabel(key)}
                </h4>
                <div className="bg-gray-50 rounded-lg p-4">
                 {value.map((item, idx) => (
@@ -688,12 +746,12 @@ const ItemsMaster: React.FC = () => {
             return (
              <div key={key} className="grid grid-cols-3 gap-2 border-b pb-3">
               <div className="col-span-1">
-               <label className="text-xs font-semibold text-gray-600 uppercase">
-                {key.replace(/([A-Z])/g, ' $1').trim()}
+               <label className="text-xs font-semibold text-gray-600">
+                {formatKeyLabel(key)}
                </label>
               </div>
               <div className="col-span-2">
-               <p className="text-sm text-gray-800 break-words">
+               <p className="text-sm text-gray-800 wrap-break-words">
                 {typeof value === 'boolean' ? (
                  <span className={`px-2 py-1 rounded text-xs font-semibold ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {value ? 'Yes' : 'No'}

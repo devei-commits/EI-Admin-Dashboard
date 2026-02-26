@@ -94,27 +94,33 @@ const BOMRefactored: React.FC = () => {
     code: '', name: '', cat: '', qty: '', uom: 'PCS', notes: ''
   });
 
-  // Auto-save draft
+  // Auto-save draft (silent)
   useEffect(() => {
     const timer = setInterval(() => {
       if (Object.values(formData).some(v => Boolean(v))) {
         localStorage.setItem('bom_draft_new', JSON.stringify(formData));
-        addToast('info', 'BOM draft auto-saved');
       }
     }, 30000);
     return () => clearInterval(timer);
-  }, [formData, addToast]);
+  }, [formData]);
 
-  // Load draft on mount
+  // Load draft on mount (single toast per session)
   useEffect(() => {
     const draft = localStorage.getItem('bom_draft_new');
-    if (draft) {
-      try {
-        setFormData(JSON.parse(draft));
-      } catch (e) {
+    if (!draft) return;
+
+    try {
+      setFormData(JSON.parse(draft));
+
+      const toastFlagKey = 'bom_draft_toast_shown';
+      if (!sessionStorage.getItem(toastFlagKey)) {
+        sessionStorage.setItem(toastFlagKey, '1');
+        addToast('info', 'BOM draft loaded');
       }
+    } catch {
+      // ignore parse errors
     }
-  }, []);
+  }, [addToast]);
 
   const stages = [
     'Primary Info',
@@ -234,34 +240,137 @@ const BOMRefactored: React.FC = () => {
       case 0: // Primary Info
         return (
           <div className="space-y-4">
-            <InputField label="BOM Code" id="bomCode" value={formData.bomCode} onChange={handleInputChange} />
-            <InputField label="BOM SKU" id="bomSku" value={formData.bomSku} onChange={handleInputChange} />
-            <InputField label="Category" id="bomCategory" value={formData.bomCategory} onChange={handleInputChange} />
-            <SelectField label="Unit of Measure" id="bomUnit" value={formData.bomUnit} onChange={handleInputChange}
-              options={['GM', 'ML', 'PCS', 'L', 'KG']} />
-            <InputField label="HSN Code" id="bomHsn" value={formData.bomHsn} onChange={handleInputChange} />
-            <SelectField label="Tax Preference" id="bomTaxPreference" value={formData.bomTaxPreference} onChange={handleInputChange}
-              options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']} />
-            <CheckboxField label="Returnable Item" id="bomReturnable" checked={formData.bomReturnable} onChange={handleInputChange} />
-            <TextareaField label="Associate Items" id="bomAssociateItems" value={formData.bomAssociateItems} onChange={handleInputChange} />
+            <InputField
+              label="BOM Code"
+              id="bomCode"
+              value={formData.bomCode}
+              onChange={handleInputChange}
+              placeholder="e.g. BOM-CR-2025-001"
+            />
+            <InputField
+              label="BOM SKU"
+              id="bomSku"
+              value={formData.bomSku}
+              onChange={handleInputChange}
+              placeholder="Internal SKU / ERP code"
+            />
+            <InputField
+              label="Category"
+              id="bomCategory"
+              value={formData.bomCategory}
+              onChange={handleInputChange}
+              placeholder="e.g. Bulk / Finished Goods / Pilot"
+            />
+            <SelectField
+              label="Unit of Measure"
+              id="bomUnit"
+              value={formData.bomUnit}
+              onChange={handleInputChange}
+              options={['GM', 'ML', 'PCS', 'L', 'KG']}
+            />
+            <InputField
+              label="HSN Code"
+              id="bomHsn"
+              value={formData.bomHsn}
+              onChange={handleInputChange}
+              placeholder="e.g. 3304"
+            />
+            <SelectField
+              label="Tax Preference"
+              id="bomTaxPreference"
+              value={formData.bomTaxPreference}
+              onChange={handleInputChange}
+              options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
+            />
+            <CheckboxField
+              label="Returnable Item"
+              id="bomReturnable"
+              checked={formData.bomReturnable}
+              onChange={handleInputChange}
+            />
+            <TextareaField
+              label="Associate Items"
+              id="bomAssociateItems"
+              value={formData.bomAssociateItems}
+              onChange={handleInputChange}
+              placeholder="Link related RM / PM / packaging codes if any"
+            />
           </div>
         );
 
       case 1: // BOM Setup & Coding
         return (
           <div className="space-y-4">
-            <SelectField label="Type" id="type" value={formData.type} onChange={handleInputChange}
-              options={['BULK', 'FG', 'SEMI', 'INTERMEDIATE']} />
-            <SelectField label="Status" id="status" value={formData.status} onChange={handleInputChange}
-              options={['Draft', 'Approved', 'Archived', 'Deprecated']} />
-            <InputField label="Version" id="version" value={formData.version} onChange={handleInputChange} />
-            <InputField label="Client" id="client" value={formData.client} onChange={handleInputChange} />
-            <InputField label="Name" id="name" value={formData.name} onChange={handleInputChange} />
-            <InputField label="Dosage (e.g., 10% w/w)" id="dosage" value={formData.dosage} onChange={handleInputChange} />
-            <InputField label="Pack Size" id="packSize" value={formData.packSize} onChange={handleInputChange} />
-            <InputField label="Site/Plant" id="site" value={formData.site} onChange={handleInputChange} />
-            <InputField label="Project" id="project" value={formData.project} onChange={handleInputChange} />
-            <InputField label="Market" id="market" value={formData.market} onChange={handleInputChange} />
+            <SelectField
+              label="Type"
+              id="type"
+              value={formData.type}
+              onChange={handleInputChange}
+              options={['BULK', 'FG', 'SEMI', 'INTERMEDIATE']}
+            />
+            <SelectField
+              label="Status"
+              id="status"
+              value={formData.status}
+              onChange={handleInputChange}
+              options={['Draft', 'Approved', 'Archived', 'Deprecated']}
+            />
+            <InputField
+              label="Version"
+              id="version"
+              value={formData.version}
+              onChange={handleInputChange}
+              placeholder="e.g. v1.0"
+            />
+            <InputField
+              label="Client"
+              id="client"
+              value={formData.client}
+              onChange={handleInputChange}
+              placeholder="End client / brand"
+            />
+            <InputField
+              label="Name"
+              id="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              placeholder="Commercial name of the formula"
+            />
+            <InputField
+              label="Dosage (e.g., 10% w/w)"
+              id="dosage"
+              value={formData.dosage}
+              onChange={handleInputChange}
+              placeholder="e.g. 10% w/w"
+            />
+            <InputField
+              label="Pack Size"
+              id="packSize"
+              value={formData.packSize}
+              onChange={handleInputChange}
+              placeholder="e.g. 50 ml / 200 gm"
+            />
+            <InputField
+              label="Site/Plant"
+              id="site"
+              value={formData.site}
+              onChange={handleInputChange}
+              placeholder="Manufacturing site"
+            />
+            <InputField
+              label="Project"
+              id="project"
+              value={formData.project}
+              onChange={handleInputChange}
+              placeholder="Internal project / code name"
+            />
+            <InputField
+              label="Market"
+              id="market"
+              value={formData.market}
+              onChange={handleInputChange}
+              placeholder="Target market / region"
+            />
           </div>
         );
 
@@ -272,13 +381,55 @@ const BOMRefactored: React.FC = () => {
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Header Details</h3>
               <div className="space-y-4">
-                <InputField label="Category (FMCG, Pharma, etc.)" id="category" value={formData.category} onChange={handleInputChange} />
-                <InputField label="Created By" id="createdBy" value={formData.createdBy} onChange={handleInputChange} />
-                <InputField label="Reviewed By" id="reviewedBy" value={formData.reviewedBy} onChange={handleInputChange} />
-                <TextareaField label="Description" id="desc" value={formData.desc} onChange={handleInputChange} />
-                <TextareaField label="Claims" id="claims" value={formData.claims} onChange={handleInputChange} />
-                <TextareaField label="Regulatory Notes" id="regulatory" value={formData.regulatory} onChange={handleInputChange} />
-                <InputField label="pH Range" id="phRange" value={formData.phRange} onChange={handleInputChange} />
+                <InputField
+                  label="Category (FMCG, Pharma, etc.)"
+                  id="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  placeholder="e.g. FMCG / Pharma / D2C"
+                />
+                <InputField
+                  label="Created By"
+                  id="createdBy"
+                  value={formData.createdBy}
+                  onChange={handleInputChange}
+                  placeholder="Formulator / creator name"
+                />
+                <InputField
+                  label="Reviewed By"
+                  id="reviewedBy"
+                  value={formData.reviewedBy}
+                  onChange={handleInputChange}
+                  placeholder="Reviewer / approver name"
+                />
+                <TextareaField
+                  label="Description"
+                  id="desc"
+                  value={formData.desc}
+                  onChange={handleInputChange}
+                  placeholder="Short description of the formula"
+                />
+                <TextareaField
+                  label="Claims"
+                  id="claims"
+                  value={formData.claims}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Sulphate-free, Paraben-free, Dermatologically tested"
+                />
+                <TextareaField
+                  label="Regulatory Notes"
+                  id="regulatory"
+                  value={formData.regulatory}
+                  onChange={handleInputChange}
+                  placeholder="Region-specific or agency-specific requirements"
+                />
+                <InputField
+                  label="pH Range"
+                  id="phRange"
+                  value={formData.phRange}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 5.0 – 5.5"
+                />
               </div>
             </div>
 
@@ -336,23 +487,89 @@ const BOMRefactored: React.FC = () => {
       case 4: // Specifications - renumbered from 5
         return (
           <div className="space-y-4">
-            <TextareaField label="Bulk Specification" id="specBulk" value={formData.specBulk} onChange={handleInputChange} />
-            <TextareaField label="Process Specification" id="specProcess" value={formData.specProcess} onChange={handleInputChange} />
-            <TextareaField label="FG Specification" id="specFg" value={formData.specFg} onChange={handleInputChange} />
-            <TextareaField label="Packaging Specification" id="specPack" value={formData.specPack} onChange={handleInputChange} />
-            <TextareaField label="Testing Requirements" id="specTests" value={formData.specTests} onChange={handleInputChange} />
-            <TextareaField label="Release Criteria" id="specRelease" value={formData.specRelease} onChange={handleInputChange} />
+            <TextareaField
+              label="Bulk Specification"
+              id="specBulk"
+              value={formData.specBulk}
+              onChange={handleInputChange}
+              placeholder="Key bulk specs: appearance, viscosity, pH, etc."
+            />
+            <TextareaField
+              label="Process Specification"
+              id="specProcess"
+              value={formData.specProcess}
+              onChange={handleInputChange}
+              placeholder="Critical steps, temperatures, mixing times…"
+            />
+            <TextareaField
+              label="FG Specification"
+              id="specFg"
+              value={formData.specFg}
+              onChange={handleInputChange}
+              placeholder="Finished goods spec summary"
+            />
+            <TextareaField
+              label="Packaging Specification"
+              id="specPack"
+              value={formData.specPack}
+              onChange={handleInputChange}
+              placeholder="Bottle / label / shipper requirements"
+            />
+            <TextareaField
+              label="Testing Requirements"
+              id="specTests"
+              value={formData.specTests}
+              onChange={handleInputChange}
+              placeholder="In-process / finished goods tests to be run"
+            />
+            <TextareaField
+              label="Release Criteria"
+              id="specRelease"
+              value={formData.specRelease}
+              onChange={handleInputChange}
+              placeholder="Conditions for batch release"
+            />
           </div>
         );
 
       case 5: // Yield, Batch & Notes - renumbered from 6
         return (
           <div className="space-y-4">
-            <InputField label="Batch Lot Size" id="batch" value={formData.batch} onChange={handleInputChange} />
-            <InputField label="Yield %" id="yield" value={formData.yield} onChange={handleInputChange} />
-            <InputField label="Overage %" id="overage" value={formData.overage} onChange={handleInputChange} />
-            <InputField label="Production Line" id="line" value={formData.line} onChange={handleInputChange} />
-            <TextareaField label="General Notes" id="notes" value={formData.notes} onChange={handleInputChange} />
+            <InputField
+              label="Batch Lot Size"
+              id="batch"
+              value={formData.batch}
+              onChange={handleInputChange}
+              placeholder="e.g. 7000 kg / 12000 units"
+            />
+            <InputField
+              label="Yield %"
+              id="yield"
+              value={formData.yield}
+              onChange={handleInputChange}
+              placeholder="e.g. 98%"
+            />
+            <InputField
+              label="Overage %"
+              id="overage"
+              value={formData.overage}
+              onChange={handleInputChange}
+              placeholder="e.g. 3%"
+            />
+            <InputField
+              label="Production Line"
+              id="line"
+              value={formData.line}
+              onChange={handleInputChange}
+              placeholder="Line / equipment used"
+            />
+            <TextareaField
+              label="General Notes"
+              id="notes"
+              value={formData.notes}
+              onChange={handleInputChange}
+              placeholder="Additional process / quality notes"
+            />
           </div>
         );
 
@@ -375,7 +592,7 @@ const BOMRefactored: React.FC = () => {
 
   return (
     <MasterFormBase
-      title="Bill of Materials (BOM) - Refactored"
+      title="Bill of Materials (BOM)"
       stages={stages}
       currentStage={currentStage}
       onStageChange={setCurrentStage}
@@ -390,8 +607,10 @@ const BOMRefactored: React.FC = () => {
       onSubmit={handleSubmit}
     >
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setPageTab('bmr')}
-          className="px-4 py-1.5 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700">
+        <button
+          onClick={() => setPageTab('bmr')}
+          className="px-4 py-1.5 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700"
+        >
           ← BMR Dashboard
         </button>
       </div>
@@ -407,6 +626,7 @@ const BMR_STAGES = [
 
 const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }) => {
   const { state, dispatch } = useGlobalState();
+  const { items } = useItems();
   const bmrs: any[] = state.mfg?.bmrs || [];
   const bprs: any[] = state.mfg?.bprs || [];
   const salesOrders: any[] = state.orders?.salesOrders || [];
@@ -497,6 +717,59 @@ const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }
             <p className={`text-3xl font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* BOM Masters Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-800">BOM Masters (from Items Master)</h2>
+            <span className="text-sm text-gray-500">
+              {items.filter(i => i.type === 'bom').length} BOM item(s)
+            </span>
+          </div>
+        </div>
+        {items.filter(i => i.type === 'bom').length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-sm text-gray-400">No BOM masters imported yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-900">
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Code</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Name</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Category</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Type</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>UOM</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {items
+                  .filter(i => i.type === 'bom')
+                  .map((bom: any) => {
+                    const data = bom.data || {};
+                    return (
+                      <tr key={bom.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-6 py-4 font-mono font-bold text-gray-900">{bom.code || '-'}</td>
+                        <td className="px-6 py-4 font-semibold text-gray-800">{bom.name || '-'}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
+                            -
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{data.type || data.bomCategory || '-'}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">{data.bomUnit || '-'}</td>
+                        <td className="px-6 py-4 text-gray-600 text-xs">{bom.createdAt ? new Date(bom.createdAt).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* BMR Cards */}
@@ -751,7 +1024,8 @@ const TextareaField: React.FC<{
   value: any;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   rows?: number;
-}> = ({ label, id, value, onChange, rows = 3 }) => (
+  placeholder?: string;
+}> = ({ label, id, value, onChange, rows = 3, placeholder }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
     <textarea
@@ -759,6 +1033,7 @@ const TextareaField: React.FC<{
       value={value || ''}
       onChange={onChange}
       rows={rows}
+      placeholder={placeholder}
       className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     />
   </div>

@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { vendorsData } from '../data/zohoVendorsSeed';
+import { clientsData } from '../data/zohoClientsSeed';
 
 export interface VendorClient {
  id: string;
@@ -33,15 +35,45 @@ const VendorClientContext = createContext<VendorClientContextType | undefined>(u
 export const VendorClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
  const [vendorClients, setVendorClients] = useState<VendorClient[]>([]);
 
+ const normalizeEntityCode = (entry: VendorClient): VendorClient => {
+  const fallbackCode =
+   entry.data?.entityCode ||
+   entry.data?.customerNumber ||
+   entry.data?.cfContactId ||
+   entry.data?.contactId ||
+   entry.id;
+
+  return {
+   ...entry,
+   data: {
+    ...entry.data,
+    entityCode: String(fallbackCode ?? ''),
+   },
+  };
+ };
+
  // Load from localStorage on mount
  useEffect(() => {
+  const seeded = [...vendorsData, ...clientsData].map(normalizeEntityCode);
   const stored = localStorage.getItem('vendorClients');
+
   if (stored) {
    try {
-    setVendorClients(JSON.parse(stored));
-   } catch (error) {
+    const parsed = JSON.parse(stored) as VendorClient[];
+    const merged = [...parsed];
+    const existingIds = new Set(parsed.map(entry => entry.id));
+    seeded.forEach(entry => {
+     if (!existingIds.has(entry.id)) {
+      merged.push(entry);
+     }
+    });
+    setVendorClients(merged.map(normalizeEntityCode));
+    return;
+   } catch {
    }
   }
+
+  setVendorClients(seeded);
  }, []);
 
  // Save to localStorage whenever changed

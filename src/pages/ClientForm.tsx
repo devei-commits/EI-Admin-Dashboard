@@ -191,7 +191,34 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
  useEffect(() => {
   if (existingClient) {
    const data = (existingClient.data || {}) as any;
-   setFormData(prev => ({ ...prev, ...(data as any), setupType: 'CLIENT', setupPrefix: 'CLI' }));
+     const entityCode =
+        data.entityCode ||
+        data.customerNumber ||
+        data.cfContactId ||
+        data.contactId ||
+        existingClient.id;
+
+     const baseFormData = {
+        legalName: data.legalName || existingClient.name,
+        tradeName: data.tradeName || existingClient.name,
+        brandName: data.brandName || existingClient.name,
+        primaryEmail: data.primaryEmail || existingClient.email,
+        primaryPhone: data.primaryPhone || existingClient.phone,
+        state: data.state || existingClient.location,
+        country: data.country || existingClient.country,
+        setupCategory: data.setupCategory || existingClient.category,
+        paymentTerms: data.paymentTerms || existingClient.paymentTerms,
+        notes: data.notes || existingClient.notes,
+        entityCode: String(entityCode || ''),
+     };
+
+     setFormData(prev => ({
+        ...prev,
+        ...baseFormData,
+        ...(data as any),
+        setupType: 'CLIENT',
+        setupPrefix: 'CLI',
+     }));
    setDocuments(Array.isArray(data.documents) ? data.documents : []);
    setPocs(Array.isArray(data.pocs) ? data.pocs : []);
    setBanks(Array.isArray(data.banks) ? data.banks : []);
@@ -764,7 +791,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
          <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({...tempPoc, notes: e.target.value})} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
         </div>
         <div>
-         <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-slate-800 text-white border border-amber-600 rounded-lg hover:bg-slate-800 transition font-medium text-sm font-semibold">
+         <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-slate-800 text-white border border-amber-600 rounded-lg hover:bg-slate-800 transition text-sm font-semibold">
           + Add POC
          </button>
         </div>

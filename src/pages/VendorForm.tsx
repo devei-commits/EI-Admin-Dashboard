@@ -171,7 +171,33 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  useEffect(() => {
   if (existingVendor) {
    const data = (existingVendor.data || {}) as any;
-   setFormData(prev => ({ ...prev, ...(data as any), setupType: 'VENDOR', setupPrefix: 'VEN' }));
+     const entityCode =
+        data.entityCode ||
+        data.customerNumber ||
+        data.cfContactId ||
+        data.contactId ||
+        existingVendor.id;
+
+     const baseFormData = {
+        legalName: data.legalName || existingVendor.name,
+        tradeName: data.tradeName || existingVendor.name,
+        primaryEmail: data.primaryEmail || existingVendor.email,
+        primaryPhone: data.primaryPhone || existingVendor.phone,
+        state: data.state || existingVendor.location,
+        country: data.country || existingVendor.country,
+        setupCategory: data.setupCategory || existingVendor.category,
+        paymentTerms: data.paymentTerms || existingVendor.paymentTerms,
+        notes: data.notes || existingVendor.notes,
+        entityCode: String(entityCode || ''),
+     };
+
+     setFormData(prev => ({
+        ...prev,
+        ...baseFormData,
+        ...(data as any),
+        setupType: 'VENDOR',
+        setupPrefix: 'VEN',
+     }));
    setDocuments(Array.isArray(data.documents) ? data.documents : []);
    setPocs(Array.isArray(data.pocs) ? data.pocs : []);
    setBanks(Array.isArray(data.banks) ? data.banks : []);

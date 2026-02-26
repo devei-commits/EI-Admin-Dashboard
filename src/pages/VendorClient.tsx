@@ -28,6 +28,7 @@ const VendorClient: React.FC = () => {
  const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master' | 'vendor-form' | 'client-form'>('vendor-master');
  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+ const [editing, setEditing] = useState<{ id: string; type: 'vendor' | 'client' } | null>(null);
 
  const [viewing, setViewing] = useState<VendorClientType | null>(null);
 
@@ -162,13 +163,15 @@ const VendorClient: React.FC = () => {
  };
 
  const openVendorEdit = (id: string) => {
+  setViewing(null);
   setEditingVendorId(id);
-  setActiveTab('vendor-form');
+  setEditing({ id, type: 'vendor' });
  };
 
  const openClientEdit = (id: string) => {
+  setViewing(null);
   setEditingClientId(id);
-  setActiveTab('client-form');
+  setEditing({ id, type: 'client' });
  };
 
  const handleDelete = (id: string) => {
@@ -187,6 +190,12 @@ const VendorClient: React.FC = () => {
 
  const closeView = () => {
   setViewing(null);
+ };
+
+ const closeEdit = () => {
+  setEditing(null);
+  setEditingVendorId(null);
+  setEditingClientId(null);
  };
 
  const renderListTable = (
@@ -220,6 +229,16 @@ const VendorClient: React.FC = () => {
    </table>
   </div>
  );
+
+ const renderCellValue = (value: unknown) => {
+  const display = value === null || value === undefined || value === '' ? '-' : String(value);
+  const isDash = display === '-';
+  return (
+   <span className={isDash ? 'block text-center text-gray-500' : ''}>
+    {display}
+   </span>
+  );
+ };
 
  const renderContent = () => {
   switch (activeTab) {
@@ -298,17 +317,17 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50">
+        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Code</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Vendor</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Category</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Email</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">State</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Status</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Code</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Vendor</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Category</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Email</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Phone</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>State</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Status</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Updated</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}></th>
          </tr>
         </thead>
         <tbody>
@@ -319,12 +338,12 @@ const VendorClient: React.FC = () => {
          ) : (
           pagedVendors.map((v) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm font-mono text-gray-700">{String(v.data?.entityCode || '')}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.name}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{v.category}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{v.email}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{v.phone}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{v.location}</td>
+            <td className="px-4 py-3 text-sm font-mono text-gray-700">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-gray-800">{renderCellValue(v.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.location || '-')}</td>
             <td className="px-4 py-3 text-sm">
              <select
               value={v.status}
@@ -336,7 +355,7 @@ const VendorClient: React.FC = () => {
               <option value="pending">Pending</option>
              </select>
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{v.lastModified ? new Date(v.lastModified).toLocaleDateString() : ''}</td>
+            <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
               <button
@@ -551,17 +570,17 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50">
+        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Code</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Client</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Category</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Email</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">State</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Status</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Code</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Client</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Category</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Email</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Phone</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>State</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Status</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Updated</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}></th>
          </tr>
         </thead>
         <tbody>
@@ -572,12 +591,12 @@ const VendorClient: React.FC = () => {
          ) : (
           pagedClients.map((c) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm font-mono text-gray-700">{String(c.data?.entityCode || '')}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800">{c.name}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{c.category}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{c.email}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{c.phone}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{c.location}</td>
+            <td className="px-4 py-3 text-sm font-mono text-gray-700">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-gray-800">{renderCellValue(c.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.location || '-')}</td>
             <td className="px-4 py-3 text-sm">
              <select
               value={c.status}
@@ -589,7 +608,7 @@ const VendorClient: React.FC = () => {
               <option value="pending">Pending</option>
              </select>
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{c.lastModified ? new Date(c.lastModified).toLocaleDateString() : ''}</td>
+            <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
               <button
@@ -729,26 +748,26 @@ const VendorClient: React.FC = () => {
       </div>
      </div>
     );
-   case 'vendor-form':
-    return (
-     <VendorForm
-      editingId={editingVendorId}
-      onSaved={() => {
-       setEditingVendorId(null);
-       setActiveTab('vendor-master');
-      }}
-     />
-    );
-   case 'client-form':
-    return (
-     <ClientForm
-      editingId={editingClientId}
-      onSaved={() => {
-       setEditingClientId(null);
-       setActiveTab('client-master');
-      }}
-     />
-    );
+  case 'vendor-form':
+   return (
+    <VendorForm
+    editingId={editingVendorId}
+    onSaved={() => {
+     setEditingVendorId(null);
+     setActiveTab('vendor-master');
+    }}
+    />
+   );
+  case 'client-form':
+   return (
+    <ClientForm
+    editingId={editingClientId}
+    onSaved={() => {
+     setEditingClientId(null);
+     setActiveTab('client-master');
+    }}
+    />
+   );
   }
  };
 
@@ -784,14 +803,14 @@ const VendorClient: React.FC = () => {
    </div>
 
    {/* View Modal */}
-   {viewing && (
-    <div
-     className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-     role="dialog"
-     aria-modal="true"
-    >
-     <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-      <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
+  {viewing && (
+   <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    role="dialog"
+    aria-modal="true"
+   >
+    <div className="w-full max-w-5xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
+    <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
        <div>
         <h3 className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? '🏭' : '👥'} {viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
         <p className="text-sm text-gray-500 font-mono">{String(viewing.data?.entityCode || viewing.id)}</p>
@@ -805,7 +824,7 @@ const VendorClient: React.FC = () => {
        </button>
       </div>
 
-      <div className="p-5">
+      <div className="p-5 overflow-y-auto">
        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <VendorClientField label="Code" value={viewing.data?.entityCode || viewing.id} mono />
         <VendorClientField label="Type" value={viewing.type} />
@@ -985,7 +1004,50 @@ const VendorClient: React.FC = () => {
       </div>
      </div>
     </div>
-   )}
+  )}
+
+  {editing && (
+   <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    role="dialog"
+    aria-modal="true"
+   >
+    <div className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
+    <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
+     <div>
+      <h3 className="text-lg font-bold text-gray-800">Edit {editing.type === 'vendor' ? 'Vendor' : 'Client'}</h3>
+      <p className="text-sm text-gray-500">Update record details without leaving the dashboard.</p>
+     </div>
+     <button
+      type="button"
+      onClick={closeEdit}
+      className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+     >
+      Close
+     </button>
+    </div>
+    <div className="overflow-y-auto">
+     {editing.type === 'vendor' ? (
+      <VendorForm
+      editingId={editing.id}
+      onSaved={() => {
+       closeEdit();
+       setActiveTab('vendor-master');
+      }}
+      />
+     ) : (
+      <ClientForm
+      editingId={editing.id}
+      onSaved={() => {
+       closeEdit();
+       setActiveTab('client-master');
+      }}
+      />
+     )}
+    </div>
+    </div>
+   </div>
+  )}
   </div>
  );
 };
