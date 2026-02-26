@@ -834,7 +834,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
  const rawMaterials = safeItems.filter(i => i.type === 'raw-material');
  const [viewItem, setViewItem] = useState<any | null>(null);
  const [editItem, setEditItem] = useState<any | null>(null);
- const [openRowId, setOpenRowId] = useState<string | null>(null);
  const [editData, setEditData] = useState({
   name: '',
   code: '',
@@ -985,7 +984,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
       </p>
      </div>
     ) : (
-     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-visible">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-visible">
       <table className="w-full text-sm">
        <thead>
         <tr className="bg-gray-900">
@@ -999,87 +998,47 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-200">
-        {rawMaterials.map((rm: any) => {
-         const data = rm.data || {};
-         const mappedItems = Array.isArray(data.mappedItems) ? data.mappedItems : [];
-         const itemCode = data.sku || rm.code || '-';
-         const itemName = data.compositeItemName || rm.name || data.tradeCommercialName || data.inciName || '-';
-         const category = data.rmCategory || data['CF.ITEM CATEGORY'] || data.itemCategory || '-';
-         const categoryBadge = category && category !== '-' ? String(category).charAt(0).toUpperCase() : '-';
-         const specification = mappedItems.length > 0
-          ? mappedItems
-           .map((mi: any) => `${mi.name || '-'}${mi.quantity ? ` (${mi.quantity})` : ''}`)
-           .join(', ')
-          : '-';
-         const uom = data.unit || data.primaryUom || data.issueUom || '-';
-         const vendorNames = (data.vendors || []).map((v: any) => v.name).join(', ') || '-';
-         
-         return (
-          <tr key={rm.id} className="hover:bg-gray-50/50 transition-colors">
-           <td className="px-6 py-4 font-mono font-bold text-gray-900">{itemCode}</td>
-           <td className="px-6 py-4 font-semibold text-gray-800">{itemName}</td>
-           <td className="px-6 py-4" title={category}>
-            <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
-             {categoryBadge}
-            </span>
-           </td>
-           <td className="px-6 py-4 text-gray-600 max-w-sm truncate" title={specification}>
-            {specification}
-           </td>
-           <td className="px-6 py-4 font-medium text-gray-900">{uom}</td>
-           <td className="px-6 py-4 text-gray-600">{vendorNames}</td>
-           <td className="px-6 py-4 text-right overflow-visible">
-            <div className="relative inline-block">
-             <button
-              type="button"
-              onClick={() => setOpenRowId(openRowId === rm.id ? null : rm.id)}
-              className="px-2 py-1 text-sm border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50"
-              aria-label="Row actions"
-             >
-              ...
-             </button>
-             {openRowId === rm.id && (
-              <div
-               className="absolute right-0 mt-2 w-36 bg-white border border-gray-200 rounded-md shadow-lg z-20"
-               onMouseLeave={() => setOpenRowId(null)}
+         {rawMaterials.flatMap((rm: any) => {
+          const data = rm.data || {};
+          const mappedItems = Array.isArray(data.mappedItems) ? data.mappedItems : [];
+          const rows = mappedItems.length > 0 ? mappedItems : [{ name: '-', sku: '-', quantity: '-' }];
+          const category = data.rmCategory || data['CF.ITEM CATEGORY'] || data.itemCategory || '-';
+          const categoryBadge = category && category !== '-' ? String(category).charAt(0).toUpperCase() : '-';
+          const uom = data.unit || data.primaryUom || data.issueUom || '-';
+          const vendorNames = (data.vendors || []).map((v: any) => v.name).join(', ') || '-';
+
+          return rows.map((mi: any, idx: number) => {
+           const itemCode = mi.sku || data.sku || rm.code || '-';
+           const itemName = mi.name || data.compositeItemName || rm.name || data.tradeCommercialName || data.inciName || '-';
+           const specification = mi.quantity || '-';
+
+           return (
+            <tr key={`${rm.id}-${idx}`} className="hover:bg-gray-50/50 transition-colors">
+             <td className="px-6 py-4 font-mono font-bold text-gray-900">{itemCode}</td>
+             <td className="px-6 py-4 font-semibold text-gray-800">{itemName}</td>
+             <td className="px-6 py-4" title={category}>
+              <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
+               {categoryBadge}
+              </span>
+             </td>
+             <td className="px-6 py-4 text-gray-600 max-w-sm truncate" title={specification}>
+              {specification}
+             </td>
+             <td className="px-6 py-4 font-medium text-gray-900">{uom}</td>
+             <td className="px-6 py-4 text-gray-600">{vendorNames}</td>
+             <td className="px-6 py-4 text-right">
+              <button
+               type="button"
+               onClick={() => setViewItem(rm)}
+               className="px-3 py-1 text-xs border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
-               <button
-                type="button"
-                onClick={() => {
-                 setViewItem(rm);
-                 setOpenRowId(null);
-                }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-               >
-                View
-               </button>
-               <button
-                type="button"
-                onClick={() => {
-                 openEdit(rm);
-                 setOpenRowId(null);
-                }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-               >
-                Edit
-               </button>
-               <button
-                type="button"
-                onClick={() => {
-                 handleDelete(rm);
-                 setOpenRowId(null);
-                }}
-                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-               >
-                Delete
-               </button>
-              </div>
-             )}
-            </div>
-           </td>
-          </tr>
-         );
-        })}
+               View
+              </button>
+             </td>
+            </tr>
+           );
+          });
+         })}
        </tbody>
       </table>
      </div>
