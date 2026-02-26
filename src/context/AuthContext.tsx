@@ -29,8 +29,8 @@ const AUTH_STORAGE_KEY = 'eisthetic_auth_user';
 function userToAuthUser(u: User): AuthUser {
  return {
   id: u.id,
-  email: u.email,
-  name: u.fullName || u.email,
+  email: u.email ?? '',
+  name: (u.fullName || u.email || 'User').trim() || 'User',
   roleId: String(u.roleId ?? ''),
   roleName: u.roleName ?? '',
   roleLevel: u.roleLevel ?? '',

@@ -148,12 +148,22 @@ const USERTYPE_TO_ROLE: Record<string, { roleId: number; roleName: string; roleL
  customer: { roleId: 5, roleName: 'Customer', roleLevel: 'client' },
 };
 
+/** Backend GET /users/me returns { success: true, data: MeResponse } */
+interface MeApiResponse {
+ success: boolean;
+ data: MeResponse;
+}
+
 /**
  * Get current user (GET /api/v1/users/me). Staff get roleId, roleName, roleLevel from usertype when not in response.
  */
 export async function getCurrentUser(): Promise<ServiceResult<User>> {
  try {
-  const me = await api.get<MeResponse>('/api/v1/users/me');
+  const res = await api.get<MeApiResponse>('/api/v1/users/me');
+  const me = res.data;
+  if (!me) {
+   return { data: null, error: 'No user data' as any, success: false };
+  }
   const fromUsertype = me.usertype ? USERTYPE_TO_ROLE[me.usertype] : null;
   const roleId = me.roleId ?? fromUsertype?.roleId;
   const roleName = me.roleName ?? fromUsertype?.roleName ?? '';
