@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { UnifiedBadge, getStatusBadgeColor } from '../ui';
+import { useGlobalState } from '../../context/GlobalStateContext';
 
 interface Product {
   id: string;
@@ -44,12 +45,12 @@ interface OrderSortButtonProps {
   onSort: (field: keyof Order) => void;
 }
 
-const OrderSortButton: React.FC<OrderSortButtonProps> = ({ 
-  field, 
-  label, 
-  sortField, 
-  sortDirection, 
-  onSort 
+const OrderSortButton: React.FC<OrderSortButtonProps> = ({
+  field,
+  label,
+  sortField,
+  sortDirection,
+  onSort
 }) => (
   <button
     onClick={() => onSort(field)}
@@ -80,108 +81,67 @@ interface SavedFilter {
 }
 
 const OrderTable: React.FC = () => {
-  // Sample data with enhanced fields
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      orderId: 'ORD001',
-      companyName: 'MedCorp Solutions',
-      doctorClinicAddress: '123 Health Street, Medical City, MC 12345',
-      dateRegistered: '2026-01-15',
-      orderStatus: 'Pending',
-      productType: 'Medical Equipment',
-      quantity: 50,
-      totalAmount: 25000,
-      priority: 'High',
-      contactPerson: 'John Smith',
-      contactEmail: 'john@medcorp.com',
-      contactPhone: '+1-555-0101',
-      products: [
-        { id: '1', name: 'Ultrasound Machine', quantity: 5, unitPrice: 3000, total: 15000 },
-        { id: '2', name: 'Patient Monitor', quantity: 10, unitPrice: 1000, total: 10000 }
-      ],
-      statusHistory: [
-        { status: 'Pending', timestamp: '2026-01-15 09:00', changedBy: 'System', notes: 'Order created' }
-      ],
-      notes: 'Urgent delivery required by end of month'
-    },
-    {
-      orderId: 'ORD002',
-      companyName: 'HealthTech Inc',
-      doctorClinicAddress: '456 Wellness Ave, Care Town, CT 67890',
-      dateRegistered: '2026-01-20',
-      orderStatus: 'Processing',
-      productType: 'Pharmaceuticals',
-      quantity: 100,
-      totalAmount: 15000,
-      priority: 'Medium'
-    },
-    {
-      orderId: 'ORD003',
-      companyName: 'Clinical Partners',
-      doctorClinicAddress: '789 Doctor Lane, Medicine City, MC 54321',
-      dateRegistered: '2026-01-25',
-      orderStatus: 'Approved',
-      productType: 'Diagnostic Tools',
-      quantity: 25,
-      totalAmount: 35000,
-      priority: 'Urgent'
-    },
-    {
-      orderId: 'ORD004',
-      companyName: 'Pharma Solutions',
-      doctorClinicAddress: '321 Pharmacy Road, Drug Valley, DV 98765',
-      dateRegistered: '2026-01-30',
-      orderStatus: 'Packaging',
-      productType: 'Medical Supplies',
-      quantity: 200,
-      totalAmount: 8000,
-      priority: 'Low'
-    },
-    {
-      orderId: 'ORD005',
-      companyName: 'Medical Supplies Co',
-      doctorClinicAddress: '654 Clinic Boulevard, Health City, HC 13579',
-      dateRegistered: '2026-02-01',
-      orderStatus: 'Shipped',
-      productType: 'Surgical Instruments',
-      quantity: 75,
-      totalAmount: 42000,
-      priority: 'Medium'
-    },
-    {
-      orderId: 'ORD006',
-      companyName: 'Healthcare Innovations',
-      doctorClinicAddress: '987 Medical Plaza, Care Center, CC 24680',
-      dateRegistered: '2026-02-05',
-      orderStatus: 'Rejected',
-      productType: 'Medical Equipment',
-      quantity: 30,
-      totalAmount: 18000,
-      priority: 'Low'
-    },
-    {
-      orderId: 'ORD007',
-      companyName: 'BioMed Corp',
-      doctorClinicAddress: '111 Research Drive, Science Park, SP 11223',
-      dateRegistered: '2026-02-10',
-      orderStatus: 'Delivered',
-      productType: 'Lab Equipment',
-      quantity: 15,
-      totalAmount: 65000,
-      priority: 'High'
-    },
-    {
-      orderId: 'ORD008',
-      companyName: 'Global Health Systems',
-      doctorClinicAddress: '222 Wellness Street, Treatment Town, TT 44556',
-      dateRegistered: '2026-02-12',
-      orderStatus: 'Processing',
-      productType: 'Pharmaceuticals',
-      quantity: 150,
-      totalAmount: 22000,
-      priority: 'Urgent'
-    }
-  ]);
+  const { state, dispatch } = useGlobalState();
+  const customerPOs = state.orders?.customerPOs || [];
+
+  // Map GlobalState customerPOs to the local Order format for initial state
+  const initialMappedOrders: Order[] = customerPOs.map((po: any) => ({
+    orderId: po.po,
+    companyName: po.client,
+    doctorClinicAddress: 'Mapped from Global State', // This might need to be fetched from po details if available
+    dateRegistered: po.createdAt,
+    orderStatus: po.status === 'so_created' ? 'Approved' : po.status === 'payment_pending' ? 'Pending' : po.status === 'cancelled' ? 'Cancelled' : 'Processing', // Basic translation
+    productType: po.products?.[0]?.product || 'Mixed', // Simplified mapping
+    quantity: po.products?.reduce((sum: number, p: any) => sum + (p.qty || 0), 0) || 0,
+    totalAmount: po.value,
+    priority: 'Medium', // Defaulting for now
+    contactPerson: po.bdRep || 'N/A',
+    products: po.products?.map((p: any) => ({
+      id: p.product, // Using product name as ID for simplicity
+      name: p.product,
+      quantity: p.qty,
+      unitPrice: p.unitPrice,
+      total: p.lineValue
+    })) || [],
+    statusHistory: [{
+      status: po.status === 'so_created' ? 'Approved' : po.status === 'payment_pending' ? 'Pending' : po.status === 'cancelled' ? 'Cancelled' : 'Processing',
+      timestamp: po.createdAt,
+      changedBy: 'System',
+      notes: 'Initial status from global state'
+    }]
+  }));
+
+  const [orders, setOrders] = useState<Order[]>(initialMappedOrders);
+
+  useEffect(() => {
+    // Update local orders state when global customerPOs change
+    const mappedOrders: Order[] = customerPOs.map((po: any) => ({
+      orderId: po.po,
+      companyName: po.client,
+      doctorClinicAddress: 'Mapped from Global State',
+      dateRegistered: po.createdAt,
+      orderStatus: po.status === 'so_created' ? 'Approved' : po.status === 'payment_pending' ? 'Pending' : po.status === 'cancelled' ? 'Cancelled' : 'Processing', // Basic translation
+      productType: po.products?.[0]?.product || 'Mixed', // Simplified mapping
+      quantity: po.products?.reduce((sum: number, p: any) => sum + (p.qty || 0), 0) || 0,
+      totalAmount: po.value,
+      priority: 'Medium', // Defaulting for now
+      contactPerson: po.bdRep || 'N/A',
+      products: po.products?.map((p: any) => ({
+        id: p.product,
+        name: p.product,
+        quantity: p.qty,
+        unitPrice: p.unitPrice,
+        total: p.lineValue
+      })) || [],
+      statusHistory: [{
+        status: po.status === 'so_created' ? 'Approved' : po.status === 'payment_pending' ? 'Pending' : po.status === 'cancelled' ? 'Cancelled' : 'Processing',
+        timestamp: po.createdAt,
+        changedBy: 'System',
+        notes: 'Initial status from global state'
+      }]
+    }));
+    setOrders(mappedOrders);
+  }, [customerPOs]);
 
   // State management
   const [searchTerm, setSearchTerm] = useState('');
@@ -198,7 +158,7 @@ const OrderTable: React.FC = () => {
   const [filterName, setFilterName] = useState('');
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -206,48 +166,48 @@ const OrderTable: React.FC = () => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
-  
+
   // Form state
   const [formData, setFormData] = useState<Partial<Order>>({});
   const [formProducts, setFormProducts] = useState<Product[]>([]);
-  
+
   const recordsPerPage = 5;
 
   // Filter and search logic
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
+    const matchesSearch =
       order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.productType.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || order.orderStatus === statusFilter;
     const matchesProductType = productTypeFilter === 'all' || order.productType === productTypeFilter;
     const matchesPriority = priorityFilter === 'all' || order.priority === priorityFilter;
-    
+
     const orderDate = new Date(order.dateRegistered);
     const matchesDateFrom = !dateFrom || orderDate >= new Date(dateFrom);
     const matchesDateTo = !dateTo || orderDate <= new Date(dateTo);
-    
+
     return matchesSearch && matchesStatus && matchesProductType && matchesPriority && matchesDateFrom && matchesDateTo;
   });
 
   // Sorting logic
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     if (!sortField) return 0;
-    
+
     const aValue = a[sortField];
     const bValue = b[sortField];
-    
+
     if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortDirection === 'asc' 
+      return sortDirection === 'asc'
         ? aValue.localeCompare(bValue)
         : bValue.localeCompare(aValue);
     }
-    
+
     if (typeof aValue === 'number' && typeof bValue === 'number') {
       return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
     }
-    
+
     return 0;
   });
 
@@ -351,7 +311,7 @@ const OrderTable: React.FC = () => {
       alert('Please fill in all required fields and add at least one product');
       return;
     }
-    
+
     const newOrder: Order = {
       orderId: `ORD${String(orders.length + 1).padStart(3, '0')}`,
       companyName: formData.companyName || '',
@@ -374,8 +334,19 @@ const OrderTable: React.FC = () => {
         notes: 'Order created'
       }]
     };
-    
-    setOrders([...orders, newOrder]);
+
+    // Dispatch to GlobalState
+    dispatch({
+      type: 'ADD_CUSTOMER_PO', payload: {
+        po: newOrder.orderId,
+        client: newOrder.companyName,
+        createdAt: newOrder.dateRegistered,
+        status: 'payment_pending', // Default status for new orders
+        value: newOrder.totalAmount,
+        products: newOrder.products?.map(p => ({ product: p.name, qty: p.quantity, unitPrice: p.unitPrice, lineValue: p.total })) || []
+      }
+    });
+
     setShowCreateModal(false);
     resetForm();
     alert('Order created successfully!');
@@ -383,45 +354,42 @@ const OrderTable: React.FC = () => {
 
   const handleEditOrder = () => {
     if (!selectedOrder) return;
-    
-    const updatedOrders = orders.map(order => {
-      if (order.orderId === selectedOrder.orderId) {
-        return {
-          ...order,
-          ...formData,
-          products: formProducts,
-          quantity: formProducts.reduce((sum, p) => sum + p.quantity, 0),
-          totalAmount: formProducts.reduce((sum, p) => sum + p.total, 0)
-        };
+
+    const updatedOrderData = {
+      ...selectedOrder,
+      ...formData,
+      products: formProducts,
+      quantity: formProducts.reduce((sum, p) => sum + p.quantity, 0),
+      totalAmount: formProducts.reduce((sum, p) => sum + p.total, 0)
+    };
+
+    // Dispatch to GlobalState
+    dispatch({
+      type: 'UPDATE_CUSTOMER_PO', payload: {
+        poId: updatedOrderData.orderId,
+        updatedFields: {
+          client: updatedOrderData.companyName,
+          // Assuming doctorClinicAddress, contactPerson, contactEmail, contactPhone, notes are part of the PO details in global state
+          // If not, these fields might need a different dispatch or be handled locally only.
+          // For now, mapping to common fields.
+          doctorClinicAddress: updatedOrderData.doctorClinicAddress,
+          bdRep: updatedOrderData.contactPerson, // Assuming bdRep maps to contactPerson
+          value: updatedOrderData.totalAmount,
+          products: updatedOrderData.products?.map(p => ({ product: p.name, qty: p.quantity, unitPrice: p.unitPrice, lineValue: p.total })) || [],
+          status: updatedOrderData.orderStatus === 'Pending' ? 'payment_pending' : updatedOrderData.orderStatus === 'Approved' ? 'so_created' : updatedOrderData.orderStatus.toLowerCase() // Map back to global state status format
+        }
       }
-      return order;
     });
-    
-    setOrders(updatedOrders);
+
     setShowEditModal(false);
     resetForm();
     alert('Order updated successfully!');
   };
 
   const handleStatusChange = (orderId: string, newStatus: Order['orderStatus']) => {
-    const updatedOrders = orders.map(order => {
-      if (order.orderId === orderId) {
-        const newHistory: StatusHistory = {
-          status: newStatus,
-          timestamp: new Date().toLocaleString(),
-          changedBy: 'Admin User',
-          notes: `Status changed to ${newStatus}`
-        };
-        return {
-          ...order,
-          orderStatus: newStatus,
-          statusHistory: [...(order.statusHistory || []), newHistory]
-        };
-      }
-      return order;
-    });
-    
-    setOrders(updatedOrders);
+    // Dispatch status update
+    dispatch({ type: 'UPDATE_PO_STATUS', payload: { poId: orderId, status: newStatus.toLowerCase() } });
+
     alert(`Order status changed to ${newStatus}`);
   };
 
@@ -433,7 +401,7 @@ const OrderTable: React.FC = () => {
       alert('Please provide a cancellation reason');
       return;
     }
-    
+
     const updatedOrders = orders.map(order => {
       if (order.orderId === selectedOrder.orderId) {
         const newHistory: StatusHistory = {
@@ -451,7 +419,7 @@ const OrderTable: React.FC = () => {
       }
       return order;
     });
-    
+
     setOrders(updatedOrders);
     setShowCancelModal(false);
     setCancellationReason('');
@@ -519,9 +487,9 @@ const OrderTable: React.FC = () => {
 
   const getPriorityColor = (priority: Order['priority']) => {
     const colors = {
-      'Low': 'text-gray-600',
+      'Low': 'text-slate-400',
       'Medium': 'text-blue-600',
-      'High': 'text-orange-600',
+      'High': 'text-slate-800',
       'Urgent': 'text-red-600 font-bold'
     };
     return colors[priority];
@@ -550,7 +518,7 @@ const OrderTable: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-slate-50 min-h-screen">
       {/* Create Order Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -560,7 +528,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Create New Order</h2>
                 <button
                   onClick={handleCloseCreateModal}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -664,7 +632,7 @@ const OrderTable: React.FC = () => {
                     {formProducts.map((product) => (
                       <div key={product.id} className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">Product Name</label>
+                          <label className="block text-xs text-slate-400 mb-1">Product Name</label>
                           <input
                             type="text"
                             value={product.name}
@@ -674,7 +642,7 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-24">
-                          <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                          <label className="block text-xs text-slate-400 mb-1">Quantity</label>
                           <input
                             type="number"
                             value={product.quantity}
@@ -684,7 +652,7 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-gray-600 mb-1">Unit Price (₹)</label>
+                          <label className="block text-xs text-slate-400 mb-1">Unit Price (₹)</label>
                           <input
                             type="number"
                             value={product.unitPrice}
@@ -695,12 +663,12 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-gray-600 mb-1">Total (₹)</label>
+                          <label className="block text-xs text-slate-400 mb-1">Total (₹)</label>
                           <input
                             type="text"
                             value={product.total.toFixed(2)}
                             readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 text-sm"
                           />
                         </div>
                         <button
@@ -739,7 +707,7 @@ const OrderTable: React.FC = () => {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseCreateModal}
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
                   >
                     Cancel
                   </button>
@@ -765,7 +733,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Edit Order</h2>
                 <button
                   onClick={handleCloseEditModal}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -869,7 +837,7 @@ const OrderTable: React.FC = () => {
                     {formProducts.map((product) => (
                       <div key={product.id} className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">Product Name</label>
+                          <label className="block text-xs text-slate-400 mb-1">Product Name</label>
                           <input
                             type="text"
                             value={product.name}
@@ -879,7 +847,7 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-24">
-                          <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                          <label className="block text-xs text-slate-400 mb-1">Quantity</label>
                           <input
                             type="number"
                             value={product.quantity}
@@ -889,7 +857,7 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-gray-600 mb-1">Unit Price (₹)</label>
+                          <label className="block text-xs text-slate-400 mb-1">Unit Price (₹)</label>
                           <input
                             type="number"
                             value={product.unitPrice}
@@ -900,12 +868,12 @@ const OrderTable: React.FC = () => {
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-gray-600 mb-1">Total (₹)</label>
+                          <label className="block text-xs text-slate-400 mb-1">Total (₹)</label>
                           <input
                             type="text"
                             value={product.total.toFixed(2)}
                             readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 text-sm"
                           />
                         </div>
                         <button
@@ -944,7 +912,7 @@ const OrderTable: React.FC = () => {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseEditModal}
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
                   >
                     Cancel
                   </button>
@@ -970,7 +938,7 @@ const OrderTable: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
                 <button
                   onClick={handleCloseDetailsModal}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-slate-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
@@ -980,11 +948,11 @@ const OrderTable: React.FC = () => {
                 {/* Order Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm text-gray-500">Order ID</label>
+                    <label className="text-sm text-slate-500">Order ID</label>
                     <p className="text-lg font-semibold text-gray-800">{selectedOrder.orderId}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Status</label>
+                    <label className="text-sm text-slate-500">Status</label>
                     <p>
                       <UnifiedBadge variant={getStatusBadgeColor(selectedOrder.orderStatus)}>
                         {selectedOrder.orderStatus}
@@ -992,39 +960,39 @@ const OrderTable: React.FC = () => {
                     </p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Company Name</label>
+                    <label className="text-sm text-slate-500">Company Name</label>
                     <p className="text-gray-800">{selectedOrder.companyName}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Priority</label>
-                    <p className={`font-medium ${getPriorityColor(selectedOrder.priority)}`}>
+                    <label className="text-sm text-slate-500">Priority</label>
+                    <p className={`font - medium ${getPriorityColor(selectedOrder.priority)} `}>
                       {selectedOrder.priority}
                     </p>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm text-gray-500">Address</label>
+                    <label className="text-sm text-slate-500">Address</label>
                     <p className="text-gray-800">{selectedOrder.doctorClinicAddress}</p>
                   </div>
                   {selectedOrder.contactPerson && (
                     <div>
-                      <label className="text-sm text-gray-500">Contact Person</label>
+                      <label className="text-sm text-slate-500">Contact Person</label>
                       <p className="text-gray-800">{selectedOrder.contactPerson}</p>
                     </div>
                   )}
                   {selectedOrder.contactEmail && (
                     <div>
-                      <label className="text-sm text-gray-500">Email</label>
+                      <label className="text-sm text-slate-500">Email</label>
                       <p className="text-gray-800">{selectedOrder.contactEmail}</p>
                     </div>
                   )}
                   {selectedOrder.contactPhone && (
                     <div>
-                      <label className="text-sm text-gray-500">Phone</label>
+                      <label className="text-sm text-slate-500">Phone</label>
                       <p className="text-gray-800">{selectedOrder.contactPhone}</p>
                     </div>
                   )}
                   <div>
-                    <label className="text-sm text-gray-500">Date Registered</label>
+                    <label className="text-sm text-slate-500">Date Registered</label>
                     <p className="text-gray-800">{selectedOrder.dateRegistered}</p>
                   </div>
                 </div>
@@ -1035,7 +1003,7 @@ const OrderTable: React.FC = () => {
                     <h3 className="text-lg font-semibold text-gray-700 mb-3">Products</h3>
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full">
-                        <thead className="bg-gray-50">
+                        <thead className="bg-slate-50">
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Product</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Quantity</th>
@@ -1053,7 +1021,7 @@ const OrderTable: React.FC = () => {
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot className="bg-gray-50">
+                        <tfoot className="bg-slate-50">
                           <tr>
                             <td colSpan={3} className="px-4 py-2 text-right font-semibold text-gray-700">Grand Total:</td>
                             <td className="px-4 py-2 text-right font-bold text-gray-900">₹{selectedOrder.totalAmount.toLocaleString()}</td>
@@ -1072,7 +1040,7 @@ const OrderTable: React.FC = () => {
                       {selectedOrder.statusHistory.map((history, index) => (
                         <div key={index} className="flex gap-3">
                           <div className="flex flex-col items-center">
-                            <div className={`w-3 h-3 rounded-full ${index === selectedOrder.statusHistory!.length - 1 ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
+                            <div className={`w - 3 h - 3 rounded - full ${index === selectedOrder.statusHistory!.length - 1 ? 'bg-blue-500' : 'bg-gray-400'} `}></div>
                             {index < selectedOrder.statusHistory!.length - 1 && (
                               <div className="w-0.5 h-full bg-gray-300 my-1"></div>
                             )}
@@ -1082,9 +1050,9 @@ const OrderTable: React.FC = () => {
                               <UnifiedBadge variant={getStatusBadgeColor(history.status as Order['orderStatus'])}>
                                 {history.status}
                               </UnifiedBadge>
-                              <span className="text-xs text-gray-500">{history.timestamp}</span>
+                              <span className="text-xs text-slate-500">{history.timestamp}</span>
                             </div>
-                            <p className="text-sm text-gray-600 mt-1">Changed by: {history.changedBy}</p>
+                            <p className="text-sm text-slate-400 mt-1">Changed by: {history.changedBy}</p>
                             {history.notes && <p className="text-sm text-gray-700 mt-1">{history.notes}</p>}
                           </div>
                         </div>
@@ -1097,7 +1065,7 @@ const OrderTable: React.FC = () => {
                 {selectedOrder.notes && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-700 mb-2">Notes</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded-lg">{selectedOrder.notes}</p>
+                    <p className="text-gray-700 bg-slate-50 p-3 rounded-lg">{selectedOrder.notes}</p>
                   </div>
                 )}
 
@@ -1113,7 +1081,7 @@ const OrderTable: React.FC = () => {
                 <div className="flex gap-3">
                   <button
                     onClick={handleCloseDetailsModal}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
                   >
                     Close
                   </button>
@@ -1149,7 +1117,7 @@ const OrderTable: React.FC = () => {
               <div className="flex justify-end gap-3">
                 <button
                   onClick={handleCloseCancelModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
                 >
                   No, Keep Order
                 </button>
@@ -1168,23 +1136,23 @@ const OrderTable: React.FC = () => {
       {/* Quick Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-gray-500 text-sm">Total Orders</div>
+          <div className="text-slate-500 text-sm">Total Orders</div>
           <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-gray-500 text-sm">Pending</div>
+          <div className="text-slate-500 text-sm">Pending</div>
           <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-gray-500 text-sm">Processing</div>
+          <div className="text-slate-500 text-sm">Processing</div>
           <div className="text-2xl font-bold text-blue-600">{stats.processing}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-gray-500 text-sm">Shipped</div>
+          <div className="text-slate-500 text-sm">Shipped</div>
           <div className="text-2xl font-bold text-indigo-600">{stats.shipped}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-gray-500 text-sm">Delivered</div>
+          <div className="text-slate-500 text-sm">Delivered</div>
           <div className="text-2xl font-bold text-green-600">{stats.delivered}</div>
         </div>
       </div>
@@ -1202,7 +1170,7 @@ const OrderTable: React.FC = () => {
         </div>
 
         {/* Advanced Filters */}
-        <div className={`p-4 border-b bg-gray-50 ${showFilters ? 'block' : 'hidden md:block'}`}>
+        <div className={`p - 4 border - b bg - slate - 50 ${showFilters ? 'block' : 'hidden md:block'} `}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {/* Quick Search */}
             <div>
@@ -1366,7 +1334,7 @@ const OrderTable: React.FC = () => {
           {/* Saved Filters */}
           {savedFilters.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Saved Filters</h3>
+              <h3 className="text-sm font-medium text-gray-600 mb-2">Saved Filters</h3>
               <div className="flex flex-wrap gap-2">
                 {savedFilters.map(filter => (
                   <div key={filter.id} className="flex items-center gap-1 bg-blue-100 px-3 py-1 rounded-full">
@@ -1416,7 +1384,7 @@ const OrderTable: React.FC = () => {
               </button>
               <button
                 onClick={() => setSelectedOrders([])}
-                className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
+                className="px-3 py-1 bg-slate-500 text-white rounded hover:bg-gray-600 text-sm"
               >
                 Clear Selection
               </button>
@@ -1468,7 +1436,7 @@ const OrderTable: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {currentRecords.map((order) => (
-                <tr key={order.orderId} className="hover:bg-gray-50">
+                <tr key={order.orderId} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -1482,7 +1450,7 @@ const OrderTable: React.FC = () => {
                   <td className="px-4 py-3 text-sm text-gray-700">{order.productType}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">{order.quantity}</td>
                   <td className="px-4 py-3 text-sm text-gray-700 font-medium">₹{order.totalAmount.toLocaleString()}</td>
-                  <td className={`px-4 py-3 text-sm font-medium ${getPriorityColor(order.priority)}`}>
+                  <td className={`px - 4 py - 3 text - sm font - medium ${getPriorityColor(order.priority)} `}>
                     {order.priority}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{order.dateRegistered}</td>
@@ -1511,7 +1479,7 @@ const OrderTable: React.FC = () => {
         {/* Mobile Card View */}
         <div className="md:hidden divide-y divide-gray-200">
           {currentRecords.map((order) => (
-            <div key={order.orderId} className="p-4 hover:bg-gray-50">
+            <div key={order.orderId} className="p-4 hover:bg-slate-50">
               <div className="flex items-start gap-3 mb-3">
                 <input
                   type="checkbox"
@@ -1526,7 +1494,7 @@ const OrderTable: React.FC = () => {
                       {order.orderStatus}
                     </UnifiedBadge>
                   </div>
-                  <div className="space-y-1 text-sm text-gray-700">
+                  <div className="space-y-1 text-sm text-gray-600">
                     <div><strong>Company:</strong> {order.companyName}</div>
                     <div><strong>Product:</strong> {order.productType}</div>
                     <div><strong>Quantity:</strong> {order.quantity}</div>
@@ -1535,7 +1503,7 @@ const OrderTable: React.FC = () => {
                       <span><strong>Priority:</strong> <span className={getPriorityColor(order.priority)}>{order.priority}</span></span>
                       <span><strong>Date:</strong> {order.dateRegistered}</span>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">{order.doctorClinicAddress}</div>
+                    <div className="text-xs text-slate-500 mt-1">{order.doctorClinicAddress}</div>
                   </div>
                   {/* Mobile Actions */}
                   <div className="flex flex-wrap gap-2 mt-3">
@@ -1554,7 +1522,7 @@ const OrderTable: React.FC = () => {
 
         {/* Pagination */}
         <div className="p-4 border-t flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-500">
             Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, sortedOrders.length)} of {sortedOrders.length} orders
           </div>
           <div className="flex gap-2">

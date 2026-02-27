@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ei_admin_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orders_db}
+      POSTGRES_USER: ${POSTGRES_USER:-orders_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orders_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      backend_network:
+        aliases:
+          - db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+networks:
+  backend_network:
+    external: true
+    name: ei-website-backend_app-network
+
+volumes:
+  postgres_data:

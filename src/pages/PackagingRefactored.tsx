@@ -1,27 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
-import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { 
-  getPrimaryFields,
-  validatePrimaryFields 
-} from '../utils/masterFormUtils';
+import { useGlobalState } from '../context/GlobalStateContext';
+import BPRPrintTemplate from '../components/ordermanagementcomp/BPRPrintTemplate';
 
+// ─── PM Category Code Series ─────────────────────────────────────────────────
+const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
+  PRI:  { label: 'Primary Container (Bottle/Jar/Tube)',   prefix: 'EI-PM-PRI' },
+  SLBL: { label: 'Self-adhesive Label',                    prefix: 'EI-PM-SLBL' },
+  MONO: { label: 'Mono Carton / Folding Box',              prefix: 'EI-PM-MONO' },
+  SHIP: { label: 'Shipper / Master Carton',                prefix: 'EI-PM-SHIP' },
+  CLSR: { label: 'Closure / Cap / Pump',                   prefix: 'EI-PM-CLSR' },
+  SACH: { label: 'Sachet / Pouch / Stick Pack',            prefix: 'EI-PM-SACH' },
+  FIOL: { label: 'Ampoule / Vial / Fiolax',                prefix: 'EI-PM-FIOL' },
+  ALUM: { label: 'Aluminium Tube / Blister',               prefix: 'EI-PM-ALUM' },
+  AIRLS: { label: 'Airless / Vacuum Dispenser',            prefix: 'EI-PM-AIRLS' },
+  TAPE: { label: 'Tape / Rubber Band / Twistie',           prefix: 'EI-PM-TAPE' },
+  GIFT: { label: 'Gift Box / Rigid Box / Set',             prefix: 'EI-PM-GIFT' },
+  MISC: { label: 'Miscellaneous / Others',                  prefix: 'EI-PM-MISC' },
+};
+
+const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
+const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+
+const SECTIONS = [
+  '0) QC / PM Categorisation',
+  '1) Identity',
+  '2) Material & Specs',
+  '3) Aesthetics',
+  '4) Variants Matrix',
+  '5) Customization & Tooling',
+  '6) Compatibility (R&D / QA)',
+  '7) Vendors & Commercial',
+  '8) Secondary Packaging',
+  '9) Tertiary Packaging',
+  '10) Testing & Approval',
+  '11) Catalogue / Website',
+  '12) Review / JSON',
+];
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 const PackagingRefactored: React.FC = () => {
   const { addItem } = useItems();
   const { addToast } = useToast();
+  const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [currentStage, setCurrentStage] = useState(0);
+  const [currentSection, setCurrentSection] = useState(0);
+  const [autoSaveOn, setAutoSaveOn] = useState(true);
+  const [lastSaved, setLastSaved] = useState<string>('—');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const counterRef = useRef<Record<string, number>>({});
 
-  // Simplified primary data - no temp fields mixed in
   const [formData, setFormData] = useState({
-    // Meta
     itemCode: '',
     status: 'Draft',
     version: 'v1.0',
 
-    // Primary Info
+    // Section 0 – QC / PM Categorisation + Basic
+    pmCategory: '',
+    qcGroup: '',
+    subCategory: '',
+    storeLoc: '',
     pkgSku: '',
     pkgUnit: 'PCS',
     pkgHsn: '',
@@ -29,24 +69,17 @@ const PackagingRefactored: React.FC = () => {
     pkgReturnable: false,
     pkgAssociateItems: '',
 
-    // Categorisation
-    pmCategory: '',
-    qcGroup: '',
-    subCategory: '',
-    hazardClass: '',
-    storeLoc: '',
-
-    // Identity
+    // Section 1 – Identity
     name: '',
     level: '',
-    category: '',
+    itemCategory: '',
     intendedUse: '',
     expectedProductTypes: '',
     reusability: '',
     regulatory: '',
     identityNotes: '',
 
-    // Material & Specs
+    // Section 2 – Material & Specs
     matBody: '',
     matClosure: '',
     matInner: '',
@@ -62,14 +95,14 @@ const PackagingRefactored: React.FC = () => {
     specWall: '',
     specLink: '',
 
-    // Aesthetics
+    // Section 3 – Aesthetics
     colorType: '',
     colorCode: '',
     finish: '',
     deco: '',
     images: '',
 
-    // Customization
+    // Section 5 – Customization
     cusCustomizable: false,
     cusParams: '',
     cusStdMoq: '',
@@ -81,7 +114,7 @@ const PackagingRefactored: React.FC = () => {
     cusBulkLTCustom: '',
     cusRemarks: '',
 
-    // Compatibility
+    // Section 6 – Compatibility
     compLow: false,
     compMed: false,
     compHigh: false,
@@ -94,7 +127,7 @@ const PackagingRefactored: React.FC = () => {
     compRisk: '',
     compRemarks: '',
 
-    // Secondary Packaging
+    // Section 8 – Secondary Packaging
     secLabelType: '',
     secLabelSize: '',
     secAdhesive: '',
@@ -105,20 +138,20 @@ const PackagingRefactored: React.FC = () => {
     secArtLink: '',
     secNotes: '',
 
-    // Tertiary Packaging
+    // Section 9 – Tertiary Packaging
     terShipType: '',
     terUnits: '',
     terDrop: '',
     terStack: '',
     terNotes: '',
 
-    // Approval flags
+    // Section 10 – Testing & Approval
     apprPack: false,
     apprRd: false,
     apprFin: false,
     apprLock: false,
 
-    // Catalogue
+    // Section 11 – Catalogue
     catVisible: false,
     catShare: false,
     catWebName: '',
@@ -126,91 +159,99 @@ const PackagingRefactored: React.FC = () => {
     catRecoTypes: '',
     catWebImages: '',
 
-    // ARRAYS (no temp fields!)
-    variants: [] as Array<{
-      id: string;
-      volume: number;
-      sameMold: string;
-      moq: number;
-      status: string;
-    }>,
-
-    vendors: [] as Array<{
-      name: string;
-      location: string;
-      moq: number;
-      price: number;
-      leadTime: number;
-      approved: string;
-      priceType: string;
-      validTill: string;
-      sampleCost: number;
-    }>,
-
-    tests: [] as Array<{
-      name: string;
-      result: string;
-      date: string;
-      by: string;
-      remarks: string;
-    }>,
+    // Arrays
+    variants: [] as Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }>,
+    vendors: [] as Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }>,
+    tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
   });
 
-  // TEMP FIELDS - separated from main data (cleaner separation of concerns!)
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
   const [tempVendor, setTempVendor] = useState({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
   const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
 
-  // Auto-save draft
+  // Load counters from localStorage
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (Object.values(formData).some(v => Boolean(v))) {
-        localStorage.setItem('packaging_draft_new', JSON.stringify(formData));
-        addToast('info', 'Packaging draft auto-saved');
-      }
-    }, 30000);
-    return () => clearInterval(timer);
-  }, [formData, addToast]);
-
-  // Load draft on mount
-  useEffect(() => {
-    const draft = localStorage.getItem('packaging_draft_new');
-    if (draft) {
-      try {
-        setFormData(JSON.parse(draft));
-        addToast('info', 'Packaging draft loaded');
-      } catch (e) {
-        console.error('Failed to load draft', e);
-      }
+    const stored = localStorage.getItem('pm_code_counters');
+    if (stored) {
+      try { counterRef.current = JSON.parse(stored); } catch { /* ignore */ }
     }
   }, []);
 
-  const stages = [
-    'Primary Info',
-    'Categorisation',
-    'Identity',
-    'Material & Specs',
-    'Aesthetics',
-    'Variants',
-    'Customization',
-    'Compatibility',
-    'Vendors',
-    'Secondary Packaging',
-    'Tertiary Packaging',
-    'Testing & Approval',
-    'Catalogue',
-    'Review / JSON',
-  ];
+  // Load draft (single toast per session)
+  useEffect(() => {
+    const draft = localStorage.getItem('packaging_draft_new');
+    if (!draft) return;
+
+    try {
+      const parsed = JSON.parse(draft);
+      setFormData(parsed);
+      if (parsed.itemCode) setGeneratedCode(parsed.itemCode);
+
+      const toastFlagKey = 'packaging_draft_toast_shown';
+      if (!sessionStorage.getItem(toastFlagKey)) {
+        sessionStorage.setItem(toastFlagKey, '1');
+        addToast('info', 'Packaging draft loaded');
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, [addToast]);
+
+  // Auto-save
+  useEffect(() => {
+    if (!autoSaveOn) return;
+    const timer = setInterval(() => {
+      if (Object.values(formData).some(v => Boolean(v))) {
+        doSave(true);
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [formData, autoSaveOn]);
+
+  const doSave = (silent = false) => {
+    localStorage.setItem('packaging_draft_new', JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }));
+    const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    setLastSaved(now);
+    if (!silent) addToast('success', 'Draft saved!');
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
-      [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
   };
 
-  // Variant operations
+  // Code generation
+  const getCodePreview = () => {
+    const cat = PM_CATEGORIES[formData.pmCategory];
+    if (!cat) return { prefix: '—', next: '—' };
+    const counter = counterRef.current[formData.pmCategory] ?? 0;
+    return { prefix: cat.prefix, next: String(counter + 1).padStart(5, '0') };
+  };
+
+  const generateCode = (confirm = false) => {
+    if (!formData.pmCategory) {
+      addToast('error', 'Select a PM Category first');
+      return;
+    }
+    if (generatedCode && !confirm) {
+      const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
+      if (!ok) return;
+    }
+    const cat = PM_CATEGORIES[formData.pmCategory];
+    const current = counterRef.current[formData.pmCategory] ?? 0;
+    const next = current + 1;
+    const code = `${cat.prefix}-${String(next).padStart(5, '0')}`;
+    counterRef.current[formData.pmCategory] = next;
+    localStorage.setItem('pm_code_counters', JSON.stringify(counterRef.current));
+    setGeneratedCode(code);
+    setFormData(prev => ({ ...prev, itemCode: code }));
+    addToast('success', `Code generated: ${code}`);
+  };
+
+  // Variant ops
   const handleAddVariant = () => {
     if (!tempVariant.volume || Number(tempVariant.volume) <= 0) {
       setErrors(prev => ({ ...prev, varVolume: 'Fill volume is required' }));
@@ -225,189 +266,460 @@ const PackagingRefactored: React.FC = () => {
         sameMold: tempVariant.sameMold,
         moq: Number(tempVariant.moq),
         status: tempVariant.status,
-      }]
+      }],
     }));
     setTempVariant({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
     setErrors(prev => ({ ...prev, varVolume: '' }));
   };
+  const handleRemoveVariant = (idx: number) => setFormData(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== idx) }));
 
-  const handleRemoveVariant = (idx: number) => {
-    setFormData(prev => ({
-      ...prev,
-      variants: prev.variants.filter((_, i) => i !== idx)
-    }));
-  };
-
-  // Vendor operations
+  // Vendor ops
   const handleAddVendor = () => {
-    if (!tempVendor.name.trim()) {
-      setErrors(prev => ({ ...prev, venName: 'Vendor name required' }));
-      addToast('error', 'Vendor name required');
-      return;
-    }
+    if (!tempVendor.name.trim()) { addToast('error', 'Vendor name required'); return; }
     setFormData(prev => ({
       ...prev,
       vendors: [...prev.vendors, {
-        name: tempVendor.name,
-        location: tempVendor.location,
-        moq: Number(tempVendor.moq),
-        price: Number(tempVendor.price),
-        leadTime: Number(tempVendor.leadTime),
-        approved: tempVendor.approved,
-        priceType: tempVendor.priceType,
-        validTill: tempVendor.validTill,
+        name: tempVendor.name, location: tempVendor.location,
+        moq: Number(tempVendor.moq), price: Number(tempVendor.price),
+        leadTime: Number(tempVendor.leadTime), approved: tempVendor.approved,
+        priceType: tempVendor.priceType, validTill: tempVendor.validTill,
         sampleCost: Number(tempVendor.sampleCost),
-      }]
+      }],
     }));
     setTempVendor({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
-    setErrors(prev => ({ ...prev, venName: '' }));
   };
+  const handleRemoveVendor = (idx: number) => setFormData(prev => ({ ...prev, vendors: prev.vendors.filter((_, i) => i !== idx) }));
 
-  const handleRemoveVendor = (idx: number) => {
-    setFormData(prev => ({
-      ...prev,
-      vendors: prev.vendors.filter((_, i) => i !== idx)
-    }));
-  };
-
-  // Test operations
+  // Test ops
   const handleAddTest = () => {
-    if (!tempTest.name || !tempTest.result) {
-      setErrors(prev => ({ ...prev, testName: 'Select test + result' }));
-      addToast('error', 'Select test + result');
-      return;
-    }
+    if (!tempTest.name || !tempTest.result) { addToast('error', 'Select test + result'); return; }
     setFormData(prev => ({
       ...prev,
-      tests: [...prev.tests, {
-        name: tempTest.name,
-        result: tempTest.result,
-        date: tempTest.date,
-        by: tempTest.by,
-        remarks: tempTest.remarks,
-      }]
+      tests: [...prev.tests, { name: tempTest.name, result: tempTest.result, date: tempTest.date, by: tempTest.by, remarks: tempTest.remarks }],
     }));
     setTempTest({ name: '', result: '', date: '', by: '', remarks: '' });
-    setErrors(prev => ({ ...prev, testName: '' }));
+  };
+  const handleRemoveTest = (idx: number) => setFormData(prev => ({ ...prev, tests: prev.tests.filter((_, i) => i !== idx) }));
+
+  const handleReset = () => {
+    if (window.confirm('Reset all form data? This cannot be undone.')) {
+      localStorage.removeItem('packaging_draft_new');
+      setGeneratedCode('');
+      setFormData(prev => ({ ...prev, itemCode: '', pmCategory: '', status: 'Draft', version: 'v1.0' }));
+      setCurrentSection(0);
+      addToast('info', 'Form reset');
+    }
   };
 
-  const handleRemoveTest = (idx: number) => {
-    setFormData(prev => ({
-      ...prev,
-      tests: prev.tests.filter((_, i) => i !== idx)
-    }));
+  const handleExportJSON = () => {
+    const blob = new Blob([JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `PM_${generatedCode || 'draft'}.json`;
+    a.click();
+  };
+
+  const handleImportJSON = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target?.result as string);
+          setFormData(prev => ({ ...prev, ...parsed }));
+          if (parsed.itemCode) setGeneratedCode(parsed.itemCode);
+          addToast('success', 'JSON imported');
+        } catch { addToast('error', 'Invalid JSON file'); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   };
 
   const handleSubmit = () => {
-    const validation = validatePrimaryFields(formData, 'packaging');
-    if (!validation.valid) {
-      setErrors(validation.errors);
-      addToast('error', 'Please fill all primary fields');
-      return;
-    }
-
+    if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
+    if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
+    const code = generatedCode || formData.itemCode;
     const newItem = {
       id: Date.now().toString(),
       type: 'packaging' as const,
-      name: formData.name || 'Unnamed Packaging',
-      code: formData.itemCode || 'PKG-' + Date.now().toString().slice(-6),
+      name: formData.name || `PM Item ${code}`,
+      code,
       createdAt: new Date().toISOString(),
       lastModified: new Date().toISOString(),
-      data: formData,
+      data: { ...formData, itemCode: code },
     };
     addItem(newItem);
-    addToast('success', 'Packaging saved successfully!');
+    addToast('success', 'Packaging item saved!');
     localStorage.removeItem('packaging_draft_new');
   };
 
-  // Stage content rendering
-  const renderStageContent = () => {
-    switch (currentStage) {
-      case 0: // Primary Info
+  // ── Section Content ──────────────────────────────────────────────────────────
+  const renderSection = () => {
+    const { prefix, next } = getCodePreview();
+
+    switch (currentSection) {
+      case 0:
         return (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <InputField label="Item Code *" id="itemCode" value={formData.itemCode} onChange={handleInputChange} />
-              <InputField label="SKU / Internal Code" id="pkgSku" value={formData.pkgSku} onChange={handleInputChange} />
+            {/* PM Category — Industry Buckets */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PM Category (Industry Buckets)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PM Category</label>
+                  <select
+                    id="pmCategory"
+                    value={formData.pmCategory}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {Object.entries(PM_CATEGORIES).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+                  <select
+                    id="qcGroup"
+                    value={formData.qcGroup}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {QC_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <input
+                    type="text"
+                    id="subCategory"
+                    value={formData.subCategory}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Airless bottle / Flip-top cap / BOPP label / 5-ply shipper"
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
+                  <select
+                    id="storeLoc"
+                    value={formData.storeLoc}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {STORAGE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Unit of Measure *" id="pkgUnit" value={formData.pkgUnit} onChange={handleInputChange} 
-                options={['PCS', 'GM', 'ML', 'L', 'KG']} />
-              <InputField label="HSN Code" id="pkgHsn" value={formData.pkgHsn} onChange={handleInputChange} />
+
+            {/* Code Series Preview */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
+              <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center gap-6 mb-4">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
+                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
+                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => generateCode()}
+                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                  >
+                    Generate Code Now
+                  </button>
+                  {generatedCode && (
+                    <button
+                      onClick={() => generateCode(true)}
+                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
+                    >
+                      Regenerate (change category)
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Tax Preference" id="pkgTaxPreference" value={formData.pkgTaxPreference} onChange={handleInputChange}
-                options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']} />
-              <CheckboxField label="Returnable Item" id="pkgReturnable" checked={formData.pkgReturnable} onChange={handleInputChange} />
+
+            {/* Basic Details */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Basic Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField
+                  label="SKU / Internal Code"
+                  id="pkgSku"
+                  value={formData.pkgSku}
+                  onChange={handleInputChange}
+                  placeholder="Internal code used in ERP (e.g. PKG-000123)"
+                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
+                  <select id="pkgUnit" value={formData.pkgUnit} onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    {['PCS', 'GM', 'ML', 'L', 'KG'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <InputField
+                  label="HSN Code"
+                  id="pkgHsn"
+                  value={formData.pkgHsn}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 3923, 4819, 7010"
+                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Preference</label>
+                  <select id="pkgTaxPreference" value={formData.pkgTaxPreference} onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <input type="checkbox" id="pkgReturnable" checked={formData.pkgReturnable} onChange={handleInputChange}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600" />
+                <label htmlFor="pkgReturnable" className="text-sm text-gray-700">Returnable Item</label>
+              </div>
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Associate Items</label>
+                <textarea
+                  id="pkgAssociateItems"
+                  value={formData.pkgAssociateItems}
+                  onChange={handleInputChange}
+                  rows={2}
+                  placeholder="Link related BOM / RM / secondary packaging if any"
+                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
             </div>
-            <TextareaField label="Associate Items" id="pkgAssociateItems" value={formData.pkgAssociateItems} onChange={handleInputChange} />
           </div>
         );
 
-      case 1: // Categorisation
+      case 1: // Identity
         return (
           <div className="space-y-4">
-            <InputField label="PM Category" id="pmCategory" value={formData.pmCategory} onChange={handleInputChange} />
-            <InputField label="QC Group" id="qcGroup" value={formData.qcGroup} onChange={handleInputChange} />
-            <InputField label="Sub Category" id="subCategory" value={formData.subCategory} onChange={handleInputChange} />
-            <InputField label="Hazard Class" id="hazardClass" value={formData.hazardClass} onChange={handleInputChange} />
-            <InputField label="Storage Location" id="storeLoc" value={formData.storeLoc} onChange={handleInputChange} />
-          </div>
-        );
-
-      case 2: // Identity
-        return (
-          <div className="space-y-4">
-            <InputField label="Name" id="name" value={formData.name} onChange={handleInputChange} />
-            <InputField label="Level" id="level" value={formData.level} onChange={handleInputChange} />
-            <InputField label="Category" id="category" value={formData.category} onChange={handleInputChange} />
-            <InputField label="Intended Use" id="intendedUse" value={formData.intendedUse} onChange={handleInputChange} />
-            <InputField label="Expected Product Types" id="expectedProductTypes" value={formData.expectedProductTypes} onChange={handleInputChange} />
-            <InputField label="Reusability" id="reusability" value={formData.reusability} onChange={handleInputChange} />
-            <TextareaField label="Regulatory Notes" id="regulatory" value={formData.regulatory} onChange={handleInputChange} />
-            <TextareaField label="Identity Notes" id="identityNotes" value={formData.identityNotes} onChange={handleInputChange} />
-          </div>
-        );
-
-      case 3: // Material & Specs
-        return (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-gray-700">Material</h3>
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="Body Material" id="matBody" value={formData.matBody} onChange={handleInputChange} />
-              <InputField label="Closure Material" id="matClosure" value={formData.matClosure} onChange={handleInputChange} />
-              <InputField label="Inner Material" id="matInner" value={formData.matInner} onChange={handleInputChange} />
-              <InputField label="Grade" id="matGrade" value={formData.matGrade} onChange={handleInputChange} />
+              <InputField
+                label="Item Name"
+                id="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                placeholder="Packaging item name as used internally"
+              />
+              <InputField
+                label="Level"
+                id="level"
+                value={formData.level}
+                onChange={handleInputChange}
+                placeholder="e.g. Primary / Secondary / Tertiary"
+              />
+              <InputField
+                label="Category"
+                id="itemCategory"
+                value={formData.itemCategory}
+                onChange={handleInputChange}
+                placeholder="e.g. Bottle, Carton, Label, Shipper"
+              />
+              <InputField
+                label="Intended Use"
+                id="intendedUse"
+                value={formData.intendedUse}
+                onChange={handleInputChange}
+                placeholder="e.g. Face serum bottle, Outer mono-carton"
+              />
+              <InputField
+                label="Expected Product Types"
+                id="expectedProductTypes"
+                value={formData.expectedProductTypes}
+                onChange={handleInputChange}
+                placeholder="e.g. Creams, Serums, Shampoos"
+              />
+              <InputField
+                label="Reusability"
+                id="reusability"
+                value={formData.reusability}
+                onChange={handleInputChange}
+                placeholder="e.g. Single use, Refillable, Re-closable"
+              />
             </div>
-            <CheckboxField label="Recyclable" id="matRecycle" checked={formData.matRecycle} onChange={handleInputChange} />
-            <CheckboxField label="BPA Free" id="matBpa" checked={formData.matBpa} onChange={handleInputChange} />
-            
-            <h3 className="font-semibold text-gray-700 mt-6">Specifications</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <InputField label="Nominal Volume" id="specNominal" value={formData.specNominal} onChange={handleInputChange} />
-              <InputField label="Brimful Volume" id="specBrimful" value={formData.specBrimful} onChange={handleInputChange} />
-              <InputField label="Height (mm)" id="specHeight" value={formData.specHeight} onChange={handleInputChange} />
-              <InputField label="Diameter (mm)" id="specDia" value={formData.specDia} onChange={handleInputChange} />
-              <InputField label="Neck (mm)" id="specNeck" value={formData.specNeck} onChange={handleInputChange} />
-              <InputField label="Weight (g)" id="specWeight" value={formData.specWeight} onChange={handleInputChange} />
-              <InputField label="Wall Thickness (mm)" id="specWall" value={formData.specWall} onChange={handleInputChange} />
-            </div>
-            <InputField label="Tech Link / Reference" id="specLink" value={formData.specLink} onChange={handleInputChange} />
+            <TextareaField
+              label="Regulatory Notes"
+              id="regulatory"
+              value={formData.regulatory}
+              onChange={handleInputChange}
+              placeholder="Any packaging-specific regulations or country notes"
+            />
+            <TextareaField
+              label="Identity Notes"
+              id="identityNotes"
+              value={formData.identityNotes}
+              onChange={handleInputChange}
+              placeholder="Any extra description to identify this item uniquely"
+            />
           </div>
         );
 
-      case 4: // Aesthetics
+      case 2: // Material & Specs
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField
+                  label="Body Material"
+                  id="matBody"
+                  value={formData.matBody}
+                  onChange={handleInputChange}
+                  placeholder="e.g. PET, Glass, HDPE"
+                />
+                <InputField
+                  label="Closure Material"
+                  id="matClosure"
+                  value={formData.matClosure}
+                  onChange={handleInputChange}
+                  placeholder="e.g. PP cap, Pump, Dropper"
+                />
+                <InputField
+                  label="Inner Material"
+                  id="matInner"
+                  value={formData.matInner}
+                  onChange={handleInputChange}
+                  placeholder="e.g. LDPE liner, Pouch film"
+                />
+                <InputField
+                  label="Grade"
+                  id="matGrade"
+                  value={formData.matGrade}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Pharma grade, Food grade"
+                />
+              </div>
+              <div className="flex gap-6 mt-3">
+                <CheckboxField label="Recyclable" id="matRecycle" checked={formData.matRecycle} onChange={handleInputChange} />
+                <CheckboxField label="BPA Free" id="matBpa" checked={formData.matBpa} onChange={handleInputChange} />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField
+                  label="Nominal Volume"
+                  id="specNominal"
+                  value={formData.specNominal}
+                  onChange={handleInputChange}
+                  placeholder="Declared fill volume (e.g. 50 ml)"
+                />
+                <InputField
+                  label="Brimful Volume"
+                  id="specBrimful"
+                  value={formData.specBrimful}
+                  onChange={handleInputChange}
+                  placeholder="Total capacity at brim"
+                />
+                <InputField
+                  label="Height (mm)"
+                  id="specHeight"
+                  value={formData.specHeight}
+                  onChange={handleInputChange}
+                  placeholder="Total height of pack"
+                />
+                <InputField
+                  label="Diameter (mm)"
+                  id="specDia"
+                  value={formData.specDia}
+                  onChange={handleInputChange}
+                  placeholder="Body diameter"
+                />
+                <InputField
+                  label="Neck (mm)"
+                  id="specNeck"
+                  value={formData.specNeck}
+                  onChange={handleInputChange}
+                  placeholder="Neck / thread spec"
+                />
+                <InputField
+                  label="Weight (g)"
+                  id="specWeight"
+                  value={formData.specWeight}
+                  onChange={handleInputChange}
+                  placeholder="Empty component weight"
+                />
+                <InputField
+                  label="Wall Thickness (mm)"
+                  id="specWall"
+                  value={formData.specWall}
+                  onChange={handleInputChange}
+                  placeholder="Critical wall thickness if applicable"
+                />
+                <InputField
+                  label="Tech Link / Reference"
+                  id="specLink"
+                  value={formData.specLink}
+                  onChange={handleInputChange}
+                  placeholder="Link to drawing / spec sheet"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 3: // Aesthetics
         return (
           <div className="space-y-4">
-            <InputField label="Color Type" id="colorType" value={formData.colorType} onChange={handleInputChange} />
-            <InputField label="Color Code" id="colorCode" value={formData.colorCode} onChange={handleInputChange} />
-            <InputField label="Finish" id="finish" value={formData.finish} onChange={handleInputChange} />
-            <InputField label="Decoration" id="deco" value={formData.deco} onChange={handleInputChange} />
-            <TextareaField label="Images / References" id="images" value={formData.images} onChange={handleInputChange} />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField
+                label="Color Type"
+                id="colorType"
+                value={formData.colorType}
+                onChange={handleInputChange}
+                placeholder="e.g. Solid, Transparent, Frosted"
+              />
+              <InputField
+                label="Color Code"
+                id="colorCode"
+                value={formData.colorCode}
+                onChange={handleInputChange}
+                placeholder="e.g. Pantone, HEX, or vendor shade code"
+              />
+              <InputField
+                label="Finish"
+                id="finish"
+                value={formData.finish}
+                onChange={handleInputChange}
+                placeholder="e.g. Glossy, Matte, Soft-touch"
+              />
+              <InputField
+                label="Decoration"
+                id="deco"
+                value={formData.deco}
+                onChange={handleInputChange}
+                placeholder="e.g. Screen print, Hot foil, Label, Embossing"
+              />
+            </div>
+            <TextareaField
+              label="Images / References"
+              id="images"
+              value={formData.images}
+              onChange={handleInputChange}
+              placeholder="Links or notes for reference artwork, mood boards, or sample packs"
+            />
           </div>
         );
 
-      case 5: // Variants
+      case 4: // Variants Matrix
         return (
           <ArrayItemManager
             masterType="packaging"
@@ -429,49 +741,75 @@ const PackagingRefactored: React.FC = () => {
           />
         );
 
-      case 6: // Customization
+      case 5: // Customization & Tooling
         return (
           <div className="space-y-4">
-            <InputField label="Customizable" id="cusCustomizable" value={formData.cusCustomizable} onChange={handleInputChange} />
+            <CheckboxField label="Customizable" id="cusCustomizable" checked={formData.cusCustomizable} onChange={handleInputChange} />
             <TextareaField label="Customization Parameters" id="cusParams" value={formData.cusParams} onChange={handleInputChange} />
-            <InputField label="Standard MOQ" id="cusStdMoq" value={formData.cusStdMoq} onChange={handleInputChange} />
-            <InputField label="Custom MOQ" id="cusCustomMoq" value={formData.cusCustomMoq} onChange={handleInputChange} />
-            <InputField label="Tooling Required" id="cusToolingReq" value={formData.cusToolingReq} onChange={handleInputChange} />
-            <InputField label="Tooling Cost" id="cusToolingCost" value={formData.cusToolingCost} onChange={handleInputChange} />
-            <InputField label="Sampling Lead Time" id="cusSamplingLT" value={formData.cusSamplingLT} onChange={handleInputChange} />
-            <InputField label="Bulk Lead Time (Std)" id="cusBulkLTStd" value={formData.cusBulkLTStd} onChange={handleInputChange} />
-            <InputField label="Bulk Lead Time (Custom)" id="cusBulkLTCustom" value={formData.cusBulkLTCustom} onChange={handleInputChange} />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Standard MOQ" id="cusStdMoq" value={formData.cusStdMoq} onChange={handleInputChange} />
+              <InputField label="Custom MOQ" id="cusCustomMoq" value={formData.cusCustomMoq} onChange={handleInputChange} />
+              <InputField label="Tooling Required" id="cusToolingReq" value={formData.cusToolingReq} onChange={handleInputChange} />
+              <InputField label="Tooling Cost" id="cusToolingCost" value={formData.cusToolingCost} onChange={handleInputChange} />
+              <InputField label="Sampling Lead Time" id="cusSamplingLT" value={formData.cusSamplingLT} onChange={handleInputChange} />
+              <InputField label="Bulk Lead Time (Std)" id="cusBulkLTStd" value={formData.cusBulkLTStd} onChange={handleInputChange} />
+              <InputField label="Bulk Lead Time (Custom)" id="cusBulkLTCustom" value={formData.cusBulkLTCustom} onChange={handleInputChange} />
+            </div>
             <TextareaField label="Customization Remarks" id="cusRemarks" value={formData.cusRemarks} onChange={handleInputChange} />
           </div>
         );
 
-      case 7: // Compatibility
+      case 6: // Compatibility (R&D / QA)
         return (
-          <div className="space-y-4">
-            <h3 className="font-semibold">Viscosity Compatibility</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <InputField label="Low" id="compLow" value={formData.compLow} onChange={handleInputChange} />
-              <InputField label="Medium" id="compMed" value={formData.compMed} onChange={handleInputChange} />
-              <InputField label="High" id="compHigh" value={formData.compHigh} onChange={handleInputChange} />
+          <div className="space-y-6">
+            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
+                Viscosity Compatibility
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <PillCheckboxField label="Low" id="compLow" checked={formData.compLow} onChange={handleInputChange} />
+                <PillCheckboxField label="Medium" id="compMed" checked={formData.compMed} onChange={handleInputChange} />
+                <PillCheckboxField label="High" id="compHigh" checked={formData.compHigh} onChange={handleInputChange} />
+              </div>
             </div>
-            <h3 className="font-semibold mt-4">Chemical Compatibility</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <CheckboxField label="Oil Compatible" id="compOil" checked={formData.compOil} onChange={handleInputChange} />
-              <CheckboxField label="Alcohol Compatible" id="compAlc" checked={formData.compAlc} onChange={handleInputChange} />
-              <CheckboxField label="Airless Compatible" id="compAirless" checked={formData.compAirless} onChange={handleInputChange} />
+
+            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
+                Chemical Compatibility
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <PillCheckboxField label="Oil Compatible" id="compOil" checked={formData.compOil} onChange={handleInputChange} color="red" />
+                <PillCheckboxField label="Alcohol Compatible" id="compAlc" checked={formData.compAlc} onChange={handleInputChange} color="red" />
+                <PillCheckboxField label="Airless Compatible" id="compAirless" checked={formData.compAirless} onChange={handleInputChange} color="red" />
+              </div>
             </div>
-            <h3 className="font-semibold mt-4">Functional Compatibility</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <CheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump} onChange={handleInputChange} />
-              <CheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak} onChange={handleInputChange} />
-              <InputField label="Actives Compatible" id="compActives" value={formData.compActives} onChange={handleInputChange} />
-              <InputField label="Risk Level" id="compRisk" value={formData.compRisk} onChange={handleInputChange} />
+
+            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
+                Functional Compatibility
+              </p>
+              <div className="flex flex-col gap-4 w-full">
+                <div className="flex flex-wrap gap-3">
+                  <PillCheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump} onChange={handleInputChange} />
+                  <PillCheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak} onChange={handleInputChange} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <InputField label="Actives Compatible" id="compActives" value={formData.compActives} onChange={handleInputChange} />
+                  <InputField label="Risk Level" id="compRisk" value={formData.compRisk} onChange={handleInputChange} />
+                </div>
+              </div>
             </div>
-            <TextareaField label="Compatibility Remarks" id="compRemarks" value={formData.compRemarks} onChange={handleInputChange} />
+
+            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-2">
+                Compatibility Remarks
+              </p>
+              <TextareaField label="" id="compRemarks" value={formData.compRemarks} onChange={handleInputChange} />
+            </div>
           </div>
         );
 
-      case 8: // Vendors
+      case 7: // Vendors & Commercial
         return (
           <ArrayItemManager
             masterType="packaging"
@@ -497,41 +835,45 @@ const PackagingRefactored: React.FC = () => {
           />
         );
 
-      case 9: // Secondary Packaging
+      case 8: // Secondary Packaging
         return (
           <div className="space-y-4">
-            <InputField label="Label Type" id="secLabelType" value={formData.secLabelType} onChange={handleInputChange} />
-            <InputField label="Label Size" id="secLabelSize" value={formData.secLabelSize} onChange={handleInputChange} />
-            <InputField label="Adhesive Type" id="secAdhesive" value={formData.secAdhesive} onChange={handleInputChange} />
-            <InputField label="Label Compatibility" id="secLabelCompat" value={formData.secLabelCompat} onChange={handleInputChange} />
-            <InputField label="Paper GSM" id="secGsm" value={formData.secGsm} onChange={handleInputChange} />
-            <InputField label="Carton Finish" id="secCartonFinish" value={formData.secCartonFinish} onChange={handleInputChange} />
-            <InputField label="Fit & Finish" id="secFit" value={formData.secFit} onChange={handleInputChange} />
-            <InputField label="Art Link" id="secArtLink" value={formData.secArtLink} onChange={handleInputChange} />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Label Type" id="secLabelType" value={formData.secLabelType} onChange={handleInputChange} />
+              <InputField label="Label Size" id="secLabelSize" value={formData.secLabelSize} onChange={handleInputChange} />
+              <InputField label="Adhesive Type" id="secAdhesive" value={formData.secAdhesive} onChange={handleInputChange} />
+              <InputField label="Label Compatibility" id="secLabelCompat" value={formData.secLabelCompat} onChange={handleInputChange} />
+              <InputField label="Paper GSM" id="secGsm" value={formData.secGsm} onChange={handleInputChange} />
+              <InputField label="Carton Finish" id="secCartonFinish" value={formData.secCartonFinish} onChange={handleInputChange} />
+              <InputField label="Fit & Finish" id="secFit" value={formData.secFit} onChange={handleInputChange} />
+              <InputField label="Art Link" id="secArtLink" value={formData.secArtLink} onChange={handleInputChange} />
+            </div>
             <TextareaField label="Secondary Packaging Notes" id="secNotes" value={formData.secNotes} onChange={handleInputChange} />
           </div>
         );
 
-      case 10: // Tertiary Packaging
+      case 9: // Tertiary Packaging
         return (
           <div className="space-y-4">
-            <InputField label="Shipper Type" id="terShipType" value={formData.terShipType} onChange={handleInputChange} />
-            <InputField label="Units per Shipper" id="terUnits" value={formData.terUnits} onChange={handleInputChange} />
-            <InputField label="Drop Test (m)" id="terDrop" value={formData.terDrop} onChange={handleInputChange} />
-            <InputField label="Stack Height (units)" id="terStack" value={formData.terStack} onChange={handleInputChange} />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Shipper Type" id="terShipType" value={formData.terShipType} onChange={handleInputChange} />
+              <InputField label="Units per Shipper" id="terUnits" value={formData.terUnits} onChange={handleInputChange} />
+              <InputField label="Drop Test (m)" id="terDrop" value={formData.terDrop} onChange={handleInputChange} />
+              <InputField label="Stack Height (units)" id="terStack" value={formData.terStack} onChange={handleInputChange} />
+            </div>
             <TextareaField label="Tertiary Packaging Notes" id="terNotes" value={formData.terNotes} onChange={handleInputChange} />
           </div>
         );
 
-      case 11: // Testing & Approval
+      case 10: // Testing & Approval
         return (
           <>
             <div className="mb-6">
-              <h3 className="font-semibold text-gray-700 mb-4">Testing & Approvals</h3>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <InputField label="Approved by Packaging" id="apprPack" value={formData.apprPack} onChange={handleInputChange} />
-                <InputField label="Approved by R&D" id="apprRd" value={formData.apprRd} onChange={handleInputChange} />
-                <InputField label="Approved by Finance" id="apprFin" value={formData.apprFin} onChange={handleInputChange} />
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Approvals</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <CheckboxField label="Approved by Packaging" id="apprPack" checked={formData.apprPack} onChange={handleInputChange} />
+                <CheckboxField label="Approved by R&D" id="apprRd" checked={formData.apprRd} onChange={handleInputChange} />
+                <CheckboxField label="Approved by Finance" id="apprFin" checked={formData.apprFin} onChange={handleInputChange} />
                 <CheckboxField label="Lock for Modification" id="apprLock" checked={formData.apprLock} onChange={handleInputChange} />
               </div>
             </div>
@@ -556,134 +898,542 @@ const PackagingRefactored: React.FC = () => {
           </>
         );
 
-      case 12: // Catalogue
+      case 11: // Catalogue / Website
         return (
           <div className="space-y-4">
-            <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible} onChange={handleInputChange} />
-            <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare} onChange={handleInputChange} />
-            <InputField label="Web Display Name" id="catWebName" value={formData.catWebName} onChange={handleInputChange} />
-            <InputField label="Tags (comma-separated)" id="catTags" value={formData.catTags} onChange={handleInputChange} />
-            <InputField label="Recommended Product Types" id="catRecoTypes" value={formData.catRecoTypes} onChange={handleInputChange} />
+            <div className="flex gap-6">
+              <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible} onChange={handleInputChange} />
+              <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare} onChange={handleInputChange} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Web Display Name" id="catWebName" value={formData.catWebName} onChange={handleInputChange} />
+              <InputField label="Tags (comma-separated)" id="catTags" value={formData.catTags} onChange={handleInputChange} />
+              <InputField label="Recommended Product Types" id="catRecoTypes" value={formData.catRecoTypes} onChange={handleInputChange} />
+            </div>
             <TextareaField label="Web Images" id="catWebImages" value={formData.catWebImages} onChange={handleInputChange} />
           </div>
         );
 
-      case 13: // Review / JSON
+      case 12: // Review / JSON
         return (
           <div>
-            <h3 className="font-semibold text-gray-700 mb-4">Complete Form Data (JSON)</h3>
-            <pre className="bg-gray-100 p-4 rounded text-xs overflow-auto max-h-96">
-              {JSON.stringify(formData, null, 2)}
+            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Complete Form Data (JSON)</h3>
+            <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto max-h-[60vh] border border-gray-200">
+              {JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }, null, 2)}
             </pre>
           </div>
         );
 
       default:
-        return <p>No content</p>;
+        return null;
     }
   };
 
+  // ── BPR tab ──────────────────────────────────────────────────────────────────
+  if (pageTab === 'bpr') return <BprDashboard onSwitchToForm={() => setPageTab('form')} />;
+
+  // ── Main two-panel layout ────────────────────────────────────────────────────
   return (
-    <MasterFormBase
-      title="Packaging Master Data (Refactored)"
-      stages={stages}
-      currentStage={currentStage}
-      onStageChange={setCurrentStage}
-      errors={errors}
-      formData={formData}
-      onInputChange={handleInputChange}
-      primaryFields={getPrimaryFields('packaging')}
-      onSave={() => {
-        localStorage.setItem('packaging_draft_new', JSON.stringify(formData));
-        addToast('success', 'Draft saved!');
-      }}
-      onSubmit={handleSubmit}
-    >
-      {renderStageContent()}
-    </MasterFormBase>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setPageTab('bpr')}
+              className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
+            >
+              ← BPR Dashboard
+            </button>
+            <span className="text-gray-300">|</span>
+            <h1 className="text-base font-bold text-gray-800 leading-tight truncate">
+              Packaging Item Onboarding (PM)
+            </h1>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => doSave(false)}
+              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Save
+            </button>
+            <button
+              onClick={handleExportJSON}
+              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Export JSON
+            </button>
+            <button
+              onClick={handleImportJSON}
+              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Import JSON
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+            >
+              Reset
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body: Sidebar + Content ─────────────────────────────────────────── */}
+      <div className="flex-1">
+        <div className="flex gap-4 items-stretch max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-4">
+
+          {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
+          <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
+          {/* Sections header + autosave */}
+          <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
+              <button
+                onClick={() => setAutoSaveOn(prev => !prev)}
+                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+              >
+                Autosave: {autoSaveOn ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
+          {/* Status + Version */}
+          <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
+              <select
+                id="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                {['Draft', 'Active', 'Discontinued', 'Under Review'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="w-12">
+              <label className="block text-[10px] text-gray-500 mb-1">Version</label>
+              <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
+            </div>
+          </div>
+
+          {/* Section List */}
+          <nav className="flex-1 px-2 py-2">
+            {SECTIONS.map((section, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentSection(idx)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${
+                  currentSection === idx
+                    ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                }`}
+              >
+                {section}
+              </button>
+            ))}
+          </nav>
+
+          {/* Stats */}
+          <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2 mt-auto">
+            {[
+              { label: 'Variants', value: formData.variants.length },
+              { label: 'Vendors', value: formData.vendors.length },
+              { label: 'Tests Logged', value: formData.tests.length },
+              { label: 'Last Saved', value: lastSaved },
+            ].map(stat => (
+              <div key={stat.label}>
+                <p className="text-[9px] uppercase text-gray-400 tracking-wide">{stat.label}</p>
+                <p className="text-sm font-bold text-gray-700">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+
+        </aside>
+
+        {/* ── RIGHT CONTENT ─────────────────────────────────────────────────── */}
+        <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+          {/* Content header with Prev/Next */}
+          <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+            <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">{SECTIONS[currentSection]}</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+                  disabled={currentSection === 0}
+                  className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  ← Prev
+                </button>
+                <button
+                  onClick={() => setCurrentSection(prev => Math.min(SECTIONS.length - 1, prev + 1))}
+                  disabled={currentSection === SECTIONS.length - 1}
+                  className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Section body */}
+          <div className="px-4 py-6">
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
+                {renderSection()}
+              </div>
+            </div>
+          </div>
+        </main>
+        </div>
+      </div>
+    </div>
   );
 };
 
-// Helper components for cleaner rendering
+// ─── BPR Dashboard ────────────────────────────────────────────────────────────
+const BPR_STAGES = ['Draft', 'Artwork', 'PM Issued', 'Filling', 'QC', 'Completed'];
+
+const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm }) => {
+  const { state, dispatch } = useGlobalState();
+  const { items } = useItems();
+  const bprs: any[] = state.mfg?.bprs || [];
+  const bmrs: any[] = state.mfg?.bmrs || [];
+  const salesOrders: any[] = state.orders?.salesOrders || [];
+  const [printBpr, setPrintBpr] = useState<any>(null);
+
+  const stageColor = (stage: number) => {
+    if (stage === 0) return 'bg-gray-100 text-gray-700';
+    if (stage <= 2) return 'bg-indigo-100 text-indigo-700';
+    if (stage <= 4) return 'bg-amber-100 text-amber-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+
+  const advanceBPR = (bpr: any) => {
+    if (bpr.stage >= BPR_STAGES.length - 1) return;
+    dispatch({
+      type: 'ADVANCE_BMR_STAGE' as any,
+      payload: { bmrId: bpr.bmrId ?? bpr.id, newStage: bpr.stage + 1, isBPR: true, bprId: bpr.id },
+    });
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50/50">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">BPR Dashboard</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Batch Packaging Records — track filling, artwork & QC stage by stage
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onSwitchToForm}
+              className="inline-flex items-center gap-2 rounded-lg bg-black text-white text-sm font-semibold px-4 py-2.5 shadow-sm hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-neutral-900 text-base leading-none">
+                +
+              </span>
+              <span>New Packaging Master</span>
+            </button>
+          </div>
+        </div>
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Total BPRs', value: bprs.length, color: 'text-gray-800' },
+            { label: 'In Progress', value: bprs.filter(b => b.stage > 0 && b.stage < 5).length, color: 'text-indigo-600' },
+            { label: 'QC Stage', value: bprs.filter(b => b.stage === 4).length, color: 'text-amber-600' },
+            { label: 'Completed', value: bprs.filter(b => b.stage === 5).length, color: 'text-emerald-600' },
+          ].map(kpi => (
+            <div key={kpi.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">{kpi.label}</p>
+              <p className={`text-3xl font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Packaging Masters Table */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800">Packaging Masters (from Items Master)</h2>
+              <span className="text-sm text-gray-500">
+                {items.filter(i => i.type === 'packaging').length} packaging item(s)
+              </span>
+            </div>
+          </div>
+          {items.filter(i => i.type === 'packaging').length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-sm text-gray-400">No packaging masters imported yet.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-900">
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Code</th>
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Name</th>
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Category</th>
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Specification</th>
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>UOM</th>
+                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Default Vendors</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {items
+                    .filter(i => i.type === 'packaging')
+                    .map((pm: any) => {
+                      const data = pm.data || {};
+                      const vendorNames = (data.vendors || []).map((v: any) => v.name).join(', ') || '-';
+                      const specification = [
+                        data.specNominal ? `${data.specNominal}ml` : '',
+                        data.colorCode || '',
+                        data.finish || '',
+                        data.deco || ''
+                      ].filter(Boolean).join(', ') || '-';
+                      
+                      return (
+                        <tr key={pm.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-mono font-bold text-gray-900">{pm.code || '-'}</td>
+                          <td className="px-6 py-4 font-semibold text-gray-800">{pm.name || '-'}</td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
+                              -
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-600 max-w-sm truncate" title={specification}>
+                            {specification}
+                          </td>
+                          <td className="px-6 py-4 font-medium text-gray-900">{data.pkgUnit || '-'}</td>
+                          <td className="px-6 py-4 text-gray-600">{vendorNames}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* BPR Cards or Empty State */}
+        {bprs.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
+            <svg className="w-14 h-14 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <p className="font-semibold text-gray-600 text-lg">No BPRs yet</p>
+            <p className="text-sm text-gray-400 mt-1 mb-4">
+              BPRs are created automatically when a BMR passes QC.<br />
+              Go to <strong>BOM / BMR</strong> and approve QC on a completed batch.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {bprs.map((bpr: any) => {
+              const linkedBMR = bmrs.find(b => b.id === bpr.bmrId);
+              const linkedSO = salesOrders.find(s => s.so === linkedBMR?.so);
+
+              return (
+                <div key={bpr.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  {/* BPR Header */}
+                  <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-3 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-bold text-gray-800">{bpr.id}</span>
+                      {linkedBMR && <span className="text-gray-500 text-sm">← {bpr.bmrId}</span>}
+                      <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${stageColor(bpr.stage || 0)}`}>
+                        {BPR_STAGES[bpr.stage || 0]}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500 space-x-4">
+                      {linkedBMR && (
+                        <span>
+                          Product: <span className="font-medium text-gray-700">{linkedBMR.product}</span>
+                        </span>
+                      )}
+                      {linkedSO && (
+                        <span>
+                          Client: <span className="font-medium text-gray-700">{linkedSO.clientName}</span>
+                        </span>
+                      )}
+                      {linkedBMR && (
+                        <span>
+                          Batch Size:{' '}
+                          <span className="font-medium text-gray-700">
+                            {(linkedBMR.batchSize || 0).toLocaleString('en-IN')}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stage Progress */}
+                  <div className="px-5 py-3">
+                    <div className="flex items-center gap-0.5 overflow-x-auto">
+                      {BPR_STAGES.map((s, i) => (
+                        <div key={s} className="flex-1 flex flex-col items-center min-w-17.5">
+                          <div
+                            className={`w-full h-2 rounded-sm ${
+                              i < (bpr.stage || 0)
+                                ? 'bg-emerald-400'
+                                : i === (bpr.stage || 0)
+                                ? 'bg-indigo-500'
+                                : 'bg-gray-200'
+                            }`}
+                          />
+                          <span
+                            className={`text-[10px] mt-1 text-center ${
+                              i === (bpr.stage || 0) ? 'text-indigo-600 font-semibold' : 'text-gray-400'
+                            }`}
+                          >
+                            {s}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="px-5 py-3 bg-gray-50/50 flex gap-2">
+                    {(bpr.stage || 0) < BPR_STAGES.length - 1 ? (
+                      <button
+                        onClick={() => advanceBPR(bpr)}
+                        className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
+                      >
+                        → Advance to {BPR_STAGES[(bpr.stage || 0) + 1]}
+                      </button>
+                    ) : (
+                      <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg">
+                        ✓ BPR Completed
+                      </span>
+                    )}
+                    <button
+                      onClick={() =>
+                        setPrintBpr({
+                          ...bpr,
+                          product: linkedBMR?.product,
+                          batchSize: linkedBMR?.batchSize,
+                          client: linkedSO?.clientName,
+                        })
+                      }
+                      className="px-4 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
+                    >
+                      🖨 Print BPR
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* BPR Print Modal */}
+        {printBpr && <BPRPrintTemplate bpr={printBpr} onClose={() => setPrintBpr(null)} />}
+      </div>
+    </div>
+  );
+};
+
+// ─── Small field helpers ──────────────────────────────────────────────────────
 const InputField: React.FC<{
-  label: string;
-  id: string;
-  value: any;
+  label: string; id: string; value: any;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
-  type?: string;
-  placeholder?: string;
+  type?: string; placeholder?: string;
 }> = ({ label, id, value, onChange, type = 'text', placeholder }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <input
-      type={type}
-      id={id}
-      value={value || ''}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    />
+    <input type={type} id={id} value={value ?? ''} onChange={onChange} placeholder={placeholder}
+      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
   </div>
 );
 
 const SelectField: React.FC<{
-  label: string;
-  id: string;
-  value: any;
+  label: string; id: string; value: any;
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   options: string[];
 }> = ({ label, id, value, onChange, options }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <select
-      id={id}
-      value={value || ''}
-      onChange={onChange}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    >
+    <select id={id} value={value ?? ''} onChange={onChange}
+      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
       <option value="">Select...</option>
-      {options.map(opt => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
+      {options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
     </select>
   </div>
 );
 
 const TextareaField: React.FC<{
-  label: string;
-  id: string;
-  value: any;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  rows?: number;
-}> = ({ label, id, value, onChange, rows = 3 }) => (
+  label: string; id: string; value: any;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; rows?: number; placeholder?: string;
+}> = ({ label, id, value, onChange, rows = 3, placeholder }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <textarea
-      id={id}
-      value={value || ''}
-      onChange={onChange}
-      rows={rows}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    />
+    <textarea id={id} value={value ?? ''} onChange={onChange} rows={rows} placeholder={placeholder}
+      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
   </div>
 );
 
 const CheckboxField: React.FC<{
+  label: string; id: string; checked: boolean;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}> = ({ label, id, checked, onChange }) => (
+  <label className="flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" id={id} checked={checked} onChange={onChange}
+      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500" />
+    <span className="text-gray-700">{label}</span>
+  </label>
+);
+
+const PillCheckboxField: React.FC<{
   label: string;
   id: string;
   checked: boolean;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}> = ({ label, id, checked, onChange }) => (
-  <label className="flex items-center text-sm">
-    <input
-      type="checkbox"
-      id={id}
-      checked={checked}
-      onChange={onChange}
-      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-    />
-    <span className="ml-2 text-gray-700">{label}</span>
-  </label>
-);
+  color?: 'indigo' | 'red';
+}> = ({ label, id, checked, onChange, color = 'indigo' }) => {
+  const base =
+    'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium cursor-pointer transition-colors';
+  const activeColor =
+    color === 'red'
+      ? 'bg-red-50 border-red-300 text-red-700'
+      : 'bg-indigo-50 border-indigo-300 text-indigo-700';
+  const inactiveColor = 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50';
+
+  return (
+    <label
+      htmlFor={id}
+      className={`${base} ${checked ? activeColor : inactiveColor}`}
+    >
+      <input
+        type="checkbox"
+        id={id}
+        checked={checked}
+        onChange={onChange}
+        className="sr-only"
+      />
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          checked
+            ? color === 'red'
+              ? 'bg-red-500'
+              : 'bg-indigo-500'
+            : 'bg-gray-300'
+        }`}
+      />
+      <span>{label}</span>
+    </label>
+  );
+};
 
 export default PackagingRefactored;

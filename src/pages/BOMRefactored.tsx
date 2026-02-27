@@ -4,12 +4,19 @@ import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
+import { useGlobalState } from '../context/GlobalStateContext';
+import BMRPrintTemplate from '../components/ordermanagementcomp/BMRPrintTemplate';
+import ConsolidatedMRModal from '../components/ordermanagementcomp/ConsolidatedMRModal';
 
 const BOMRefactored: React.FC = () => {
   const { addItem } = useItems();
   const { addToast } = useToast();
+  const [pageTab, setPageTab] = useState<'bom' | 'bmr'>('bmr');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentStage, setCurrentStage] = useState(0);
+  const [_printBmr, _setPrintBmr] = useState<any>(null);
+  const [_consolidatedMRIds, _setConsolidatedMRIds] = useState<string[] | null>(null);
+  const [_selectedBmrIds, _setSelectedBmrIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     // Primary Info
@@ -21,7 +28,7 @@ const BOMRefactored: React.FC = () => {
     bomTaxPreference: 'Taxable',
     bomReturnable: false,
     bomAssociateItems: '',
-    
+
     // BOM Setup & Coding
     type: 'BULK',
     status: 'Draft',
@@ -38,7 +45,7 @@ const BOMRefactored: React.FC = () => {
     createdBy: '',
     reviewedBy: '',
     desc: '',
-    
+
     // Specs & Yield
     specBulk: '',
     specProcess: '',
@@ -80,35 +87,40 @@ const BOMRefactored: React.FC = () => {
   });
 
   // Temp fields separated
-  const [tempRMLine, setTempRMLine] = useState({ 
-    code: '', name: '', phase: '', func: '', pct: '', uom: 'GM', spec: '', notes: '' 
+  const [tempRMLine, setTempRMLine] = useState({
+    code: '', name: '', phase: '', func: '', pct: '', uom: 'GM', spec: '', notes: ''
   });
-  const [tempPMLine, setTempPMLine] = useState({ 
-    code: '', name: '', cat: '', qty: '', uom: 'PCS', notes: '' 
+  const [tempPMLine, setTempPMLine] = useState({
+    code: '', name: '', cat: '', qty: '', uom: 'PCS', notes: ''
   });
 
-  // Auto-save draft
+  // Auto-save draft (silent)
   useEffect(() => {
     const timer = setInterval(() => {
       if (Object.values(formData).some(v => Boolean(v))) {
         localStorage.setItem('bom_draft_new', JSON.stringify(formData));
-        addToast('info', 'BOM draft auto-saved');
       }
     }, 30000);
     return () => clearInterval(timer);
-  }, [formData, addToast]);
+  }, [formData]);
 
-  // Load draft on mount
+  // Load draft on mount (single toast per session)
   useEffect(() => {
     const draft = localStorage.getItem('bom_draft_new');
-    if (draft) {
-      try {
-        setFormData(JSON.parse(draft));
-      } catch (e) {
-        console.error('Failed to load draft', e);
+    if (!draft) return;
+
+    try {
+      setFormData(JSON.parse(draft));
+
+      const toastFlagKey = 'bom_draft_toast_shown';
+      if (!sessionStorage.getItem(toastFlagKey)) {
+        sessionStorage.setItem(toastFlagKey, '1');
+        addToast('info', 'BOM draft loaded');
       }
+    } catch {
+      // ignore parse errors
     }
-  }, []);
+  }, [addToast]);
 
   const stages = [
     'Primary Info',
@@ -228,34 +240,137 @@ const BOMRefactored: React.FC = () => {
       case 0: // Primary Info
         return (
           <div className="space-y-4">
-            <InputField label="BOM Code" id="bomCode" value={formData.bomCode} onChange={handleInputChange} />
-            <InputField label="BOM SKU" id="bomSku" value={formData.bomSku} onChange={handleInputChange} />
-            <InputField label="Category" id="bomCategory" value={formData.bomCategory} onChange={handleInputChange} />
-            <SelectField label="Unit of Measure" id="bomUnit" value={formData.bomUnit} onChange={handleInputChange}
-              options={['GM', 'ML', 'PCS', 'L', 'KG']} />
-            <InputField label="HSN Code" id="bomHsn" value={formData.bomHsn} onChange={handleInputChange} />
-            <SelectField label="Tax Preference" id="bomTaxPreference" value={formData.bomTaxPreference} onChange={handleInputChange}
-              options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']} />
-            <CheckboxField label="Returnable Item" id="bomReturnable" checked={formData.bomReturnable} onChange={handleInputChange} />
-            <TextareaField label="Associate Items" id="bomAssociateItems" value={formData.bomAssociateItems} onChange={handleInputChange} />
+            <InputField
+              label="BOM Code"
+              id="bomCode"
+              value={formData.bomCode}
+              onChange={handleInputChange}
+              placeholder="e.g. BOM-CR-2025-001"
+            />
+            <InputField
+              label="BOM SKU"
+              id="bomSku"
+              value={formData.bomSku}
+              onChange={handleInputChange}
+              placeholder="Internal SKU / ERP code"
+            />
+            <InputField
+              label="Category"
+              id="bomCategory"
+              value={formData.bomCategory}
+              onChange={handleInputChange}
+              placeholder="e.g. Bulk / Finished Goods / Pilot"
+            />
+            <SelectField
+              label="Unit of Measure"
+              id="bomUnit"
+              value={formData.bomUnit}
+              onChange={handleInputChange}
+              options={['GM', 'ML', 'PCS', 'L', 'KG']}
+            />
+            <InputField
+              label="HSN Code"
+              id="bomHsn"
+              value={formData.bomHsn}
+              onChange={handleInputChange}
+              placeholder="e.g. 3304"
+            />
+            <SelectField
+              label="Tax Preference"
+              id="bomTaxPreference"
+              value={formData.bomTaxPreference}
+              onChange={handleInputChange}
+              options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
+            />
+            <CheckboxField
+              label="Returnable Item"
+              id="bomReturnable"
+              checked={formData.bomReturnable}
+              onChange={handleInputChange}
+            />
+            <TextareaField
+              label="Associate Items"
+              id="bomAssociateItems"
+              value={formData.bomAssociateItems}
+              onChange={handleInputChange}
+              placeholder="Link related RM / PM / packaging codes if any"
+            />
           </div>
         );
 
       case 1: // BOM Setup & Coding
         return (
           <div className="space-y-4">
-            <SelectField label="Type" id="type" value={formData.type} onChange={handleInputChange}
-              options={['BULK', 'FG', 'SEMI', 'INTERMEDIATE']} />
-            <SelectField label="Status" id="status" value={formData.status} onChange={handleInputChange}
-              options={['Draft', 'Approved', 'Archived', 'Deprecated']} />
-            <InputField label="Version" id="version" value={formData.version} onChange={handleInputChange} />
-            <InputField label="Client" id="client" value={formData.client} onChange={handleInputChange} />
-            <InputField label="Name" id="name" value={formData.name} onChange={handleInputChange} />
-            <InputField label="Dosage (e.g., 10% w/w)" id="dosage" value={formData.dosage} onChange={handleInputChange} />
-            <InputField label="Pack Size" id="packSize" value={formData.packSize} onChange={handleInputChange} />
-            <InputField label="Site/Plant" id="site" value={formData.site} onChange={handleInputChange} />
-            <InputField label="Project" id="project" value={formData.project} onChange={handleInputChange} />
-            <InputField label="Market" id="market" value={formData.market} onChange={handleInputChange} />
+            <SelectField
+              label="Type"
+              id="type"
+              value={formData.type}
+              onChange={handleInputChange}
+              options={['BULK', 'FG', 'SEMI', 'INTERMEDIATE']}
+            />
+            <SelectField
+              label="Status"
+              id="status"
+              value={formData.status}
+              onChange={handleInputChange}
+              options={['Draft', 'Approved', 'Archived', 'Deprecated']}
+            />
+            <InputField
+              label="Version"
+              id="version"
+              value={formData.version}
+              onChange={handleInputChange}
+              placeholder="e.g. v1.0"
+            />
+            <InputField
+              label="Client"
+              id="client"
+              value={formData.client}
+              onChange={handleInputChange}
+              placeholder="End client / brand"
+            />
+            <InputField
+              label="Name"
+              id="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              placeholder="Commercial name of the formula"
+            />
+            <InputField
+              label="Dosage (e.g., 10% w/w)"
+              id="dosage"
+              value={formData.dosage}
+              onChange={handleInputChange}
+              placeholder="e.g. 10% w/w"
+            />
+            <InputField
+              label="Pack Size"
+              id="packSize"
+              value={formData.packSize}
+              onChange={handleInputChange}
+              placeholder="e.g. 50 ml / 200 gm"
+            />
+            <InputField
+              label="Site/Plant"
+              id="site"
+              value={formData.site}
+              onChange={handleInputChange}
+              placeholder="Manufacturing site"
+            />
+            <InputField
+              label="Project"
+              id="project"
+              value={formData.project}
+              onChange={handleInputChange}
+              placeholder="Internal project / code name"
+            />
+            <InputField
+              label="Market"
+              id="market"
+              value={formData.market}
+              onChange={handleInputChange}
+              placeholder="Target market / region"
+            />
           </div>
         );
 
@@ -266,13 +381,55 @@ const BOMRefactored: React.FC = () => {
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Header Details</h3>
               <div className="space-y-4">
-                <InputField label="Category (FMCG, Pharma, etc.)" id="category" value={formData.category} onChange={handleInputChange} />
-                <InputField label="Created By" id="createdBy" value={formData.createdBy} onChange={handleInputChange} />
-                <InputField label="Reviewed By" id="reviewedBy" value={formData.reviewedBy} onChange={handleInputChange} />
-                <TextareaField label="Description" id="desc" value={formData.desc} onChange={handleInputChange} />
-                <TextareaField label="Claims" id="claims" value={formData.claims} onChange={handleInputChange} />
-                <TextareaField label="Regulatory Notes" id="regulatory" value={formData.regulatory} onChange={handleInputChange} />
-                <InputField label="pH Range" id="phRange" value={formData.phRange} onChange={handleInputChange} />
+                <InputField
+                  label="Category (FMCG, Pharma, etc.)"
+                  id="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  placeholder="e.g. FMCG / Pharma / D2C"
+                />
+                <InputField
+                  label="Created By"
+                  id="createdBy"
+                  value={formData.createdBy}
+                  onChange={handleInputChange}
+                  placeholder="Formulator / creator name"
+                />
+                <InputField
+                  label="Reviewed By"
+                  id="reviewedBy"
+                  value={formData.reviewedBy}
+                  onChange={handleInputChange}
+                  placeholder="Reviewer / approver name"
+                />
+                <TextareaField
+                  label="Description"
+                  id="desc"
+                  value={formData.desc}
+                  onChange={handleInputChange}
+                  placeholder="Short description of the formula"
+                />
+                <TextareaField
+                  label="Claims"
+                  id="claims"
+                  value={formData.claims}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Sulphate-free, Paraben-free, Dermatologically tested"
+                />
+                <TextareaField
+                  label="Regulatory Notes"
+                  id="regulatory"
+                  value={formData.regulatory}
+                  onChange={handleInputChange}
+                  placeholder="Region-specific or agency-specific requirements"
+                />
+                <InputField
+                  label="pH Range"
+                  id="phRange"
+                  value={formData.phRange}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 5.0 – 5.5"
+                />
               </div>
             </div>
 
@@ -330,23 +487,89 @@ const BOMRefactored: React.FC = () => {
       case 4: // Specifications - renumbered from 5
         return (
           <div className="space-y-4">
-            <TextareaField label="Bulk Specification" id="specBulk" value={formData.specBulk} onChange={handleInputChange} />
-            <TextareaField label="Process Specification" id="specProcess" value={formData.specProcess} onChange={handleInputChange} />
-            <TextareaField label="FG Specification" id="specFg" value={formData.specFg} onChange={handleInputChange} />
-            <TextareaField label="Packaging Specification" id="specPack" value={formData.specPack} onChange={handleInputChange} />
-            <TextareaField label="Testing Requirements" id="specTests" value={formData.specTests} onChange={handleInputChange} />
-            <TextareaField label="Release Criteria" id="specRelease" value={formData.specRelease} onChange={handleInputChange} />
+            <TextareaField
+              label="Bulk Specification"
+              id="specBulk"
+              value={formData.specBulk}
+              onChange={handleInputChange}
+              placeholder="Key bulk specs: appearance, viscosity, pH, etc."
+            />
+            <TextareaField
+              label="Process Specification"
+              id="specProcess"
+              value={formData.specProcess}
+              onChange={handleInputChange}
+              placeholder="Critical steps, temperatures, mixing times…"
+            />
+            <TextareaField
+              label="FG Specification"
+              id="specFg"
+              value={formData.specFg}
+              onChange={handleInputChange}
+              placeholder="Finished goods spec summary"
+            />
+            <TextareaField
+              label="Packaging Specification"
+              id="specPack"
+              value={formData.specPack}
+              onChange={handleInputChange}
+              placeholder="Bottle / label / shipper requirements"
+            />
+            <TextareaField
+              label="Testing Requirements"
+              id="specTests"
+              value={formData.specTests}
+              onChange={handleInputChange}
+              placeholder="In-process / finished goods tests to be run"
+            />
+            <TextareaField
+              label="Release Criteria"
+              id="specRelease"
+              value={formData.specRelease}
+              onChange={handleInputChange}
+              placeholder="Conditions for batch release"
+            />
           </div>
         );
 
       case 5: // Yield, Batch & Notes - renumbered from 6
         return (
           <div className="space-y-4">
-            <InputField label="Batch Lot Size" id="batch" value={formData.batch} onChange={handleInputChange} />
-            <InputField label="Yield %" id="yield" value={formData.yield} onChange={handleInputChange} />
-            <InputField label="Overage %" id="overage" value={formData.overage} onChange={handleInputChange} />
-            <InputField label="Production Line" id="line" value={formData.line} onChange={handleInputChange} />
-            <TextareaField label="General Notes" id="notes" value={formData.notes} onChange={handleInputChange} />
+            <InputField
+              label="Batch Lot Size"
+              id="batch"
+              value={formData.batch}
+              onChange={handleInputChange}
+              placeholder="e.g. 7000 kg / 12000 units"
+            />
+            <InputField
+              label="Yield %"
+              id="yield"
+              value={formData.yield}
+              onChange={handleInputChange}
+              placeholder="e.g. 98%"
+            />
+            <InputField
+              label="Overage %"
+              id="overage"
+              value={formData.overage}
+              onChange={handleInputChange}
+              placeholder="e.g. 3%"
+            />
+            <InputField
+              label="Production Line"
+              id="line"
+              value={formData.line}
+              onChange={handleInputChange}
+              placeholder="Line / equipment used"
+            />
+            <TextareaField
+              label="General Notes"
+              id="notes"
+              value={formData.notes}
+              onChange={handleInputChange}
+              placeholder="Additional process / quality notes"
+            />
           </div>
         );
 
@@ -365,9 +588,11 @@ const BOMRefactored: React.FC = () => {
     }
   };
 
+  if (pageTab === 'bmr') return <BmrDashboard onSwitchToBOM={() => setPageTab('bom')} />;
+
   return (
     <MasterFormBase
-      title="Bill of Materials (BOM) - Refactored"
+      title="Bill of Materials (BOM)"
       stages={stages}
       currentStage={currentStage}
       onStageChange={setCurrentStage}
@@ -381,8 +606,370 @@ const BOMRefactored: React.FC = () => {
       }}
       onSubmit={handleSubmit}
     >
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setPageTab('bmr')}
+          className="px-4 py-1.5 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700"
+        >
+          ← BMR Dashboard
+        </button>
+      </div>
       {renderStageContent()}
     </MasterFormBase>
+  );
+};
+
+// ─── BMR Dashboard ────────────────────────────────────────────────────────────
+const BMR_STAGES = [
+  'Draft', 'Confirmed', 'RM Issued', 'Mixing', 'IPT Check', 'Filling', 'QC Review', 'Completed'
+];
+
+const BmrDashboard: React.FC<{ onSwitchToBOM: () => void }> = ({ onSwitchToBOM }) => {
+  const { state, dispatch } = useGlobalState();
+  const { items } = useItems();
+  const bmrs: any[] = state.mfg?.bmrs || [];
+  const bprs: any[] = state.mfg?.bprs || [];
+  const salesOrders: any[] = state.orders?.salesOrders || [];
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ soId: '', batchSize: '', area: '', startDate: '', notes: '' });
+  const [printBmr, setPrintBmr] = useState<any>(null);
+  const [consolidatedMRIds, setConsolidatedMRIds] = useState<string[] | null>(null);
+  const [selectedBmrIds, setSelectedBmrIds] = useState<string[]>([]);
+
+  const selectedSO = salesOrders.find((s) => s.so === form.soId);
+
+  const handleCreateBMR = () => {
+    if (!form.soId || !form.batchSize) { alert('Select a Sales Order and batch size.'); return; }
+    const today = new Date().toISOString().slice(0, 10);
+    const bmrSeq = (state.mfg?.seq?.bmr || 1001);
+    const bmrId = `BMR-${bmrSeq}`;
+    const batchId = `BULK-${form.soId.replace('SO-', '')}-0${(state.mfg?.seq?.batch || 1)}`;
+    const batch = {
+      id: batchId, so: form.soId, clientName: selectedSO?.clientName || '',
+      product: selectedSO?.notes || form.soId, batchSize: Number(form.batchSize),
+      area: form.area, startDate: form.startDate || today, createdAt: today,
+    };
+    const bmr = {
+      id: bmrId, batchId, so: form.soId, clientName: selectedSO?.clientName || '',
+      product: selectedSO?.notes?.split('—')[0]?.trim() || form.soId,
+      batchSize: Number(form.batchSize), area: form.area,
+      stage: 0, createdAt: today, notes: form.notes,
+    };
+    dispatch({ type: 'CREATE_BMR_BATCH', payload: { batch, bmr } });
+    setShowCreate(false);
+    setForm({ soId: '', batchSize: '', area: '', startDate: '', notes: '' });
+  };
+
+  const advanceStage = (bmr: any) => {
+    if (bmr.stage >= BMR_STAGES.length - 1) return;
+    dispatch({ type: 'ADVANCE_BMR_STAGE', payload: { bmrId: bmr.id, newStage: bmr.stage + 1 } });
+  };
+
+  const completeQC = (bmr: any) => {
+    const _today = new Date().toISOString().slice(0, 10);
+    const bprSeq = (state.mfg?.seq?.bpr || 2001) + bprs.length;
+    const bprId = `BPR-${bprSeq}`;
+    dispatch({
+      type: 'COMPLETE_BPR_QC',
+      payload: { bprId, bmrId: bmr.id },
+    });
+  };
+
+  const stageColor = (stage: number) => {
+    if (stage === 0) return 'bg-gray-100 text-gray-700';
+    if (stage <= 2) return 'bg-blue-100 text-blue-700';
+    if (stage <= 5) return 'bg-amber-100 text-amber-700';
+    if (stage === 6) return 'bg-purple-100 text-purple-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+
+  return (
+    <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">BMR / BOM Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">Batch Manufacturing Records — track production batches stage by stage</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onSwitchToBOM}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+            + New BOM
+          </button>
+          <button onClick={() => setShowCreate(true)}
+            className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition">
+            + Create BMR
+          </button>
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Total BMRs', value: bmrs.length, color: 'text-gray-800' },
+          { label: 'In Production', value: bmrs.filter(b => b.stage > 0 && b.stage < 7).length, color: 'text-blue-600' },
+          { label: 'QC Review', value: bmrs.filter(b => b.stage === 6).length, color: 'text-purple-600' },
+          { label: 'Completed', value: bmrs.filter(b => b.stage === 7).length, color: 'text-emerald-600' },
+        ].map(kpi => (
+          <div key={kpi.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">{kpi.label}</p>
+            <p className={`text-3xl font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* BOM Masters Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-800">BOM Masters (from Items Master)</h2>
+            <span className="text-sm text-gray-500">
+              {items.filter(i => i.type === 'bom').length} BOM item(s)
+            </span>
+          </div>
+        </div>
+        {items.filter(i => i.type === 'bom').length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-sm text-gray-400">No BOM masters imported yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-900">
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Code</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Name</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Category</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Type</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>UOM</th>
+                  <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {items
+                  .filter(i => i.type === 'bom')
+                  .map((bom: any) => {
+                    const data = bom.data || {};
+                    return (
+                      <tr key={bom.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-6 py-4 font-mono font-bold text-gray-900">{bom.code || '-'}</td>
+                        <td className="px-6 py-4 font-semibold text-gray-800">{bom.name || '-'}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
+                            -
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{data.type || data.bomCategory || '-'}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">{data.bomUnit || '-'}</td>
+                        <td className="px-6 py-4 text-gray-600 text-xs">{bom.createdAt ? new Date(bom.createdAt).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* BMR Cards */}
+      {bmrs.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
+          <svg className="w-14 h-14 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <p className="font-semibold text-gray-600 text-lg">No BMRs yet</p>
+          <p className="text-sm text-gray-400 mt-1 mb-4">Click "+ Create BMR" to link a Sales Order to a production batch</p>
+          <button onClick={() => setShowCreate(true)}
+            className="px-6 py-2 bg-slate-800 text-white rounded-xl text-sm font-medium hover:bg-slate-700 transition">
+            + Create First BMR
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {bmrs.map((bmr: any) => (
+            <div key={bmr.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* BMR Header */}
+              <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-3 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono font-bold text-gray-800">{bmr.id}</span>
+                  <span className="text-gray-600 text-sm">{bmr.product}</span>
+                  <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${stageColor(bmr.stage)}`}>
+                    {BMR_STAGES[bmr.stage]}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-500 space-x-4">
+                  <span>SO: <span className="font-medium text-gray-700">{bmr.so}</span></span>
+                  <span>Batch: <span className="font-medium text-gray-700">{bmr.batchId}</span></span>
+                  <span>Size: <span className="font-medium text-gray-700">{new Intl.NumberFormat('en-IN').format(bmr.batchSize)}</span></span>
+                </div>
+              </div>
+
+              {/* Stage Progress Bar */}
+              <div className="px-5 py-3">
+                <div className="flex items-center gap-0.5 overflow-x-auto">
+                  {BMR_STAGES.map((s, i) => (
+                    <div key={s} className="flex-1 flex flex-col items-center min-w-15">
+                      <div className={`w-full h-2 rounded-sm ${i < bmr.stage ? 'bg-emerald-400' : i === bmr.stage ? 'bg-blue-500' : 'bg-gray-200'
+                        }`} />
+                      <span className={`text-[10px] mt-1 text-center leading-tight ${i === bmr.stage ? 'text-blue-600 font-semibold' : 'text-gray-400'
+                        }`}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="px-5 py-3 bg-gray-50/50 flex gap-2 flex-wrap items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedBmrIds.includes(bmr.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelectedBmrIds(prev => [...prev, bmr.id]);
+                    else setSelectedBmrIds(prev => prev.filter(id => id !== bmr.id));
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
+                {bmr.stage < 6 && (
+                  <button onClick={() => advanceStage(bmr)}
+                    className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition">
+                    → Advance to {BMR_STAGES[bmr.stage + 1]}
+                  </button>
+                )}
+                {bmr.stage === 6 && (
+                  <button onClick={() => completeQC(bmr)}
+                    className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition">
+                    ✓ Approve QC &amp; Complete BMR
+                  </button>
+                )}
+                {bmr.stage === 7 && (
+                  <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg">✓ BMR Completed</span>
+                )}
+                <button onClick={() => setPrintBmr(bmr)}
+                  className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-300 transition">
+                  🖨 Print BMR
+                </button>
+                {bmr.notes && <span className="text-xs text-gray-400 self-center ml-2">📝 {bmr.notes}</span>}
+              </div>
+            </div>
+          ))}
+
+          {/* Consolidated Material Request button */}
+          {selectedBmrIds.length > 0 && (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-sm text-gray-500">{selectedBmrIds.length} BMR(s) selected</span>
+              <button
+                onClick={() => setConsolidatedMRIds(selectedBmrIds)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+              >
+                📋 Consolidated Material Request
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* BPR Panel */}
+      {bprs.length > 0 && (
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-800 mb-3">Batch Packaging Records (BPR)</h3>
+          <div className="space-y-2">
+            {bprs.map((bpr: any) => (
+              <div key={bpr.id} className="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-gray-700 font-medium">{bpr.id}</span>
+                  <span className="text-gray-600">→ {bpr.bmrId}</span>
+                </div>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                  {bpr.stage === 4 ? 'QC Cleared' : `Stage ${bpr.stage}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Create BMR Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold text-gray-800">Create BMR / Batch</h2>
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* SO Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sales Order *</label>
+                <select value={form.soId} onChange={e => setForm(f => ({ ...f, soId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                  <option value="">Select SO...</option>
+                  {salesOrders.map((so: any) => (
+                    <option key={so.so} value={so.so}>{so.so} — {so.clientName} ({so.units?.toLocaleString()} units)</option>
+                  ))}
+                </select>
+                {selectedSO && (
+                  <p className="text-xs text-blue-600 mt-1">Status: {selectedSO.internalStatus} · Planning: {selectedSO.planning}%</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Batch Size (units) *</label>
+                <input type="number" value={form.batchSize} onChange={e => setForm(f => ({ ...f, batchSize: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="e.g. 7000" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturing Area</label>
+                  <select value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                    <option value="">Select...</option>
+                    <option>Line A – Creams</option>
+                    <option>Line B – Gels</option>
+                    <option>Line C – General</option>
+                    <option>Line D – Liquids</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  rows={2} placeholder="Any special instructions..." />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowCreate(false)}
+                  className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+                <button onClick={handleCreateBMR}
+                  className="flex-1 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-medium hover:bg-slate-700 transition">Create BMR</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BMR Print Template Modal */}
+      {printBmr && (
+        <BMRPrintTemplate bmr={printBmr} onClose={() => setPrintBmr(null)} />
+      )}
+
+      {/* Consolidated Material Request Modal */}
+      {consolidatedMRIds && (
+        <ConsolidatedMRModal
+          bmrIds={consolidatedMRIds}
+          onClose={() => { setConsolidatedMRIds(null); setSelectedBmrIds([]); }}
+        />
+      )}
+    </div>
   );
 };
 
@@ -437,7 +1024,8 @@ const TextareaField: React.FC<{
   value: any;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   rows?: number;
-}> = ({ label, id, value, onChange, rows = 3 }) => (
+  placeholder?: string;
+}> = ({ label, id, value, onChange, rows = 3, placeholder }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
     <textarea
@@ -445,6 +1033,7 @@ const TextareaField: React.FC<{
       value={value || ''}
       onChange={onChange}
       rows={rows}
+      placeholder={placeholder}
       className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     />
   </div>

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import logoFull from '../assets/logo/eilogofull.svg';
+import { useGlobalState } from '../context/GlobalStateContext';
 
 interface Notification {
   id: string;
@@ -31,6 +32,7 @@ interface Settings {
 }
 
 const TreasuryApp = () => {
+  const { state, dispatch } = useGlobalState();
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [notifications, setNotifications] = useState<Notification[]>([
     { id: '1', type: 'alert', title: 'Low Cash Balance', message: 'Cash position below ₹50L', timestamp: new Date(), read: false },
@@ -60,7 +62,7 @@ const TreasuryApp = () => {
     const interval = setInterval(() => {
       // Update last refresh time
       setLastRefreshTime(new Date());
-      
+
       // Simulate data refresh - in production, this would fetch fresh data from your API
       setNotifications(prev => {
         return prev.map(n => ({ ...n }));
@@ -112,6 +114,7 @@ const TreasuryApp = () => {
     'inflows-funding': 'Banks & Investors Inflows',
     'budgets': 'Budgets & Allocation',
     'settings': 'Admin & Zoho Books Sync',
+    'po-advances': 'PO Advance Requests',
   };
 
   const handleApproval = (paymentId: string, approved: boolean) => {
@@ -140,11 +143,11 @@ const TreasuryApp = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="flex h-screen bg-gray-50">
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
         <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 text-white hover:bg-slate-700 rounded-lg"
         >
@@ -160,7 +163,7 @@ const TreasuryApp = () => {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="md:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -168,19 +171,19 @@ const TreasuryApp = () => {
 
       {/* Sidebar Navigation */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 bg-gradient-to-b from-slate-800 to-slate-900 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl
-        transform transition-transform duration-300 ease-in-out
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        md:flex
-      `}>
+    fixed md:static inset-y-0 left-0 z-50
+    w-64 bg-slate-800 border-r border-gray-700 overflow-y-auto flex flex-col shadow-xl
+    transform transition-transform duration-300 ease-in-out
+    ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+    md:flex
+   `}>
         <div className="p-4 border-b border-gray-700 flex items-center justify-center">
           <img src={logoFull} alt="Esthetic Insights" className="h-12 object-contain" />
         </div>
         <div className="px-6 py-3 text-center border-b border-gray-700/50">
           <p className="text-xs text-gray-400 font-medium">Payments & Cashflow</p>
         </div>
-        
+
         <nav className="flex-1 px-3 space-y-2 py-4">
           {/* Overview */}
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest px-4 mb-3 mt-2">Overview</p>
@@ -188,11 +191,10 @@ const TreasuryApp = () => {
             <button
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                currentScreen === screen
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
-              }`}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                }`}
             >
               {screenTitles[screen]}
             </button>
@@ -204,15 +206,27 @@ const TreasuryApp = () => {
             <button
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                currentScreen === screen
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
-              }`}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                }`}
             >
               {screenTitles[screen]}
             </button>
           ))}
+          {/* PO Advances (linked from Procurement) */}
+          <button
+            onClick={() => { setCurrentScreen('po-advances'); setIsMobileMenuOpen(false); }}
+            className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-between ${currentScreen === 'po-advances'
+              ? 'bg-slate-800 text-white shadow-lg'
+              : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+              }`}
+          >
+            PO Advance Requests
+            {(state.po?.treasury?.length || 0) > 0 && (
+              <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{state.po.treasury.length}</span>
+            )}
+          </button>
 
           {/* Inward */}
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest px-4 mb-3 mt-6">Inward</p>
@@ -220,11 +234,10 @@ const TreasuryApp = () => {
             <button
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                currentScreen === screen
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
-              }`}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                }`}
             >
               {screenTitles[screen]}
             </button>
@@ -236,11 +249,10 @@ const TreasuryApp = () => {
             <button
               key={screen}
               onClick={() => { setCurrentScreen(screen); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                currentScreen === screen
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
-              }`}
+              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${currentScreen === screen
+                ? 'bg-slate-800 text-white shadow-lg'
+                : 'text-gray-300 hover:bg-slate-700/50 hover:text-white'
+                }`}
             >
               {screenTitles[screen]}
             </button>
@@ -249,7 +261,7 @@ const TreasuryApp = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-gray-100 pt-14 md:pt-0">
+      <main className="flex-1 overflow-y-auto bg-gray-50 pt-14 md:pt-0">
         <div className="p-4 md:p-8">
           {/* Header with Notifications & Search */}
           <div className="mb-6 md:mb-8">
@@ -269,7 +281,7 @@ const TreasuryApp = () => {
                   )}
                 </div>
               </div>
-              
+
               {/* Notification Bell */}
               <div className="relative" ref={notificationRef} onMouseEnter={() => setShowNotifications(true)} onMouseLeave={() => setShowNotifications(false)}>
                 <button
@@ -280,14 +292,14 @@ const TreasuryApp = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                   {unreadCount > 0 && (
-                    <span className="absolute top-0 right-0 px-2 py-1 bg-gradient-to-r from-red-600 to-red-500 text-white text-xs rounded-full font-bold shadow-lg">{unreadCount}</span>
+                    <span className="absolute top-0 right-0 px-2 py-1 bg-red-600 text-white text-xs rounded-full font-bold shadow-lg">{unreadCount}</span>
                   )}
                 </button>
 
                 {/* Notifications Dropdown - stays open until bell is clicked again */}
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-                    <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-xl">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl">
                       <h3 className="font-bold text-gray-900">Notifications</h3>
                       {unreadCount > 0 && <p className="text-xs text-blue-600 font-medium mt-1">{unreadCount} new</p>}
                     </div>
@@ -295,38 +307,33 @@ const TreasuryApp = () => {
                       <div className="p-8 text-center text-gray-400 text-sm">No notifications</div>
                     ) : (
                       notifications.map(notif => (
-                        <div key={notif.id} className={`p-4 border-b transition-colors ${
-                          notif.type === 'alert' ? 'bg-red-50 border-red-100 hover:bg-red-100' :
+                        <div key={notif.id} className={`p-4 border-b transition-colors ${notif.type === 'alert' ? 'bg-red-50 border-red-100 hover:bg-red-100' :
                           notif.type === 'warning' ? 'bg-yellow-50 border-yellow-100 hover:bg-yellow-100' :
-                          notif.type === 'success' ? 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100' :
-                          'bg-blue-50 border-blue-100 hover:bg-blue-100'
-                        }`}>
+                            notif.type === 'success' ? 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100' :
+                              'bg-blue-50 border-blue-100 hover:bg-blue-100'
+                          }`}>
                           <div className="flex items-start gap-3">
-                            <div className={`px-2.5 py-1.5 rounded-lg flex-shrink-0 ${
-                              notif.type === 'alert' ? 'bg-red-200 text-red-700' :
+                            <div className={`px-2.5 py-1.5 rounded-lg shrink-0 ${notif.type === 'alert' ? 'bg-red-200 text-red-700' :
                               notif.type === 'warning' ? 'bg-yellow-200 text-yellow-700' :
-                              notif.type === 'success' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
-                            }`}>
+                                notif.type === 'success' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
+                              }`}>
                               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                               </svg>
                             </div>
                             <div className="flex-1">
-                              <p className={`font-semibold text-sm ${
-                                notif.type === 'alert' ? 'text-red-900' :
+                              <p className={`font-semibold text-sm ${notif.type === 'alert' ? 'text-red-900' :
                                 notif.type === 'warning' ? 'text-yellow-900' :
-                                notif.type === 'success' ? 'text-emerald-900' : 'text-blue-900'
-                              }`}>{notif.title}</p>
-                              <p className={`text-xs mt-1 ${
-                                notif.type === 'alert' ? 'text-red-700' :
+                                  notif.type === 'success' ? 'text-emerald-900' : 'text-blue-900'
+                                }`}>{notif.title}</p>
+                              <p className={`text-xs mt-1 ${notif.type === 'alert' ? 'text-red-700' :
                                 notif.type === 'warning' ? 'text-yellow-700' :
-                                notif.type === 'success' ? 'text-emerald-700' : 'text-blue-700'
-                              }`}>{notif.message}</p>
-                              <p className={`text-xs mt-2 ${
-                                notif.type === 'alert' ? 'text-red-600' :
+                                  notif.type === 'success' ? 'text-emerald-700' : 'text-blue-700'
+                                }`}>{notif.message}</p>
+                              <p className={`text-xs mt-2 ${notif.type === 'alert' ? 'text-red-600' :
                                 notif.type === 'warning' ? 'text-yellow-600' :
-                                notif.type === 'success' ? 'text-emerald-600' : 'text-blue-600'
-                              }`}>{notif.timestamp.toLocaleTimeString()}</p>
+                                  notif.type === 'success' ? 'text-emerald-600' : 'text-blue-600'
+                                }`}>{notif.timestamp.toLocaleTimeString()}</p>
                             </div>
                           </div>
                         </div>
@@ -343,9 +350,9 @@ const TreasuryApp = () => {
             <>
               {/* Alert Bar */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-red-50 border border-red-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
-                    <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6 text-red-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     <div>
@@ -354,9 +361,9 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                 </div>
-                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-4">
-                    <svg className="w-6 h-6 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6 text-yellow-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     <div>
@@ -369,7 +376,7 @@ const TreasuryApp = () => {
 
               {/* Advanced Dashboard Widgets */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-red-50 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-red-600 uppercase tracking-wide">Outstanding Payables</div>
@@ -383,12 +390,12 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-red-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-red-500 to-red-600 w-3/4"></div>
+                    <div className="h-full bg-red-500 w-3/4"></div>
                   </div>
                   <p className="text-xs text-red-600 font-medium mt-3">↑ 12% from last month</p>
                 </div>
 
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-blue-600 uppercase tracking-wide">Outstanding Receivables</div>
@@ -402,31 +409,31 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-blue-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-blue-600 w-1/2"></div>
+                    <div className="h-full bg-blue-500 w-1/2"></div>
                   </div>
                   <p className="text-xs text-blue-600 font-medium mt-3">↓ 5% from last month</p>
                 </div>
 
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl shadow-md border border-amber-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-gray-50 rounded-xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <div className="text-xs font-bold text-amber-600 uppercase tracking-wide">This Week – Outflows</div>
+                      <div className="text-xs font-bold text-slate-800 uppercase tracking-wide">This Week – Outflows</div>
                       <div className="text-2xl font-bold text-gray-900 mt-2">₹ 18.75L</div>
                       <div className="text-xs text-gray-600 mt-2">23 payments</div>
                     </div>
-                    <div className="w-14 h-14 bg-amber-200 rounded-lg flex items-center justify-center">
-                      <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-14 h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                      <svg className="w-7 h-7 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
                   </div>
                   <div className="mt-4 flex gap-1.5">
-                    {[...Array(5)].map((_, i) => <div key={i} className={`flex-1 h-2 rounded-full ${i < 3 ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 'bg-amber-200'}`}></div>)}
+                    {[...Array(5)].map((_, i) => <div key={i} className={`flex-1 h-2 rounded-full ${i < 3 ? 'bg-slate-800' : 'bg-gray-200'}`}></div>)}
                   </div>
-                  <p className="text-xs text-amber-600 font-medium mt-3">3 high priority</p>
+                  <p className="text-xs text-slate-800 font-medium mt-3">3 high priority</p>
                 </div>
 
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all duration-300">
+                <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="text-xs font-bold text-emerald-600 uppercase tracking-wide">Net 30-Day</div>
@@ -440,7 +447,7 @@ const TreasuryApp = () => {
                     </div>
                   </div>
                   <div className="mt-4 h-2 bg-emerald-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 w-full"></div>
+                    <div className="h-full bg-emerald-500 w-full"></div>
                   </div>
                   <p className="text-xs text-emerald-600 font-medium mt-3">Comfortable position</p>
                 </div>
@@ -448,17 +455,17 @@ const TreasuryApp = () => {
 
               {/* Quick Stats */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl shadow-md border border-amber-200 p-6 hover:shadow-lg transition-all">
-                  <p className="text-xs font-bold text-amber-600 uppercase">Pending Approvals</p>
+                <div className="bg-gray-50 rounded-xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-all">
+                  <p className="text-xs font-bold text-slate-800 uppercase">Pending Approvals</p>
                   <p className="text-3xl font-bold text-gray-900 mt-3">5</p>
-                  <p className="text-xs text-amber-600 font-medium mt-2">Action required</p>
+                  <p className="text-xs text-slate-800 font-medium mt-2">Action required</p>
                 </div>
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
+                <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
                   <p className="text-xs font-bold text-blue-600 uppercase">This Month Paid</p>
                   <p className="text-3xl font-bold text-gray-900 mt-3">₹ 65.5L</p>
                   <p className="text-xs text-blue-600 font-medium mt-2">Across 42 vendors</p>
                 </div>
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
+                <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
                   <p className="text-xs font-bold text-emerald-600 uppercase">Avg. Days to Pay</p>
                   <p className="text-3xl font-bold text-gray-900 mt-3">24 days</p>
                   <p className="text-xs text-emerald-600 font-medium mt-2">Within target</p>
@@ -472,17 +479,17 @@ const TreasuryApp = () => {
           {/* Cashflow Screen */}
           {currentScreen === 'cashflow' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-emerald-50 rounded-xl shadow-md border border-emerald-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-emerald-600 uppercase tracking-wide">Expected Inflows</div>
                 <div className="text-3xl font-bold text-emerald-700 mt-3">₹ 1,30,50,000</div>
                 <div className="text-sm text-gray-600 mt-2">Clients · Investors · Banks</div>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-red-50 rounded-xl shadow-md border border-red-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-red-600 uppercase tracking-wide">Scheduled Outflows</div>
                 <div className="text-3xl font-bold text-red-700 mt-3">₹ 88,30,000</div>
                 <div className="text-sm text-gray-600 mt-2">Vendors + Salaries + Statutory</div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
+              <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all">
                 <div className="text-xs font-bold text-blue-600 uppercase tracking-wide">Projected Net</div>
                 <div className="text-3xl font-bold text-blue-700 mt-3">+ ₹ 42,20,000</div>
                 <div className="text-sm text-gray-600 mt-2">Comfortable position</div>
@@ -495,7 +502,7 @@ const TreasuryApp = () => {
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-x-auto hover:shadow-lg transition-all">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-300 bg-gradient-to-r from-gray-50 to-blue-50">
+                  <tr className="border-b border-gray-300 bg-gray-50">
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Account</th>
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Type</th>
                     <th className="px-6 py-4 text-left font-bold text-gray-900">Balance</th>
@@ -511,10 +518,10 @@ const TreasuryApp = () => {
                     <td className="px-6 py-4 text-gray-700">Axis Bank</td>
                     <td className="px-6 py-4 text-gray-700">Main collections & payouts</td>
                   </tr>
-                  <tr className="border-b border-gray-200 hover:bg-amber-50 transition-colors">
+                  <tr className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-gray-900 font-medium">EI – OD Limit</td>
-                    <td className="px-6 py-4"><span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-lg border border-amber-200">Working Capital</span></td>
-                    <td className="px-6 py-4 font-semibold text-amber-600">₹ 40,00,000 used</td>
+                    <td className="px-6 py-4"><span className="px-3 py-1 bg-gray-100 text-slate-900 text-xs font-medium rounded-lg border border-gray-200">Working Capital</span></td>
+                    <td className="px-6 py-4 font-semibold text-slate-800">₹ 40,00,000 used</td>
                     <td className="px-6 py-4 text-gray-700">SBI</td>
                     <td className="px-6 py-4 text-gray-700">Limit 1.5 Cr</td>
                   </tr>
@@ -527,7 +534,7 @@ const TreasuryApp = () => {
           {currentScreen === 'approvals' && (
             <>
               <div className="flex gap-2 mb-6 flex-wrap">
-                <button className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all hover:from-blue-700 hover:to-blue-600">Pending (5)</button>
+                <button className="px-5 py-2.5 bg-slate-800 text-white rounded-lg text-sm font-medium border border-blue-300 hover:shadow-lg transition-all">Pending (5)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Approved (12)</button>
                 <button className="px-5 py-2.5 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors">Rejected (2)</button>
               </div>
@@ -539,19 +546,17 @@ const TreasuryApp = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-3">
                           <h3 className="font-bold text-lg text-gray-900">{payment.vendor}</h3>
-                          <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-                            payment.priority === 'high' ? 'bg-red-100 text-red-700 border-red-300' :
+                          <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${payment.priority === 'high' ? 'bg-red-100 text-red-700 border-red-300' :
                             payment.priority === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                            'bg-gray-100 text-gray-700 border-gray-300'
-                          }`}>
+                              'bg-gray-100 text-gray-700 border-gray-300'
+                            }`}>
                             {payment.priority === 'high' ? 'High Priority' : payment.priority === 'medium' ? 'Medium Priority' : 'Low Priority'}
                           </span>
-                          <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-                            payment.status === 'pending' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                          <span className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${payment.status === 'pending' ? 'bg-blue-100 text-blue-700 border-blue-300' :
                             payment.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                            payment.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
-                            'bg-purple-100 text-purple-700 border-purple-300'
-                          }`}>
+                              payment.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
+                                'bg-purple-100 text-purple-700 border-purple-300'
+                            }`}>
                             {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                           </span>
                         </div>
@@ -582,11 +587,10 @@ const TreasuryApp = () => {
                       <div className="space-y-3">
                         {payment.approvals.map((approval, idx) => (
                           <div key={idx} className="flex items-center gap-3">
-                            <div className={`px-3 py-2 rounded-lg text-xs font-medium border ${
-                              approval.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                            <div className={`px-3 py-2 rounded-lg text-xs font-medium border ${approval.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
                               approval.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-300' :
-                              'bg-gray-100 text-gray-700 border-gray-300'
-                            }`}>
+                                'bg-gray-100 text-gray-700 border-gray-300'
+                              }`}>
                               Level {approval.level}
                             </div>
                             <div className="flex-1">
@@ -611,7 +615,7 @@ const TreasuryApp = () => {
                             setSelectedPayment(payment);
                             handleApproval(payment.id, true);
                           }}
-                          className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white text-sm font-bold rounded-lg transition-all hover:shadow-lg"
+                          className="flex-1 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-lg transition-all hover:shadow-lg"
                         >
                           ✓ Approve Payment
                         </button>
@@ -687,6 +691,79 @@ const TreasuryApp = () => {
           )}
 
 
+
+          {/* PO Advance Requests Screen */}
+          {currentScreen === 'po-advances' && (() => {
+            const treasuryPOs: any[] = state.po?.treasury || [];
+            const plannedPOs: any[] = state.po?.planned || [];
+
+            const issuePO = (po: any) => {
+              const itemUpdates = (po.lines || []).map((l: any) => ({
+                itemId: l.itemId,
+                inTransitDelta: l.qty,
+              }));
+              dispatch({ type: 'ISSUE_PO_FROM_TREASURY', payload: { poId: po.id, itemUpdates } });
+            };
+
+            const fmtMoney = (n: number) => '₹' + new Intl.NumberFormat('en-IN').format(Math.round(n));
+
+            return (
+              <div className="space-y-6">
+                {/* Treasury POs awaiting advance approval */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">POs Awaiting Advance Approval</h3>
+                  {treasuryPOs.length === 0 ? (
+                    <p className="text-gray-400 text-sm py-6 text-center">No POs awaiting advance payment. Create planned lines from Procurement → SalesAndPurchase.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {treasuryPOs.map((po: any) => {
+                        const total = (po.lines || []).reduce((s: number, l: any) => s + l.qty * l.unit, 0);
+                        const advPct = state.masters?.paymentTerms?.find((t: any) => t.id === po.termsId)?.advancePct || 0;
+                        const advAmt = Math.round(total * advPct / 100);
+                        return (
+                          <div key={po.id} className="border border-gray-200 rounded-xl p-4">
+                            <div className="flex items-start justify-between flex-wrap gap-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="font-mono font-bold text-gray-800">{po.id}</span>
+                                  <span className="font-semibold text-gray-700">{po.vendor}</span>
+                                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium">Advance Pending</span>
+                                </div>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                  {(po.lines || []).map((l: any) => (
+                                    <p key={l.itemId}>{l.itemName} — {new Intl.NumberFormat('en-IN').format(l.qty)} {l.uom} @ ₹{l.unit}</p>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">PO Value</p>
+                                <p className="text-xl font-bold text-gray-800">{fmtMoney(total)}</p>
+                                {advPct > 0 && <p className="text-sm text-orange-600 font-medium">{advPct}% advance = {fmtMoney(advAmt)}</p>}
+                                <button
+                                  onClick={() => issuePO(po)}
+                                  className="mt-3 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition"
+                                >
+                                  ✓ Approve & Issue PO
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Planned lines waiting to be converted to Draft POs */}
+                {plannedPOs.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <h4 className="font-semibold text-blue-800 mb-2 text-sm">📋 PO Planned Stage — {plannedPOs.length} lines pending Draft conversion</h4>
+                    <p className="text-xs text-blue-600">These planned lines from Procurement are waiting to be grouped into Draft POs. Visit Procurement tab in Sales & Purchase to manage them.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Budgets Screen */}
           {currentScreen === 'budgets' && (
@@ -801,7 +878,7 @@ const TreasuryApp = () => {
                       <input
                         type="checkbox"
                         checked={visible}
-                        onChange={(e) => setVisibleColumns({...visibleColumns, [col]: e.target.checked})}
+                        onChange={(e) => setVisibleColumns({ ...visibleColumns, [col]: e.target.checked })}
                         className="rounded"
                       />
                       <label className="text-sm font-medium text-gray-700 capitalize">{col}</label>

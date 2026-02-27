@@ -1,0 +1,647 @@
+================================================================================
+          ESTHETIC INSIGHTS - EI ADMIN PANEL
+          COMPLETE DEVELOPMENT LOG (DETAILED)
+================================================================================
+  Project    : EI-Admin (Admin Panel + PIS + Order Hub)
+  Repository : github.com/sprdlx/EI-Admin
+  Period     : December 31, 2025 – February 26, 2026
+  Tech Stack : React 18, TypeScript, Vite, Tailwind CSS, React Query
+================================================================================
+
+TEAM MEMBERS
+================================================================================
+  Name               | Git Username(s)              | Role
+  -------------------|------------------------------|---------------------------
+  Pujith Soma        | somapujith, Pujith Soma      | Frontend Lead / Full-stack
+  Ajith Prudhvi      | Ajithprudhvi, Ajith Prudhvi  | Frontend / Project Setup
+  Dhruv              | dhxmo, dhrv                  | DevOps / Backend / Infra
+  Rakesh             | rakeshsprdlx                 | Frontend / Bug Fixes
+  SPR DLX Studios    | SPR DLX Studios (GitHub org) | PR merges via GitHub
+  Netlify Bot        | netlify[bot]                 | Automated deployment fixes
+================================================================================
+
+BRANCH STRUCTURE
+================================================================================
+  Branch                  | Purpose                          | Primary Author(s)
+  ------------------------|----------------------------------|--------------------
+  master                  | Production/stable                | Ajithprudhvi (init)
+  main                    | Primary integration              | Team
+  dev                     | Development (ported repo)        | dhxmo
+  fix/server              | Server-side & roles fixes        | somapujith
+  feat/changes            | Latest feature work              | somapujith, dhrv
+  feat/userMgmt           | User & role mgmt backend         | dhxmo
+  feat/shivaIntegration   | Shiva integration features       | dhrv
+  Pujith                  | Pujith's development branch      | somapujith
+  aj                      | Ajith's responsive UI branch     | Ajithprudhvi
+  feature_rakesh          | Rakesh's fixes branch            | rakeshsprdlx
+================================================================================
+
+
+========================================================================================================================
+                              COMPLETE DATE-WISE COMMIT LOG
+========================================================================================================================
+
+
+========================================================================================================
+DECEMBER 31, 2025 (Wednesday) — PROJECT INITIALIZATION & SETUP
+========================================================================================================
+Total Commits: ~40  |  Contributors: Ajithprudhvi, somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  00:22 AM    Ajithprudhvi    master              dfb82cf   Initial commit – React + TypeScript + Vite project scaffold
+  00:26 AM    Ajithprudhvi    master              fc86600   Second commit – basic project configuration
+  00:27 AM    Ajithprudhvi    master              0185b67   Added React Router DOM for page navigation
+  02:01 AM    Ajithprudhvi    master              d273422   Built sidebar component (v1)
+  02:02 AM    Ajithprudhvi    master              e43664c   Sidebar component iteration 2 (sidebar2)
+  02:34 AM    Ajithprudhvi    master              7036d63   Sidebar component iteration 3 (side3)
+  02:41 AM    Ajithprudhvi    master              da0b04c   Sidebar component iteration 5 (sidebar5) – finalized layout
+  02:46 AM    somapujith      Pujith              0c1e153   Created Order Management page
+  02:48 AM    Ajith Prudhvi   master (GitHub)     d188562   MERGED Pull Request #1 from Pujith branch
+  02:51 AM    somapujith      Pujith              619ec89   Added initial pages structure
+  02:53 AM    Ajith Prudhvi   master (GitHub)     5e29dc4   MERGED Pull Request #2 from Pujith branch
+  03:13 AM    somapujith      Pujith              a5edb34   Added Order Management system table page
+  03:15 AM    somapujith      Pujith              2c9c808   Order Management pages added (iteration 1)
+  03:20 AM    somapujith      Pujith              cd357a9   Made additional changes to order management
+  03:21 AM    Ajith Prudhvi   master (GitHub)     4bf4411   MERGED Pull Request #3 from Pujith branch
+  03:23 AM    somapujith      Pujith              467b804   General changes and improvements
+  03:25 AM    Ajith Prudhvi   master (GitHub)     5f050d7   MERGED Pull Request #4 from Pujith branch
+  03:27 AM    somapujith      Pujith              c8e8db7   Fixed import paths, created order management table component
+  03:27 AM    Ajith Prudhvi   master (GitHub)     2fc58da   MERGED Pull Request #5 from Pujith branch
+  03:29 AM    somapujith      Pujith              aca6726   Fixed import paths and order management table component (v2)
+  03:31 AM    Ajithprudhvi    master              8b67e04   Fixed logo pathing and branding assets
+  03:33 AM    Ajith Prudhvi   master (GitHub)     9f170d2   MERGED Pull Request #6 from Pujith branch
+  03:34 AM    somapujith      Pujith              f386712   Fixed import path casing in App.tsx (case-sensitivity fix)
+  03:49 AM    somapujith      Pujith              5be9d40   Added comprehensive User Management system (Add User + View Users)
+  04:07 AM    somapujith      Pujith              6c15d11   Added comprehensive Role Management system (Create Role + View Roles)
+  04:11 AM    somapujith      Pujith              cfb1a5d   Role management updates and refinements
+  04:13 AM    Pujith Soma     master (GitHub)     3910553   MERGED Pull Request #7 from Pujith branch
+  09:06 AM    somapujith      Pujith              23e81cc   Sidebar configured with navigation routes
+  09:22 AM    somapujith      Pujith              365929a   All changes saved (consolidated commit)
+  09:30 AM    Ajith Prudhvi   master (GitHub)     f459838   MERGED Pull Request #8 from master
+  09:34 AM    somapujith      Pujith              89c80b1   All deployment errors eradicated (build fixes)
+  09:38 AM    somapujith      Pujith              b63031d   Push (deployment verification)
+  09:47 AM    Ajith Prudhvi   master (GitHub)     e2c8f27   MERGED Pull Request #9 from Pujith branch
+  09:51 AM    Ajithprudhvi    master              e998c79   Added forceConsistentCasingInFileNames to tsconfig
+  09:52 AM    Ajith Prudhvi   master (GitHub)     c84915e   MERGED Pull Request #10 from Pujith branch
+  10:06 AM    Ajithprudhvi    aj                  b68b27d   Added responsive dashboard, mobile sidebar, responsive components
+  10:09 AM    Ajithprudhvi    aj                  ee110e3   Mobile-first news/updates layout
+  10:11 AM    Ajithprudhvi    master              a35d638   Removed VITE_API_URL from vercel.json (security)
+  10:40 AM    Ajithprudhvi    master              5d480cf   New design implementation for dashboard
+  11:03 AM    Ajithprudhvi    master              7db5b27   Added modal system components
+
+  SUMMARY: Project scaffolded from scratch. Sidebar navigation built (5 iterations).
+           Order Management table pages created. User Management and Role Management
+           systems implemented. Responsive dashboard added. 10 Pull Requests merged.
+           Deployment configured and errors fixed.
+
+
+========================================================================================================
+JANUARY 1, 2026 (Thursday) — ENQUIRY MANAGEMENT & ROLES
+========================================================================================================
+Total Commits: 5  |  Contributors: somapujith, Ajithprudhvi, rakeshsprdlx
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  01:36 PM    somapujith      Pujith              28987bd   Enquiry Management page completed (first version)
+  01:40 PM    rakeshsprdlx    master (GitHub)     68ef0db   MERGED Pull Request #11 from Pujith branch
+  02:11 PM    rakeshsprdlx    feature_rakesh      b65c8b6   Updated roles list functionality
+  02:13 PM    Pujith Soma     master (GitHub)     ae565e1   MERGED Pull Request #12 from feature_rakesh branch
+  08:14 PM    Ajithprudhvi    master              534b86d   Enquiry management component (Ajith's implementation)
+
+  SUMMARY: Enquiry Management page built by Pujith, merged via Rakesh.
+           Rakesh updated the roles list. Ajith added enquiry management component.
+
+
+========================================================================================================
+JANUARY 3, 2026 (Saturday) — ENQUIRY COMPLETION & INPUT FIX
+========================================================================================================
+Total Commits: 4  |  Contributors: somapujith, rakeshsprdlx
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  03:09 PM    somapujith      Pujith              df63ba9   Completed Enquiry Management Page + added Dashboard feature for Order Management
+  04:13 PM    rakeshsprdlx    master (GitHub)     2c86cd0   MERGED Pull Request #13 from Pujith branch
+  04:40 PM    rakeshsprdlx    feature_rakesh      72eb24f   BUG FIX: Stop input fields from losing focus after one character
+  04:41 PM    rakeshsprdlx    master (GitHub)     27fcf4a   MERGED Pull Request #14 from feature_rakesh branch
+
+  SUMMARY: Enquiry Management finalized with dashboard features. Critical input
+           focus bug fixed by Rakesh (inputs were losing focus after 1 character).
+
+
+========================================================================================================
+JANUARY 4, 2026 (Sunday) — REVIEW & FIXES
+========================================================================================================
+Total Commits: 1  |  Contributors: Ajithprudhvi
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:23 PM    Ajithprudhvi    master              87939f4   Enquiry management and order management changes – review and fixes
+
+  SUMMARY: Ajith reviewed and fixed issues in both enquiry and order management modules.
+
+
+========================================================================================================
+JANUARY 5, 2026 (Monday) — NEW PAGES
+========================================================================================================
+Total Commits: 2  |  Contributors: somapujith, Ajith Prudhvi
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:56 PM    somapujith      Pujith              d426f9d   Added new pages to the application
+  02:58 PM    Ajith Prudhvi   master (GitHub)     c280a53   MERGED Pull Request #15 from Pujith branch
+
+  SUMMARY: Additional pages added by Pujith and merged into master. This was
+           the last PR on the original Ajithprudhvi/EI-Admin repository.
+
+
+========================================================================================================
+JANUARY 7, 2026 (Wednesday) — REPOSITORY MIGRATION
+========================================================================================================
+Total Commits: 2  |  Contributors: dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  04:13 PM    dhxmo           dev                 8fbde46   First commit on new sprdlx/EI-Admin repository
+  04:26 PM    dhxmo           dev                 02b4579   Ported over entire project from private repo of @Ajithprudhvi
+
+  SUMMARY: Dhruv migrated the entire codebase from Ajithprudhvi's private repo
+           to the new sprdlx organization repository (sprdlx/EI-Admin).
+
+  *** NO COMMITS: January 8–12, 2026 ***
+
+
+========================================================================================================
+JANUARY 13, 2026 (Monday) — PIS INTEGRATION (MAJOR FEATURE DAY)
+========================================================================================================
+Total Commits: 15  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  09:13 PM    somapujith      fix/server          b5ce9bd   Initial push before committing PIS changes
+  09:17 PM    somapujith      fix/server          0f4fc4c   Adding things (preliminary PIS work)
+  09:32 PM    somapujith      fix/server          6a5cd8d   Added PIS page and sidebar navigation entry
+  09:32 PM    somapujith      fix/server          fb4495a   Merged 'main' branch from GitHub into fix/server
+  10:12 PM    somapujith      fix/server          e0ebe8e   Pushed PIS into Admin Panel (first integration)
+  10:18 PM    somapujith      fix/server          fd56821   Finished merge with origin/main
+  10:27 PM    somapujith      fix/server          d5b641f   Added full-page role edit with animated sidebar + user management with protected passwords
+  10:28 PM    somapujith      fix/server          15c38e8   PIS opens in new tab with toast notification, removed duplicate PIS sidebar link
+  10:38 PM    somapujith      fix/server          5d8964f   Replaced PIS integration with original PIS repo – standalone page with own sidebar/layout, opens in new tab
+  10:44 PM    somapujith      fix/server          a76c090   Removed PIS login authentication – role-based access from Admin panel instead
+  10:55 PM    somapujith      fix/server          f9cc5fa   Polished PIS UI: rounded corners, shadows, cleaner styling synced with Admin panel
+  11:00 PM    somapujith      fix/server          9d12563   Updated PIS header: removed duplicate logo, added "PIS Management System" text with Red Hat Mono font
+  11:03 PM    somapujith      fix/server          7340cc7   Removed standalone logout buttons – kept logout only in user dropdown
+  11:06 PM    somapujith      fix/server          a8e4efd   Added USE_MOCK_DATA flag to disable API calls and use mock data only
+  11:08 PM    somapujith      fix/server          6046e50   Replaced header font with Archivo
+
+  SUMMARY: Pujith integrated the Product Information System (PIS) as a standalone
+           module within the admin panel. PIS opens in its own tab with its own
+           sidebar, header, and dashboard. Removed PIS's own login system – it now
+           inherits role-based access from the Admin panel. UI polished to match
+           the admin panel's style. Mock data flag added for development.
+
+
+========================================================================================================
+JANUARY 14, 2026 (Tuesday) — ORDER HUB & PIS UPDATES + PR MERGES
+========================================================================================================
+Total Commits: 7  |  Contributors: somapujith, Pujith Soma (GitHub)
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:03 AM    somapujith      fix/server          fbbc99e   Updated PIS and role management (maintenance)
+  02:26 AM    somapujith      fix/server          455fc1e   Added Order Hub with audit history and action buttons
+  02:26 AM    Pujith Soma     main (GitHub)       e14550c   MERGED Pull Request #2 from master branch
+  08:12 PM    somapujith      Pujith              3d43ca3   Updated from Pujith development branch (synced all work)
+  08:15 PM    Pujith Soma     main (GitHub)       679a84c   MERGED Pull Request #3 from main branch
+  08:16 PM    Pujith Soma     main (GitHub)       d2a0e38   MERGED Pull Request #4 from master branch
+  08:27 PM    Pujith Soma     main (GitHub)       5f02eb8   MERGED Pull Request #5 from Pujith branch
+  08:28 PM    Pujith Soma     master (GitHub)     bf2105d   MERGED Pull Request #6 from main branch
+
+  SUMMARY: Order Hub added with audit history tracking. Multiple PRs merged to
+           sync all branches (master, main, Pujith). PIS and role management updated.
+
+
+========================================================================================================
+JANUARY 16, 2026 (Thursday) — DEPLOYMENT FIX & SERVER CLEANUP
+========================================================================================================
+Total Commits: 4  |  Contributors: somapujith, dhxmo, netlify[bot], SPR DLX Studios
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:03 AM    somapujith      fix/server          82c63c1   Added Production Tracker filter and search functionality
+  12:57 AM    dhxmo           master              85dba34   Removed server submodule (cleaning up repo structure)
+  02:12 PM    netlify[bot]    main (automated)    222615f   FIX: PIS page not displaying on Netlify deployment despite working locally
+  07:44 PM    SPR DLX Studios main (GitHub)       a6a029b   MERGED Pull Request #7 (agent-working-locally-3225) – Netlify fix
+
+  SUMMARY: Production Tracker got filtering. Server submodule removed by Dhruv.
+           Netlify deployment issue fixed – PIS page was not rendering on deploy.
+
+
+========================================================================================================
+JANUARY 17, 2026 (Friday) — ITEMS MASTER & VENDOR/CLIENT UI
+========================================================================================================
+Total Commits: 4  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:29 AM    somapujith      fix/server          94df697   Added Items Master page with context management and form integration
+  06:52 AM    somapujith      fix/server          a4de79c   Updated Vendor/Client UI to match amber tool theme (buttons, focus, modal, progress bar, links)
+  09:43 AM    dhxmo           master              71fc543   Updated README for deployment instructions
+  09:45 AM    dhxmo           master              9a0b1c7   Removed server submodule config files
+
+  SUMMARY: Items Master page created with full context management. Vendor/Client
+           UI restyled to amber theme. Dhruv cleaned up server submodule configs.
+
+  *** NO COMMITS: January 18, 2026 (Saturday) ***
+
+
+========================================================================================================
+JANUARY 19, 2026 (Sunday) — BOM CHANGES
+========================================================================================================
+Total Commits: 1  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:36 PM    somapujith      fix/server          4cf2b04   Made changes in Bill of Materials (BOM) module
+
+  SUMMARY: BOM module updated.
+
+
+========================================================================================================
+JANUARY 20, 2026 (Monday) — TREASURY MODULE
+========================================================================================================
+Total Commits: 2  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  03:49 AM    somapujith      fix/server          8ca8b33   Added Treasury component to sidebar with transaction management
+  04:44 AM    somapujith      fix/server          a040c9e   Treasury app UI improvements and cleanup
+
+  SUMMARY: Treasury module fully implemented – sidebar entry, transaction
+           management, and UI polished.
+
+
+========================================================================================================
+JANUARY 21, 2026 (Tuesday) — MAJOR FEATURE DAY (Order Hub, Unified UI, Sales & Purchase)
+========================================================================================================
+Total Commits: 19  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  10:57 AM    dhxmo           fix/server          6af308d   Removed submodule references (infrastructure cleanup)
+  02:01 PM    somapujith      fix/server          845d272   Enhanced Sales and Purchase Order forms with detailed fields, item table calculations, and billing details
+  02:47 PM    somapujith      fix/server          6a22654   Created unified UI component system with consistent theming and styling
+  02:52 PM    somapujith      fix/server          438e19e   Migrated role management components to unified UI system (ViewRoles, RoleDetailPopup, RolePermissionsDisplay)
+  08:54 PM    somapujith      fix/server          bb6d78e   Migrated user management, order management, and dashboard components to unified UI system
+  09:02 PM    somapujith      fix/server          0f2461a   Added order status tracking columns (Order Status, Invoiced, Payment, Packed, Shipped, Delivery Method) with colored indicators to Sales & Purchase dashboard
+  09:04 PM    somapujith      fix/server          b54879b   Added editable order status fields in modal for teams to update Order Status, Invoiced, Payment, Packed, Shipped, Delivery Method
+  09:13 PM    somapujith      fix/server          b9968cc   Implemented multi-stage Order Hub workflow system (6 stages)
+  09:13 PM    somapujith      fix/server          93093c4   DOCS: Added comprehensive Order Hub workflow documentation
+  09:14 PM    somapujith      fix/server          1fcedd7   DOCS: Added Order Hub implementation summary
+  09:15 PM    somapujith      fix/server          a856155   DOCS: Added Orders Tracker visual guide and UI documentation
+  09:15 PM    somapujith      fix/server          afeca5f   DOCS: Added quick start guide for Order Hub
+  09:30 PM    somapujith      fix/server          897f201   Linked SO/PO with OrderHub – sync submitted orders to Order Hub stage process
+  09:31 PM    somapujith      fix/server          27d2bd8   Linked SO/PO with OrderHub – sync submitted orders to Order Hub stage process (finalized)
+  09:34 PM    somapujith      fix/server          69d3283   Added Order No search to all 6 stages in Order Hub (SKU + Order No search)
+  09:36 PM    somapujith      fix/server          3ca4b2e   Added full order details modal to Orders Tracker – view all order information
+  11:11 PM    somapujith      fix/server          25c0898   Integrated refactored master forms – Packaging, RawMaterial, BOM consolidated
+  11:16 PM    somapujith      fix/server          cf2e862   Fixed checkbox handling in master forms – convert to boolean values instead of strings
+  11:19 PM    somapujith      fix/server          5d65c62   Added Filters button with status filtering to Sales and Purchase dashboards
+
+  SUMMARY: BIGGEST SINGLE DAY. Created unified UI component system for consistent
+           theming. Migrated role management, user management, order management, and
+           dashboard to the new UI system. Implemented the 6-stage Order Hub workflow.
+           Enhanced Sales & Purchase with order tracking columns. Linked SO/PO to
+           Order Hub workflow. Added search and filtering across modules.
+           Consolidated master forms (BOM, Packaging, RawMaterial). 4 documentation
+           files added for Order Hub.
+
+
+========================================================================================================
+JANUARY 22, 2026 (Wednesday) — ORDER HUB NAVIGATION & UX
+========================================================================================================
+Total Commits: 11  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  08:22 AM    dhxmo           fix/server          0608161   Update (infrastructure/config changes)
+  12:27 PM    somapujith      fix/server          7b6c975   Removed "Change Stage" option from Order Tracker – made it view-only
+  12:30 PM    somapujith      fix/server          8ae4507   Added Order Hub modal popup functionality – integrated into Dashboard and Order Management pages
+  12:33 PM    somapujith      fix/server          abf4f79   Converted Order Hub to full-page standalone view (like PIS) – removed sidebar, renders full screen
+  12:37 PM    somapujith      fix/server          ffd8b7f   Updated Order Hub links to open in new page/tab
+  12:39 PM    somapujith      fix/server          9813031   Fixed Order Hub to properly open in new browser tab using window.open
+  12:41 PM    somapujith      fix/server          4626864   Added role parameter to Order Hub links – opens with user role like PIS
+  12:43 PM    somapujith      fix/server          a06df50   Set Orders Tracker as default view when opening Order Hub
+  01:47 PM    somapujith      fix/server          a4c4e4b   Fixed Order Hub to properly open in new window with preventDefault and window features
+  01:51 PM    somapujith      fix/server          bbf31c1   Added Order Hub button to sidebar – opens in new window like PIS
+  01:55 PM    somapujith      fix/server          41d599b   Moved Order Hub inside Order Management submenu – opens in new window
+
+  SUMMARY: Order Hub converted to standalone full-screen page (like PIS). Multiple
+           iterations on navigation: modal popup → new tab → new window → sidebar
+           submenu. Orders Tracker set as default landing view. Role parameter
+           passed to Order Hub links.
+
+
+========================================================================================================
+JANUARY 23, 2026 (Thursday) — BACKEND PREP, ERROR HANDLING, PERFORMANCE
+========================================================================================================
+Total Commits: 14  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:40 AM    somapujith      fix/server          11ab42a   Fixed JSX closing tag structure in OrderHub – resolved div/fragment mismatch
+  08:48 AM    somapujith      fix/server          dc4ac35   Updated Order Hub theme to match admin panel – proper SVG icons, amber color scheme
+  08:51 AM    somapujith      fix/server          c0fd4b0   Added Esthetic Insights logo to Order Hub sidebar header
+  08:55 AM    somapujith      fix/server          9aecdd0   Optimized Order Hub performance – debouncing, memoization, animations, smooth transitions
+  09:07 AM    somapujith      fix/server          1b0b6a8   Added comprehensive improvements – lazy loading, React Query, error boundaries, export utilities, mobile optimization, analytics, bundle splitting
+  09:08 AM    somapujith      fix/server          109fb60   Exported new UI components (KPICard, ExportButton, MobileComponents)
+  09:12 AM    somapujith      fix/server          fa12020   Removed old non-refactored files (BOM.tsx, Packaging.tsx, RawMaterial.tsx) – replaced by Refactored versions
+  09:16 AM    somapujith      fix/server          1c1b2df   Removed USAGE_GUIDE.tsx and cleaned up ALL console.log statements for production
+  09:16 AM    somapujith      fix/server          cc8dc75   Removed Treasury.tsx wrapper – import TreasuryApp directly
+  09:30 AM    dhxmo           fix/server          91b82f6   Infrastructure update
+  09:33 AM    somapujith      fix/server          1e7306e   General commit (sync)
+  09:34 AM    somapujith      fix/server          42f2dd4   Merged 'fix/server' branch from remote
+  09:41 AM    somapujith      fix/server          8fa4b32   Added comprehensive error handling, optimization utilities, and network monitoring
+  10:25 PM    somapujith      fix/server          62ffac0   Improved error handling, routing, and SSR safety for admin tool stability
+  11:09 PM    somapujith      fix/server          375a245   MAJOR: Added service layer and type system for backend integration:
+                                                             - Created type definitions in src/types/ (orders, users, tickets, tasks, API contracts)
+                                                             - Implemented service layer in src/services/ (order, user, auth, master, ticket, task)
+                                                             - Added reusable hooks (pagination, filtering, modal management, debouncing)
+                                                             - Created BACKEND_INTEGRATION.md documentation
+                                                             - Service functions include TODO comments for API implementation
+                                                             - All UI behavior unchanged (backward compatible)
+
+  SUMMARY: Major architecture day. Built the entire service layer and TypeScript
+           type system for future backend integration. Added error handling, network
+           monitoring, and performance optimizations (lazy loading, React Query, bundle
+           splitting). Cleaned up legacy code (old BOM/Packaging/RawMaterial, console
+           logs, USAGE_GUIDE). Order Hub theme and performance finalized.
+
+
+========================================================================================================
+JANUARY 24, 2026 (Friday) — GOODS RECEIVING MODULE & TICKET SYSTEM
+========================================================================================================
+Total Commits: 22  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:05 AM    somapujith      fix/server          1510bf4   Added comprehensive ticket management system with dashboard and staff tracking
+  12:07 AM    somapujith      fix/server          7355ac0   Fixed TypeScript errors in service layer
+  01:41 AM    somapujith      fix/server          df36033   Added list functionality with localStorage persistence to CatalogueManagement, PackagingManagement, and ActiveIngredients pages
+  09:29 AM    somapujith      fix/server          5481f3f   Added role-based user authentication with credentials for all roles
+  09:31 AM    somapujith      fix/server          90304d1   Added comprehensive header with tabs to Goods Receiving page
+  09:37 AM    somapujith      fix/server          558faed   Added comprehensive PO Requests component with all columns and action buttons
+  09:45 AM    somapujith      fix/server          9cb7763   Added all 25 columns to PO Requests table
+  09:48 AM    somapujith      fix/server          f851a55   Renamed Custom_Buttons column to "Actions"
+  10:55 AM    somapujith      fix/server          e2e929c   Replaced approve button with shopping cart icon
+  01:37 PM    somapujith      fix/server          9bd3934   Added Execute Purchase Orders modal when clicking cart icon
+  01:45 PM    somapujith      fix/server          049071a   Replaced "Add" button with "Save Data" button in modal
+  01:46 PM    somapujith      fix/server          1c96d07   Added Update PO Plan modal when clicking edit button
+  01:49 PM    somapujith      fix/server          79ef878   Set PO Requests as default landing page for Goods Receiving
+  01:53 PM    somapujith      fix/server          c077ef5   Added Issued POS page with dynamic data and filters
+  01:57 PM    somapujith      fix/server          621183d   Updated Issued POS UI to match PO Requests styling
+  01:59 PM    somapujith      fix/server          52c5461   Restored filter options to Issued POS page
+  02:04 PM    somapujith      fix/server          b898422   Added Ongoing GRNs page with complete functionality
+  02:07 PM    somapujith      fix/server          55fa02f   Added MRN/FG page with complete functionality
+  02:11 PM    somapujith      fix/server          6f06b41   Added GRN List page with complete functionality
+  02:26 PM    somapujith      fix/server          5768c16   Added Proofing page with complete QC verification UI
+  02:30 PM    somapujith      fix/server          00db704   Added edit modal to Proofing page
+  02:57 PM    dhxmo           fix/server          dfb80d3   Dependency update (dep)
+
+  SUMMARY: LARGEST COMMIT DAY (22 commits). Built the entire Goods Receiving module:
+           PO Requests (25 columns, cart icon, execute PO modal, update PO plan modal),
+           Issued POS (dynamic data, filters, matching UI), Ongoing GRNs, GRN List,
+           Proofing (QC verification with edit modal), MRN/FG. Also added ticket
+           management system, role-based auth with all role credentials, and
+           localStorage persistence for Catalogue/Packaging/ActiveIngredients.
+
+
+========================================================================================================
+JANUARY 25, 2026 (Saturday) — TASK MANAGEMENT & CODE QUALITY
+========================================================================================================
+Total Commits: 7  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  09:17 PM    somapujith      fix/server          d48e6d3   Added PIS-themed Task Management system with dashboard and task views
+  09:21 PM    somapujith      fix/server          7129e65   Removed Order Hub option from sidebar menu
+  09:22 PM    somapujith      fix/server          3a85ab3   Added explicit .tsx extensions to imports and React import for JSX namespace
+  09:24 PM    somapujith      fix/server          007fe72   Replaced JSX.Element with React.ReactElement for type compatibility
+  09:26 PM    somapujith      fix/server          01d613a   Restored Order Hub option to sidebar menu
+  10:26 PM    somapujith      fix/server          cfdad83   Transformed Task Management to Global Task Overview
+  10:36 PM    somapujith      fix/server          e4dc4f8   Performance optimizations and code cleanup
+
+  SUMMARY: PIS-themed Task Management system built with dashboard + task views.
+           Transformed into Global Task Overview. Fixed TypeScript type issues
+           (JSX.Element → React.ReactElement). Performance optimizations applied.
+
+
+========================================================================================================
+JANUARY 26, 2026 (Sunday) — RESPONSIVE DESIGN
+========================================================================================================
+Total Commits: 2  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:19 AM    somapujith      fix/server          061de76   Implemented comprehensive responsive design and mobile-first UI improvements across the entire application
+  08:40 AM    dhxmo           fix/server          065e2b4   Finalized (infrastructure/dependency work)
+
+  SUMMARY: Major responsive design overhaul – mobile-first UI improvements
+           applied across all pages and components.
+
+
+========================================================================================================
+JANUARY 27, 2026 (Monday) — GOODS RECEIVING → ORDER HUB + PIS RESTORATION
+========================================================================================================
+Total Commits: 12  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  11:03 AM    somapujith      fix/server          8de2a81   Restored PIS form integration and added BD/RND task shortcuts
+  11:05 AM    somapujith      fix/server          44af6a7   Improved Add POC button visibility and styling in forms
+  11:09 AM    somapujith      fix/server          e86f355   Moved BD Tasks and RND Tasks to Order Hub sidebar
+  11:11 AM    somapujith      fix/server          91440cd   Restored mock data distribution across Orders Review and Purchase Plan stages
+  11:14 AM    somapujith      fix/server          53ee575   Made BD Tasks and RND Tasks expandable with Dashboard/Tasks and reordered sidebar flow
+  11:21 AM    dhxmo           fix/server          5303a4f   Dependency update (dep)
+  02:59 PM    somapujith      fix/server          7b4c10d   Integrated Goods Receiving into Order Hub sidebar and main tabs
+  03:06 PM    somapujith      fix/server          daedfeb   Moved complete GoodReceivingPage functionality into Order Hub
+  03:39 PM    somapujith      fix/server          f039ad0   Removed dropdown icon from Goods Receiving in sidebar, reorganized Order Hub structure
+  10:16 PM    somapujith      fix/server          79fdc0f   Restored PIS page with full PISApp layout (Header, Sidebar, Dashboard, all views)
+  10:19 PM    dhxmo           master              910575a   Dependency update (dep)
+
+  SUMMARY: Goods Receiving module moved entirely into Order Hub (major structural
+           change). BD Tasks and RND Tasks added to Order Hub sidebar as expandable
+           sections. PIS page restored with full standalone layout. Sidebar
+           reorganized for better navigation flow.
+
+
+========================================================================================================
+JANUARY 28, 2026 (Tuesday) — PIS ROLE FIX
+========================================================================================================
+Total Commits: 2  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  09:48 PM    somapujith      fix/server          1a94289   Fixed PIS role detection – synced with admin panel using adminUserRole fallback
+  09:48 PM    somapujith      fix/server          37decbc   Merged 'fix/server' branch from remote
+
+  SUMMARY: PIS role detection bug fixed – was not properly detecting user roles
+           from the admin panel. Added adminUserRole fallback mechanism.
+
+  *** NO COMMITS: January 29 – February 14, 2026 (2.5 week gap) ***
+
+
+========================================================================================================
+FEBRUARY 15, 2026 (Saturday) — CODE QUALITY REFACTOR
+========================================================================================================
+Total Commits: 1  |  Contributors: somapujith
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:47 AM    somapujith      fix/server          aa66367   MAJOR REFACTOR: Comprehensive code quality improvements:
+                                                             - Atomic components (breaking large components into smaller reusable ones)
+                                                             - DRY principles applied (eliminated repeated code patterns)
+                                                             - Dead code elimination (removed unused functions, variables, imports)
+                                                             - Component organization improvements
+
+  SUMMARY: Single large refactoring commit covering the entire codebase.
+           Applied atomic design principles, DRY patterns, and removed dead code.
+
+  *** NO COMMITS: February 16–21, 2026 ***
+
+
+========================================================================================================
+FEBRUARY 22, 2026 (Saturday) — ROLES FIX (PR)
+========================================================================================================
+Total Commits: 1  |  Contributors: SPR DLX Studios (via PR)
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  10:13 PM    SPR DLX Studios fix/server          f24d97f   MERGED Pull Request #10: Roles fix – fixed role management issues
+
+  SUMMARY: Roles management fix merged via GitHub PR into fix/server branch.
+
+
+========================================================================================================
+FEBRUARY 23, 2026 (Sunday) — SERVER FIXES (PRs)
+========================================================================================================
+Total Commits: 2  |  Contributors: SPR DLX Studios (via PR)
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:37 PM    SPR DLX Studios main                12a998b   MERGED Pull Request #11: Fix/server branch merged into main
+  02:42 PM    SPR DLX Studios main                9485b4a   MERGED Pull Request #12: Fix/server branch fixes merged into main
+
+  SUMMARY: All fix/server branch work merged into main via two PRs. This brought
+           all of Pujith's Jan 13–Feb 15 work into the main branch.
+
+
+========================================================================================================
+FEBRUARY 24, 2026 (Monday) — USER & ROLE BACKEND INTEGRATION
+========================================================================================================
+Total Commits: 1  |  Contributors: dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  01:39 PM    dhxmo           feat/userMgmt       75121bd   Implemented user and role management backend integrations:
+                                                             - Connected User Management to real backend APIs
+                                                             - Connected Role Management to real backend APIs
+                                                             - Replaced mock data with live API calls
+
+  SUMMARY: Dhruv connected User Management and Role Management modules to the
+           actual backend server, replacing mock/placeholder service functions
+           with real API integrations.
+
+
+========================================================================================================
+FEBRUARY 25, 2026 (Tuesday) — BACKEND FIXES & STASH
+========================================================================================================
+Total Commits: 4  |  Contributors: somapujith, dhxmo
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  02:39 PM    somapujith      fix/server          bf15cdc   Stashed WIP work on fix/server (work-in-progress save)
+  02:39 PM    somapujith      fix/server          11dec2f   Index snapshot on fix/server (staged changes saved)
+  03:24 PM    dhxmo           feat/userMgmt       a36d365   Fixed edit roles with users dynamic pull – roles now pull dynamically when editing users
+  11:24 PM    somapujith      feat/changes        b2b26f6   Initial commit before making new changes (baseline snapshot)
+
+  SUMMARY: Dhruv fixed dynamic role fetching when editing users. Pujith saved
+           WIP work and created baseline on feat/changes branch.
+
+
+========================================================================================================
+FEBRUARY 26, 2026 (Wednesday) — CURRENT DAY (Type Safety & Integration)
+========================================================================================================
+Total Commits: 5  |  Contributors: somapujith, dhrv
+
+  TIME        AUTHOR          BRANCH              COMMIT    DESCRIPTION
+  --------    --------------- -----------------   --------  --------------------------------------------------
+  12:33 AM    somapujith      feat/changes        e42a9ed   Shifting development environment to VS Code
+  02:03 AM    somapujith      feat/changes        63e0a64   Push (general commit)
+  04:18 AM    somapujith      feat/changes        8ef0038   All done (consolidated changes)
+  09:17 AM    dhrv            feat/changes        7c602e3   Fixed: Strongly typed response for /me API endpoint (TypeScript type safety)
+  12:12 PM    dhrv            feat/shivaIntegration 76e797c  Feature: Shiva integration work (feat/shivaIntegration branch)
+
+  SUMMARY: Pujith finalized current changes and shifted to VS Code. Dhruv (dhrv)
+           added strong typing for the /me API endpoint and worked on the Shiva
+           integration feature branch.
+
+
+========================================================================================================================
+                              STATISTICS & SUMMARY
+========================================================================================================================
+
+COMMIT COUNTS BY AUTHOR (across all branches):
+================================================================================
+  Author              | Total Commits | Key Contributions
+  --------------------|---------------|--------------------------------------------
+  somapujith (Pujith) | ~95           | Core features, UI, PIS, Order Hub, Goods
+                      |               | Receiving, Service Layer, Responsive Design
+  Ajithprudhvi (Ajith)| ~20           | Project setup, sidebar, responsive UI,
+                      |               | enquiry management, PR reviews
+  dhxmo (Dhruv)       | ~15           | Repo migration, deployments, infra,
+                      |               | backend integrations, dependency management
+  rakeshsprdlx        | ~5            | Input focus fix, roles list, PR management
+  dhrv (Dhruv)        | 2             | Type safety for API, Shiva integration
+  SPR DLX Studios     | 3             | GitHub PR merges (roles fix, server fixes)
+  netlify[bot]        | 1             | Automated deployment fix
+
+COMMITS BY DATE:
+================================================================================
+  Date            | Commits | Highlights
+  ----------------|---------|--------------------------------------------------
+  Dec 31, 2025    | ~40     | Project init, sidebar, order mgmt, user/role mgmt
+  Jan 1, 2026     | 5       | Enquiry management, roles list
+  Jan 3, 2026     | 4       | Enquiry completion, input focus bug fix
+  Jan 4, 2026     | 1       | Review and fixes
+  Jan 5, 2026     | 2       | New pages added
+  Jan 7, 2026     | 2       | Repository migration to sprdlx org
+  Jan 13, 2026    | 15      | PIS integration (major feature)
+  Jan 14, 2026    | 7       | Order Hub, PR merges
+  Jan 16, 2026    | 4       | Netlify fix, server submodule cleanup
+  Jan 17, 2026    | 4       | Items Master, Vendor/Client UI
+  Jan 19, 2026    | 1       | BOM changes
+  Jan 20, 2026    | 2       | Treasury module
+  Jan 21, 2026    | 19      | Order Hub workflow, Unified UI, Sales & Purchase
+  Jan 22, 2026    | 11      | Order Hub navigation & standalone page
+  Jan 23, 2026    | 14      | Service layer, error handling, performance
+  Jan 24, 2026    | 22      | Goods Receiving (6 sub-pages), Ticket system
+  Jan 25, 2026    | 7       | Task Management, code quality
+  Jan 26, 2026    | 2       | Responsive design overhaul
+  Jan 27, 2026    | 12      | Goods Receiving → Order Hub, PIS restoration
+  Jan 28, 2026    | 2       | PIS role detection fix
+  Feb 15, 2026    | 1       | Major code quality refactor
+  Feb 22, 2026    | 1       | Roles fix (PR #10)
+  Feb 23, 2026    | 2       | Server fixes merged (PR #11, #12)
+  Feb 24, 2026    | 1       | User & role backend integration
+  Feb 25, 2026    | 4       | Edit roles fix, baseline commits
+  Feb 26, 2026    | 5       | Type safety, Shiva integration
+
+TOTAL UNIQUE COMMITS: ~183
+
+
+================================================================================
+  Document Generated : February 26, 2026
+  Source             : Git commit history across all 10 branches
+  Repository         : sprdlx/EI-Admin (GitHub)
+================================================================================

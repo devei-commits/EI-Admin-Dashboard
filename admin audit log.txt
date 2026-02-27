@@ -1,0 +1,648 @@
+================================================================================
+          ESTHETIC INSIGHTS - EI ADMIN PANEL
+          DEVELOPMENT CHANGELOG & ACTIVITY LOG
+================================================================================
+  Project    : EI-Admin (Admin Panel + PIS + Order Hub)
+  Repository : github.com/sprdlx/EI-Admin
+  Period     : December 31, 2025 – February 26, 2026
+  Authors    : Pujith Soma (somapujith), Ajith Prudhvi (Ajithprudhvi),
+               Rakesh (rakeshsprdlx), Dhruv (dhxmo / dhrv)
+  Tech Stack : React 18, TypeScript, Vite, Tailwind CSS, React Query
+================================================================================
+
+
+TABLE OF CONTENTS
+-----------------
+  1. Project Overview
+  2. Branch Structure
+  3. Date-wise Development Log
+  4. Module-wise Summary
+  5. Key Pull Requests
+  6. Current Status
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+EI-Admin is a comprehensive admin panel for Esthetic Insights, a cosmetics/
+pharmaceutical manufacturing company. The application includes:
+
+  - Admin Dashboard with KPIs and analytics
+  - Order Management with multi-stage workflow (Order Hub)
+  - Sales & Purchase Order management
+  - Product Information System (PIS) with standalone layout
+  - Goods Receiving (PO Requests, Issued POs, GRN List, Proofing, MRN/FG)
+  - Manufacturing modules (BOM, Packaging, Raw Material management)
+  - Treasury & Financial management
+  - Role-based access control and User Management
+  - Ticket/Enquiry management system
+  - Task Management (BD Tasks, RND Tasks)
+  - Vendor/Client management
+  - Catalogue, Active Ingredients, and Packaging management
+
+
+================================================================================
+2. BRANCH STRUCTURE
+================================================================================
+
+  Branch                  | Purpose
+  ------------------------|-----------------------------------------------
+  master                  | Production/stable branch
+  main                    | Primary integration branch
+  dev                     | Development branch
+  fix/server              | Server-side fixes, roles, and auth fixes
+  feat/changes            | Latest feature changes and type fixes
+  feat/userMgmt           | User & Role management backend integrations
+  feat/shivaIntegration   | Shiva integration features
+  Pujith                  | Pujith's development branch
+  aj                      | Ajith's development branch (responsive UI)
+  feature_rakesh          | Rakesh's feature branch (input fixes, roles)
+
+
+================================================================================
+3. DATE-WISE DEVELOPMENT LOG
+================================================================================
+
+
+--------------------------------------------------------------------------------
+DECEMBER 31, 2025 (Day 1 – Project Initialization)
+--------------------------------------------------------------------------------
+Authors: Ajithprudhvi, somapujith
+
+  [SETUP & INFRASTRUCTURE]
+  - Initial project commit – React + TypeScript + Vite scaffold
+  - Configured React Router DOM for page navigation
+  - Added forceConsistentCasingInFileNames to tsconfig
+  - Set up Vercel deployment configuration
+  - Removed VITE_API_URL from vercel.json for security
+
+  [SIDEBAR & NAVIGATION]
+  - Built sidebar component (multiple iterations: sidebar, sidebar2,
+    sidebar3, sidebar5) with responsive layout
+  - Configured sidebar navigation with route linking
+  - Added logo pathing and branding
+
+  [CORE PAGES CREATED]
+  - Created initial pages structure (added pages)
+  - Built Order Management page with table component
+  - Fixed import paths and created order management table component
+  - Added Order Management system table pages
+
+  [USER & ROLE MANAGEMENT]
+  - Added comprehensive Role Management system with Create Role and
+    View Roles functionality
+  - Added comprehensive User Management system with Add User and
+    View Users functionality
+  - Role management updates and refinements
+  - Side bar configuration for role/user navigation
+
+  [RESPONSIVE DESIGN]
+  - Added responsive dashboard layout
+  - Mobile sidebar implementation
+  - Responsive components for various screen sizes
+
+  [UI/UX]
+  - New design implementation for dashboard
+  - Modal system implementation
+  - Fixed import path casing in App.tsx
+
+  [DEPLOYMENT]
+  - All deployment errors eradicated
+  - Deployment configurations finalized
+
+  Pull Requests Merged: #1, #2, #3, #4, #5, #6, #7, #8, #9, #10
+
+
+--------------------------------------------------------------------------------
+JANUARY 1, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, Ajithprudhvi, rakeshsprdlx
+
+  [ENQUIRY MANAGEMENT]
+  - Completed Enquiry Management page (full implementation)
+  - Enquiry management component created by Ajithprudhvi
+  - Merged Pujith's enquiry work (PR #11)
+
+  [ROLE MANAGEMENT]
+  - Updated roles list functionality (rakeshsprdlx)
+  - Merged feature_rakesh branch work (PR #12)
+
+
+--------------------------------------------------------------------------------
+JANUARY 3, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, rakeshsprdlx
+
+  [ENQUIRY & ORDER MANAGEMENT]
+  - Completed Enquiry Management Page with full features
+  - Added Dashboard feature for Order Management
+  - Enquiry management and order management review and fixes
+
+  [BUG FIXES]
+  - Fixed input fields losing focus after one character (rakeshsprdlx)
+
+  Pull Requests Merged: #13, #14
+
+
+--------------------------------------------------------------------------------
+JANUARY 4, 2026
+--------------------------------------------------------------------------------
+Author: Ajithprudhvi
+
+  [REVIEW & FIXES]
+  - Enquiry management and order management changes reviewed and fixed
+
+
+--------------------------------------------------------------------------------
+JANUARY 5, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, Ajithprudhvi
+
+  [NEW PAGES]
+  - Added new pages to the application
+  - Merged Pujith's work into main (PR #15)
+
+
+--------------------------------------------------------------------------------
+JANUARY 7, 2026
+--------------------------------------------------------------------------------
+Author: dhxmo
+
+  [REPOSITORY MIGRATION]
+  - Ported over project from private repo of @Ajithprudhvi to
+    sprdlx/EI-Admin repository
+  - First commit on new repository (dev branch)
+
+
+--------------------------------------------------------------------------------
+JANUARY 13, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [PIS (PRODUCT INFORMATION SYSTEM) INTEGRATION – MAJOR FEATURE]
+  - Initial push before PIS changes
+  - Added PIS page and sidebar navigation
+  - PIS opens in new tab with toast notification
+  - Removed duplicate PIS link from sidebar
+  - Replaced PIS integration with original PIS repo – standalone page
+    with own sidebar/layout, opens in new tab
+  - Updated PIS header: removed duplicate logo, added "PIS Management
+    System" text with Red Hat Mono font
+  - Removed PIS login authentication – role-based access from Admin panel
+  - Polished PIS UI: rounded corners, shadows, cleaner styling synced
+    with Admin panel
+
+  [LOGIN & AUTH]
+  - Added USE_MOCK_DATA flag to disable API calls and use mock data only
+
+  [UI IMPROVEMENTS]
+  - Removed standalone logout buttons, kept logout only in user dropdown
+  - Replaced header font with Archivo
+  - Added full-page role edit with animated sidebar
+  - User management with protected passwords
+
+  [MERGE OPERATIONS]
+  - Merged main branch from GitHub
+  - Finished merge with origin/main
+  - Pushed PIS into Admin Panel
+
+
+--------------------------------------------------------------------------------
+JANUARY 14, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, Pujith Soma (GitHub)
+
+  [ORDER HUB]
+  - Added Order Hub with audit history and action buttons
+
+  [MAINTENANCE]
+  - Updated PIS and role management
+  - Updated from Pujith development branch
+
+  Pull Requests Merged: #2, #3, #4, #5, #6 (sprdlx repo)
+
+
+--------------------------------------------------------------------------------
+JANUARY 16, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo, Netlify bot
+
+  [PRODUCTION TRACKER]
+  - Added Production Tracker filter and search functionality
+
+  [DEPLOYMENT FIX]
+  - Fixed /pis page not displaying on Netlify deployment despite
+    working locally (Netlify agent fix)
+
+  [INFRASTRUCTURE]
+  - Removed server submodule (dhxmo)
+
+  Pull Requests Merged: #7 (agent-working-locally-3225)
+
+
+--------------------------------------------------------------------------------
+JANUARY 17, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [ITEMS MASTER]
+  - Added Items Master with context management and form integration
+
+  [VENDOR/CLIENT UI]
+  - Updated Vendor/Client UI to match amber tool theme (buttons, focus,
+    modal, progress bar, links)
+
+  [INFRASTRUCTURE]
+  - Updated README for deployment instructions
+  - Removed server submodule configuration
+
+
+--------------------------------------------------------------------------------
+JANUARY 19, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [BOM (BILL OF MATERIALS)]
+  - Made changes in BOM module
+
+
+--------------------------------------------------------------------------------
+JANUARY 20, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [TREASURY MODULE]
+  - Added Treasury component to sidebar with transaction management
+  - Treasury app UI improvements and cleanup
+
+
+--------------------------------------------------------------------------------
+JANUARY 21, 2026 (Major Feature Day)
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [ORDER HUB – MULTI-STAGE WORKFLOW SYSTEM]
+  - Implemented multi-stage Order Hub workflow system with 6 stages
+  - Added full order details modal to Orders Tracker
+  - Added Order No search to all 6 stages (SKU + Order No search)
+  - Linked SO/PO with OrderHub – sync submitted orders to Order Hub
+    stage process
+  - Added Filters button with status filtering to Sales and Purchase
+    dashboards
+  - Added comprehensive Order Hub workflow documentation
+  - Added Orders Tracker visual guide and UI documentation
+  - Added quick start guide for Order Hub
+  - Added Order Hub implementation summary
+
+  [SALES & PURCHASE]
+  - Enhanced Sales and Purchase Order forms with detailed fields,
+    item table calculations, and billing details
+  - Added order status tracking with columns (Order Status, Invoiced,
+    Payment, Packed, Shipped, Delivery Method) with colored indicators
+  - Added editable order status fields in modal for teams to update
+
+  [UNIFIED UI SYSTEM]
+  - Created unified UI component system with consistent theming and styling
+  - Migrated role management components to unified UI system
+    (ViewRoles, RoleDetailPopup, RolePermissionsDisplay)
+  - Migrated user management, order management, and dashboard components
+    to unified UI system
+
+  [MASTER FORMS]
+  - Integrated refactored master forms – Packaging, RawMaterial, BOM
+    consolidated
+  - Fixed checkbox handling in master forms – convert to boolean values
+
+  [INFRASTRUCTURE]
+  - Removed submodule references (dhxmo)
+
+
+--------------------------------------------------------------------------------
+JANUARY 22, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [ORDER HUB NAVIGATION & UX]
+  - Converted Order Hub to full page standalone view like PIS
+  - Added Order Hub button to sidebar – opens in new window like PIS
+  - Moved Order Hub inside Order Management submenu
+  - Fixed Order Hub to properly open in new browser tab using window.open
+  - Fixed Order Hub with preventDefault and window features
+  - Added role parameter to Order Hub links – opens with user role
+  - Set Orders Tracker as default view when opening Order Hub
+  - Removed Change Stage option from Order Tracker – made it view-only
+  - Added Order Hub modal popup functionality
+  - Updated Order Hub links to open in new page/tab
+
+
+--------------------------------------------------------------------------------
+JANUARY 23, 2026 (Major Architecture Day)
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [SERVICE LAYER & TYPE SYSTEM – BACKEND INTEGRATION PREP]
+  - Created comprehensive type definitions in src/types/ for orders,
+    users, tickets, tasks, and API contracts
+  - Implemented placeholder service layer in src/services/ for order,
+    user, auth, master data, ticket, and task operations
+  - Added reusable hooks for pagination, filtering, modal management,
+    and debouncing
+  - Created BACKEND_INTEGRATION.md with setup and integration guidelines
+  - Service functions include TODO comments for easy API implementation
+
+  [ERROR HANDLING & OPTIMIZATION]
+  - Added comprehensive error handling, optimization utilities, and
+    network monitoring
+  - Improved error handling, routing, and SSR safety for admin tool
+    stability
+  - Added lazy loading, React Query, error boundaries, export utilities,
+    mobile optimization, analytics, and bundle splitting
+  - Exported new UI components (KPICard, ExportButton, MobileComponents)
+
+  [ORDER HUB IMPROVEMENTS]
+  - Updated Order Hub theme to match admin panel – amber color scheme
+  - Added Esthetic Insights logo to Order Hub sidebar header
+  - Optimized Order Hub performance – debouncing, memoization,
+    animations, and smooth transitions
+  - Fixed JSX closing tag structure in OrderHub
+
+  [CODE CLEANUP]
+  - Removed old non-refactored files (BOM.tsx, Packaging.tsx,
+    RawMaterial.tsx) – replaced by Refactored versions
+  - Removed USAGE_GUIDE.tsx and cleaned up all console.log statements
+  - Removed Treasury.tsx wrapper, import TreasuryApp directly
+
+
+--------------------------------------------------------------------------------
+JANUARY 24, 2026 (Goods Receiving & Ticket System Day)
+--------------------------------------------------------------------------------
+Author: somapujith, dhxmo
+
+  [GOODS RECEIVING MODULE – COMPLETE IMPLEMENTATION]
+  - Added comprehensive header with tabs to Goods Receiving page
+  - Set PO Requests as default landing page for Goods Receiving
+  - Added comprehensive PO Requests component with all 25 columns
+    and action buttons
+  - Renamed Custom_Buttons column to Actions
+  - Added all 25 columns to PO Requests table
+  - Replaced approve button with shopping cart icon
+  - Added Execute Purchase Orders modal when clicking cart icon
+  - Replaced Add button with Save Data button in modal
+  - Added Update PO Plan modal when clicking edit button
+  - Added Issued POS page with dynamic data and filters
+  - Restored filter options to Issued POS page
+  - Updated Issued POS UI to match PO Requests styling
+  - Added Ongoing GRNs page with complete functionality
+  - Added GRN List page with complete functionality
+  - Added Proofing page with complete QC verification UI
+  - Added edit modal to Proofing page
+  - Added MRN/FG page with complete functionality
+
+  [TICKET MANAGEMENT SYSTEM]
+  - Added comprehensive ticket management system with dashboard and
+    staff tracking
+
+  [AUTHENTICATION]
+  - Added role-based user authentication with credentials for all roles
+
+  [DATA PERSISTENCE]
+  - Added list functionality with localStorage persistence to
+    CatalogueManagement, PackagingManagement, and ActiveIngredients
+
+  [BUG FIXES]
+  - Resolved TypeScript errors in service layer
+
+
+--------------------------------------------------------------------------------
+JANUARY 25, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [TASK MANAGEMENT SYSTEM]
+  - Added PIS-themed Task Management system with dashboard and task views
+  - Transformed Task Management to Global Task Overview
+
+  [SIDEBAR & NAVIGATION]
+  - Restored Order Hub option to sidebar menu
+  - Removed Order Hub option from sidebar menu (toggled)
+
+  [CODE QUALITY]
+  - Performance optimizations and code cleanup
+  - Fixed JSX.Element with React.ReactElement for type compatibility
+  - Added explicit .tsx extensions to imports and React import for
+    JSX namespace
+
+
+--------------------------------------------------------------------------------
+JANUARY 26, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [RESPONSIVE DESIGN – COMPREHENSIVE OVERHAUL]
+  - Implemented comprehensive responsive design and mobile-first UI
+    improvements across the entire application
+
+
+--------------------------------------------------------------------------------
+JANUARY 27, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [GOODS RECEIVING INTO ORDER HUB]
+  - Moved complete GoodReceivingPage functionality into Order Hub
+  - Integrated Goods Receiving into Order Hub sidebar and main tabs
+  - Removed dropdown icon from Goods Receiving in sidebar
+  - Reorganized Order Hub structure
+
+  [PIS RESTORATION]
+  - Restored PIS page with full PISApp layout including Header,
+    Sidebar, Dashboard, and all views
+  - Restored PIS form integration and added BD/RND task shortcuts
+
+  [ORDER HUB ENHANCEMENT]
+  - Moved BD Tasks and RND Tasks to Order Hub sidebar
+  - Made BD Tasks and RND Tasks expandable with Dashboard/Tasks
+  - Reordered sidebar flow
+
+  [BUG FIXES]
+  - Improved Add POC button visibility and styling in forms
+  - Restored mock data distribution across Orders Review and
+    Purchase Plan stages
+
+
+--------------------------------------------------------------------------------
+JANUARY 28, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [PIS FIXES]
+  - Synced PIS role detection with admin panel using adminUserRole
+    fallback
+
+  [MERGE]
+  - Merged fix/server branch with remote changes
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 15, 2026
+--------------------------------------------------------------------------------
+Author: somapujith
+
+  [CODE QUALITY – MAJOR REFACTOR]
+  - Comprehensive code quality improvements:
+    * Atomic components refactoring
+    * DRY (Don't Repeat Yourself) principles applied
+    * Dead code elimination
+    * Component organization improvements
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 22, 2026
+--------------------------------------------------------------------------------
+Author: SPR DLX Studios (via PR)
+
+  [ROLES FIX]
+  - Roles fix implementation (PR #10 on sprdlx repo)
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 23, 2026
+--------------------------------------------------------------------------------
+Author: SPR DLX Studios (via PR)
+
+  [SERVER FIXES]
+  - Fix/server branch merged (PR #11, PR #12 on sprdlx repo)
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 24, 2026
+--------------------------------------------------------------------------------
+Author: dhxmo
+
+  [USER & ROLE MANAGEMENT – BACKEND INTEGRATION]
+  - Implemented user and role management backend integrations
+    (feat/userMgmt branch)
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 25, 2026
+--------------------------------------------------------------------------------
+Authors: somapujith, dhxmo
+
+  [BACKEND INTEGRATION UPDATES]
+  - Fixed edit roles with users dynamic pull (dhxmo)
+  - Initial commit before code changes (somapujith)
+  - Stashed WIP work on fix/server branch
+
+
+--------------------------------------------------------------------------------
+FEBRUARY 26, 2026 (Current)
+--------------------------------------------------------------------------------
+Authors: somapujith, dhrv
+
+  [TYPE SAFETY & CODE QUALITY]
+  - Strongly typed response for /me endpoint (dhrv)
+  - Feature integration work (dhrv – feat/shivaIntegration)
+  - Code finalization and push (somapujith)
+  - Shifted development to VS Code environment
+
+
+================================================================================
+4. MODULE-WISE SUMMARY
+================================================================================
+
+  MODULE                    | STATUS       | KEY DATES
+  --------------------------|--------------|----------------------------------
+  Project Setup & Scaffold  | Completed    | Dec 31, 2025
+  Sidebar & Navigation      | Completed    | Dec 31, 2025 – Jan 27, 2026
+  Dashboard                 | Completed    | Dec 31, 2025 – Jan 21, 2026
+  Role Management           | Completed    | Dec 31, 2025 – Feb 25, 2026
+  User Management           | Completed    | Dec 31, 2025 – Feb 25, 2026
+  Order Management          | Completed    | Dec 31, 2025 – Jan 22, 2026
+  Enquiry Management        | Completed    | Jan 1 – Jan 5, 2026
+  PIS Integration           | Completed    | Jan 13 – Jan 28, 2026
+  Order Hub (Multi-stage)   | Completed    | Jan 14 – Jan 27, 2026
+  Sales & Purchase          | Completed    | Jan 21, 2026
+  Unified UI System         | Completed    | Jan 21, 2026
+  Treasury Module           | Completed    | Jan 20 – Jan 23, 2026
+  Items Master              | Completed    | Jan 17, 2026
+  Vendor/Client             | Completed    | Jan 17, 2026
+  BOM / Packaging / Raw Mat | Completed    | Jan 19 – Jan 23, 2026
+  Goods Receiving Module    | Completed    | Jan 24 – Jan 27, 2026
+  Ticket Management         | Completed    | Jan 24, 2026
+  Task Management           | Completed    | Jan 25, 2026
+  Service Layer & Types     | Completed    | Jan 23, 2026
+  Error Handling & Perf     | Completed    | Jan 23 – Jan 25, 2026
+  Responsive Design         | Completed    | Jan 26, 2026
+  Code Quality Refactor     | Completed    | Feb 15, 2026
+  Backend Integrations      | In Progress  | Feb 22 – Feb 26, 2026
+
+
+================================================================================
+5. KEY PULL REQUESTS
+================================================================================
+
+  Original Repository (Ajithprudhvi/EI-Admin):
+  PR #1  – Initial Pujith pages merge
+  PR #2  – Order management table component
+  PR #3  – Order management pages
+  PR #4  – Import path fixes
+  PR #5  – Order management system table
+  PR #6  – All changes consolidated
+  PR #7  – Sidebar and role management
+  PR #8  – Master branch merge
+  PR #9  – Deployment error fixes
+  PR #10 – Deployment finalization
+  PR #11 – Enquiry Management (Pujith)
+  PR #12 – Feature Rakesh (roles list)
+  PR #13 – Enquiry & Order management completion
+  PR #14 – Input focus fix (Rakesh)
+  PR #15 – New pages addition
+
+  New Repository (sprdlx/EI-Admin):
+  PR #2  – Master branch merge
+  PR #3  – Main branch merge
+  PR #4  – Master branch merge
+  PR #5  – Pujith branch merge
+  PR #6  – Main branch merge
+  PR #7  – Netlify deployment fix (PIS page)
+  PR #10 – Roles fix
+  PR #11 – Server fixes
+  PR #12 – Server fixes
+
+
+================================================================================
+6. CURRENT STATUS (as of February 26, 2026)
+================================================================================
+
+  COMPLETED:
+  - Full admin panel with 20+ pages/modules
+  - Role-based authentication and authorization
+  - Order Hub with 6-stage multi-stage workflow
+  - PIS standalone integration
+  - Goods Receiving with 6 sub-modules
+  - Comprehensive UI component library
+  - Service layer and type system for backend integration
+  - Responsive design across all modules
+  - Code quality refactoring (DRY, atomic components)
+
+  IN PROGRESS:
+  - Backend API integration (user & role management connected)
+  - Strong typing for API responses
+  - Feature integration (shivaIntegration branch)
+
+  TECHNOLOGY STACK:
+  - Frontend: React 18, TypeScript, Vite
+  - Styling: Tailwind CSS, Custom amber theme
+  - State: React Context, React Query
+  - Routing: React Router DOM
+  - Deployment: Vercel, Netlify
+  - Version Control: Git, GitHub
+
+
+================================================================================
+  Document Generated: February 26, 2026
+  Generated by: GitHub Copilot (AI-assisted documentation)
+  Source: Git commit history across all branches
+================================================================================
