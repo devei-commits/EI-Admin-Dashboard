@@ -18,11 +18,9 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const RoleManagement = lazy(() => import('./pages/RoleManagement'))
 const UserManagement = lazy(() => import('./pages/UserManagement'))
 const OrderManagement = lazy(() => import('./pages/OrderManagement'))
+const OrderedProducts = lazy(() => import('./pages/OrderedProducts'))
 const GoodReceivingPage = lazy(() => import('./pages/GoodReceivingPage'))
-const OrderList = lazy(() => import('./pages/OrderList'))
-const OrderHubPage = lazy(() => import('./pages/OrderHubPage'))
-const CouponManagement = lazy(() => import('./pages/CouponManagement'))
-const DiscountManagement = lazy(() => import('./pages/DiscountManagement'))
+
 const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
 const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
 const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'))
@@ -38,8 +36,13 @@ const BOMRefactored = lazy(() => import('./pages/BOMRefactored'))
 const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
 const VendorClient = lazy(() => import('./pages/VendorClient'))
 const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
+const UniversalSwap = lazy(() => import('./pages/UniversalSwap'))
+const ItemGroups = lazy(() => import('./pages/ItemGroups'))
+const ItemsList = lazy(() => import('./pages/ItemsList'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
+const Procurement = lazy(() => import('./pages/Procurement'))
+const PurchaseOrders = lazy(() => import('./components/ordermanagementcomp/PurchaseOrders'))
 
 // Loading spinner component
 const PageLoader = () => (
@@ -93,7 +96,7 @@ const AppLayout = () => {
 
        const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
        const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
-       const isOrderHubRoute = location.pathname === '/order-hub' || location.pathname.startsWith('/order-hub/');
+       const isProcurementRoute = location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
 
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
@@ -108,19 +111,6 @@ const AppLayout = () => {
               );
        }
 
-       // If it's an Order Hub route, render Order Hub standalone without admin sidebar
-       if (isOrderHubRoute) {
-              return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/order-hub/*" element={<OrderHubPage />} />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
-              );
-       }
-
        // If it's a Treasury route, render Treasury standalone without admin sidebar
        if (isTreasuryRoute) {
               return (
@@ -128,6 +118,22 @@ const AppLayout = () => {
                             <ErrorBoundary>
                                    <Routes>
                                           <Route path="/treasury/*" element={<TreasuryApp />} />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
+       if (isProcurementRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/procurement" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Procurement />
+                                                 </ProtectedModuleRoute>
+                                          } />
                                    </Routes>
                             </ErrorBoundary>
                      </Suspense>
@@ -158,24 +164,24 @@ const AppLayout = () => {
                                                                <OrderManagement />
                                                         </ProtectedModuleRoute>
                                                  } />
+                                                 <Route path="/ordered-products" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <OrderedProducts />
+                                                        </ProtectedModuleRoute>
+                                                 } />
                                                  <Route path="/good-receiving" element={
                                                         <ProtectedModuleRoute moduleId="order-management" subModuleId="goods-receiving">
                                                                <GoodReceivingPage />
                                                         </ProtectedModuleRoute>
                                                  } />
-                                                 <Route path="/order-list" element={
-                                                        <ProtectedModuleRoute moduleId="order-list">
-                                                               <OrderList />
+                                                 <Route path="/po" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <PurchaseOrders />
                                                         </ProtectedModuleRoute>
                                                  } />
-                                                 <Route path="/coupon-management" element={
-                                                        <ProtectedModuleRoute moduleId="coupon-management">
-                                                               <CouponManagement />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/discount-management" element={
-                                                        <ProtectedModuleRoute moduleId="discount-management">
-                                                               <DiscountManagement />
+                                                 <Route path="/procurement" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Procurement />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/catalogue-management" element={
@@ -237,6 +243,21 @@ const AppLayout = () => {
                                                  <Route path="/bom" element={
                                                         <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
                                                                <BOMRefactored />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/universal-swap" element={
+                                                        <ProtectedModuleRoute moduleId="inventory">
+                                                               <UniversalSwap />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/item-groups" element={
+                                                        <ProtectedModuleRoute moduleId="inventory">
+                                                               <ItemGroups />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/items-list" element={
+                                                        <ProtectedModuleRoute moduleId="inventory">
+                                                               <ItemsList />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/items-master" element={

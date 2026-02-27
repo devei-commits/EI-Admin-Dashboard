@@ -27,11 +27,8 @@ const Sidebar = () => {
   const showTreasury = canAccess('treasury');
 
   // Order Management section
-  const showOrderList = canAccess('order-list');
   const showOrderManagement = canAccess('order-management');
-  const showCouponManagement = canAccess('coupon-management');
-  const showDiscountManagement = canAccess('discount-management');
-  const showOrderSection = showOrderList || showOrderManagement || showCouponManagement || showDiscountManagement;
+  const showOrderSection = showOrderManagement;
 
   // Enquiry section
   const showEnquiryManagement = canAccess('enquiry-management');
@@ -72,9 +69,10 @@ const Sidebar = () => {
   // Check if any order submenu item is active
   const isOrderActive = [
     '/good-receiving',
-    '/order-list',
-    '/coupon-management',
-    '/discount-management'
+    '/order-management',
+    '/ordered-products',
+    '/procurement',
+    '/po'
   ].includes(location.pathname);
 
   // Check if any product submenu item is active
@@ -91,7 +89,10 @@ const Sidebar = () => {
     '/bom',
     '/items-master',
     '/vendor-client',
-    '/sales-and-purchase'
+    '/sales-and-purchase',
+    '/universal-swap',
+    '/item-groups',
+    '/items-list'
   ].includes(location.pathname);
 
   // Auto-open dropdown when navigating to enquiry pages, close when navigating away
@@ -297,77 +298,68 @@ const Sidebar = () => {
                     }`}
                 >
                   <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
-                    {showOrderList && (
-                      <li>
-                        <NavLink
-                          to="/order-list"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          onClick={handleLinkClick}
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                          </svg>
-                          <span>Order List</span>
-                        </NavLink>
-                      </li>
-                    )}
-                    {showOrderManagement && (
-                      <li>
-                        <button
-                          onClick={() => {
-                            handleLinkClick();
-                            const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
-                            window.open(`/order-hub?role=${userRole}`, '_blank', 'noopener,noreferrer');
-                          }}
-                          className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:bg-slate-50 hover:text-slate-900 w-full text-left"
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                          <span>Order Hub</span>
-                          <svg className="w-3 h-3 ml-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </button>
-                      </li>
-                    )}
-                    {showCouponManagement && (
-                      <li>
-                        <NavLink
-                          to="/coupon-management"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          onClick={handleLinkClick}
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                          </svg>
-                          <span>Coupon Management</span>
-                        </NavLink>
-                      </li>
-                    )}
-                    {showDiscountManagement && (
-                      <li>
-                        <NavLink
-                          to="/discount-management"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          onClick={handleLinkClick}
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Discount Management</span>
-                        </NavLink>
-                      </li>
-                    )}
+                    <li>
+                      <NavLink
+                        to="/order-management"
+                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          ? "text-slate-900 font-medium bg-slate-100/50"
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                          }`}
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>CPO/SO</span>
+                      </NavLink>
+                    </li>
+                    <li>
+                      <NavLink
+                        to="/ordered-products"
+                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          ? "text-slate-900 font-medium bg-slate-100/50"
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                          }`}
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                        <span>Ordered Products</span>
+                      </NavLink>
+                    </li>
+                    <li>
+                      <a
+                        href="/procurement"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span>Procurement</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
+                    </li>
+                    <li>
+                      <NavLink
+                        to="/po"
+                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          ? "text-slate-900 font-medium bg-slate-100/50"
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                          }`}
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>PO</span>
+                      </NavLink>
+                    </li>
                   </ul>
                 </div>
               </li>
@@ -500,7 +492,7 @@ const Sidebar = () => {
                 </div>
                 {/* Submenu with smooth animation */}
                 <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${mastersOpen ? "max-h-96" : "max-h-0"
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${mastersOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
                   <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
@@ -603,6 +595,57 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <span>Sales & Purchase</span>
+                        </NavLink>
+                      </li>
+                    )}
+                    {showInventory && (
+                      <li>
+                        <NavLink
+                          to="/universal-swap"
+                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                            ? "text-slate-900 font-medium bg-slate-100/50"
+                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            }`}
+                          onClick={handleLinkClick}
+                        >
+                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                          </svg>
+                          <span>Universal Swap</span>
+                        </NavLink>
+                      </li>
+                    )}
+                    {showInventory && (
+                      <li>
+                        <NavLink
+                          to="/item-groups"
+                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                            ? "text-slate-900 font-medium bg-slate-100/50"
+                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            }`}
+                          onClick={handleLinkClick}
+                        >
+                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <span>Item Groups</span>
+                        </NavLink>
+                      </li>
+                    )}
+                    {showInventory && (
+                      <li>
+                        <NavLink
+                          to="/items-list"
+                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                            ? "text-slate-900 font-medium bg-slate-100/50"
+                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            }`}
+                          onClick={handleLinkClick}
+                        >
+                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Items List</span>
                         </NavLink>
                       </li>
                     )}

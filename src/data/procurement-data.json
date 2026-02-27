@@ -1,0 +1,714 @@
+{
+  "requests": [
+    {
+      "id": "req-1",
+      "code": "PR-REQ-001",
+      "description": "UV FILTER",
+      "type": "RM",
+      "priority": "High",
+      "status": "Quoted",
+      "items": ["Homosalate", "Octinoxate", "Octocrylene"],
+      "dueDate": "2026-03-15",
+      "createdDate": "2026-02-10",
+      "requestedBy": "Planning Team",
+      "source": "Planning Team",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-RM-UV-001",
+          "itemName": "Homosalate",
+          "reqQty": 100,
+          "unit": "KG",
+          "moq": "25 KG",
+          "packSize": "25 KG drum",
+          "plannedPrice": 520,
+          "leadTimeDays": 21,
+          "estValue": 52000
+        },
+        {
+          "itemCode": "EI-RM-UV-002",
+          "itemName": "Octinoxate",
+          "reqQty": 75,
+          "unit": "KG",
+          "moq": "25 KG",
+          "packSize": "25 KG drum",
+          "plannedPrice": 580,
+          "leadTimeDays": 21,
+          "estValue": 51000
+        },
+        {
+          "itemCode": "EI-RM-UV-003",
+          "itemName": "Octocrylene",
+          "reqQty": 80,
+          "unit": "KG",
+          "moq": "25 KG",
+          "packSize": "25 KG drum",
+          "plannedPrice": 500,
+          "leadTimeDays": 21,
+          "estValue": 47200
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 105,
+        "openPOQty": 0,
+        "inTransit": 0,
+        "openOrders": 3
+      }
+    },
+    {
+      "id": "req-2",
+      "code": "PR-REQ-002",
+      "description": "CARBOMER BATCH",
+      "type": "RM",
+      "priority": "High",
+      "status": "PO Draft",
+      "items": ["Carbomer 980", "Carbopol 940"],
+      "dueDate": "2026-02-28",
+      "createdDate": "2026-02-05",
+      "requestedBy": "Manufacturing",
+      "source": "Production Plan",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-RM-CB-001",
+          "itemName": "Carbomer 980",
+          "reqQty": 40,
+          "unit": "KG",
+          "moq": "10 KG",
+          "packSize": "10 KG bag",
+          "plannedPrice": 1010,
+          "leadTimeDays": 14,
+          "estValue": 40400
+        },
+        {
+          "itemCode": "EI-RM-CB-002",
+          "itemName": "Carbopol 940",
+          "reqQty": 30,
+          "unit": "KG",
+          "moq": "10 KG",
+          "packSize": "10 KG bag",
+          "plannedPrice": 1005,
+          "leadTimeDays": 14,
+          "estValue": 30150
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 12,
+        "openPOQty": 70,
+        "inTransit": 0,
+        "openOrders": 1
+      }
+    },
+    {
+      "id": "req-3",
+      "code": "PR-REQ-003",
+      "description": "SURFACTANT MIX",
+      "type": "RM",
+      "priority": "Medium",
+      "status": "New",
+      "items": ["SLES 70%", "CAPB 35%"],
+      "dueDate": "2026-03-20",
+      "createdDate": "2026-02-21",
+      "requestedBy": "R&D Team",
+      "source": "Formulation Brief",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-RM-SF-001",
+          "itemName": "SLES 70%",
+          "reqQty": 200,
+          "unit": "KG",
+          "moq": "50 KG",
+          "packSize": "50 KG drum",
+          "plannedPrice": 62,
+          "leadTimeDays": 10,
+          "estValue": 12400
+        },
+        {
+          "itemCode": "EI-RM-SF-002",
+          "itemName": "CAPB 35%",
+          "reqQty": 100,
+          "unit": "KG",
+          "moq": "50 KG",
+          "packSize": "50 KG drum",
+          "plannedPrice": 148,
+          "leadTimeDays": 10,
+          "estValue": 14800
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 0,
+        "openPOQty": 0,
+        "inTransit": 0,
+        "openOrders": 0
+      }
+    },
+    {
+      "id": "req-4",
+      "code": "PR-REQ-004",
+      "description": "PACKAGING BATCH",
+      "type": "PM",
+      "priority": "Medium",
+      "status": "PO Released",
+      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "dueDate": "2026-03-10",
+      "createdDate": "2026-02-08",
+      "requestedBy": "Packaging Team",
+      "source": "Production Schedule",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-PK-TU-001",
+          "itemName": "50g Aluminium Laminated Tube",
+          "reqQty": 25000,
+          "unit": "PCS",
+          "moq": "10,000 PCS",
+          "packSize": "Box of 1000",
+          "plannedPrice": 2.08,
+          "leadTimeDays": 20,
+          "estValue": 52000
+        },
+        {
+          "itemCode": "EI-PK-CP-001",
+          "itemName": "Oval Flip-Top Cap 25mm",
+          "reqQty": 25000,
+          "unit": "PCS",
+          "moq": "10,000 PCS",
+          "packSize": "Box of 2000",
+          "plannedPrice": 0.65,
+          "leadTimeDays": 20,
+          "estValue": 16250
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 3200,
+        "openPOQty": 25000,
+        "inTransit": 0,
+        "openOrders": 1
+      }
+    },
+    {
+      "id": "req-5",
+      "code": "PR-REQ-005",
+      "description": "NIACINAMIDE STOCK",
+      "type": "RM",
+      "priority": "Low",
+      "status": "New",
+      "items": ["Niacinamide"],
+      "dueDate": "2026-03-25",
+      "createdDate": "2026-02-20",
+      "requestedBy": "Planning Team",
+      "source": "Safety Stock Trigger",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-RM-NN-001",
+          "itemName": "Niacinamide",
+          "reqQty": 50,
+          "unit": "KG",
+          "moq": "25 KG",
+          "packSize": "25 KG bag",
+          "plannedPrice": 340,
+          "leadTimeDays": 12,
+          "estValue": 17000
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 8,
+        "openPOQty": 0,
+        "inTransit": 0,
+        "openOrders": 0
+      }
+    },
+    {
+      "id": "req-6",
+      "code": "PR-REQ-006",
+      "description": "PET BOTTLE SET",
+      "type": "PM",
+      "priority": "Low",
+      "status": "New",
+      "items": ["150ml Clear PET Pump Bottle", "Facewash 150ml Monocarton"],
+      "dueDate": "2026-04-01",
+      "createdDate": "2026-02-22",
+      "requestedBy": "Packaging Team",
+      "source": "New SKU Launch",
+      "createdBy": "procurement@aestheticinsights.com",
+      "itemDetails": [
+        {
+          "itemCode": "EI-PK-BT-001",
+          "itemName": "150ml Clear PET Pump Bottle",
+          "reqQty": 30000,
+          "unit": "PCS",
+          "moq": "10,000 PCS",
+          "packSize": "Box of 500",
+          "plannedPrice": 4.2,
+          "leadTimeDays": 25,
+          "estValue": 126000
+        },
+        {
+          "itemCode": "EI-PK-MC-001",
+          "itemName": "Facewash 150ml Monocarton",
+          "reqQty": 30000,
+          "unit": "PCS",
+          "moq": "10,000 PCS",
+          "packSize": "Bundle of 100",
+          "plannedPrice": 1.8,
+          "leadTimeDays": 18,
+          "estValue": 54000
+        }
+      ],
+      "stockSummary": {
+        "stockInHand": 0,
+        "openPOQty": 0,
+        "inTransit": 0,
+        "openOrders": 0
+      }
+    }
+  ],
+  "quotes": [
+    {
+      "id": "QT-001",
+      "requestId": "req-1",
+      "requestCode": "PR-REQ-001",
+      "requestType": "RM",
+      "vendor": "Chemspeco India Pvt Ltd",
+      "vendorId": "VND-001",
+      "status": "Confirmed",
+      "quotedOn": "2026-02-17",
+      "leadTimeDays": 18,
+      "terms": "50% Advance, 50% Before Dispatch",
+      "validTill": "2026-03-10",
+      "rating": 4.5,
+      "fileName": "QT-001-Chemspec-UV-Filters.pdf",
+      "note": "Chemspec offering 5% discount on 100KG lot of Homosalate.",
+      "lines": [
+        {
+          "item": "Homosalate",
+          "qty": "100 KG",
+          "pricePerUnit": 490,
+          "totalValue": 49000,
+          "vsPlanned": "▼5.8%"
+        },
+        {
+          "item": "Octinoxate",
+          "qty": "75 KG",
+          "pricePerUnit": 645,
+          "totalValue": 48375,
+          "vsPlanned": "▼5.1%"
+        },
+        {
+          "item": "Octocrylene",
+          "qty": "80 KG",
+          "pricePerUnit": 560,
+          "totalValue": 44800,
+          "vsPlanned": "▼5.1%"
+        }
+      ]
+    },
+    {
+      "id": "QT-002",
+      "requestId": "req-1",
+      "requestCode": "PR-REQ-001",
+      "requestType": "RM",
+      "vendor": "Sigma Chemicals Ltd",
+      "vendorId": "VND-002",
+      "status": "Not Selected",
+      "quotedOn": "2026-02-18",
+      "leadTimeDays": 21,
+      "terms": "60 days credit",
+      "validTill": "2026-03-15",
+      "rating": 3.8,
+      "fileName": "QT-002-Sigma-UV-Filters.pdf",
+      "note": "Sigma offers better credit term, but pricing is higher for all items.",
+      "lines": [
+        {
+          "item": "Homosalate",
+          "qty": "100 KG",
+          "pricePerUnit": 510,
+          "totalValue": 51000,
+          "vsPlanned": "▲1.9%"
+        },
+        {
+          "item": "Octinoxate",
+          "qty": "75 KG",
+          "pricePerUnit": 660,
+          "totalValue": 49500,
+          "vsPlanned": "▲2.9%"
+        },
+        {
+          "item": "Octocrylene",
+          "qty": "80 KG",
+          "pricePerUnit": 575,
+          "totalValue": 46000,
+          "vsPlanned": "▲2.5%"
+        }
+      ]
+    },
+    {
+      "id": "QT-003",
+      "requestId": "req-2",
+      "requestCode": "PR-REQ-002",
+      "requestType": "RM",
+      "vendor": "Chemspeco India Pvt Ltd",
+      "vendorId": "VND-001",
+      "status": "Confirmed",
+      "quotedOn": "2026-02-19",
+      "leadTimeDays": 16,
+      "terms": "40% Advance, 60% on Delivery",
+      "validTill": "2026-03-11",
+      "rating": 4.7,
+      "fileName": "QT-003-Chemspec-Carbomer.pdf",
+      "note": "Same-week dispatch committed for Carbomer 980.",
+      "lines": [
+        {
+          "item": "Carbomer 980",
+          "qty": "40 KG",
+          "pricePerUnit": 980,
+          "totalValue": 39200,
+          "vsPlanned": "▼3.0%"
+        },
+        {
+          "item": "Carbopol 940",
+          "qty": "30 KG",
+          "pricePerUnit": 980,
+          "totalValue": 29400,
+          "vsPlanned": "▼2.2%"
+        }
+      ]
+    },
+    {
+      "id": "QT-004",
+      "requestId": "req-4",
+      "requestCode": "PR-REQ-004",
+      "requestType": "PM",
+      "vendor": "PackNova Industries",
+      "vendorId": "VND-003",
+      "status": "Pending Review",
+      "quotedOn": "2026-02-21",
+      "leadTimeDays": 20,
+      "terms": "30% Advance, 70% against GRN",
+      "validTill": "2026-03-18",
+      "rating": 4.1,
+      "fileName": "QT-004-PackNova-AluTube.pdf",
+      "note": "Artwork cylinder cost excluded; can be absorbed above 2 lakh annual volume.",
+      "lines": [
+        {
+          "item": "50g Aluminium Laminated Tube",
+          "qty": "25,000 PCS",
+          "pricePerUnit": 2.1,
+          "totalValue": 52500,
+          "vsPlanned": "▲0.8%"
+        },
+        {
+          "item": "Oval Flip-Top Cap 25mm",
+          "qty": "25,000 PCS",
+          "pricePerUnit": 0.64,
+          "totalValue": 16000,
+          "vsPlanned": "▼1.6%"
+        }
+      ]
+    }
+  ],
+  "vendors": [
+    {
+      "id": "VND-001",
+      "vendorCode": "VR-RM-001",
+      "name": "Chemspeco India Pvt Ltd",
+      "type": "RM",
+      "status": "Active",
+      "rating": 4.5,
+      "confirmedQuotes": 2,
+      "posIssued": 2,
+      "avgLeadTime": 30,
+      "paymentTerms": "30 days",
+      "contact": "Rajesh Mehta",
+      "email": "rajesh@chemspeco.in",
+      "phone": "+91 98765 43210",
+      "city": "Mumbai"
+    },
+    {
+      "id": "VND-002",
+      "vendorCode": "VR-RM-002",
+      "name": "Sigma Chemicals Ltd",
+      "type": "RM",
+      "status": "Active",
+      "rating": 3.8,
+      "confirmedQuotes": 0,
+      "posIssued": 0,
+      "avgLeadTime": 30,
+      "paymentTerms": "30 days",
+      "contact": "Priya R",
+      "email": "priya@sigma-chemicals.in",
+      "phone": "+91 94234 56789",
+      "city": "Pune"
+    },
+    {
+      "id": "VND-003",
+      "vendorCode": "VR-PK-002",
+      "name": "PackNova Industries",
+      "type": "PM",
+      "status": "Active",
+      "rating": 4.2,
+      "confirmedQuotes": 0,
+      "posIssued": 2,
+      "avgLeadTime": 45,
+      "paymentTerms": "45 days",
+      "contact": "Anita Sharma",
+      "email": "anita@packwell.co.in",
+      "phone": "+91 97654 32100",
+      "city": "Hyderabad"
+    },
+    {
+      "id": "VND-004",
+      "vendorCode": "VR-RM-003",
+      "name": "Nutreco Exports",
+      "type": "RM",
+      "status": "Active",
+      "rating": 3.5,
+      "confirmedQuotes": 1,
+      "posIssued": 0,
+      "avgLeadTime": 45,
+      "paymentTerms": "45 days",
+      "contact": "Vikas Gupta",
+      "email": "vikas@nutreco.in",
+      "phone": "+91 91234 56789",
+      "city": "Delhi"
+    },
+    {
+      "id": "VND-005",
+      "vendorCode": "VR-PK-003",
+      "name": "PackStar India",
+      "type": "PM",
+      "status": "Active",
+      "rating": 4.0,
+      "confirmedQuotes": 0,
+      "posIssued": 0,
+      "avgLeadTime": 30,
+      "paymentTerms": "30 days",
+      "contact": "Deepa Iyer",
+      "email": "deepa@packstar.in",
+      "phone": "+91 98765 12345",
+      "city": "Chennai"
+    }
+  ],
+  "purchaseOrders": [
+    {
+      "id": "PO-001",
+      "vendorId": "VND-003",
+      "vendorName": "PackNova Industries",
+      "poNumber": "PO-EI-2026-0041",
+      "itemCount": 2,
+      "value": 133560,
+      "date": "2026-02-15",
+      "status": "Shipped",
+      "etaDays": 9,
+      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "requestCode": "PR-REQ-004",
+      "contactPerson": "Anita Sharma",
+      "timeline": [
+        { "stage": "PO Released", "done": true, "timestamp": "2026-02-15 10:30", "actor": "Procurement — Ramesh", "note": "PO sent to PackNova via email + portal" },
+        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-16 14:00", "actor": "Finance — Kiran", "note": "30% advance ₹40,068 transferred via NEFT" },
+        { "stage": "Vendor Confirmed", "done": true, "timestamp": "2026-02-17 14:15", "actor": "Anita Sharma (PackNova)", "note": "Order acknowledged. Production slot: Feb 24–Mar 2" },
+        { "stage": "Shipped", "done": true, "timestamp": "2026-03-03 09:00", "actor": "PackNova Dispatch", "note": "LR No: TL2026030301 via Gati Logistics" },
+        { "stage": "Delivered", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+      ]
+    },
+    {
+      "id": "PO-002",
+      "vendorId": "VND-001",
+      "vendorName": "Chemspec India Pvt Ltd",
+      "poNumber": "PO-EI-2026-0037",
+      "itemCount": 2,
+      "value": 46492,
+      "date": "2026-02-01",
+      "status": "Advance Paid",
+      "etaDays": 2,
+      "items": ["Carbomer 980", "Carbopol 940"],
+      "requestCode": "PR-REQ-002",
+      "contactPerson": "Rajesh Mehta",
+      "timeline": [
+        { "stage": "PO Released", "done": true, "timestamp": "2026-02-01 11:00", "actor": "Procurement — Ramesh", "note": "PO emailed to Chemspec. Ref: PR-REQ-002" },
+        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-03 15:45", "actor": "Finance — Kiran", "note": "40% advance ₹18,597 transferred via RTGS" },
+        { "stage": "Vendor Confirmed", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "Shipped", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "Delivered", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+      ]
+    },
+    {
+      "id": "PO-003",
+      "vendorId": "VND-003",
+      "vendorName": "PackNova Industries",
+      "poNumber": "PO-EI-2026-0039",
+      "itemCount": 2,
+      "value": 46480,
+      "date": "2026-02-10",
+      "status": "Delivered",
+      "etaDays": 4,
+      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "requestCode": "PR-REQ-004",
+      "contactPerson": "Anita Sharma",
+      "timeline": [
+        { "stage": "PO Released", "done": true, "timestamp": "2026-02-10 09:00", "actor": "Procurement — Ramesh", "note": "PO released to PackNova for second batch" },
+        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-11 16:30", "actor": "Finance — Kiran", "note": "30% advance ₹13,944 transferred" },
+        { "stage": "Vendor Confirmed", "done": true, "timestamp": "2026-02-12 10:00", "actor": "Anita Sharma (PackNova)", "note": "Confirmed. Dispatch in 10 working days" },
+        { "stage": "Shipped", "done": true, "timestamp": "2026-02-22 08:00", "actor": "PackNova Dispatch", "note": "LR No: TL2026022201 via Delhivery" },
+        { "stage": "Delivered", "done": true, "timestamp": "2026-02-26 11:30", "actor": "Store — Deepak", "note": "35 cartons received. Physical count matched." },
+        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
+        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+      ]
+    }
+  ],
+  "draftPOs": [
+    {
+      "id": "DPO-001",
+      "dpoNumber": "DPO-001",
+      "requestId": "req-1",
+      "requestCode": "PR-REQ-001",
+      "type": "RM",
+      "vendor": "Chemspeco India Pvt Ltd",
+      "vendorId": "VND-001",
+      "status": "Pending Approval",
+      "createdDate": "2026-02-19",
+      "createdBy": "Procurement — Ramesh",
+      "paymentTerms": "50% Advance, 50% Before Dispatch",
+      "expectedDelivery": "2026-03-09",
+      "deliveryAddress": "EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055",
+      "vendorRating": 4.5,
+      "alertMessage": "UV filter replenishment order Q2. Advance to be released post PO approval.",
+      "alertType": "warning",
+      "lineItems": [
+        {
+          "item": "Homosalate",
+          "itemCode": "EI-RM-UV-001",
+          "type": "RM",
+          "qty": "100 KG",
+          "pricePerUnit": 490,
+          "gstPercent": 18,
+          "gstAmount": 8820,
+          "lineTotal": 57820
+        },
+        {
+          "item": "Octinoxate",
+          "itemCode": "EI-RM-UV-002",
+          "type": "RM",
+          "qty": "75 KG",
+          "pricePerUnit": 645,
+          "gstPercent": 18,
+          "gstAmount": 8707.5,
+          "lineTotal": 57082.5
+        },
+        {
+          "item": "Octocrylene",
+          "itemCode": "EI-RM-UV-003",
+          "type": "RM",
+          "qty": "80 KG",
+          "pricePerUnit": 560,
+          "gstPercent": 18,
+          "gstAmount": 8064,
+          "lineTotal": 52864
+        }
+      ],
+      "subtotal": 142175,
+      "gstTotal": 25591.5,
+      "grandTotal": 167766.5
+    },
+    {
+      "id": "DPO-002",
+      "dpoNumber": "DPO-002",
+      "requestId": "req-2",
+      "requestCode": "PR-REQ-002",
+      "type": "RM",
+      "vendor": "Chemspeco India Pvt Ltd",
+      "vendorId": "VND-001",
+      "status": "Approved",
+      "createdDate": "2026-02-20",
+      "createdBy": "Procurement — Ramesh",
+      "paymentTerms": "30 days credit",
+      "expectedDelivery": "2026-03-04",
+      "deliveryAddress": "EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055",
+      "vendorRating": 4.5,
+      "alertMessage": "Carbomer critical reorder. Urgent dispatch requested.",
+      "alertType": "success",
+      "lineItems": [
+        {
+          "item": "Carbomer 980",
+          "itemCode": "EI-RM-CB-001",
+          "type": "RM",
+          "qty": "55 KG",
+          "pricePerUnit": 875,
+          "gstPercent": 18,
+          "gstAmount": 7875,
+          "lineTotal": 51625
+        },
+        {
+          "item": "Carbopol 940",
+          "itemCode": "EI-RM-CB-002",
+          "type": "RM",
+          "qty": "30 KG",
+          "pricePerUnit": 835,
+          "gstPercent": 18,
+          "gstAmount": 4509,
+          "lineTotal": 29559
+        }
+      ],
+      "subtotal": 68800,
+      "gstTotal": 12384,
+      "grandTotal": 81184
+    }
+  ],
+  "deliveries": [
+    {
+      "id": "DEL-001",
+      "poId": "PO-PR-REQ-004",
+      "requestCode": "PR-REQ-004",
+      "vendor": "PackNova Industries",
+      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "status": "Delivery Pending",
+      "expectedDate": "2026-03-10",
+      "quantity": "25,000 units"
+    }
+  ],
+  "metadata": {
+    "lastUpdated": "2026-02-28T10:30:00Z",
+    "dataVersion": "1.0",
+    "lifecycleExample": {
+      "description": "Complete procurement lifecycle from request to delivery",
+      "stages": [
+        {
+          "stage": "1. New Request",
+          "requestCode": "PR-REQ-003",
+          "status": "New",
+          "action": "Needs quotations from vendors"
+        },
+        {
+          "stage": "2. Quoted Request",
+          "requestCode": "PR-REQ-001",
+          "status": "Quoted",
+          "action": "Vendor quotes received, pending PO creation"
+        },
+        {
+          "stage": "3. Draft PO",
+          "requestCode": "PR-REQ-002",
+          "status": "PO Draft",
+          "action": "PO created but not released to vendor"
+        },
+        {
+          "stage": "4. Released PO",
+          "requestCode": "PR-REQ-004",
+          "status": "PO Released",
+          "action": "PO sent to vendor, awaiting delivery"
+        },
+        {
+          "stage": "5. Delivery Pending",
+          "requestCode": "PR-REQ-004",
+          "status": "Delivery Pending",
+          "action": "Expected delivery received, GRN to be posted"
+        }
+      ]
+    }
+  }
+}

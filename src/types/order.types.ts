@@ -1,6 +1,6 @@
 /**
  * Order-related type definitions
- * Used across Order Management, Order Hub, and related components
+ * Used across Order Management and related components
  */
 
 // ==================== Order Status Types ====================
@@ -57,60 +57,6 @@ export interface Order {
  contactEmail?: string;
  contactPhone?: string;
  cancellationReason?: string;
-}
-
-// ==================== Order Hub Types ====================
-export interface OrderHubItem {
- id: string;
- orderNo: string;
- orderType: string;
- sku: string;
- itemName: string;
- qty: number;
- unitRate: string;
- odrDate: string;
- estDelDate: string;
- comDate: string;
- licenseArch: string;
- licenseEI: string;
- stage: string;
- currentStatus: string;
- pocForCurrentStatus: string;
- comments: string;
- currentStage: number;
- stageProgress: Record<number, StageStatus>;
-}
-
-export interface OrderReview {
- id: string;
- orderType: string;
- orderNo: string;
- productSku: string;
- compatibleItem: string;
- brandName: string;
- qty: number;
- unitRate: string;
- odrDate: string;
- estDate: string;
- pocCmtTeam?: string;
- pocRead: string;
- pocQuality: string;
- pocLabel: string;
- rmReview: string;
- pmReview: string;
- labelDesign: string;
- labelReview: string;
- rmSync: string;
- pmSync: string;
- licenseEI: string;
- licenseArch: string;
- mfgProcess: string;
- homogenizerProcess: string;
- approvalStatus: string;
- updatedOn: string;
- upstageNo: string;
- comments: string;
- s1Actions: string;
 }
 
 // ==================== BOM Types ====================

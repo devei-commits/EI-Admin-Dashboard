@@ -8,8 +8,6 @@
 
 import type {
  Order,
- OrderHubItem,
- OrderReview,
  BOMItem,
  GoodReceivingRecord,
  OrderFilter,
@@ -135,58 +133,6 @@ export async function bulkUpdateOrderStatus(
 ): Promise<ServiceResult<{ updated: number; failed: number }>> {
  // TODO: Replace with actual API call
  // return apiClient.patch('/orders/bulk-status', { orderIds, status });
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
-
-// ==================== Order Hub Operations ====================
-
-/**
- * Fetch order hub items
- * @placeholder Returns mock data - replace with API call
- */
-export async function fetchOrderHubItems(
- _params?: QueryParams
-): Promise<ServiceResult<OrderHubItem[]>> {
- // TODO: Replace with actual API call
- // return apiClient.get<OrderHubItem[]>('/order-hub/items', { params });
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
-
-/**
- * Fetch order reviews for order hub
- * @placeholder Returns mock data - replace with API call
- */
-export async function fetchOrderReviews(
- _stage?: number
-): Promise<ServiceResult<OrderReview[]>> {
- // TODO: Replace with actual API call
- // return apiClient.get<OrderReview[]>('/order-hub/reviews', { params: { stage } });
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
-
-/**
- * Update order stage
- * @placeholder Returns mock data - replace with API call
- */
-export async function updateOrderStage(
- _orderId: string,
- _stage: number,
- _progress: Record<number, 'pending' | 'in-progress' | 'completed'>
-): Promise<ServiceResult<OrderHubItem>> {
- // TODO: Replace with actual API call
- // return apiClient.patch<OrderHubItem>(`/order-hub/${orderId}/stage`, { stage, progress });
  return {
   data: null,
   error: null,

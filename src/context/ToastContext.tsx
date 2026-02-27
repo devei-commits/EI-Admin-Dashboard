@@ -39,7 +39,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     {toasts.map((toast) => (
      <div
       key={toast.id}
-      className={`px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] animate-slide-in ${
+      className={`px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-75 animate-slide-in ${
        toast.type === 'success' ? 'bg-green-500 text-white' :
        toast.type === 'error' ? 'bg-red-500 text-white' :
        toast.type === 'warning' ? 'bg-yellow-500 text-white' :

@@ -140,7 +140,7 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
  const unreadCount = notifications.length;
 
  return (
-  <header className="bg-white border-b border-gray-100 text-gray-800 px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-4 shadow-sm sticky top-0 z-50 backdrop-blur-sm bg-white/95">
+  <header className="bg-white/95 border-b border-gray-100 text-gray-800 px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-4 shadow-sm sticky top-0 z-50 backdrop-blur-sm\">
    <div className="flex items-center gap-4">
     <Button
      variant="ghost"
@@ -151,7 +151,7 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
      <Menu className="h-5 w-5" />
     </Button>
     <div className="flex items-center gap-4">
-     <h1 className="text-lg sm:text-xl font-semibold text-gray-800" style={{ fontFamily: '"Archivo", sans-serif' }}>
+     <h1 className="text-lg sm:text-xl font-semibold font-archivo text-gray-800">
       PIS Management System
      </h1>
     </div>

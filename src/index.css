@@ -1,5 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,100..900;1,100..900&display=swap');
 @import "tailwindcss";
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,100..900;1,100..900&family=Outfit:wght@100..900&display=swap');
+
+/* Font Family Configuration */
+@layer base {
+  :root {
+    --font-archivo: 'Archivo', sans-serif;
+    --font-outfit: 'Outfit', sans-serif;
+  }
+  
+  body {
+    font-family: var(--font-outfit);
+  }
+  
+  h1, h2, h3, h4, h5, h6, .heading {
+    font-family: var(--font-archivo);
+  }
+  
+  code, pre {
+    @apply font-mono;
+  }
+}
 
 /* PIS Theme Variables */
 @custom-variant dark (&:is(.dark *));
@@ -479,6 +501,22 @@ button, a, select, input {
  border-radius: 4px;
 }
 
+/* Slide in right animation for side panels */
+@keyframes slideInRight {
+ 0% {
+  transform: translateX(100%);
+  opacity: 0;
+ }
+ 100% {
+  transform: translateX(0);
+  opacity: 1;
+ }
+}
+
+.animate-slide-in-right {
+ animation: slideInRight 0.3s ease-out;
+}
+
 /* Improved focus states for accessibility */
 button:focus-visible,
 a:focus-visible,
@@ -887,4 +925,14 @@ textarea:focus-visible {
 /* Responsive Badge */
 .badge-responsive {
  @apply px-1.5 py-0.5 text-[10px] sm:px-2 sm:py-1 sm:text-xs;
+}
+
+@layer utilities {
+  .font-outfit {
+    font-family: var(--font-outfit);
+  }
+
+  .font-archivo {
+    font-family: var(--font-archivo);
+  }
 }

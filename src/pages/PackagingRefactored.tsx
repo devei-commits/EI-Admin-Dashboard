@@ -1099,250 +1099,273 @@ const PackagingRefactored: React.FC = () => {
   );
 };
 
-// ─── BPR Dashboard ────────────────────────────────────────────────────────────
-const BPR_STAGES = ['Draft', 'Artwork', 'PM Issued', 'Filling', 'QC', 'Completed'];
+// ─── Pack Materials Dashboard ─────────────────────────────────────────────────
+
+type PMRecord = {
+ code: string; description: string; type: string; level: string;
+ group: string | null; material: string; sizeSpec: string;
+ pricePerPc: number; moq: number; leadTimeDays: number;
+ printStatus: string; products: string[];
+};
+
+const TYPE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+ Monocarton:  { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
+ Bottle:      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
+ Label:       { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200' },
+ Closure:     { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200' },
+ Pump:        { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200' },
+ Tube:        { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' },
+};
+
+const PRINT_STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+ 'Approved':           { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+ 'Label awaited':      { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
+ 'Artwork approved':   { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200' },
+ 'N/A':                { bg: 'bg-gray-50',    text: 'text-gray-500',    border: 'border-gray-200' },
+};
+
+const PM_SEED: PMRecord[] = [
+ { code: 'EI-PM-BOX-001',  description: 'Sunscreen 50g Monocarton',             type: 'Monocarton',  level: 'Secondary', group: null,         material: '300 GSM Duplex Board',          sizeSpec: '52x52x35mm',        pricePerPc: 2.8,  moq: 5000,  leadTimeDays: 21, printStatus: 'Approved',         products: ['PR-002'] },
+ { code: 'EI-PM-BOX-002',  description: 'Facewash 150ml Monocarton',            type: 'Monocarton',  level: 'Secondary', group: null,         material: '300 GSM Duplex Board',          sizeSpec: '52x52x168mm',       pricePerPc: 3.2,  moq: 5000,  leadTimeDays: 21, printStatus: 'Approved',         products: ['PR-002'] },
+ { code: 'EI-PM-BTL-001',  description: '150ml Clear PET Pump Bottle',          type: 'Bottle',      level: 'Primary',   group: 'Primary +1', material: 'PET (Food Grade)',              sizeSpec: '150ml / 28/410',    pricePerPc: 5.5,  moq: 5000,  leadTimeDays: 21, printStatus: 'Label awaited',    products: ['PR-002'] },
+ { code: 'EI-PM-CAP-001',  description: 'Oval Flip-Top Cap for 25mm Tube',      type: 'Closure',     level: 'Primary',   group: null,         material: 'PP White',                      sizeSpec: '25mm neck',         pricePerPc: 0.65, moq: 10000, leadTimeDays: 14, printStatus: 'N/A',              products: ['PR-002'] },
+ { code: 'EI-PM-LBL-001',  description: 'Facewash Front Label 100×80mm',        type: 'Label',       level: 'Primary',   group: 'Primary +1', material: 'BOPP Self Adhesive',            sizeSpec: '100mm × 80mm',      pricePerPc: 0.65, moq: 10000, leadTimeDays: 14, printStatus: 'Approved',         products: ['PR-002'] },
+ { code: 'EI-PM-PMP-001',  description: '24/410 Lotion Pump White',             type: 'Pump',        level: 'Primary',   group: null,         material: 'PP/PE',                         sizeSpec: '24/410 / 33mm dia', pricePerPc: 2.2,  moq: 5000,  leadTimeDays: 14, printStatus: 'N/A',              products: ['PR-002'] },
+ { code: 'EI-PM-TUB-001',  description: '50g Aluminium Laminated Tube',         type: 'Tube',        level: 'Primary',   group: 'Primary +1', material: 'Aluminium/Plastic Laminate',    sizeSpec: '50g / 82mm × 32mm', pricePerPc: 4.2,  moq: 5000,  leadTimeDays: 21, printStatus: 'Artwork approved', products: ['PR-002'] },
+];
+
+const ALL_TYPES = Array.from(new Set(PM_SEED.map(p => p.type))).sort();
+const ALL_LEVELS = Array.from(new Set(PM_SEED.map(p => p.level))).sort();
+
+function formatPrice(n: number) {
+ return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
+}
+
+function GroupChipPM({ group }: { group: string }) {
+ const isPrimary = group.startsWith('Primary');
+ const isAlt     = group.startsWith('Alt');
+ const dotColor  = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
+ const label     = group.replace(' +1','').replace(' +2','');
+ const extra     = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
+ return (
+  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+   <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
+   {label}
+   {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
+  </span>
+ );
+}
 
 const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm }) => {
-  const { state, dispatch } = useGlobalState();
-  const { items } = useItems();
-  const bprs: any[] = state.mfg?.bprs || [];
-  const bmrs: any[] = state.mfg?.bmrs || [];
-  const salesOrders: any[] = state.orders?.salesOrders || [];
-  const [printBpr, setPrintBpr] = useState<any>(null);
+ const [search, setSearch] = useState('');
+ const [typeFilter, setTypeFilter] = useState('');
+ const [levelFilter, setLevelFilter] = useState('');
+ const [sortAsc, setSortAsc] = useState(true);
 
-  const stageColor = (stage: number) => {
-    if (stage === 0) return 'bg-gray-100 text-gray-700';
-    if (stage <= 2) return 'bg-indigo-100 text-indigo-700';
-    if (stage <= 4) return 'bg-amber-100 text-amber-700';
-    return 'bg-emerald-100 text-emerald-700';
-  };
+ const allPMs = PM_SEED; // static seed; merge context items if needed
 
-  const advanceBPR = (bpr: any) => {
-    if (bpr.stage >= BPR_STAGES.length - 1) return;
-    dispatch({
-      type: 'ADVANCE_BMR_STAGE' as any,
-      payload: { bmrId: bpr.bmrId ?? bpr.id, newStage: bpr.stage + 1, isBPR: true, bprId: bpr.id },
-    });
-  };
+ const filtered = allPMs.filter(pm => {
+  const q = search.toLowerCase();
+  const matchQ = !q || pm.description.toLowerCase().includes(q) || pm.code.toLowerCase().includes(q) || pm.material.toLowerCase().includes(q);
+  const matchType = !typeFilter || pm.type === typeFilter;
+  const matchLevel = !levelFilter || pm.level === levelFilter;
+  return matchQ && matchType && matchLevel;
+ }).sort((a, b) => sortAsc ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code));
 
-  return (
-    <div className="min-h-screen bg-gray-50/50">
-      <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">BPR Dashboard</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Batch Packaging Records — track filling, artwork & QC stage by stage
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onSwitchToForm}
-              className="inline-flex items-center gap-2 rounded-lg bg-black text-white text-sm font-semibold px-4 py-2.5 shadow-sm hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
-            >
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-neutral-900 text-base leading-none">
-                +
-              </span>
-              <span>New Packaging Master</span>
-            </button>
-          </div>
-        </div>
+ const stats = {
+  total:     allPMs.length,
+  primary:   allPMs.filter(p => p.level === 'Primary').length,
+  secondary: allPMs.filter(p => p.level === 'Secondary').length,
+  groups:    allPMs.filter(p => p.group).length,
+  types:     new Set(allPMs.map(p => p.type)).size,
+ };
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          {[
-            { label: 'Total BPRs', value: bprs.length, color: 'text-gray-800' },
-            { label: 'In Progress', value: bprs.filter(b => b.stage > 0 && b.stage < 5).length, color: 'text-indigo-600' },
-            { label: 'QC Stage', value: bprs.filter(b => b.stage === 4).length, color: 'text-amber-600' },
-            { label: 'Completed', value: bprs.filter(b => b.stage === 5).length, color: 'text-emerald-600' },
-          ].map(kpi => (
-            <div key={kpi.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">{kpi.label}</p>
-              <p className={`text-3xl font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
-            </div>
-          ))}
-        </div>
+ const statCards = [
+  { label: 'TOTAL PMS',  value: stats.total,     sub: 'Packaging materials',  accent: 'border-l-violet-500', num: 'text-violet-600' },
+  { label: 'PRIMARY',    value: stats.primary,   sub: 'Direct contact',       accent: 'border-l-blue-500',   num: 'text-blue-600' },
+  { label: 'SECONDARY',  value: stats.secondary, sub: 'Outer packaging',      accent: 'border-l-teal-500',   num: 'text-teal-600' },
+  { label: 'PM GROUPS',  value: stats.groups,    sub: 'With affinities',      accent: 'border-l-orange-500', num: 'text-orange-600' },
+  { label: 'PACK TYPES', value: stats.types,     sub: 'Tube, Bottle...',      accent: 'border-l-rose-500',   num: 'text-rose-600' },
+ ];
 
-        {/* Packaging Masters Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800">Packaging Masters (from Items Master)</h2>
-              <span className="text-sm text-gray-500">
-                {items.filter(i => i.type === 'packaging').length} packaging item(s)
-              </span>
-            </div>
-          </div>
-          {items.filter(i => i.type === 'packaging').length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-sm text-gray-400">No packaging masters imported yet.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-900">
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Code</th>
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Name</th>
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Category</th>
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Specification</th>
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>UOM</th>
-                    <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Default Vendors</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {items
-                    .filter(i => i.type === 'packaging')
-                    .map((pm: any) => {
-                      const data = pm.data || {};
-                      const vendorNames = (data.vendors || []).map((v: any) => v.name).join(', ') || '-';
-                      const specification = [
-                        data.specNominal ? `${data.specNominal}ml` : '',
-                        data.colorCode || '',
-                        data.finish || '',
-                        data.deco || ''
-                      ].filter(Boolean).join(', ') || '-';
-                      
-                      return (
-                        <tr key={pm.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4 font-mono font-bold text-gray-900">{pm.code || '-'}</td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{pm.name || '-'}</td>
-                          <td className="px-6 py-4">
-                            <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
-                              -
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-gray-600 max-w-sm truncate" title={specification}>
-                            {specification}
-                          </td>
-                          <td className="px-6 py-4 font-medium text-gray-900">{data.pkgUnit || '-'}</td>
-                          <td className="px-6 py-4 text-gray-600">{vendorNames}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+ return (
+  <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+   <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
 
-        {/* BPR Cards or Empty State */}
-        {bprs.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-            <svg className="w-14 h-14 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-            <p className="font-semibold text-gray-600 text-lg">No BPRs yet</p>
-            <p className="text-sm text-gray-400 mt-1 mb-4">
-              BPRs are created automatically when a BMR passes QC.<br />
-              Go to <strong>BOM / BMR</strong> and approve QC on a completed batch.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {bprs.map((bpr: any) => {
-              const linkedBMR = bmrs.find(b => b.id === bpr.bmrId);
-              const linkedSO = salesOrders.find(s => s.so === linkedBMR?.so);
-
-              return (
-                <div key={bpr.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  {/* BPR Header */}
-                  <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-3 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-gray-800">{bpr.id}</span>
-                      {linkedBMR && <span className="text-gray-500 text-sm">← {bpr.bmrId}</span>}
-                      <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${stageColor(bpr.stage || 0)}`}>
-                        {BPR_STAGES[bpr.stage || 0]}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-500 space-x-4">
-                      {linkedBMR && (
-                        <span>
-                          Product: <span className="font-medium text-gray-700">{linkedBMR.product}</span>
-                        </span>
-                      )}
-                      {linkedSO && (
-                        <span>
-                          Client: <span className="font-medium text-gray-700">{linkedSO.clientName}</span>
-                        </span>
-                      )}
-                      {linkedBMR && (
-                        <span>
-                          Batch Size:{' '}
-                          <span className="font-medium text-gray-700">
-                            {(linkedBMR.batchSize || 0).toLocaleString('en-IN')}
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Stage Progress */}
-                  <div className="px-5 py-3">
-                    <div className="flex items-center gap-0.5 overflow-x-auto">
-                      {BPR_STAGES.map((s, i) => (
-                        <div key={s} className="flex-1 flex flex-col items-center min-w-17.5">
-                          <div
-                            className={`w-full h-2 rounded-sm ${
-                              i < (bpr.stage || 0)
-                                ? 'bg-emerald-400'
-                                : i === (bpr.stage || 0)
-                                ? 'bg-indigo-500'
-                                : 'bg-gray-200'
-                            }`}
-                          />
-                          <span
-                            className={`text-[10px] mt-1 text-center ${
-                              i === (bpr.stage || 0) ? 'text-indigo-600 font-semibold' : 'text-gray-400'
-                            }`}
-                          >
-                            {s}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="px-5 py-3 bg-gray-50/50 flex gap-2">
-                    {(bpr.stage || 0) < BPR_STAGES.length - 1 ? (
-                      <button
-                        onClick={() => advanceBPR(bpr)}
-                        className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
-                      >
-                        → Advance to {BPR_STAGES[(bpr.stage || 0) + 1]}
-                      </button>
-                    ) : (
-                      <span className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg">
-                        ✓ BPR Completed
-                      </span>
-                    )}
-                    <button
-                      onClick={() =>
-                        setPrintBpr({
-                          ...bpr,
-                          product: linkedBMR?.product,
-                          batchSize: linkedBMR?.batchSize,
-                          client: linkedSO?.clientName,
-                        })
-                      }
-                      className="px-4 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
-                    >
-                      🖨 Print BPR
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* BPR Print Modal */}
-        {printBpr && <BPRPrintTemplate bpr={printBpr} onClose={() => setPrintBpr(null)} />}
+    {/* ── Page Header ── */}
+    <div className="relative">
+     <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+     <div className="relative">
+      <div className="inline-flex items-center gap-2 mb-3">
+       <span className="text-3xl">📦</span>
+       <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
       </div>
+      <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
+      <p className="text-sm text-gray-600">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
+     </div>
     </div>
-  );
+
+    {/* ── Stat Cards ── */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+     {statCards.map(card => (
+      <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
+       <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
+       <div className="px-4 py-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
+        <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
+        <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
+       </div>
+      </div>
+     ))}
+    </div>
+
+    {/* ── Table Card ── */}
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+
+     {/* toolbar */}
+     <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
+      <div className="flex items-center gap-2 min-w-0">
+       <span className="text-sm font-semibold text-gray-900">Packaging Material Masters</span>
+       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{filtered.length} / {allPMs.length}</span>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+       {/* search */}
+       <div className="relative group">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+        </svg>
+        <input
+         value={search}
+         onChange={e => setSearch(e.target.value)}
+         placeholder="Search code, type…"
+         className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-44"
+        />
+       </div>
+       {/* type filter */}
+       <select
+        value={typeFilter}
+        onChange={e => setTypeFilter(e.target.value)}
+        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
+       >
+        <option value="">All Types</option>
+        {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+       </select>
+       {/* level filter */}
+       <select
+        value={levelFilter}
+        onChange={e => setLevelFilter(e.target.value)}
+        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
+       >
+        <option value="">All Levels</option>
+        {ALL_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+       </select>
+       {/* new PM button */}
+       <button
+        onClick={onSwitchToForm}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+       >
+        <span className="text-base leading-none">+</span> New PM
+       </button>
+      </div>
+     </div>
+
+     {/* table */}
+     <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+       <thead>
+        <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
+         <th
+          className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
+          onClick={() => setSortAsc(p => !p)}
+         >
+          CODE <span className="text-violet-500">{sortAsc ? '↑' : '↓'}</span>
+         </th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Description</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Level</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Material</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Size / Spec</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/PC</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">MOQ</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
+        </tr>
+       </thead>
+       <tbody className="divide-y divide-gray-50">
+        {filtered.length === 0 ? (
+         <tr>
+          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
+           <div className="flex flex-col items-center gap-2">
+            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            No packaging materials match your search.
+           </div>
+          </td>
+         </tr>
+        ) : filtered.map((pm, idx) => {
+         const typeStyle = TYPE_STYLES[pm.type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+         const printStyle = PRINT_STATUS_STYLES[pm.printStatus] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+         const levelBg = pm.level === 'Primary' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200';
+         return (
+          <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+           {/* code */}
+           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
+           {/* description */}
+           <td className="px-4 py-3.5 font-semibold text-gray-900 whitespace-nowrap group-hover:text-violet-700 transition-colors">{pm.description}</td>
+           {/* type badge */}
+           <td className="px-4 py-3">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border} whitespace-nowrap`}>
+             {pm.type}
+            </span>
+           </td>
+           {/* level badge */}
+           <td className="px-4 py-3">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${levelBg} whitespace-nowrap`}>
+             {pm.level}
+            </span>
+           </td>
+           {/* group */}
+           <td className="px-4 py-3">
+            {pm.group ? <GroupChipPM group={pm.group} /> : <span className="text-gray-300">—</span>}
+           </td>
+           {/* material */}
+           <td className="px-4 py-3 text-gray-600">{pm.material}</td>
+           {/* size/spec */}
+           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{pm.sizeSpec}</td>
+           {/* price */}
+           <td className="px-4 py-3 text-right font-semibold text-amber-600">{formatPrice(pm.pricePerPc)}</td>
+           {/* moq */}
+           <td className="px-4 py-3 text-right text-gray-600">{pm.moq.toLocaleString('en-IN')}</td>
+           {/* lead time */}
+           <td className="px-4 py-3 text-right text-gray-600">{pm.leadTimeDays} days</td>
+           {/* print status */}
+           <td className="px-4 py-3">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${printStyle.bg} ${printStyle.text} ${printStyle.border} whitespace-nowrap`}>
+             {pm.printStatus}
+            </span>
+           </td>
+           {/* products */}
+           <td className="px-4 py-3">
+            <div className="flex flex-wrap gap-1">
+             {pm.products.map(p => (
+              <span key={p} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">{p}</span>
+             ))}
+            </div>
+           </td>
+          </tr>
+         );
+        })}
+       </tbody>
+      </table>
+     </div>
+    </div>
+
+   </div>
+  </div>
+ );
 };
 
 // ─── Small field helpers ──────────────────────────────────────────────────────

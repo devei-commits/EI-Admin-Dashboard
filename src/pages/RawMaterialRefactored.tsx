@@ -828,401 +828,264 @@ type RawMaterialDashboardProps = {
  onSwitchToForm: () => void;
 };
 
+// ─── Static RM seed (23 master records) ──────────────────────────────────────
+type RMRecord = {
+ code: string; name: string; inci: string; category: string;
+ rmType: string; uom: string; pricePerKg: number; gst: number;
+ shelf: string; status: string; products: string[]; group: string | null;
+};
+
+const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+ ACTIVE:        { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
+ BOTANICAL:     { bg: 'bg-green-50',    text: 'text-green-700',    border: 'border-green-200' },
+ BASE:          { bg: 'bg-slate-100',   text: 'text-slate-600',    border: 'border-slate-200' },
+ EMULSIFIER:    { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
+ EXCIPIENT:     { bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
+ FRAGRANCE:     { bg: 'bg-yellow-50',   text: 'text-yellow-700',   border: 'border-yellow-200' },
+ POLYMER:       { bg: 'bg-violet-50',   text: 'text-violet-700',   border: 'border-violet-200' },
+ PRESERVATIVE:  { bg: 'bg-pink-50',     text: 'text-pink-700',     border: 'border-pink-200' },
+ SURFACTANT:    { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200' },
+ 'UV FILTER':   { bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
+};
+
+const RM_SEED: RMRecord[] = [
+ { code: 'EI-RM-ACT-001', name: 'Glycerin',                   inci: 'Glycerin',                         category: 'ACTIVE',       rmType: 'Liquid', uom: 'KG', pricePerKg: 55,   gst: 12, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-ACT-002', name: 'Niacinamide',                inci: 'Niacinamide',                      category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 1450, gst: 12, shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-ACT-003', name: 'Ascorbyl Glucoside',         inci: 'Ascorbyl Glucoside',               category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 4800, gst: 12, shelf: '18M', status: 'Active', products: ['PR-001'],          group: 'Primary' },
+ { code: 'EI-RM-ACT-004', name: 'Allantoin',                  inci: 'Allantoin',                        category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 780,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: null },
+ { code: 'EI-RM-ACT-005', name: 'Tocopheryl Acetate',         inci: 'Tocopheryl Acetate',               category: 'ACTIVE',       rmType: 'Liquid', uom: 'KG', pricePerKg: 2200, gst: 12, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
+ { code: 'EI-RM-ACT-006', name: 'Aloe Vera Extract',          inci: 'Aloe Barbadensis Leaf Juice',      category: 'BOTANICAL',    rmType: 'Liquid', uom: 'KG', pricePerKg: 280,  gst: 5,  shelf: '18M', status: 'Active', products: ['PR-002'],          group: null },
+ { code: 'EI-RM-BASE-001',name: 'Aqua (Purified Water)',       inci: 'Aqua',                             category: 'BASE',         rmType: 'Liquid', uom: 'KG', pricePerKg: 8.85, gst: 8,  shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-EMUL-001',name: 'Cetearyl Alcohol',            inci: 'Cetearyl Alcohol',                 category: 'EMULSIFIER',   rmType: 'Solid',  uom: 'KG', pricePerKg: 185,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: 'Primary +1' },
+ { code: 'EI-RM-EMUL-002',name: 'Ceteareth-20',                inci: 'Ceteareth-20',                     category: 'EMULSIFIER',   rmType: 'Solid',  uom: 'KG', pricePerKg: 310,  gst: 12, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Alt +1' },
+ { code: 'EI-RM-EXCIP-001',name:'Sodium Hydroxide (50%)',      inci: 'Sodium Hydroxide',                 category: 'EXCIPIENT',    rmType: 'Liquid', uom: 'KG', pricePerKg: 45,   gst: 18, shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-EXCIP-002',name:'Citric Acid Monohydrate',     inci: 'Citric Acid',                      category: 'EXCIPIENT',    rmType: 'Solid',  uom: 'KG', pricePerKg: 85,   gst: 12, shelf: '36M', status: 'Active', products: ['PR-002'],          group: null },
+ { code: 'EI-RM-FRAG-001',name: 'Parfum — Solar Breeze',       inci: 'Parfum',                           category: 'FRAGRANCE',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1500, gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
+ { code: 'EI-RM-FRAG-002',name: 'Parfum — Jasmine Fresh',      inci: 'Parfum',                           category: 'FRAGRANCE',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1600, gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: null },
+ { code: 'EI-RM-POLY-001',name: 'Carbomer 980',                inci: 'Carbomer',                         category: 'POLYMER',      rmType: 'Solid',  uom: 'KG', pricePerKg: 900,  gst: 18, shelf: '36M', status: 'Active', products: ['PR-001'],          group: 'Primary +1' },
+ { code: 'EI-RM-POLY-002',name: 'Carbopol 940',                inci: 'Carbomer',                         category: 'POLYMER',      rmType: 'Solid',  uom: 'KG', pricePerKg: 850,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: 'Alt +1' },
+ { code: 'EI-RM-PRES-001',name: 'Phenoxyethanol',              inci: 'Phenoxyethanol',                   category: 'PRESERVATIVE', rmType: 'Liquid', uom: 'KG', pricePerKg: 520,  gst: 18, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: 'Primary' },
+ { code: 'EI-RM-SURF-001',name: 'SLES 70%',                    inci: 'Sodium Laureth Sulfate',           category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 125,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: 'Primary +1' },
+ { code: 'EI-RM-SURF-002',name: 'Cocamidopropyl Betaine',      inci: 'Cocamidopropyl Betaine',           category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 190,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Alt +1' },
+ { code: 'EI-RM-SURF-003',name: 'Decyl Glucoside',             inci: 'Decyl Glucoside',                  category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 240,  gst: 18, shelf: '18M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-UVF-001', name: 'Ethylhexyl Methoxycinnamate',inci: 'Ethylhexyl Methoxycinnamate',      category: 'UV FILTER',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1200, gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Primary' },
+ { code: 'EI-RM-UVF-002', name: 'Titanium Dioxide (nano)',     inci: 'Titanium Dioxide',                 category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 650,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: null },
+ { code: 'EI-RM-UVF-003', name: 'Zinc Oxide (nano)',           inci: 'Zinc Oxide',                       category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 720,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: null },
+ { code: 'EI-RM-UVF-004', name: 'Avobenzone',                  inci: 'Butyl Methoxydibenzoylmethane',    category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 980,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
+];
+
+const ALL_CATEGORIES = Array.from(new Set(RM_SEED.map(r => r.category))).sort();
+
+function formatPrice(n: number) {
+ return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
+}
+
+function GroupChip({ group }: { group: string }) {
+ const isPrimary = group.startsWith('Primary');
+ const isAlt     = group.startsWith('Alt');
+ const dotColor  = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
+ const label     = group.replace(' +1','').replace(' +2','');
+ const extra     = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
+ return (
+  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+   <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
+   {label}
+   {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
+  </span>
+ );
+}
+
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToForm }) => {
- const { items, updateItem, deleteItem } = useItems();
- const safeItems = Array.isArray(items) ? (items as any[]) : [];
- const rawMaterials = safeItems.filter(i => i.type === 'raw-material');
- const [viewItem, setViewItem] = useState<any | null>(null);
- const [editItem, setEditItem] = useState<any | null>(null);
- const [editData, setEditData] = useState({
-  name: '',
-  code: '',
-  unit: '',
-  status: '',
-  mappedItems: [] as Array<{ name: string; sku: string; quantity: string }>,
- });
+ const [search, setSearch] = useState('');
+ const [catFilter, setCatFilter] = useState('');
+ const [sortAsc, setSortAsc] = useState(true);
 
- const openEdit = (item: any) => {
-  const data = item?.data || {};
-  setEditItem(item);
-  setEditData({
-   name: data.compositeItemName || item.name || '',
-   code: data.sku || item.code || '',
-   unit: data.unit || '',
-   status: data.status || '',
-   mappedItems: Array.isArray(data.mappedItems)
-    ? data.mappedItems.map((mi: any) => ({
-      name: String(mi?.name || ''),
-      sku: String(mi?.sku || ''),
-      quantity: String(mi?.quantity || ''),
-     }))
-    : [],
-  });
- };
+ const allRMs = RM_SEED; // static seed; merge context items if needed
 
- const handleDelete = (item: any) => {
-  if (!item) return;
-  const ok = window.confirm('Delete this raw material entry?');
-  if (!ok) return;
-  deleteItem(item.id);
-  if (viewItem?.id === item.id) setViewItem(null);
-  if (editItem?.id === item.id) setEditItem(null);
- };
-
- const handleEditMappedItem = (idx: number, field: 'name' | 'sku' | 'quantity', value: string) => {
-  setEditData((prev) => ({
-   ...prev,
-   mappedItems: prev.mappedItems.map((mi, i) => (i === idx ? { ...mi, [field]: value } : mi)),
-  }));
- };
-
- const handleAddMappedItem = () => {
-  setEditData((prev) => ({
-   ...prev,
-   mappedItems: [...prev.mappedItems, { name: '', sku: '', quantity: '' }],
-  }));
- };
-
- const handleRemoveMappedItem = (idx: number) => {
-  setEditData((prev) => ({
-   ...prev,
-   mappedItems: prev.mappedItems.filter((_, i) => i !== idx),
-  }));
- };
-
- const handleSaveEdit = () => {
-  if (!editItem) return;
-  const updated = {
-   ...editItem,
-   name: editData.name || editItem.name,
-   code: editData.code || editItem.code,
-   lastModified: new Date().toISOString(),
-   data: {
-    ...(editItem.data || {}),
-    compositeItemName: editData.name || editItem.name || '-',
-    sku: editData.code || editItem.code || '-',
-    unit: editData.unit || '-',
-    status: editData.status || '-',
-    mappedItems: editData.mappedItems.length
-     ? editData.mappedItems.map((mi) => ({
-       name: mi.name || '-',
-       sku: mi.sku || '-',
-       quantity: mi.quantity || '-',
-      }))
-     : [{ name: '-', sku: '-', quantity: '-' }],
-   },
-  };
-  updateItem(editItem.id, updated);
-  setEditItem(null);
- };
+ const filtered = allRMs.filter(rm => {
+  const q = search.toLowerCase();
+  const matchQ = !q || rm.name.toLowerCase().includes(q) || rm.inci.toLowerCase().includes(q) || rm.code.toLowerCase().includes(q);
+  const matchCat = !catFilter || rm.category === catFilter;
+  return matchQ && matchCat;
+ }).sort((a, b) => sortAsc ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code));
 
  const stats = {
-  total: rawMaterials.length,
-  withSds: rawMaterials.filter(i => i.data?.sdsAvailable).length,
-  withCoa: rawMaterials.filter(i => i.data?.coaAvailable).length,
-  withVendors: rawMaterials.filter(i => (i.data?.vendors || []).length > 0).length,
+  total:       allRMs.length,
+  active:      allRMs.filter(r => r.status === 'Active').length,
+  uvFilters:   allRMs.filter(r => r.category === 'UV FILTER').length,
+  surfactants: allRMs.filter(r => r.category === 'SURFACTANT').length,
+  categories:  new Set(allRMs.map(r => r.category)).size,
  };
 
+ const statCards = [
+  { label: 'TOTAL RMS',   value: stats.total,       sub: 'Unique raw materials',  accent: 'border-l-teal-500',   num: 'text-teal-600' },
+  { label: 'ACTIVE',      value: stats.active,      sub: 'Approved status',        accent: 'border-l-orange-400', num: 'text-orange-500' },
+  { label: 'UV FILTERS',  value: stats.uvFilters,   sub: 'Sunscreen actives',      accent: 'border-l-blue-500',   num: 'text-blue-600' },
+  { label: 'SURFACTANTS', value: stats.surfactants, sub: 'Facewash actives',       accent: 'border-l-violet-500', num: 'text-violet-600' },
+  { label: 'CATEGORIES',  value: stats.categories,  sub: 'Distinct types',         accent: 'border-l-rose-500',   num: 'text-rose-600' },
+ ];
+
  return (
-  <div className="min-h-screen bg-gray-50/50">
-   <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8 space-y-6">
-    {/* Header */}
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-     <div className="min-w-0">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Raw Material Dashboard</h1>
-      <p className="text-sm text-gray-500 mt-1">
-       Track raw material masters, vendors, and QA docs.
-      </p>
-     </div>
-     <div className="flex items-center gap-2">
-      <button
-       onClick={onSwitchToForm}
-       className="inline-flex items-center gap-2 rounded-lg bg-black text-white text-sm font-semibold px-4 py-2.5 shadow-sm hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
-      >
-       <span className="flex h-5 w-5 items-center justify-center rounded-md bg-neutral-900 text-base leading-none">
-        +
-       </span>
-       <span>New Raw Material Master</span>
-      </button>
+  <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+   <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
+
+    {/* ── Page Header ── */}
+    <div className="relative">
+     <div className="absolute inset-0 bg-linear-to-r from-teal-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+     <div className="relative">
+      <div className="inline-flex items-center gap-2 mb-3">
+       <span className="text-3xl">🧪</span>
+       <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">RM Masters</span>
+      </div>
+      <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Raw Materials</h1>
+      <p className="text-sm text-gray-600">Manage raw material masters, INCI details, pricing and item group assignments.</p>
      </div>
     </div>
 
-    {/* KPI strip */}
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">Total Raw Materials</p>
-      <p className="text-3xl font-bold mt-1 text-gray-900">{stats.total}</p>
-     </div>
-     <div className="bg-blue-50 rounded-xl shadow-sm border border-blue-100 p-4">
-      <p className="text-xs text-blue-700 uppercase tracking-wide">With SDS</p>
-      <p className="text-3xl font-bold mt-1 text-blue-800">{stats.withSds}</p>
-     </div>
-     <div className="bg-emerald-50 rounded-xl shadow-sm border border-emerald-100 p-4">
-      <p className="text-xs text-emerald-700 uppercase tracking-wide">With CoA</p>
-      <p className="text-3xl font-bold mt-1 text-emerald-800">{stats.withCoa}</p>
-     </div>
-     <div className="bg-amber-50 rounded-xl shadow-sm border border-amber-100 p-4">
-      <p className="text-xs text-amber-700 uppercase tracking-wide">With Vendors</p>
-      <p className="text-3xl font-bold mt-1 text-amber-800">{stats.withVendors}</p>
-     </div>
+    {/* ── Stat Cards ── */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+     {statCards.map(card => (
+      <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
+       <div className={`h-1 bg-linear-to-r from-teal-400 to-teal-600 ${card.accent}`} />
+       <div className="px-4 py-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
+        <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
+        <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
+       </div>
+      </div>
+     ))}
     </div>
 
-    {/* Table or empty state */}
-    {rawMaterials.length === 0 ? (
-     <div className="bg-white rounded-lg border border-dashed border-gray-300 p-10 text-center">
-      <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-       <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M4 7h16M4 7l2-3h12l2 3M4 7v11a2 2 0 002 2h12a2 2 0 002-2V7"
-       />
-      </svg>
-      <p className="font-semibold text-gray-700 text-lg">No raw materials yet</p>
-      <p className="text-sm text-gray-400 mt-1 mb-4">
-       Use <span className="font-medium">New Raw Material Master</span> to onboard your first RM.
-      </p>
+    {/* ── Table Card ── */}
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+
+     {/* toolbar */}
+     <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
+      <div className="flex items-center gap-2 min-w-0">
+       <span className="text-sm font-semibold text-gray-900">Raw Material Masters</span>
+       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{filtered.length} / {allRMs.length}</span>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+       {/* search */}
+       <div className="relative group">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-teal-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+        </svg>
+        <input
+         value={search}
+         onChange={e => setSearch(e.target.value)}
+         placeholder="Search name, INCI, code…"
+         className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all w-52"
+        />
+       </div>
+       {/* category filter */}
+       <select
+        value={catFilter}
+        onChange={e => setCatFilter(e.target.value)}
+        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all hover:bg-gray-100"
+       >
+        <option value="">All Categories</option>
+        {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+       </select>
+       {/* new RM button */}
+       <button
+        onClick={onSwitchToForm}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+       >
+        <span className="text-base leading-none">+</span> New RM
+       </button>
+      </div>
      </div>
-    ) : (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-visible">
-      <table className="w-full text-sm">
+
+     {/* table */}
+     <div className="overflow-x-auto">
+      <table className="w-full text-xs">
        <thead>
-        <tr className="bg-gray-900">
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Code</th>
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Item Name</th>
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Category</th>
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Specification</th>
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>UOM</th>
-         <th className="px-6 py-4 text-left font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}>Default Vendors</th>
-         <th className="px-6 py-4 text-right font-semibold uppercase text-xs tracking-wider" style={{ color: 'white' }}></th>
+        <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
+         <th
+          className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
+          onClick={() => setSortAsc(p => !p)}
+         >
+          CODE <span className="text-teal-500">{sortAsc ? '↑' : '↓'}</span>
+         </th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/KG</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Shelf</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
         </tr>
        </thead>
-       <tbody className="divide-y divide-gray-200">
-         {rawMaterials.flatMap((rm: any) => {
-          const data = rm.data || {};
-          const mappedItems = Array.isArray(data.mappedItems) ? data.mappedItems : [];
-          const rows = mappedItems.length > 0 ? mappedItems : [{ name: '-', sku: '-', quantity: '-' }];
-          const category = data.rmCategory || data['CF.ITEM CATEGORY'] || data.itemCategory || '-';
-          const categoryBadge = category && category !== '-' ? String(category).charAt(0).toUpperCase() : '-';
-          const uom = data.unit || data.primaryUom || data.issueUom || '-';
-          const vendorNames = (data.vendors || []).map((v: any) => v.name).join(', ') || '-';
-
-          return rows.map((mi: any, idx: number) => {
-           const itemCode = mi.sku || data.sku || rm.code || '-';
-           const itemName = mi.name || data.compositeItemName || rm.name || data.tradeCommercialName || data.inciName || '-';
-           const specification = mi.quantity || '-';
-
-           return (
-            <tr key={`${rm.id}-${idx}`} className="hover:bg-gray-50/50 transition-colors">
-             <td className="px-6 py-4 font-mono font-bold text-gray-900">{itemCode}</td>
-             <td className="px-6 py-4 font-semibold text-gray-800">{itemName}</td>
-             <td className="px-6 py-4" title={category}>
-              <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-gray-200 border border-gray-300 text-gray-600">
-               {categoryBadge}
-              </span>
-             </td>
-             <td className="px-6 py-4 text-gray-600 max-w-sm truncate" title={specification}>
-              {specification}
-             </td>
-             <td className="px-6 py-4 font-medium text-gray-900">{uom}</td>
-             <td className="px-6 py-4 text-gray-600">{vendorNames}</td>
-             <td className="px-6 py-4 text-right">
-              <button
-               type="button"
-               onClick={() => setViewItem(rm)}
-               className="px-3 py-1 text-xs border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-              >
-               View
-              </button>
-             </td>
-            </tr>
-           );
-          });
-         })}
+       <tbody className="divide-y divide-gray-50">
+        {filtered.length === 0 ? (
+         <tr>
+          <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
+           <div className="flex flex-col items-center gap-2">
+            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            </svg>
+            No raw materials match your search.
+           </div>
+          </td>
+         </tr>
+        ) : filtered.map((rm, idx) => {
+         const catStyle = CATEGORY_STYLES[rm.category] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+         return (
+          <tr key={rm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+           {/* code */}
+           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-teal-700 whitespace-nowrap group-hover:text-teal-900">{rm.code}</td>
+           {/* name / inci */}
+           <td className="px-4 py-3.5 whitespace-nowrap">
+            <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">{rm.name}</p>
+            <p className="text-gray-400 text-[10px] mt-0.5 italic">{rm.inci}</p>
+           </td>
+           {/* category badge */}
+           <td className="px-4 py-3.5">
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all group-hover:shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border} whitespace-nowrap`}>
+             {rm.category}
+            </span>
+           </td>
+           {/* group */}
+           <td className="px-4 py-3.5">
+            {rm.group ? <GroupChip group={rm.group} /> : <span className="text-gray-300 text-xs">—</span>}
+           </td>
+           {/* type */}
+           <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.rmType}</td>
+           {/* uom */}
+           <td className="px-4 py-3.5 text-gray-700 font-semibold">{rm.uom}</td>
+           {/* price */}
+           <td className="px-4 py-3.5 text-right font-bold text-amber-600 group-hover:text-amber-700">{formatPrice(rm.pricePerKg)}</td>
+           {/* gst */}
+           <td className="px-4 py-3.5 text-right text-gray-600 font-medium">{rm.gst}%</td>
+           {/* shelf */}
+           <td className="px-4 py-3.5 text-right text-gray-600">{rm.shelf}</td>
+           {/* status */}
+           <td className="px-4 py-3.5">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+             {rm.status}
+            </span>
+           </td>
+           {/* products */}
+           <td className="px-4 py-3.5">
+            <div className="flex flex-wrap gap-1">
+             {rm.products.map(p => (
+              <span key={p} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200 group-hover:bg-teal-100 transition-colors">{p}</span>
+             ))}
+            </div>
+           </td>
+          </tr>
+         );
+        })}
        </tbody>
       </table>
      </div>
-    )}
-    {viewItem && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-3xl rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-       <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h3 className="text-base font-semibold text-gray-800">Raw Material Details</h3>
-      <button
-       type="button"
-       onClick={() => setViewItem(null)}
-       className="text-sm text-gray-500 hover:text-gray-700"
-      >
-       Close
-      </button>
-       </div>
-       <div className="p-5 space-y-4 text-sm">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <div>
-        <p className="text-xs text-gray-500">Composite Item</p>
-        <p className="font-medium text-gray-800">{viewItem?.data?.compositeItemName || viewItem?.name || '-'}</p>
-       </div>
-       <div>
-        <p className="text-xs text-gray-500">SKU</p>
-        <p className="font-medium text-gray-800">{viewItem?.data?.sku || viewItem?.code || '-'}</p>
-       </div>
-       <div>
-        <p className="text-xs text-gray-500">Unit</p>
-        <p className="font-medium text-gray-800">{viewItem?.data?.unit || '-'}</p>
-       </div>
-       <div>
-        <p className="text-xs text-gray-500">Status</p>
-        <p className="font-medium text-gray-800">{viewItem?.data?.status || '-'}</p>
-       </div>
-      </div>
-      <div>
-       <p className="text-xs text-gray-500 mb-2">Mapped Items</p>
-       <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
-         <thead className="bg-gray-50">
-        <tr>
-         <th className="px-3 py-2 text-left font-semibold text-gray-600">Name</th>
-         <th className="px-3 py-2 text-left font-semibold text-gray-600">SKU</th>
-         <th className="px-3 py-2 text-left font-semibold text-gray-600">Quantity</th>
-        </tr>
-         </thead>
-         <tbody>
-        {(viewItem?.data?.mappedItems || []).length > 0 ? (
-         viewItem.data.mappedItems.map((mi: any, idx: number) => (
-          <tr key={`${viewItem.id}-view-${idx}`} className="border-t border-gray-200">
-           <td className="px-3 py-2">{mi.name || '-'}</td>
-           <td className="px-3 py-2">{mi.sku || '-'}</td>
-           <td className="px-3 py-2">{mi.quantity || '-'}</td>
-          </tr>
-         ))
-        ) : (
-         <tr>
-          <td className="px-3 py-3 text-gray-400" colSpan={3}>-</td>
-         </tr>
-        )}
-         </tbody>
-        </table>
-       </div>
-      </div>
-       </div>
-      </div>
-     </div>
-    )}
-    {editItem && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-4xl rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-       <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-      <h3 className="text-base font-semibold text-gray-800">Edit Raw Material</h3>
-      <button
-       type="button"
-       onClick={() => setEditItem(null)}
-       className="text-sm text-gray-500 hover:text-gray-700"
-      >
-       Close
-      </button>
-       </div>
-       <div className="p-5 space-y-5 text-sm">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Composite Item Name</label>
-        <input
-         value={editData.name}
-         onChange={(e) => setEditData((prev) => ({ ...prev, name: e.target.value }))}
-         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-        />
-       </div>
-       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">SKU</label>
-        <input
-         value={editData.code}
-         onChange={(e) => setEditData((prev) => ({ ...prev, code: e.target.value }))}
-         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-        />
-       </div>
-       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Unit</label>
-        <input
-         value={editData.unit}
-         onChange={(e) => setEditData((prev) => ({ ...prev, unit: e.target.value }))}
-         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-        />
-       </div>
-       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
-        <input
-         value={editData.status}
-         onChange={(e) => setEditData((prev) => ({ ...prev, status: e.target.value }))}
-         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-        />
-       </div>
-      </div>
-      <div>
-       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-semibold text-gray-700">Mapped Items</p>
-        <button
-         type="button"
-         onClick={handleAddMappedItem}
-         className="px-3 py-1 text-xs border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-        >
-         + Add
-        </button>
-       </div>
-       <div className="space-y-2">
-        {editData.mappedItems.length > 0 ? (
-         editData.mappedItems.map((mi, idx) => (
-        <div key={`edit-mi-${idx}`} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-         <input
-          value={mi.name}
-          onChange={(e) => handleEditMappedItem(idx, 'name', e.target.value)}
-          placeholder="Name"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-         />
-         <input
-          value={mi.sku}
-          onChange={(e) => handleEditMappedItem(idx, 'sku', e.target.value)}
-          placeholder="SKU"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-         />
-         <input
-          value={mi.quantity}
-          onChange={(e) => handleEditMappedItem(idx, 'quantity', e.target.value)}
-          placeholder="Quantity"
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-         />
-         <button
-          type="button"
-          onClick={() => handleRemoveMappedItem(idx)}
-          className="px-3 py-2 text-xs border border-red-200 rounded-md text-red-600 hover:bg-red-50"
-         >
-          Remove
-         </button>
-        </div>
-         ))
-        ) : (
-         <div className="text-xs text-gray-400">No mapped items.</div>
-        )}
-       </div>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-       <button
-        type="button"
-        onClick={() => setEditItem(null)}
-        className="px-4 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-       >
-        Cancel
-       </button>
-       <button
-        type="button"
-        onClick={handleSaveEdit}
-        className="px-4 py-2 text-sm rounded-md bg-gray-900 text-white hover:bg-gray-800"
-       >
-        Save
-       </button>
-      </div>
-       </div>
-      </div>
-     </div>
-    )}
+    </div>
+
    </div>
   </div>
  );

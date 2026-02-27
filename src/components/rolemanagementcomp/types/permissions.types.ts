@@ -789,31 +789,6 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
     ]
    }
   ]
- },
- {
-  moduleId: 'order-list',
-  moduleName: 'Order List',
-  icon: 'orderlist',
-  description: 'View and filter all orders',
-  subModules: [
-   {
-    subModuleId: 'all-orders',
-    subModuleName: 'All Orders',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'order-id', columnName: 'Order ID', view: false, edit: false },
-     { columnId: 'client-name', columnName: 'Client Name', view: false, edit: false },
-     { columnId: 'product-details', columnName: 'Product Details', view: false, edit: false },
-     { columnId: 'order-value', columnName: 'Order Value', view: false, edit: false },
-     { columnId: 'order-date', columnName: 'Order Date', view: false, edit: false },
-     { columnId: 'delivery-date', columnName: 'Delivery Date', view: false, edit: false },
-     { columnId: 'current-stage', columnName: 'Current Stage', view: false, edit: false },
-     { columnId: 'assigned-to', columnName: 'Assigned To', view: false, edit: false },
-     { columnId: 'priority', columnName: 'Priority', view: false, edit: false },
-     { columnId: 'status', columnName: 'Status', view: false, edit: false },
-    ]
-   }
-  ]
  }
 ];
 

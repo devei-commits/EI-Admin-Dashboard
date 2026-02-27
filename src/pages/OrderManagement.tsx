@@ -1,8 +1,9 @@
 ﻿import React, { useState, useMemo } from 'react';
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
-import BatchPlannerModal from '../components/ordermanagementcomp/BatchPlannerModal';
+import CpoDetailModal from '../components/ordermanagementcomp/CpoDetailModal';
+import SalesOrders from '../components/ordermanagementcomp/SalesOrders';
 
 const CPO_STATUS_MAP: Record<string, { label: string; color: string }> = {
     draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
@@ -18,16 +19,12 @@ let cpoSeqCounter = 1200; // Start after existing seed data (CPO-1196 was last)
 
 const OrderManagement: React.FC = () => {
     const { state, dispatch } = useGlobalState();
+    const navigate = useNavigate();
+    const [activeView, setActiveView] = useState<'customer-pos' | 'sales-orders'>('customer-pos');
     const [showNewCPO, setShowNewCPO] = useState(false);
     const [selectedCPOId, setSelectedCPOId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [batchPlannerSO, setBatchPlannerSO] = useState<string | null>(null);
-
-    const batchPlannerOrderedProduct = useMemo(() => {
-        if (!batchPlannerSO) return null;
-        const orderedProducts: any[] = state.orders?.orderedProducts || [];
-        return orderedProducts.find((op) => op.so === batchPlannerSO) || null;
-    }, [state.orders?.orderedProducts, batchPlannerSO]);
+    const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
     // ─── New CPO form state ────────────────────────────────────────────────────
     const [newCPO, setNewCPO] = useState({
@@ -224,7 +221,38 @@ const OrderManagement: React.FC = () => {
             stage: 'Review',
         };
         dispatch({ type: 'CREATE_SO_FROM_CPO', payload: { cpoId: cpo.po, soData, orderedProduct } });
-        // No local state update needed — selectedCPO derives live from global state
+    };
+
+    const markCustomerApproval = (cpo: any) => {
+        const today = new Date().toISOString().slice(0, 10);
+        dispatch({
+            type: 'UPDATE_CUSTOMER_PO',
+            payload: {
+                poId: cpo.po,
+                updatedFields: {
+                    status: cpo.advancePct > 0 ? 'payment_pending' : 'checkout_pending',
+                    timeline: (cpo.timeline || []).map((t: any) =>
+                        t.stage === 'Customer Approval' ? { ...t, date: today, done: true } : t
+                    ),
+                },
+            },
+        });
+    };
+
+    const sendToCust= (cpo: any) => {
+        const today = new Date().toISOString().slice(0, 10);
+        dispatch({
+            type: 'UPDATE_CUSTOMER_PO',
+            payload: {
+                poId: cpo.po,
+                updatedFields: {
+                    status: 'customer_approval_pending',
+                    timeline: (cpo.timeline || []).map((t: any) =>
+                        t.stage === 'Sent to Customer' ? { ...t, date: today, done: true } : t
+                    ),
+                },
+            },
+        });
     };
 
     // ─── Filtered CPOs ─────────────────────────────────────────────────────────
@@ -237,16 +265,41 @@ const OrderManagement: React.FC = () => {
     );
 
     const filteredCPOs = useMemo(() => {
-        if (!searchTerm) return cpos;
-        const t = searchTerm.toLowerCase();
-        return cpos.filter((c) =>
-            c.po?.toLowerCase().includes(t) ||
-            c.client?.toLowerCase().includes(t) ||
-            c.products?.[0]?.product?.toLowerCase().includes(t)
-        );
-    }, [cpos, searchTerm]);
+        let filtered = cpos;
+        
+        // Apply status filter if any
+        if (statusFilter) {
+            filtered = filtered.filter((c) => c.status === statusFilter);
+        }
+        
+        // Apply search filter
+        if (searchTerm) {
+            const t = searchTerm.toLowerCase();
+            filtered = filtered.filter((c) =>
+                c.po?.toLowerCase().includes(t) ||
+                c.client?.toLowerCase().includes(t) ||
+                c.products?.[0]?.product?.toLowerCase().includes(t)
+            );
+        }
+        
+        return filtered;
+    }, [cpos, searchTerm, statusFilter]);
 
     const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+
+    // Calculate status-based KPIs with totals
+    const kpiData = useMemo(() => {
+        const byStatus = (status: string) => cpos.filter((c: any) => c.status === status);
+        const sumByStatus = (status: string) => byStatus(status).reduce((sum, c) => sum + (c.value || 0), 0);
+
+        return [
+            { label: 'Draft', status: 'draft', count: byStatus('draft').length, value: sumByStatus('draft'), color: 'bg-slate-900 text-white' },
+            { label: 'Awaiting Approval', status: 'customer_approval_pending', count: byStatus('customer_approval_pending').length, value: sumByStatus('customer_approval_pending'), color: 'bg-slate-800 text-white' },
+            { label: 'Payment Pending', status: 'payment_pending', count: byStatus('payment_pending').length, value: sumByStatus('payment_pending'), color: 'bg-slate-800 text-white' },
+            { label: 'Advance Paid', status: 'advance_paid', count: byStatus('advance_paid').length, value: sumByStatus('advance_paid'), color: 'bg-slate-800 text-white' },
+            { label: 'SO Created', status: 'so_created', count: byStatus('so_created').length, value: sumByStatus('so_created'), color: 'bg-slate-800 text-white' },
+        ];
+    }, [cpos]);
 
     return (
         <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
@@ -254,20 +307,44 @@ const OrderManagement: React.FC = () => {
             <div className="mb-6">
                 <div className="flex justify-between items-start flex-wrap gap-3">
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Customer Purchase Orders</h1>
+                        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Order Management</h1>
                         <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
                             <Link to="/" className="text-blue-600 hover:underline">Dashboard</Link>
                             <span className="text-gray-400">/</span>
                             <span className="text-gray-600">Order Management</span>
                         </div>
                     </div>
-                    <div className="flex gap-3">
-                        <Link
-                            to="/order-hub"
-                            className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
-                        >
-                            Order Hub →
-                        </Link>
+                </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
+                <button
+                    onClick={() => setActiveView('customer-pos')}
+                    className={`px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap border-b-2 ${
+                        activeView === 'customer-pos'
+                            ? 'border-slate-800 text-slate-800'
+                            : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    Customer Purchase Orders
+                </button>
+                <button
+                    onClick={() => setActiveView('sales-orders')}
+                    className={`px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap border-b-2 ${
+                        activeView === 'sales-orders'
+                            ? 'border-slate-800 text-slate-800'
+                            : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    Sales Orders
+                </button>
+            </div>
+
+            {/* Customer Purchase Orders View */}
+            {activeView === 'customer-pos' && (
+                <div>
+                    <div className="mb-4 flex justify-end">
                         <button
                             onClick={() => setShowNewCPO(true)}
                             className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition"
@@ -275,21 +352,21 @@ const OrderManagement: React.FC = () => {
                             + New PO
                         </button>
                     </div>
-                </div>
-            </div>
 
-            {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                {[
-                    { label: 'Total CPOs', value: cpos.length, color: 'bg-blue-50 border-blue-100 text-blue-700' },
-                    { label: 'Payment Pending', value: cpos.filter((c: any) => c.status === 'payment_pending').length, color: 'bg-orange-50 border-orange-100 text-orange-700' },
-                    { label: 'Advance Paid', value: cpos.filter((c: any) => c.status === 'advance_paid').length, color: 'bg-green-50 border-green-100 text-green-700' },
-                    { label: 'SO Created', value: cpos.filter((c: any) => c.status === 'so_created').length, color: 'bg-emerald-50 border-emerald-100 text-emerald-700' },
-                ].map((kpi) => (
-                    <div key={kpi.label} className={`rounded-xl border p-4 ${kpi.color}`}>
-                        <p className="text-xs font-medium opacity-75">{kpi.label}</p>
-                        <p className="text-2xl font-bold mt-1">{kpi.value}</p>
-                    </div>
+                    {/* Status KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                {kpiData.map((kpi) => (
+                    <button
+                        key={kpi.label}
+                        onClick={() => setStatusFilter(statusFilter === kpi.status ? null : kpi.status)}
+                        className={`rounded-lg border border-gray-200 bg-white p-4 text-left transition cursor-pointer ${
+                            statusFilter === kpi.status ? 'ring-2 ring-blue-500 border-blue-500' : 'hover:border-gray-300'
+                        }`}
+                    >
+                        <p className="text-xs font-medium text-gray-600">{kpi.label}</p>
+                        <p className="text-2xl font-bold mt-2 text-gray-800">{kpi.count}</p>
+                        <p className="text-sm text-gray-600 mt-1">{fmt(kpi.value)}</p>
+                    </button>
                 ))}
             </div>
 
@@ -310,7 +387,7 @@ const OrderManagement: React.FC = () => {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-gray-200 bg-gray-50">
-                                {['PO No.', 'Client', 'Source', 'Product', 'Value', 'Status', 'SO Ref', 'Created', 'Action'].map((h) => (
+                                {['PO / Source', 'Client', 'Value & Terms', 'Payment', 'Status', 'SO Ref', 'Actions'].map((h) => (
                                     <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider">{h}</th>
                                 ))}
                             </tr>
@@ -318,36 +395,92 @@ const OrderManagement: React.FC = () => {
                         <tbody>
                             {filteredCPOs.map((cpo: any) => {
                                 const statusInfo = CPO_STATUS_MAP[cpo.status] || { label: cpo.status, color: 'bg-gray-100 text-gray-700' };
+                                const advancePayment = (cpo.payments || []).find((p: any) => p.type === 'advance');
                                 return (
                                     <tr key={cpo.po} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedCPOId(cpo.po)}>
-                                        <td className="px-4 py-3 font-mono font-bold text-gray-800">{cpo.po}</td>
+                                        <td className="px-4 py-3">
+                                            <div>
+                                                <p className="font-mono font-bold text-gray-800">{cpo.po}</p>
+                                                <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${cpo.source === 'bd_team' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {cpo.source === 'bd_team' ? `BD – ${cpo.bdRep || ''}` : 'Customer'}
+                                                </span>
+                                            </div>
+                                        </td>
                                         <td className="px-4 py-3 text-gray-700">{cpo.client}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cpo.source === 'bd_team' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                {cpo.source === 'bd_team' ? `BD – ${cpo.bdRep || ''}` : 'Customer'}
-                                            </span>
+                                            <div className="text-gray-800 font-semibold">{fmt(cpo.value || 0)}</div>
+                                            <div className="text-xs text-gray-600 mt-1">
+                                                {cpo.advancePct}% Advance, {100 - cpo.advancePct}% on delivery
+                                                {cpo.advancePct > 0 && <div>{cpo.advancePct}% advance = {fmt(cpo.advanceAmt)}</div>}
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-700">{cpo.products?.[0]?.product || '—'}</td>
-                                        <td className="px-4 py-3 font-semibold text-gray-800">{fmt(cpo.value || 0)}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
+                                            <div className="text-sm">
+                                                {advancePayment ? (
+                                                    <>
+                                                        <div className="text-green-600 font-semibold">Paid: {fmt(advancePayment.amt)}</div>
+                                                        <div className="text-orange-600">Pending: {fmt(cpo.value - advancePayment.amt)}</div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="text-gray-600">Paid: ₹0</div>
+                                                        <div className="text-orange-600 font-semibold">Pending: {fmt(cpo.value)}</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-xs font-semibold inline-block ${statusInfo.color}`}>{statusInfo.label}</span>
                                         </td>
                                         <td className="px-4 py-3 font-mono text-gray-600">{cpo.soRef || '—'}</td>
-                                        <td className="px-4 py-3 text-gray-500">{typeof cpo.createdAt === 'string' ? cpo.createdAt : new Date(cpo.createdAt).toISOString().slice(0, 10)}</td>
                                         <td className="px-4 py-3">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setSelectedCPOId(cpo.po); }}
-                                                className="text-xs text-blue-600 hover:underline font-medium"
-                                            >
-                                                View
-                                            </button>
+                                            <div className="flex gap-2 flex-wrap">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedCPOId(cpo.po); }}
+                                                    className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition"
+                                                >
+                                                    Open →
+                                                </button>
+                                                {cpo.status === 'payment_pending' && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); markAdvancePaid(cpo); }}
+                                                        className="px-2 py-1 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded hover:bg-emerald-100 transition"
+                                                    >
+                                                        Mark Advanced Paid
+                                                    </button>
+                                                )}
+                                                {cpo.status === 'customer_approval_pending' && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); markCustomerApproval(cpo); }}
+                                                        className="px-2 py-1 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded hover:bg-blue-100 transition"
+                                                    >
+                                                        Mark Approved
+                                                    </button>
+                                                )}
+                                                {cpo.status === 'draft' && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); sendToCust(cpo); }}
+                                                        className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition"
+                                                    >
+                                                        Send to Client
+                                                    </button>
+                                                )}
+                                                {(cpo.status === 'advance_paid' || !cpo.soRef) && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); createSalesOrder(cpo); }}
+                                                        className="px-2 py-1 text-xs bg-cyan-50 border border-cyan-200 text-cyan-700 rounded hover:bg-cyan-100 transition"
+                                                    >
+                                                        SO Ready
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 );
                             })}
                             {filteredCPOs.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="text-center py-12 text-gray-400">
+                                    <td colSpan={7} className="text-center py-12 text-slate-400">
                                         No orders found. Create one with "+ New PO".
                                     </td>
                                 </tr>
@@ -356,6 +489,13 @@ const OrderManagement: React.FC = () => {
                     </table>
                 </div>
             </div>
+                </div>
+            )}
+
+            {/* Sales Orders View */}
+            {activeView === 'sales-orders' && (
+                <SalesOrders />
+            )}
 
             {/* ══ NEW CPO MODAL ══════════════════════════════════════════════════════ */}
             {showNewCPO && (
@@ -458,107 +598,15 @@ const OrderManagement: React.FC = () => {
 
             {/* ══ CPO DETAIL MODAL ══════════════════════════════════════════════════ */}
             {selectedCPO && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto">
-                        <div className="flex items-start justify-between p-6 border-b sticky top-0 bg-white z-10">
-                            <div>
-                                <h2 className="text-lg font-bold text-gray-800">{selectedCPO.po}</h2>
-                                <p className="text-sm text-gray-500 mt-0.5">{selectedCPO.client} · {selectedCPO.products?.[0]?.product}</p>
-                            </div>
-                            <button onClick={() => setSelectedCPOId(null)} className="p-1 text-gray-400 hover:text-gray-600 text-xl">✕</button>
-                        </div>
-
-                        <div className="p-6 space-y-5">
-                            {/* Status badge */}
-                            <div className="flex items-center gap-3">
-                                {(() => {
-                                    const info = CPO_STATUS_MAP[selectedCPO.status] || { label: selectedCPO.status, color: 'bg-gray-100 text-gray-700' };
-                                    return <span className={`px-3 py-1 rounded-full text-sm font-semibold ${info.color}`}>{info.label}</span>;
-                                })()}
-                                {selectedCPO.soRef && (
-                                    <span className="px-3 py-1 rounded-full text-sm bg-emerald-100 text-emerald-700 font-semibold">SO: {selectedCPO.soRef}</span>
-                                )}
-                            </div>
-
-                            {/* Products */}
-                            <div className="bg-gray-50 rounded-xl p-4">
-                                <p className="text-xs font-semibold text-gray-500 mb-2">PRODUCTS</p>
-                                {(selectedCPO.products || []).map((p: any, i: number) => (
-                                    <div key={i} className="flex items-center justify-between text-sm">
-                                        <span className="text-gray-800 font-medium">{p.product} · {p.sku}</span>
-                                        <span className="text-gray-600">{p.qty?.toLocaleString()} units @ ₹{p.unitPrice} = <strong>{fmt(p.lineValue)}</strong></span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Timeline */}
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-3">TIMELINE</p>
-                                <div className="space-y-2">
-                                    {(selectedCPO.timeline || []).map((t: any, i: number) => (
-                                        <div key={i} className={`flex items-center gap-3 p-2 rounded-lg text-sm ${t.done ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-500'}`}>
-                                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${t.done ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                                                {t.done ? '✓' : i + 1}
-                                            </span>
-                                            <span className="font-medium flex-1">{t.stage}</span>
-                                            {t.date && <span className="text-xs opacity-75">{typeof t.date === 'string' ? t.date : new Date(t.date).toISOString().slice(0, 10)}</span>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Notes */}
-                            {selectedCPO.notes && (
-                                <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 text-sm text-yellow-800">
-                                    <strong>Note:</strong> {selectedCPO.notes}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="p-6 pt-0 space-y-2">
-                            {(selectedCPO.status === 'checkout_pending' || selectedCPO.status === 'payment_pending') && selectedCPO.status !== 'so_created' && (
-                                <>
-                                    {!selectedCPO.timeline?.find((t: any) => t.stage === 'Finance Review')?.done && (
-                                        <button onClick={() => markFinanceReviewed(selectedCPO)}
-                                            className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm hover:bg-blue-700 transition">
-                                            ✓ Mark Finance Reviewed
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                            {selectedCPO.status === 'payment_pending' && (
-                                <button onClick={() => markAdvancePaid(selectedCPO)}
-                                    className="w-full py-2.5 bg-green-600 text-white rounded-xl font-medium text-sm hover:bg-green-700 transition">
-                                    ✓ Mark Advance Paid
-                                </button>
-                            )}
-                            {(selectedCPO.status === 'advance_paid' || (selectedCPO.status === 'checkout_pending' && selectedCPO.advancePct === 0)) && !selectedCPO.soRef && (
-                                <button onClick={() => createSalesOrder(selectedCPO)}
-                                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition">
-                                    🏭 Create Sales Order
-                                </button>
-                            )}
-                            {selectedCPO.soRef && (
-                                <button onClick={() => { setBatchPlannerSO(selectedCPO.soRef); setSelectedCPOId(null); }}
-                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-medium text-sm hover:bg-indigo-700 transition">
-                                    📦 Plan Batches
-                                </button>
-                            )}
-                            <button onClick={() => setSelectedCPOId(null)}
-                                className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition">
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Batch Planner Modal */}
-            {batchPlannerSO && batchPlannerOrderedProduct && (
-                <BatchPlannerModal
-                    orderedProduct={batchPlannerOrderedProduct}
-                    onClose={() => setBatchPlannerSO(null)}
+                <CpoDetailModal
+                    cpo={selectedCPO}
+                    onClose={() => setSelectedCPOId(null)}
+                    onMarkFinanceReviewed={markFinanceReviewed}
+                    onMarkAdvancePaid={markAdvancePaid}
+                    onCreateSalesOrder={createSalesOrder}
+                    onSendToCust={sendToCust}
+                    onMarkCustomerApproval={markCustomerApproval}
+                    onViewOrderedProducts={() => { navigate('/ordered-products'); setSelectedCPOId(null); }}
                 />
             )}
         </div>
