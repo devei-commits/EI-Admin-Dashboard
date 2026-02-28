@@ -459,7 +459,7 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
                     <p className="text-sm font-semibold text-slate-900">
                       {line.itemName}{' '}
                       <span className="text-[11px] text-slate-500 font-normal">System: {line.systemQty}</span>
-                    </p>
+                    </p>in 
                     <p className="text-[11px] text-slate-500 font-mono">{line.itemCode}</p>
                   </div>
                   <p className="text-[11px] text-slate-500">Variance: <span className="font-semibold text-amber-700">{variance}</span></p>
