@@ -1,32 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Factory, ArrowLeft, CheckCircle2 } from 'lucide-react';
-
-interface MaterialItem {
-  material: string;
-  code: string;
-  required: string;
-  toTransfer: number;
-  whStock: number;
-  status: 'Pending' | 'Picked';
-  picked: boolean;
-}
-
-interface MaterialRequest {
-  id: string;
-  mrNo: string;
-  bmrNo: string;
-  factory: string;
-  requested: string;
-  requiredBy: string;
-  materials: MaterialItem[];
-  status: 'Pending Pick' | 'In Transit' | 'Completed';
-  dispatchedAt?: string;
-  dispatchedOn?: string;
-}
+import type { WarehouseMaterialRequest } from '../../types/bmr.types';
 
 interface WarehouseProps {
   onBackToMaterialSourcing: () => void;
-  materialRequests: MaterialRequest[];
+  materialRequests: WarehouseMaterialRequest[];
   onPickItem: (mrId: string, materialIndex: number) => void;
   onPickAll: (mrId: string) => void;
   onDispatchToFactory: (mrId: string) => void;

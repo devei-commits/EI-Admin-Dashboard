@@ -24,3 +24,8 @@ export type { PaginationProps } from './Pagination';
 export type { FormFieldProps } from './FormField';
 export type { ConfirmDialogProps } from './ConfirmDialog';
 export type { PageHeaderProps } from './PageHeader';
+
+export { StatusBadge } from './StatusBadge';
+export { StatCard } from './StatCard';
+export { DataTable } from './DataTable';
+export type { TableColumn } from './DataTable';

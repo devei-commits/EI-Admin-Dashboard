@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useVendorClient } from '../context/VendorClientContext';
 import { useToast } from '../context/ToastContext';
 
@@ -215,7 +215,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     if (parsed.pocs) setPocs(parsed.pocs);
     if (parsed.banks) setBanks(parsed.banks);
     if (parsed.vendorItems) setVendorItems(parsed.vendorItems);
-   } catch (e) {
+   } catch (_e) {
+    /* ignored */
    }
   }
  }, [existingVendor, draftKey]);

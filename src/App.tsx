@@ -9,7 +9,7 @@ import { GlobalStateProvider } from './context/GlobalStateContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
-import Sidebar from "./components/sidebar/sidebar"
+import Sidebar from "./components/Sidebar"
 import { monitorConnection } from './lib/performanceOptimization'
 
 // Lazy loaded pages for better performance
@@ -19,7 +19,7 @@ const RoleManagement = lazy(() => import('./pages/RoleManagement'))
 const UserManagement = lazy(() => import('./pages/UserManagement'))
 const OrderManagement = lazy(() => import('./pages/OrderManagement'))
 const OrderedProducts = lazy(() => import('./pages/OrderedProducts'))
-const GoodReceivingPage = lazy(() => import('./pages/GoodReceivingPage'))
+const GoodReceivingPage = lazy(() => import('./pages/GoodReceiving'))
 
 const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
 const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
@@ -29,12 +29,12 @@ const ContactEnquiry = lazy(() => import('./pages/ContactEnquiry'))
 const NewDevelopments = lazy(() => import('./pages/NewDevelopments'))
 const ProductSamples = lazy(() => import('./pages/ProductSamples'))
 const TreasuryApp = lazy(() => import('./pages/TreasuryApp'))
-const PackagingRefactored = lazy(() => import('./pages/PackagingRefactored'))
+const PackagingRefactored = lazy(() => import('./pages/PackagingForm'))
 const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
-const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialRefactored'))
+const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialForm'))
 const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
-const BOMRefactored = lazy(() => import('./pages/BOMRefactored'))
-const BMRBPR = lazy(() => import('./pages/BMRBPR'))
+const BOMRefactored = lazy(() => import('./pages/BOMForm'))
+const BMRBPR = lazy(() => import('./pages/BMRPage'))
 const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
 const VendorClient = lazy(() => import('./pages/VendorClient'))
 const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
@@ -44,8 +44,8 @@ const ItemGroups = lazy(() => import('./pages/ItemGroups'))
 const ItemsList = lazy(() => import('./pages/ItemsList'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
-const Procurement = lazy(() => import('./pages/Procurement'))
-const PurchaseOrders = lazy(() => import('./components/ordermanagementcomp/PurchaseOrders'))
+const Procurement = lazy(() => import('./pages/procurement/index'))
+const PurchaseOrders = lazy(() => import('./components/orders/PurchaseOrders'))
 
 // Loading spinner component
 const PageLoader = () => (

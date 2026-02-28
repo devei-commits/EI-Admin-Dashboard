@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import QCReviewModal from './QCReviewModal';
+import QCReviewModal from './modals/QCReviewModal';
 
 const mockQcReviewData = [
     {

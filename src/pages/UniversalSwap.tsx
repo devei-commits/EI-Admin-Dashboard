@@ -23,7 +23,7 @@ type ProductRecord = {
 };
 
 const UniversalSwap: React.FC = () => {
-  const { items } = useItems();
+  const { items: _items } = useItems();
   const { addToast } = useToast();
   
   // Mock data - replace with actual data from context/API

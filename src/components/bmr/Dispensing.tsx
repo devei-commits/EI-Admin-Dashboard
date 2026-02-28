@@ -1,21 +1,6 @@
 import React, { useState } from 'react';
 import { FlaskConical } from 'lucide-react';
-
-interface DispensingRequest {
-  id: string;
-  mrNo: string;
-  bmrNo: string;
-  factory: string;
-  dispatchedOn: string;
-  materials: Array<{
-    material: string;
-    code: string;
-    required: string;
-    freeStock: number;
-    dispensed: number;
-  }>;
-  status: 'Pending Dispensing' | 'Completed';
-}
+import type { DispensingRequest } from '../../types/bmr.types';
 
 interface DispensingProps {
   dispensingRequests: DispensingRequest[];
@@ -28,7 +13,7 @@ const Dispensing: React.FC<DispensingProps> = ({
   onDispenseItem,
   onCompleteDispensingRequest
 }) => {
-  const [expandedRequest, setExpandedRequest] = useState<string | null>(null);
+  const [expandedRequest, _setExpandedRequest] = useState<string | null>(null);
 
   if (dispensingRequests.length === 0) {
     return (
@@ -50,7 +35,7 @@ const Dispensing: React.FC<DispensingProps> = ({
         const dispensedCount = request.materials.filter(m => m.dispensed > 0).length;
         const totalCount = request.materials.length;
         const dispenseProgress = Math.round((dispensedCount / totalCount) * 100);
-        const isExpanded = expandedRequest === request.id;
+        const _isExpanded = expandedRequest === request.id;
 
         return (
           <div key={request.id} className="bg-white rounded-lg border-2 border-blue-300 shadow-sm overflow-hidden">

@@ -789,7 +789,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
    if (stats?.success && stats.data) {
     setDashboardStats(stats.data);
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   }
  }, [isAuthenticated]);
 
@@ -800,8 +801,9 @@ export function PISProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SESSION_ROLE_KEY, role);
    } else {
     localStorage.removeItem(SESSION_ROLE_KEY);
-  }
- } catch (e) {
+   }
+  } catch (_e) {
+   /* ignored */
   }
  };
 
@@ -833,12 +835,13 @@ export function PISProvider({ children }: { children: ReactNode }) {
      setPisRecords(convertedPis);
      // If pagination shows more records than returned, log a warning
      if (pisResponse.data.pagination && pisResponse.data.pagination.total > convertedPis.length) {
+      /* ignored */
      }
     } else {
      // Only use mock data if API response indicates failure (not just empty data)
      setPisRecords([]);
     }
-   } catch (error) {
+   } catch (_error) {
     // Only use mock data in development mode, not for CLIENT users in production
     // For CLIENT users, empty array is correct if no records are assigned
     if (currentUser?.role === 'CLIENT') {
@@ -872,7 +875,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
      // Use mock data if API returns empty or fails
      setCustomers(mockCustomersData);
     }
-   } catch (error) {
+   } catch (_error) {
     // Use mock data as fallback
     setCustomers(mockCustomersData);
    }
@@ -899,7 +902,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
      // Use mock data if API returns empty or fails
      setProducts(mockProductsData);
     }
-   } catch (error) {
+   } catch (_error) {
     // Use mock data as fallback
     setProducts(mockProductsData);
    }
@@ -980,7 +983,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
       setSystemUsers(dummyRndStaff);
      }
     }
-   } catch (error) {
+   } catch (_error) {
     // Fallback to dummy data for managers if API fails
     if (currentUser && currentUser.role === 'BD_MANAGER') {
      const dummyBdStaff = mockUsers.filter(u => u.role === 'BD_STAFF' && u.status === 'ACTIVE');
@@ -990,7 +993,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
      setSystemUsers(dummyRndStaff);
     }
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   } finally {
    setIsLoading(false);
   }
@@ -1067,7 +1071,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
        // Store role in localStorage for consistency
        try {
         localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
-       } catch (e) {
+       } catch (_e) {
+        /* ignored */
        }
        setHasInitializedSession(true);
       }
@@ -1104,13 +1109,14 @@ export function PISProvider({ children }: { children: ReactNode }) {
          // Store role in localStorage for consistency
          try {
           localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
-         } catch (e) {
+         } catch (_e) {
+          /* ignored */
          }
          setHasInitializedSession(true);
         }
         return;
        }
-      } catch (refreshError) {
+      } catch (_refreshError) {
        // Refresh failed, clear tokens and log out
        clearTokens();
        localStorage.removeItem(SESSION_USER_KEY);
@@ -1128,7 +1134,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
     if (mounted) {
      setHasInitializedSession(true);
     }
-   } catch (e) {
+   } catch (_e) {
     // Clear invalid tokens
     clearTokens();
     localStorage.removeItem(SESSION_USER_KEY);
@@ -1179,11 +1185,12 @@ export function PISProvider({ children }: { children: ReactNode }) {
    try {
     localStorage.setItem(SESSION_USER_KEY, systemUser.id);
     localStorage.setItem(SESSION_ROLE_KEY, systemUser.role);
-  } catch (e) {
+  } catch (_e) {
+   /* ignored */
   }
 
    return systemUser;
-  } catch (error) {
+  } catch (_error) {
    return null;
   }
  };
@@ -1222,12 +1229,13 @@ export function PISProvider({ children }: { children: ReactNode }) {
   try {
    localStorage.setItem(SESSION_USER_KEY, newUser.id);
    localStorage.removeItem(SESSION_ROLE_KEY);
-  } catch (e) {
+  } catch (_e) {
+   /* ignored */
   }
   return newUser;
    }
    return null;
-  } catch (error) {
+  } catch (_error) {
    return null;
   }
  };
@@ -1235,7 +1243,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
  const logout = async () => {
   try {
    await authApi.logout();
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   } finally {
   setCurrentUser(null);
   setIsAuthenticated(false);
@@ -1247,7 +1256,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
   try {
    localStorage.removeItem(SESSION_USER_KEY);
    localStorage.removeItem(SESSION_ROLE_KEY);
-  } catch (e) {
+  } catch (_e) {
+   /* ignored */
    }
   }
  };
@@ -1313,7 +1323,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
     });
     return converted;
    }
-  } catch (error) {
+  } catch (_error) {
    // Fallback to local state
   return pisRecords.find(pis => pis.id === id);
   }
@@ -1330,7 +1340,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
      prev.map(pis => (pis.id === id ? updated : pis))
     );
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   }
  };
 

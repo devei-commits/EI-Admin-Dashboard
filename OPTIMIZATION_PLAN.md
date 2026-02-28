@@ -1,6 +1,17 @@
 # Project Optimization & Restructuring Plan
 # Eisthetic EI Admin — Full Execution Guide
 
+> **Last synced with codebase:** commit `1eea977` — "Order Management and Masters totally completed" (Mar 1, 2026)
+>
+> **Key changes reflected in this version vs original:**
+> - localStorage keys corrected: `bom_draft_new`, `packaging_draft_new`, `raw_material_draft_new`
+> - PackagingRefactored.tsx flagged as special case — only `useAutoSave` applies, NOT `useDraftLoader`
+> - UnifiedModal `size` prop confirmed missing — Step 5.1 now includes exact code to add it
+> - New file `SwapMaterialModal.tsx` (231 lines) added to modal migration list (Step 5.8)
+> - SalesAndPurchase.tsx grew to 2001 lines — Phase 6B added to split it
+> - Both `UniversalSwap.tsx` and `UniversalSwapPage.tsx` confirmed as separate active routes — both kept
+> - Phase 5 modal list expanded to include ordermanagementcomp modals (14 total now)
+
 ## CRITICAL RULES — READ BEFORE ANY STEP
 
 ### FROZEN FILES — DO NOT TOUCH, EDIT, MOVE, OR RENAME
@@ -537,23 +548,49 @@ export default useSearchFilter;
 
 ### Step 3.4 — Apply hooks to form pages
 
-In `src/pages/BOMRefactored.tsx`:
-- Remove the `useEffect` block that calls `setInterval` writing to localStorage
-- Remove the `useEffect` block that reads from localStorage on mount
-- Add imports and calls:
+**IMPORTANT — Actual localStorage keys (verified from source code):**
+- `BOMRefactored.tsx` uses `'bom_draft_new'`
+- `PackagingRefactored.tsx` uses `'packaging_draft_new'`
+- `RawMaterialRefactored.tsx` uses `'raw_material_draft_new'`
+
+Use these exact keys in the hook calls — do NOT change them, existing saved drafts
+in users' browsers depend on these keys.
+
+**In `src/pages/BOMRefactored.tsx`:**
+- Remove the `useEffect` at line ~91 that calls `setInterval` writing to localStorage
+- Remove the `useEffect` at line ~102 that reads from localStorage on mount
+- Add imports and calls using the correct key:
 
 ```tsx
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useDraftLoader } from '../hooks/useDraftLoader';
 
 // Inside the component, after formData state declaration:
-useAutoSave('bom_draft', formData);
-useDraftLoader('bom_draft', (saved) => setFormData(prev => ({ ...prev, ...saved })));
+useAutoSave('bom_draft_new', formData);
+useDraftLoader('bom_draft_new', (saved) => setFormData(prev => ({ ...prev, ...saved })));
 ```
 
-Repeat the same pattern for:
-- `src/pages/PackagingRefactored.tsx` — use key `'packaging_draft'`
-- `src/pages/RawMaterialRefactored.tsx` — use key `'rawmaterial_draft'`
+**In `src/pages/RawMaterialRefactored.tsx`:**
+- Remove the auto-save `setInterval` useEffect (line ~130)
+- Remove the draft-loading useEffect (line ~140)
+- Replace with:
+```tsx
+useAutoSave('raw_material_draft_new', formData);
+useDraftLoader('raw_material_draft_new', (saved) => setFormData(prev => ({ ...prev, ...saved })));
+```
+
+**In `src/pages/PackagingRefactored.tsx` — SPECIAL CASE:**
+This file has more complex draft loading that includes:
+- A toast flag key `'packaging_draft_toast_shown'`
+- A counter key `'pm_code_counters'`
+- Conditional toast display on load
+
+Do NOT apply `useDraftLoader` here. Only apply `useAutoSave`:
+```tsx
+useAutoSave('packaging_draft_new', formData);
+```
+Keep the existing draft-load `useEffect` exactly as-is since it has extra logic
+(toast flag + counter restoration) that `useDraftLoader` does not handle.
 
 ---
 
@@ -659,34 +696,70 @@ export async function createProcurementRequest(
 
 ## PHASE 5 — Modal Consolidation
 
-### Step 5.1 — Verify UnifiedModal in `src/components/ui/UnifiedComponents.tsx`
+### Step 5.1 — Add `size` prop to UnifiedModal in `src/components/ui/UnifiedComponents.tsx`
 
-Confirm `UnifiedModal` accepts at minimum:
+**Current state (verified):** `UnifiedModal` already has `footer` prop but is MISSING `size` prop.
+The modal width is hardcoded as `max-w-4xl`. Add `size` before migrating any modal.
+
+Change the `UnifiedModalProps` interface from:
 ```ts
-interface UnifiedModalProps {
+export interface UnifiedModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   footer?: ReactNode;
 }
 ```
-If `footer` or `size` props are missing, add them before proceeding.
+To:
+```ts
+export interface UnifiedModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+}
+```
 
-### Step 5.2 — Migrate each BMR modal
+And update the modal container div to use `size`:
+```tsx
+// Replace the hardcoded max-w-4xl with a size map:
+const sizeClass = {
+  sm:   'max-w-md',
+  md:   'max-w-2xl',
+  lg:   'max-w-4xl',
+  xl:   'max-w-6xl',
+  full: 'max-w-[95vw]',
+}[size ?? 'lg'];
+
+// Then use: className={`bg-white rounded-xl shadow-lg w-full ${sizeClass} max-h-[90vh] overflow-auto`}
+```
+
+### Step 5.2 — Migrate each modal
 
 For each of the files listed below, remove the outer overlay/container shell JSX
 and replace with `<UnifiedModal>`. Keep ALL internal form state, handlers, and
 body JSX completely unchanged.
 
-Files to migrate:
-- `src/components/bmr/BatchConfirmationModal.tsx`
-- `src/components/bmr/MaterialRequestModal.tsx`
-- `src/components/bmr/QCReviewModal.tsx`
-- `src/components/bmr/ScheduleBMRModal.tsx`
-- `src/components/bmr/SubmitBMRModal.tsx`
-- `src/components/bmr/UpdateStockModal.tsx`
+**BMR modals** (`src/components/bmr/`):
+- `BatchConfirmationModal.tsx`
+- `MaterialRequestModal.tsx`
+- `QCReviewModal.tsx`
+- `ScheduleBMRModal.tsx`
+- `SubmitBMRModal.tsx`
+- `UpdateStockModal.tsx`
+
+**Order management modals** (`src/components/ordermanagementcomp/`) — new since last plan:
+- `SwapMaterialModal.tsx` (new file, 231 lines — added in latest commit, migrate immediately)
+- `BatchPlannerModal.tsx`
+- `ConsolidatedMRModal.tsx`
+- `CpoDetailModal.tsx`
+- `DelayImpactModal.tsx`
+- `DraftSplitModal.tsx`
+- `GRNWizardModal.tsx`
+- `ItemDetailModal.tsx`
 
 Pattern — remove this kind of shell:
 ```tsx
@@ -730,7 +803,9 @@ import { UnifiedModal } from '../ui/UnifiedComponents';
 
 ---
 
-## PHASE 6 — Split Procurement.tsx
+## PHASE 6 — Split Large Pages
+
+### Phase 6A — Split Procurement.tsx (5872 lines)
 
 **CRITICAL: The URL `/procurement` and `moduleId="order-management"` must NOT change.**
 
@@ -787,7 +862,7 @@ export default function Procurement() {
 }
 ```
 
-### Step 6.7 — Update `src/App.tsx` — ONE LINE ONLY
+### Step 6A.7 — Update `src/App.tsx` — ONE LINE ONLY
 
 ```tsx
 // BEFORE:
@@ -799,7 +874,45 @@ const Procurement = lazy(() => import('./pages/procurement/index'))
 
 The routes `path="/procurement"` and `moduleId="order-management"` stay identical.
 
-### Step 6.8 — Delete `src/pages/Procurement.tsx` ONLY after verifying Step 6.7 builds and works.
+### Step 6A.8 — Delete `src/pages/Procurement.tsx` ONLY after verifying Step 6A.7 builds and works.
+
+---
+
+### Phase 6B — Split SalesAndPurchase.tsx (2001 lines)
+
+**New since last plan version.** `SalesAndPurchase.tsx` has grown to 2001 lines.
+It has `activeTab: 'sales' | 'purchase'` state and two large tab sections.
+
+**CRITICAL: The URL `/sales-and-purchase` and `moduleId="sales-purchase"` must NOT change.**
+
+#### Step 6B.1 — Create `src/types/salesPurchase.types.ts`
+Extract inline interfaces from `SalesAndPurchase.tsx`:
+- `OrderStatus` interface
+- `Order` interface
+- Any other inline types
+
+#### Step 6B.2 — Create `src/pages/SalesOrders.tsx`
+Extract the `activeTab === 'sales'` content, state, and handlers into this file.
+```tsx
+// src/pages/SalesOrders.tsx
+export default function SalesOrders() {
+  // state and handlers for the sales tab
+}
+```
+
+#### Step 6B.3 — Create `src/pages/PurchaseOrdersPage.tsx`
+Extract the `activeTab === 'purchase'` content.
+```tsx
+// src/pages/PurchaseOrdersPage.tsx
+export default function PurchaseOrdersPage() {
+  // state and handlers for the purchase tab
+}
+```
+
+#### Step 6B.4 — Slim down `SalesAndPurchase.tsx`
+Keep only the tab navigation and shared state in the original file.
+Import and render `SalesOrders` and `PurchaseOrdersPage` based on `activeTab`.
+The App.tsx import path and URL route stay unchanged.
 
 ---
 
@@ -920,10 +1033,10 @@ Before deleting any file, search the entire codebase for its name to confirm zer
 
 | File | Status | Action |
 |---|---|---|
-| `src/pages/UniversalSwap.tsx` | Route `/universal-swap` uses this | Keep |
-| `src/pages/UniversalSwapPage.tsx` | Route `/universal-swap-page` uses this | Keep |
+| `src/pages/UniversalSwap.tsx` | **Confirmed active** — Route `/universal-swap` uses this | Keep |
+| `src/pages/UniversalSwapPage.tsx` | **Confirmed active** — Route `/universal-swap-page` uses this (495 lines, new file) | Keep |
 | `src/pages/PackagingManagement.tsx` | Route `/packaging-management` uses this | Keep |
-| `src/pages/Procurement.tsx` | Will be replaced by Phase 6 | Delete AFTER Phase 6 verified |
+| `src/pages/Procurement.tsx` | Will be replaced by Phase 6A | Delete AFTER Phase 6A verified |
 
 ---
 
@@ -956,23 +1069,37 @@ Phase 4 — Service Layer
   [ ] 4.3 Create src/services/procurement.service.ts
 
 Phase 5 — Modal Consolidation
-  [ ] 5.1 Verify/update UnifiedModal props (size, footer)
-  [ ] 5.2 Migrate BatchConfirmationModal.tsx
-  [ ] 5.3 Migrate MaterialRequestModal.tsx
-  [ ] 5.4 Migrate QCReviewModal.tsx
-  [ ] 5.5 Migrate ScheduleBMRModal.tsx
-  [ ] 5.6 Migrate SubmitBMRModal.tsx
-  [ ] 5.7 Migrate UpdateStockModal.tsx
+  [ ] 5.1 Add size prop to UnifiedModal in UnifiedComponents.tsx
+  [ ] 5.2 Migrate BMR: BatchConfirmationModal.tsx
+  [ ] 5.3 Migrate BMR: MaterialRequestModal.tsx
+  [ ] 5.4 Migrate BMR: QCReviewModal.tsx
+  [ ] 5.5 Migrate BMR: ScheduleBMRModal.tsx
+  [ ] 5.6 Migrate BMR: SubmitBMRModal.tsx
+  [ ] 5.7 Migrate BMR: UpdateStockModal.tsx
+  [ ] 5.8 Migrate orders: SwapMaterialModal.tsx (new file)
+  [ ] 5.9 Migrate orders: BatchPlannerModal.tsx
+  [ ] 5.10 Migrate orders: ConsolidatedMRModal.tsx
+  [ ] 5.11 Migrate orders: CpoDetailModal.tsx
+  [ ] 5.12 Migrate orders: DelayImpactModal.tsx
+  [ ] 5.13 Migrate orders: DraftSplitModal.tsx
+  [ ] 5.14 Migrate orders: GRNWizardModal.tsx
+  [ ] 5.15 Migrate orders: ItemDetailModal.tsx
 
-Phase 6 — Split Procurement.tsx
-  [ ] 6.1 Create src/pages/procurement/ folder
-  [ ] 6.2 Create src/types/procurement.types.ts
-  [ ] 6.3 Create ProcurementRequests.tsx
-  [ ] 6.4 Create ProcurementVendors.tsx
-  [ ] 6.5 Create ProcurementReports.tsx
-  [ ] 6.6 Create procurement/index.tsx
-  [ ] 6.7 Update App.tsx import for Procurement (ONE LINE ONLY)
-  [ ] 6.8 Verify build passes, then delete src/pages/Procurement.tsx
+Phase 6A — Split Procurement.tsx (5872 lines)
+  [ ] 6A.1 Create src/pages/procurement/ folder
+  [ ] 6A.2 Create src/types/procurement.types.ts
+  [ ] 6A.3 Create ProcurementRequests.tsx
+  [ ] 6A.4 Create ProcurementVendors.tsx
+  [ ] 6A.5 Create ProcurementReports.tsx
+  [ ] 6A.6 Create procurement/index.tsx
+  [ ] 6A.7 Update App.tsx import for Procurement (ONE LINE ONLY)
+  [ ] 6A.8 Verify build passes, then delete src/pages/Procurement.tsx
+
+Phase 6B — Split SalesAndPurchase.tsx (2001 lines)
+  [ ] 6B.1 Create src/types/salesPurchase.types.ts
+  [ ] 6B.2 Create src/pages/SalesOrders.tsx (sales tab content)
+  [ ] 6B.3 Create src/pages/PurchaseOrdersPage.tsx (purchase tab content)
+  [ ] 6B.4 Slim SalesAndPurchase.tsx to tab shell only
 
 Phase 7 — File Renames
   [ ] 7.1 BOMRefactored.tsx → BOMForm.tsx + update App.tsx

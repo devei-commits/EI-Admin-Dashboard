@@ -1,19 +1,6 @@
 import React, { useState } from 'react';
-import SubmitBMRModal from './SubmitBMRModal';
-
-interface ProducingBatch {
-  id: string;
-  bmrNo: string;
-  batch: string;
-  product: string;
-  units: number;
-  bulkKg: number;
-  schedule: string;
-  tankArea: string;
-  progress: number;
-  status: 'Dispensed' | 'Under Production' | 'Completed';
-  dispatchedOn?: string;
-}
+import SubmitBMRModal from './modals/SubmitBMRModal';
+import type { ProducingBatch } from '../../types/bmr.types';
 
 interface UnderProductionProps {
   producingBatches: ProducingBatch[];

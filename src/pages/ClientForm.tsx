@@ -236,7 +236,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     if (parsed.pocs) setPocs(parsed.pocs);
     if (parsed.banks) setBanks(parsed.banks);
     if (parsed.productInterests) setProductInterests(parsed.productInterests);
-   } catch (e) {
+   } catch (_e) {
+    /* ignored */
    }
   }
  }, [existingClient, draftKey]);

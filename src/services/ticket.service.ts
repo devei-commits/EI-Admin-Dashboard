@@ -214,7 +214,7 @@ export async function fetchTicketById(
  * TODO: Replace with actual API call: POST /api/tickets
  */
 export async function createTicket(
- payload: CreateTicketPayload
+ _payload: CreateTicketPayload
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  // const response = await axios.post('/api/tickets', payload);
@@ -230,8 +230,8 @@ export async function createTicket(
  * TODO: Replace with actual API call: PATCH /api/tickets/:id
  */
 export async function updateTicket(
- ticketId: string,
- payload: UpdateTicketPayload
+ _ticketId: string,
+ _payload: UpdateTicketPayload
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  // const response = await axios.patch(`/api/tickets/${ticketId}`, payload);
@@ -247,7 +247,7 @@ export async function updateTicket(
  * TODO: Replace with actual API call: DELETE /api/tickets/:id
  */
 export async function deleteTicket(
- ticketId: string
+ _ticketId: string
 ): Promise<ServiceResult<void>> {
  // TODO: Implement API call
  // await axios.delete(`/api/tickets/${ticketId}`);
@@ -265,9 +265,9 @@ export async function deleteTicket(
  * TODO: Replace with actual API call: PATCH /api/tickets/:id/status
  */
 export async function updateTicketStatus(
- ticketId: string,
- status: TicketStatus,
- notes?: string
+ _ticketId: string,
+ _status: TicketStatus,
+ _notes?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  // const response = await axios.patch(`/api/tickets/${ticketId}/status`, { status, notes });
@@ -283,9 +283,9 @@ export async function updateTicketStatus(
  * TODO: Replace with actual API call: PATCH /api/tickets/:id/priority
  */
 export async function updateTicketPriority(
- ticketId: string,
- priority: TicketPriority,
- reason?: string
+ _ticketId: string,
+ _priority: TicketPriority,
+ _reason?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -299,7 +299,7 @@ export async function updateTicketPriority(
  * TODO: Replace with actual API call: POST /api/tickets/:id/assign
  */
 export async function assignTicket(
- payload: AssignTicketPayload
+ _payload: AssignTicketPayload
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  // const response = await axios.post(`/api/tickets/${payload.ticketId}/assign`, {
@@ -318,8 +318,8 @@ export async function assignTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/unassign
  */
 export async function unassignTicket(
- ticketId: string,
- reason?: string
+ _ticketId: string,
+ _reason?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -333,9 +333,9 @@ export async function unassignTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/transfer
  */
 export async function transferTicket(
- ticketId: string,
- toDepartment: string,
- notes?: string
+ _ticketId: string,
+ _toDepartment: string,
+ _notes?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -349,9 +349,9 @@ export async function transferTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/escalate
  */
 export async function escalateTicket(
- ticketId: string,
- reason: string,
- escalateTo?: string
+ _ticketId: string,
+ _reason: string,
+ _escalateTo?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -367,7 +367,7 @@ export async function escalateTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/resolve
  */
 export async function resolveTicket(
- payload: ResolveTicketPayload
+ _payload: ResolveTicketPayload
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -381,8 +381,8 @@ export async function resolveTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/reopen
  */
 export async function reopenTicket(
- ticketId: string,
- reason: string
+ _ticketId: string,
+ _reason: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -396,8 +396,8 @@ export async function reopenTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/close
  */
 export async function closeTicket(
- ticketId: string,
- notes?: string
+ _ticketId: string,
+ _notes?: string
 ): Promise<ServiceResult<Ticket>> {
  // TODO: Implement API call
  return {
@@ -413,7 +413,7 @@ export async function closeTicket(
  * TODO: Replace with actual API call: POST /api/tickets/:id/messages
  */
 export async function addTicketMessage(
- payload: AddMessagePayload
+ _payload: AddMessagePayload
 ): Promise<ServiceResult<TicketMessage>> {
  // TODO: Implement API call
  return {
@@ -427,7 +427,7 @@ export async function addTicketMessage(
  * TODO: Replace with actual API call: GET /api/tickets/:id/messages
  */
 export async function fetchTicketMessages(
- ticketId: string
+ _ticketId: string
 ): Promise<ServiceResult<TicketMessage[]>> {
  // TODO: Implement API call
  return { success: true, data: [] };
@@ -438,8 +438,8 @@ export async function fetchTicketMessages(
  * TODO: Replace with actual API call: POST /api/tickets/:id/notes
  */
 export async function addTicketNote(
- ticketId: string,
- note: string
+ _ticketId: string,
+ _note: string
 ): Promise<ServiceResult<TicketActivity>> {
  // TODO: Implement API call
  return {
@@ -455,7 +455,7 @@ export async function addTicketNote(
  * TODO: Replace with actual API call: POST /api/tickets/:id/orders
  */
 export async function linkOrderToTicket(
- payload: LinkOrderPayload
+ _payload: LinkOrderPayload
 ): Promise<ServiceResult<LinkedOrder>> {
  // TODO: Implement API call
  return {
@@ -469,8 +469,8 @@ export async function linkOrderToTicket(
  * TODO: Replace with actual API call: DELETE /api/tickets/:id/orders/:orderId
  */
 export async function unlinkOrderFromTicket(
- ticketId: string,
- orderId: string
+ _ticketId: string,
+ _orderId: string
 ): Promise<ServiceResult<void>> {
  // TODO: Implement API call
  return {
@@ -484,8 +484,8 @@ export async function unlinkOrderFromTicket(
  * TODO: Replace with actual API call: GET /api/tickets/:id/orders/linkable
  */
 export async function fetchLinkableOrders(
- ticketId: string,
- searchTerm?: string
+ _ticketId: string,
+ _searchTerm?: string
 ): Promise<ServiceResult<LinkedOrder[]>> {
  // TODO: Implement API call
  return { success: true, data: [] };
@@ -498,7 +498,7 @@ export async function fetchLinkableOrders(
  * TODO: Replace with actual API call: GET /api/tickets/:id/activities
  */
 export async function fetchTicketActivities(
- ticketId: string
+ _ticketId: string
 ): Promise<ServiceResult<TicketActivity[]>> {
  // TODO: Implement API call
  return { success: true, data: [] };
@@ -599,7 +599,7 @@ export async function fetchTicketNotifications(): Promise<ServiceResult<TicketNo
  * TODO: Replace with actual API call: PATCH /api/tickets/notifications/:id/read
  */
 export async function markNotificationAsRead(
- notificationId: string
+ _notificationId: string
 ): Promise<ServiceResult<void>> {
  // TODO: Implement API call
  return { success: true };
@@ -612,8 +612,8 @@ export async function markNotificationAsRead(
  * TODO: Replace with actual API call: GET /api/tickets/export
  */
 export async function exportTickets(
- filters: TicketFilters,
- format: 'excel' | 'csv'
+ _filters: TicketFilters,
+ _format: 'excel' | 'csv'
 ): Promise<ServiceResult<Blob>> {
  // TODO: Implement API call
  return {
@@ -627,8 +627,8 @@ export async function exportTickets(
  * TODO: Replace with actual API call: POST /api/tickets/report
  */
 export async function generateTicketReport(
- reportType: 'summary' | 'detailed' | 'staff-performance' | 'sla',
- dateRange: { from: string; to: string }
+ _reportType: 'summary' | 'detailed' | 'staff-performance' | 'sla',
+ _dateRange: { from: string; to: string }
 ): Promise<ServiceResult<Blob>> {
  // TODO: Implement API call
  return {
@@ -644,8 +644,8 @@ export async function generateTicketReport(
  * TODO: Replace with actual API call: PATCH /api/tickets/bulk/status
  */
 export async function bulkUpdateTicketStatus(
- ticketIds: string[],
- status: TicketStatus
+ _ticketIds: string[],
+ _status: TicketStatus
 ): Promise<ServiceResult<{ success: number; failed: number }>> {
  // TODO: Implement API call
  return {
@@ -659,8 +659,8 @@ export async function bulkUpdateTicketStatus(
  * TODO: Replace with actual API call: PATCH /api/tickets/bulk/assign
  */
 export async function bulkAssignTickets(
- ticketIds: string[],
- staffId: string
+ _ticketIds: string[],
+ _staffId: string
 ): Promise<ServiceResult<{ success: number; failed: number }>> {
  // TODO: Implement API call
  return {

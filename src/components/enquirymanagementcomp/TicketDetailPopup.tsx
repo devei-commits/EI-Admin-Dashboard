@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { 
  Ticket, 
  TicketActivity,
@@ -427,7 +427,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
   // TODO: Open order search modal
  }, []);
 
- const handleUnlinkOrder = useCallback(async (orderId: string) => {
+ const handleUnlinkOrder = useCallback(async (_orderId: string) => {
   // TODO: Implement unlink order
  }, []);
 

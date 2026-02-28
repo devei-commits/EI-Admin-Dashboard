@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
  Search,
  Filter,
@@ -630,10 +630,11 @@ export function GlobalTaskOverview() {
     case 'estDelDate':
      comparison = new Date(a.estDelDate).getTime() - new Date(b.estDelDate).getTime();
      break;
-    case 'priority':
+    case 'priority': {
      const priorityOrder = { high: 0, medium: 1, low: 2 };
      comparison = (priorityOrder[a.priority || 'low'] || 2) - (priorityOrder[b.priority || 'low'] || 2);
      break;
+    }
     case 'stage':
      comparison = a.currentStage - b.currentStage;
      break;

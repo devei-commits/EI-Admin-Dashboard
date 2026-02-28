@@ -58,7 +58,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
  );
 
  const filteredProducts = useMemo(() => {
-  let result = products.filter(product => {
+  const result = products.filter(product => {
    const matchesSearch =
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     product.code.toLowerCase().includes(searchQuery.toLowerCase());

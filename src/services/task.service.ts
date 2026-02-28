@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Task Management Service
  * Handles all task-related API operations with role-based filtering
  */
@@ -279,7 +279,7 @@ const generateMockTasks = (): Task[] => {
  });
 };
 
-let mockTasks = generateMockTasks();
+const mockTasks = generateMockTasks();
 
 // ==================== Role-Based Filtering ====================
 const filterTasksByRole = (tasks: Task[], currentUser: CurrentUser): Task[] => {
@@ -388,10 +388,11 @@ export const getTasks = async (
      case 'dueDate':
       comparison = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
       break;
-     case 'priority':
+     case 'priority': {
       const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
       comparison = priorityOrder[a.priority] - priorityOrder[b.priority];
       break;
+     }
      case 'status':
       comparison = a.status.localeCompare(b.status);
       break;

@@ -82,7 +82,7 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
      );
     }
     return false;
-   case 'RND':
+   case 'RND': {
     if (currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN') {
      const inRndStages =
       pis.stage === 'ALIGNMENT' ||
@@ -113,6 +113,7 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
      isAssignedToMe &&
      (pis.stage === 'RND_DEVELOPMENT' || pis.stage === 'QUALITY_REVIEW')
     );
+   }
    case 'QA':
     if (currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN') {
      if (pis.stage !== 'QUALITY_REVIEW') return false;
@@ -222,7 +223,8 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
    onApply: async (decision, comments) => {
     try {
      await transitionPIS(pis.id, 'RND_LEAD_REVIEW', 'APPROVED', `${decision}${comments ? ` - ${comments}` : ''}`);
-    } catch (error) {
+    } catch (_error) {
+     /* ignored */
     }
    },
   });
@@ -250,7 +252,8 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
 
     try {
      await updatePIS(pis.id, updates);
-    } catch (error) {
+    } catch (_error) {
+     /* ignored */
     }
 
     // Trigger a refresh of history from backend so comments are visible where supported
@@ -266,7 +269,8 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
       decision,
       comments,
      });
-    } catch (error) {
+    } catch (_error) {
+     /* ignored */
     }
    },
   });

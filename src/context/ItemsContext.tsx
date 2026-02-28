@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ZOHO_ITEM_SEED } from '../data/zohoItemsSeed';
-import { ZOHO_RAW_MATERIALS_SEED } from '../data/zohoRawMaterialsSeed';
+import { ZOHO_ITEM_SEED } from '../mocks/zohoItems.mock';
+import { ZOHO_RAW_MATERIALS_SEED } from '../mocks/zohoRawMaterials.mock';
 
 export interface MasterItem {
  id: string;

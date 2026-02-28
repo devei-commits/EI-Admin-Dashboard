@@ -52,7 +52,8 @@ const getInitialSettings = (storageKey: string) => {
    const parsed = JSON.parse(stored);
    return { ...defaults, ...parsed };
   }
- } catch (e) {
+ } catch (_e) {
+  /* ignored */
  }
  return defaults;
 };

@@ -347,7 +347,7 @@ export function NewPISView() {
    const createdRecord = await Promise.resolve(addPIS(newPIS) as any);
    setCreated((createdRecord as PISRecord) ?? newPIS);
    toast.success('PIS request submitted. Our team will take it forward.');
-  } catch (err) {
+  } catch (_err) {
    toast.error('Failed to create PIS');
   } finally {
    setIsCreating(false);

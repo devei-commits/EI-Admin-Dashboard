@@ -369,7 +369,8 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
    if (staffResult.success && staffResult.data) {
     setStaffMetrics(staffResult.data);
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   } finally {
    setLoading(false);
   }

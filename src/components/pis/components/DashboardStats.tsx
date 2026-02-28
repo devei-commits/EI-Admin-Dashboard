@@ -60,6 +60,7 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
 
  // Log for debugging CLIENT dashboard
  if (currentRole === 'CLIENT' && import.meta.env.NODE_ENV === 'development') {
+  /* ignored */
  }
 
  // SUPER_ADMIN and ADMIN see all PIS records (no filtering)

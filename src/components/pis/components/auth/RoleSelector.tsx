@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { UserRole } from '../../types/pis';
 import { getRoleLabel } from '../../utils/permissions';
 import { Card } from '../ui/card';
@@ -62,7 +62,7 @@ export function RoleSelector({ onRoleSelect, currentUserRole: _currentUserRole }
       });
      setRoles(activeRoles);
     }
-   } catch (error) {
+   } catch (_error) {
     // Fallback to default roles if API fails
     setRoles([
      { role: 'SUPER_ADMIN', icon: ShieldCheck, color: 'bg-purple-700', description: 'Super Admin console', roleLevel: 'SUPER_ADMIN' },

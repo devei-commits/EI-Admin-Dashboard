@@ -235,7 +235,8 @@ export const authApi = {
      body: JSON.stringify({ refreshToken }),
     });
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   } finally {
    clearTokens();
   }

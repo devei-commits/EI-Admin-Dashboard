@@ -5,11 +5,12 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import { ArrowRightLeft } from 'lucide-react';
+import { UnifiedModal } from '../ui/UnifiedComponents';
 import {
   parseSkuToGrams, buildRMLines, buildPMLines,
   lineAvailability, materialStatus, todayISO, fmtNum,
 } from '../../utils/manufacturing';
-import SwapMaterialModal from './SwapMaterialModal';
+import SwapMaterialModal from '../orders/SwapMaterialModal';
 import { useToast } from '../../context/ToastContext';
 
 interface Props {
@@ -233,21 +234,31 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
   }, [splits, splitsTotal, allowPartial, orderedProduct, state, dispatch, onClose, skuGrams]);
 
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-275 max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-start">
-          <div>
-            <h2 className="text-xl font-bold">Batch Planner</h2>
-            <p className="text-slate-300 text-sm mt-1">
-              {orderedProduct.so} · {orderedProduct.product} · {orderedProduct.sku} · {fmtNum(orderedProduct.qty)} units · Due {orderedProduct.deliveryDate}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
-        </div>
+    <UnifiedModal
+      isOpen={true}
+      onClose={onClose}
+      title="Batch Planner"
+      size="xl"
+      footer={
+        <>
+          <p className="text-xs text-gray-500 mr-auto">Each split creates a BMR + BPR linked to this order.</p>
+          <button onClick={onClose} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 text-sm">Cancel</button>
+          <button
+            onClick={confirmCreateBatches}
+            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+            disabled={splits.length === 0}
+          >
+            Create {splits.length} Batch{splits.length !== 1 ? 'es' : ''}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-gray-500 -mt-4">
+        {orderedProduct.so} · {orderedProduct.product} · {orderedProduct.sku} · {fmtNum(orderedProduct.qty)} units · Due {orderedProduct.deliveryDate}
+      </p>
 
-        {/* Availability Bar */}
-        <div className="bg-gray-50 border-b px-6 py-3 grid grid-cols-5 gap-4 text-center text-sm">
+      {/* Availability Bar */}
+      <div className="bg-gray-50 border rounded-lg px-6 py-3 grid grid-cols-5 gap-4 text-center text-sm">
           <div>
             <div className="text-2xl font-bold text-gray-800">{fmtNum(orderedProduct.qty)}</div>
             <div className="text-gray-500">ORDER QTY</div>
@@ -494,22 +505,6 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="border-t bg-gray-50 px-6 py-3 flex justify-between items-center">
-          <p className="text-xs text-gray-500">Each split creates a BMR + BPR linked to this order.</p>
-          <div className="flex gap-3">
-            <button onClick={onClose} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 text-sm">Cancel</button>
-            <button
-              onClick={confirmCreateBatches}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
-              disabled={splits.length === 0}
-            >
-              Create {splits.length} Batch{splits.length !== 1 ? 'es' : ''}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Swap Material Modal */}
       {swapModalMaterial && (
         <SwapMaterialModal
@@ -518,6 +513,6 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
           onSwapApplied={handleSwapApplied}
         />
       )}
-    </div>
+    </UnifiedModal>
   );
 }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { vendorsData } from '../data/zohoVendorsSeed';
-import { clientsData } from '../data/zohoClientsSeed';
+import { vendorsData } from '../mocks/zohoVendors.mock';
+import { clientsData } from '../mocks/zohoClients.mock';
 
 export interface VendorClient {
  id: string;
@@ -70,6 +70,7 @@ export const VendorClientProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setVendorClients(merged.map(normalizeEntityCode));
     return;
    } catch {
+    /* ignored */
    }
   }
 

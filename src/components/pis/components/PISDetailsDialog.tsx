@@ -196,7 +196,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
    if (resp.success && resp.data) {
     setAttachments(resp.data as AttachmentData[]);
    }
-  } catch (e: unknown) {
+  } catch (_e: unknown) {
    toast.error('Failed to load attachments');
   } finally {
    setIsAttachmentsLoading(false);
@@ -474,7 +474,8 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
     if (response.success && response.data) {
      await /* getPISById */ (pis.id);
     }
-   } catch (error) {
+   } catch (_error) {
+    /* ignored */
    }
    return;
   }
@@ -532,7 +533,8 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      await updatePIS(pis.id, {});
     }
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   }
  };
 

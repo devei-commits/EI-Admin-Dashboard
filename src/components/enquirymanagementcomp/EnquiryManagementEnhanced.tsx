@@ -320,7 +320,8 @@ const EnquiryManagementEnhanced: React.FC = () => {
     // Use mock data for now since API is not implemented
     // setTickets(result.data.data);
    }
-  } catch (error) {
+  } catch (_error) {
+   /* ignored */
   } finally {
    setLoading(false);
   }

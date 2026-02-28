@@ -1,9 +1,8 @@
-﻿import React, { useState, useMemo } from 'react';
-import { useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGlobalState } from '../context/GlobalStateContext';
-import CpoDetailModal from '../components/ordermanagementcomp/CpoDetailModal';
-import SalesOrders from '../components/ordermanagementcomp/SalesOrders';
+import CpoDetailModal from '../components/orders/CpoDetailModal';
+import SalesOrders from '../components/orders/SalesOrders';
 
 const CPO_STATUS_MAP: Record<string, { label: string; color: string }> = {
     draft: { label: 'Draft', color: 'bg-gray-100 text-gray-700' },
@@ -77,7 +76,7 @@ const OrderManagement: React.FC = () => {
         const value = orderValue;
         const adv = Math.round(value * advPct / 100);
 
-        let status = newCPO.source === 'bd_team'
+        const status = newCPO.source === 'bd_team'
             ? 'draft'
             : advPct > 0 ? 'payment_pending' : 'checkout_pending';
 

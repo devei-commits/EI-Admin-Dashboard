@@ -44,14 +44,14 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; badge: string 
 };
 
 const ItemsList: React.FC = () => {
-  const { items } = useItems();
-  const { addToast } = useToast();
+  const { items: _items } = useItems();
+  const { addToast: _addToast } = useToast();
 
   const [allItems] = useState<ItemRecord[]>(ITEMS_SEED);
   const [typeFilter, setTypeFilter] = useState<'All' | 'RM' | 'PM'>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'code' | 'price'>('code');
-  const [sortAsc, setSortAsc] = useState(true);
+  const [sortBy, _setSortBy] = useState<'code' | 'price'>('code');
+  const [sortAsc, _setSortAsc] = useState(true);
 
   // Filter and sort
   const filtered = allItems
@@ -176,7 +176,7 @@ const ItemsList: React.FC = () => {
                   No items match your search.
                 </div>
               </div>
-            ) : filtered.map((item, idx) => {
+            ) : filtered.map((item, _idx) => {
               const colors = CATEGORY_COLORS[item.category] || { bg: 'bg-gray-100', text: 'text-gray-600', badge: 'bg-gray-100' };
               return (
                 <div key={item.id} className="p-5 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent transition-colors group">

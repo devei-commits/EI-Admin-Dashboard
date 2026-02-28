@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckSquare, ArrowRight } from 'lucide-react';
-import MaterialRequestModal from './MaterialRequestModal';
+import MaterialRequestModal from './modals/MaterialRequestModal';
 
 const mockMaterialSourcingData = [
   {

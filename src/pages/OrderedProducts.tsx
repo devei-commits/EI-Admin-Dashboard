@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { Link } from 'react-router-dom';
-import CpoDetailModal from '../components/ordermanagementcomp/CpoDetailModal';
-import BatchPlannerModal from '../components/ordermanagementcomp/BatchPlannerModal';
+import CpoDetailModal from '../components/orders/CpoDetailModal';
+import BatchPlannerModal from '../components/orders/BatchPlannerModal';
 import { Search, Sparkles } from 'lucide-react';
 
 const OrderedProducts = () => {
