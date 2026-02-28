@@ -4574,6 +4574,28 @@ const Procurement: React.FC = () => {
       {/* ── Stock Check Side Panel ── */}
       {selectedStockCheckRequest && (() => {
         const req = selectedStockCheckRequest;
+        const nonLowPriorityRequests = requests.filter((request) => request.priority !== 'Low');
+        const scIndex = nonLowPriorityRequests.findIndex((request) => request.id === req.id);
+        const scId = scIndex >= 0 ? `SC-${String(scIndex + 1).padStart(3, '0')}` : 'SC-000';
+
+        const assignedTo =
+          req.requestedBy ||
+          (req.type === 'RM'
+            ? 'Anand Store'
+            : 'Ravi Kumar');
+
+        const createdDate = req.createdDate ?? '2026-02-10';
+        const dueDate = req.dueDate ?? '2026-02-16';
+
+        const effectiveStatus: StockCheckStatus = stockCheckStatuses[req.id] ?? deriveStockCheckStatusForRequest(req);
+
+        const statusPillClass =
+          effectiveStatus === 'Completed'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+            : effectiveStatus === 'In Progress'
+            ? 'bg-sky-50 text-sky-700 border-sky-300'
+            : 'bg-amber-50 text-amber-700 border-amber-300';
+
         const stockItems = req.itemDetails && req.itemDetails.length > 0
           ? req.itemDetails.map((item, idx) => ({
               itemName: item.itemName,
@@ -4600,26 +4622,34 @@ const Procurement: React.FC = () => {
         const renderedItems = hasFocusedItem ? displayStockItems : stockItems;
 
         return (
-          <div className="fixed inset-0 z-50 flex" onClick={() => {
-            setSelectedStockCheckRequest(null);
-            setSelectedStockCheckItemName(null);
-          }}>
-            <div className="flex-1 bg-black/35 backdrop-blur-[1px]" />
+          <div
+            className="fixed inset-0 z-50 flex"
+            onClick={() => {
+              setSelectedStockCheckRequest(null);
+              setSelectedStockCheckItemName(null);
+            }}
+          >
+            <div className="flex-1 bg-black/25 backdrop-blur-[1px]" />
             <div
-              className="w-full max-w-xl bg-slate-950 border-l border-slate-700 shadow-2xl overflow-y-auto flex flex-col animate-slide-in-right"
-              onClick={e => e.stopPropagation()}
+              className="w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto flex flex-col animate-slide-in-right"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 z-10 border-b border-slate-800 px-5 py-4 bg-slate-950">
+              <div className="sticky top-0 z-10 border-b border-slate-200 px-5 py-4 bg-slate-50">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-bold text-white">
-                    🔎 SC-001 {selectedStockCheckItemName ? `· ${selectedStockCheckItemName}` : ''}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[11px] text-slate-700">
+                      {scId}
+                    </span>
+                    <h2 className="text-sm font-semibold text-slate-900">
+                      Stock Check {selectedStockCheckItemName ? `· ${selectedStockCheckItemName}` : ''}
+                    </h2>
+                  </div>
                   <button
                     onClick={() => {
                       setSelectedStockCheckRequest(null);
                       setSelectedStockCheckItemName(null);
                     }}
-                    className="text-slate-400 hover:text-white text-xl leading-none transition-colors"
+                    className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
                     aria-label="Close"
                   >
                     ×
@@ -4627,53 +4657,87 @@ const Procurement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex-1 px-4 py-4 space-y-3 bg-slate-950">
-                <div className="rounded-lg border border-slate-800 bg-slate-900 p-4 space-y-2 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-slate-400">Assigned To</span><span className="text-white font-semibold">Anand Store</span></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-400">Created</span><span className="text-white font-semibold">{req.createdDate ?? '2026-02-10'}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-400">Due Date</span><span className="text-white font-semibold">{req.dueDate}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-400">Status</span><span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold">Completed</span></div>
+              <div className="flex-1 px-4 py-4 space-y-3 bg-slate-50">
+                <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Assigned To</span>
+                    <span className="text-slate-900 font-semibold">{assignedTo}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Created</span>
+                    <span className="text-slate-900 font-semibold">{createdDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Due Date</span>
+                    <span className="text-slate-900 font-semibold">{dueDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Status</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-xs font-semibold ${statusPillClass}`}>
+                      {effectiveStatus}
+                    </span>
+                  </div>
                 </div>
 
                 {renderedItems.map((item, idx) => (
-                  <div key={`${item.itemCode}-${idx}`} className="rounded-lg border border-slate-800 bg-slate-900 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-800">
+                  <div
+                    key={`${item.itemCode}-${idx}`}
+                    className="rounded-lg border border-slate-200 bg-white overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
                       <div className="flex items-center gap-2">
-                        <p className="text-white font-bold text-sm">{item.itemName}</p>
-                        <span className="text-[10px] text-slate-400">{item.itemCode}</span>
+                        <p className="text-slate-900 font-semibold text-sm">{item.itemName}</p>
+                        <span className="text-[10px] text-slate-500">{item.itemCode}</span>
                       </div>
                     </div>
                     <div className="px-4 py-3 space-y-2 text-sm">
-                      <div className="flex items-center justify-between"><span className="text-slate-400">Zone/Rack</span><span className="text-white font-semibold">{item.zoneRack}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-400">System Qty</span><span className="text-cyan-400 font-bold">{item.systemQty}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-400">Physical Qty</span><span className="text-amber-400 font-bold">{item.physicalQty}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-400">Variance</span><span className="text-emerald-400 font-bold">{Math.max(0, item.physicalQty - item.systemQty)}</span></div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Zone/Rack</span>
+                        <span className="text-slate-900 font-semibold">{item.zoneRack}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">System Qty</span>
+                        <span className="text-emerald-700 font-bold">{item.systemQty}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Physical Qty</span>
+                        <span className="text-sky-700 font-bold">{item.physicalQty}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Variance</span>
+                        <span className="text-amber-700 font-bold">{Math.max(0, item.physicalQty - item.systemQty)}</span>
+                      </div>
 
-                      <div className="pt-2 border-t border-slate-800">
+                      <div className="pt-2 border-t border-slate-200 mt-2">
                         <p className="text-[10px] tracking-wide text-slate-500 uppercase mb-1">Batch Details</p>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono">{item.batchCode}</span>
-                          <span className="text-white font-semibold">{item.physicalQty} units</span>
-                          <span className="text-slate-400">Exp: {item.expiry}</span>
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">Good</span>
+                        <div className="flex items-center gap-2 text-xs flex-wrap">
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-mono">
+                            {item.batchCode}
+                          </span>
+                          <span className="text-slate-800 font-semibold">{item.physicalQty} units</span>
+                          <span className="text-slate-500">Exp: {item.expiry}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+                            Good
+                          </span>
+                          <span className="text-slate-400 ml-auto">Not verified yet</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
 
-                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                   💬 All {req.description ?? 'requested'} stocks verified. Batch details confirmed with COA on file.
                 </div>
               </div>
 
-              <div className="sticky bottom-0 bg-slate-950 border-t border-slate-800 px-4 py-3 flex justify-end">
+              <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
                 <button
                   onClick={() => {
                     setSelectedStockCheckRequest(null);
                     setSelectedStockCheckItemName(null);
                   }}
-                  className="px-4 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-900 transition"
+                  className="px-4 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold bg-white hover:bg-slate-100 transition"
                 >
                   Close
                 </button>
