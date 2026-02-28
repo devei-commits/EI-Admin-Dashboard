@@ -638,6 +638,10 @@ const Procurement: React.FC = () => {
   const [stockCategoryFilter, setStockCategoryFilter] = useState<'All' | RequestType>('All');
   const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed'>('All Statuses');
   const [stockSearch, setStockSearch] = useState('');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState<'All' | RequestType>('All');
+  const [itemVendorFilter, setItemVendorFilter] = useState('All Vendors');
+  const [itemStatusFilter, setItemStatusFilter] = useState<'All Statuses' | RequestStatus>('All Statuses');
+  const [itemSearch, setItemSearch] = useState('');
 
   const vendors: Vendor[] = procurementData.vendors as Vendor[];
   const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
@@ -837,6 +841,107 @@ const Procurement: React.FC = () => {
       pendingAction: requests.filter((request) => request.status === 'New' || request.status === 'Quoted').length,
     };
   }, [filteredQuotes, requests]);
+
+  type ItemTrackerRow = {
+    id: string;
+    itemName: string;
+    itemCode: string;
+    type: RequestType;
+    requestId: string;
+    requestCode: string;
+    priority: RequestPriority;
+    reqQty: number;
+    plannedPrice?: number;
+    requestStatus: RequestStatus;
+    preferredVendor?: string;
+    quotedVendor?: string;
+    actualPrice?: number;
+    poNumber?: string;
+    poStatus?: string;
+    orderQty?: number;
+    draftPoId?: string;
+    primaryAction: 'Quote' | 'Draft' | 'Release' | 'PO';
+    primaryActionLabel: string;
+    quoteIdForDraft?: string;
+  };
+
+  const itemTrackerRows: ItemTrackerRow[] = useMemo(() => {
+    const rows: ItemTrackerRow[] = [];
+
+    requests.forEach((request) => {
+      const requestQuotes = quotes.filter((quote) => quote.requestId === request.id);
+      const confirmedQuote = requestQuotes.find((quote) => quote.status === 'Confirmed') ?? requestQuotes[0];
+
+      const relatedDraftPO = draftPOs.find((dpo) => dpo.requestId === request.id);
+      const relatedPO = purchaseOrders.find((po) => po.requestCode === request.code);
+
+      const baseItems =
+        (request.itemDetails && request.itemDetails.length > 0
+          ? request.itemDetails.map((detail, idx) => ({
+              itemName: detail.itemName,
+              itemCode: detail.itemCode,
+              reqQty: detail.reqQty,
+              plannedPrice: detail.plannedPrice,
+              index: idx,
+            }))
+          : request.items.map((itemName, idx) => ({
+              itemName,
+              itemCode:
+                (request.itemDetails && request.itemDetails[idx]?.itemCode) ||
+                `EI-${request.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`,
+              reqQty: request.quantities?.[idx] ?? 0,
+              plannedPrice: request.plannedPrices?.[idx],
+              index: idx,
+            }))) || [];
+
+      baseItems.forEach((base) => {
+        const quoteLine = confirmedQuote?.lines.find((line) => line.item === base.itemName);
+        const actualPrice = quoteLine?.pricePerUnit;
+
+        const draftLine = relatedDraftPO?.lineItems.find((line) => line.item === base.itemName);
+        const poLine = relatedPO?.items?.includes(base.itemName) ? relatedPO : undefined;
+
+        let primaryAction: ItemTrackerRow['primaryAction'] = 'Quote';
+        let primaryActionLabel = 'Quote';
+
+        if (request.status === 'Quoted') {
+          primaryAction = 'Draft';
+          primaryActionLabel = 'Draft';
+        } else if (request.status === 'PO Draft') {
+          primaryAction = 'Release';
+          primaryActionLabel = 'Release';
+        } else if (request.status === 'PO Released') {
+          primaryAction = 'PO';
+          primaryActionLabel = poLine?.poNumber ? 'PO →' : 'PO Released';
+        }
+
+        rows.push({
+          id: `${request.id}-${base.itemCode}`,
+          itemName: base.itemName,
+          itemCode: base.itemCode,
+          type: request.type,
+          requestId: request.id,
+          requestCode: request.code,
+          priority: request.priority,
+          reqQty: base.reqQty,
+          plannedPrice: base.plannedPrice,
+          requestStatus: request.status,
+          preferredVendor: confirmedQuote?.vendor,
+          quotedVendor: confirmedQuote?.vendor,
+          actualPrice,
+          poNumber: poLine?.poNumber ?? relatedDraftPO?.dpoNumber,
+          poStatus: poLine?.status ?? relatedDraftPO?.status,
+          orderQty: draftLine ? parseFloat(draftLine.qty.replace(/[^0-9.]/g, '')) : undefined,
+          draftPoId: relatedDraftPO?.id,
+          primaryAction,
+          primaryActionLabel,
+          quoteIdForDraft: confirmedQuote?.id,
+        });
+      });
+    });
+
+    return rows;
+  }, [requests, quotes, draftPOs, purchaseOrders]);
 
   const issuedPORecords = useMemo(() => {
     const today = new Date('2026-02-28');
