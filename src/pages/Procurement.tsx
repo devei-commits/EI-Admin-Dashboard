@@ -3667,15 +3667,13 @@ const Procurement: React.FC = () => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    // Move this stock check to In Progress and open details
                                     updateProcurementState((current) => ({
                                       stockCheckStatuses: {
                                         ...current.stockCheckStatuses,
                                         [entry.request.id]: 'In Progress',
                                       },
                                     }));
-                                    setSelectedStockCheckRequest(entry.request);
-                                    setSelectedStockCheckItemName(null);
+                                    setUpdateStockCheckRequest(entry.request);
                                     addToast('success', `${entry.id} moved to In Progress for physical count update.`);
                                   }}
                                   className="px-3 py-1.5 rounded-full border border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100"
