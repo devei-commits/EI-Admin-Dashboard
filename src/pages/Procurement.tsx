@@ -3368,6 +3368,8 @@ const Procurement: React.FC = () => {
                       const baseStatus: StockCheckStatus = deriveStockCheckStatusForRequest(request);
                       const effectiveStatus: StockCheckStatus = stockCheckStatuses[request.id] ?? baseStatus;
 
+                      const updatesForRequest = stockCheckUpdates[request.id] ?? {};
+
                       const assignedTo =
                         request.requestedBy ||
                         (request.type === 'RM'
@@ -3380,14 +3382,45 @@ const Procurement: React.FC = () => {
 
                       const lineItems =
                         (request.itemDetails && request.itemDetails.length > 0
-                          ? request.itemDetails.map((item) => ({
-                              name: item.itemName,
-                              systemQty: item.reqQty,
-                            }))
-                          : request.items.map((itemName, idx) => ({
-                              name: itemName,
-                              systemQty: request.quantities?.[idx] ?? 0,
-                            }))) || [];
+                          ? request.itemDetails.map((item, idx) => {
+                              const systemQty = item.reqQty;
+                              const itemCode = item.itemCode;
+                              const override = itemCode ? updatesForRequest[itemCode] : undefined;
+                              const defaultZone = request.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
+                              const defaultRack = `A1-L1-S${idx + 1}`;
+
+                              return {
+                                name: item.itemName,
+                                itemCode,
+                                systemQty,
+                                zone: override?.zone ?? defaultZone,
+                                rack: override?.rack ?? defaultRack,
+                                physicalQty: override?.physicalQty ?? systemQty,
+                                batchNo: override?.batchNo ?? `ETH-UV08-00${idx + 1}`,
+                                packagingCondition: override?.packagingCondition ?? 'Good',
+                              };
+                            })
+                          : request.items.map((itemName, idx) => {
+                              const systemQty = request.quantities?.[idx] ?? 0;
+                              const generatedCodeBase =
+                                itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
+                                String(idx + 1).padStart(3, '0');
+                              const itemCode = `EI-${request.type}-${generatedCodeBase}`;
+                              const override = updatesForRequest[itemCode];
+                              const defaultZone = request.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
+                              const defaultRack = `A1-L1-S${idx + 1}`;
+
+                              return {
+                                name: itemName,
+                                itemCode,
+                                systemQty,
+                                zone: override?.zone ?? defaultZone,
+                                rack: override?.rack ?? defaultRack,
+                                physicalQty: override?.physicalQty ?? systemQty,
+                                batchNo: override?.batchNo ?? `ETH-UV08-00${idx + 1}`,
+                                packagingCondition: override?.packagingCondition ?? 'Good',
+                              };
+                            })) || [];
 
                       return {
                         id: scId,
@@ -3572,7 +3605,7 @@ const Procurement: React.FC = () => {
                                 <tbody>
                                   {entry.lineItems.map((line, idx) => {
                                     const systemQty = line.systemQty || 0;
-                                    const physicalQty = systemQty;
+                                    const physicalQty = line.physicalQty ?? systemQty;
                                     const variance = physicalQty - systemQty;
                                     return (
                                       <tr
@@ -3581,18 +3614,18 @@ const Procurement: React.FC = () => {
                                       >
                                         <td className="px-4 py-2 align-middle">
                                           <p className="text-[12px] font-semibold text-slate-900">{line.name}</p>
-                                          <p className="text-[10px] text-slate-500">{entry.request.code}</p>
+                                          <p className="text-[10px] text-slate-500">{line.itemCode ?? entry.request.code}</p>
                                         </td>
-                                        <td className="px-4 py-2 align-middle text-[11px] text-slate-700">LOC-ACT · B1-L1-S{idx + 1}</td>
+                                        <td className="px-4 py-2 align-middle text-[11px] text-slate-700">{line.zone} · {line.rack}</td>
                                         <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{systemQty}</td>
                                         <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{physicalQty}</td>
                                         <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">
                                           {variance}
                                         </td>
-                                        <td className="px-4 py-2 align-middle text-[11px] text-emerald-700">ETH-UV08-00{idx + 1}</td>
+                                        <td className="px-4 py-2 align-middle text-[11px] text-emerald-700">{line.batchNo}</td>
                                         <td className="px-4 py-2 align-middle text-center text-[11px]">
                                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
-                                            Good
+                                            {line.packagingCondition}
                                           </span>
                                         </td>
                                         <td className="px-4 py-2 align-middle text-center text-[11px]">
