@@ -171,6 +171,17 @@ type CompletedGrn = {
 
 type StockCheckStatus = 'Assigned' | 'In Progress' | 'Completed';
 
+type PackagingCondition = 'Good' | 'Damaged' | 'Partially Damaged';
+
+type StockCheckLineData = {
+  zone: string;
+  rack: string;
+  physicalQty: number;
+  batchNo: string;
+  packagingCondition: PackagingCondition;
+  remarks?: string;
+};
+
 const REQUESTS_SEED: ProcurementRequest[] = procurementData.requests as ProcurementRequest[];
 const QUOTES_SEED: VendorQuote[] = procurementData.quotes as VendorQuote[];
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -185,6 +196,7 @@ type LiveProcurementState = {
   draftPOs: DraftPO[];
   completedGrns: CompletedGrn[];
    stockCheckStatuses: Record<string, StockCheckStatus>;
+   stockCheckUpdates: Record<string, Record<string, StockCheckLineData>>;
   updatedAt: string;
 };
 
@@ -217,6 +229,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
       stockCheckStatuses: initialStockStatuses,
+      stockCheckUpdates: {},
       updatedAt: new Date().toISOString(),
     };
   }
@@ -234,6 +247,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
       stockCheckStatuses: initialStockStatuses,
+      stockCheckUpdates: {},
       updatedAt: new Date().toISOString(),
     };
   }
@@ -257,6 +271,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       ...parsed,
       completedGrns: parsed.completedGrns ?? [],
       stockCheckStatuses: derivedStockStatuses,
+      stockCheckUpdates: parsed.stockCheckUpdates ?? {},
     };
   } catch {
     const initialStockStatuses: Record<string, StockCheckStatus> = {};
@@ -270,6 +285,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
       stockCheckStatuses: initialStockStatuses,
+      stockCheckUpdates: {},
       updatedAt: new Date().toISOString(),
     };
   }
@@ -314,6 +330,9 @@ const Procurement: React.FC = () => {
   const [stockCheckStatuses, setStockCheckStatuses] = useState<Record<string, StockCheckStatus>>(
     initialLiveState.stockCheckStatuses ?? {},
   );
+  const [stockCheckUpdates, setStockCheckUpdates] = useState<
+    Record<string, Record<string, StockCheckLineData>>
+  >(initialLiveState.stockCheckUpdates ?? {});
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(initialLiveState.updatedAt);
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
@@ -344,6 +363,7 @@ const Procurement: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
+  const [updateStockCheckRequest, setUpdateStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
   const [selectedGrn, setSelectedGrn] = useState<{
@@ -406,20 +426,23 @@ const Procurement: React.FC = () => {
       draftPOs: DraftPO[];
       completedGrns: CompletedGrn[];
       stockCheckStatuses: Record<string, StockCheckStatus>;
+      stockCheckUpdates: Record<string, Record<string, StockCheckLineData>>;
     }) => {
       requests?: ProcurementRequest[];
       quotes?: VendorQuote[];
       draftPOs?: DraftPO[];
       completedGrns?: CompletedGrn[];
       stockCheckStatuses?: Record<string, StockCheckStatus>;
+      stockCheckUpdates?: Record<string, Record<string, StockCheckLineData>>;
     },
   ) => {
-    const next = updater({ requests, quotes, draftPOs, completedGrns, stockCheckStatuses });
+    const next = updater({ requests, quotes, draftPOs, completedGrns, stockCheckStatuses, stockCheckUpdates });
     if (next.requests) setRequests(next.requests);
     if (next.quotes) setQuotes(next.quotes);
     if (next.draftPOs) setDraftPOs(next.draftPOs);
     if (next.completedGrns) setCompletedGrns(next.completedGrns);
     if (next.stockCheckStatuses) setStockCheckStatuses(next.stockCheckStatuses);
+    if (next.stockCheckUpdates) setStockCheckUpdates(next.stockCheckUpdates);
   };
 
   useEffect(() => {
@@ -446,12 +469,13 @@ const Procurement: React.FC = () => {
       draftPOs,
       completedGrns,
       stockCheckStatuses,
+      stockCheckUpdates,
       updatedAt: new Date().toISOString(),
     };
 
     window.localStorage.setItem(PROCUREMENT_LIVE_KEY, JSON.stringify(liveState));
     setLastUpdatedAt(liveState.updatedAt);
-  }, [completedGrns, draftPOs, quotes, requests, stockCheckStatuses]);
+  }, [completedGrns, draftPOs, quotes, requests, stockCheckStatuses, stockCheckUpdates]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -471,6 +495,9 @@ const Procurement: React.FC = () => {
         setCompletedGrns(incoming.completedGrns ?? []);
         if (incoming.stockCheckStatuses) {
           setStockCheckStatuses(incoming.stockCheckStatuses);
+        }
+        if (incoming.stockCheckUpdates) {
+          setStockCheckUpdates(incoming.stockCheckUpdates);
         }
         setLastUpdatedAt(incoming.updatedAt ?? new Date().toISOString());
       } catch {
