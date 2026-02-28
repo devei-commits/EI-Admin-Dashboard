@@ -169,6 +169,8 @@ type CompletedGrn = {
   lines: CompletedGrnLine[];
 };
 
+type StockCheckStatus = 'Assigned' | 'In Progress' | 'Completed';
+
 const REQUESTS_SEED: ProcurementRequest[] = procurementData.requests as ProcurementRequest[];
 const QUOTES_SEED: VendorQuote[] = procurementData.quotes as VendorQuote[];
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -182,6 +184,7 @@ type LiveProcurementState = {
   quotes: VendorQuote[];
   draftPOs: DraftPO[];
   completedGrns: CompletedGrn[];
+   stockCheckStatuses: Record<string, StockCheckStatus>;
   updatedAt: string;
 };
 
@@ -191,24 +194,46 @@ const isSideSection = (value: string | null): value is SideSection => Boolean(va
 const getInitialMainTab = (searchParams: URLSearchParams): MainTab => (isMainTab(searchParams.get('tab')) ? (searchParams.get('tab') as MainTab) : 'Procurement');
 const getInitialSideSection = (searchParams: URLSearchParams): SideSection => (isSideSection(searchParams.get('section')) ? (searchParams.get('section') as SideSection) : 'Overview');
 
+const deriveStockCheckStatusForRequest = (request: ProcurementRequest): StockCheckStatus => {
+  if (request.status === 'New' || request.status === 'Quoted') {
+    return 'Assigned';
+  }
+  if (request.status === 'PO Draft') {
+    return 'In Progress';
+  }
+  return 'Completed';
+};
+
 const getInitialLiveState = (): LiveProcurementState => {
   if (typeof window === 'undefined') {
+    const initialStockStatuses: Record<string, StockCheckStatus> = {};
+    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
+      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
+    });
+
     return {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
+      stockCheckStatuses: initialStockStatuses,
       updatedAt: new Date().toISOString(),
     };
   }
 
   const raw = window.localStorage.getItem(PROCUREMENT_LIVE_KEY);
   if (!raw) {
+    const initialStockStatuses: Record<string, StockCheckStatus> = {};
+    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
+      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
+    });
+
     return {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
+      stockCheckStatuses: initialStockStatuses,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -218,16 +243,33 @@ const getInitialLiveState = (): LiveProcurementState => {
     if (!parsed?.requests || !parsed?.quotes || !parsed?.draftPOs) {
       throw new Error('Invalid procurement state payload');
     }
+
+    const derivedStockStatuses: Record<string, StockCheckStatus> = { ...parsed.stockCheckStatuses };
+    parsed.requests
+      .filter((request) => request.priority !== 'Low')
+      .forEach((request) => {
+        if (!derivedStockStatuses[request.id]) {
+          derivedStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
+        }
+      });
+
     return {
       ...parsed,
       completedGrns: parsed.completedGrns ?? [],
+      stockCheckStatuses: derivedStockStatuses,
     };
   } catch {
+    const initialStockStatuses: Record<string, StockCheckStatus> = {};
+    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
+      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
+    });
+
     return {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
+      stockCheckStatuses: initialStockStatuses,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -268,7 +310,10 @@ const Procurement: React.FC = () => {
   const [requests, setRequests] = useState<ProcurementRequest[]>(initialLiveState.requests);
   const [quotes, setQuotes] = useState<VendorQuote[]>(initialLiveState.quotes);
   const [draftPOs, setDraftPOs] = useState<DraftPO[]>(initialLiveState.draftPOs);
-    const [completedGrns, setCompletedGrns] = useState<CompletedGrn[]>(initialLiveState.completedGrns ?? []);
+  const [completedGrns, setCompletedGrns] = useState<CompletedGrn[]>(initialLiveState.completedGrns ?? []);
+  const [stockCheckStatuses, setStockCheckStatuses] = useState<Record<string, StockCheckStatus>>(
+    initialLiveState.stockCheckStatuses ?? {},
+  );
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(initialLiveState.updatedAt);
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
@@ -360,18 +405,21 @@ const Procurement: React.FC = () => {
       quotes: VendorQuote[];
       draftPOs: DraftPO[];
       completedGrns: CompletedGrn[];
+      stockCheckStatuses: Record<string, StockCheckStatus>;
     }) => {
       requests?: ProcurementRequest[];
       quotes?: VendorQuote[];
       draftPOs?: DraftPO[];
       completedGrns?: CompletedGrn[];
+      stockCheckStatuses?: Record<string, StockCheckStatus>;
     },
   ) => {
-    const next = updater({ requests, quotes, draftPOs, completedGrns });
+    const next = updater({ requests, quotes, draftPOs, completedGrns, stockCheckStatuses });
     if (next.requests) setRequests(next.requests);
     if (next.quotes) setQuotes(next.quotes);
     if (next.draftPOs) setDraftPOs(next.draftPOs);
     if (next.completedGrns) setCompletedGrns(next.completedGrns);
+    if (next.stockCheckStatuses) setStockCheckStatuses(next.stockCheckStatuses);
   };
 
   useEffect(() => {
@@ -397,12 +445,13 @@ const Procurement: React.FC = () => {
       quotes,
       draftPOs,
       completedGrns,
+      stockCheckStatuses,
       updatedAt: new Date().toISOString(),
     };
 
     window.localStorage.setItem(PROCUREMENT_LIVE_KEY, JSON.stringify(liveState));
     setLastUpdatedAt(liveState.updatedAt);
-  }, [completedGrns, draftPOs, quotes, requests]);
+  }, [completedGrns, draftPOs, quotes, requests, stockCheckStatuses]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -420,6 +469,9 @@ const Procurement: React.FC = () => {
         setQuotes(incoming.quotes ?? QUOTES_SEED);
         setDraftPOs(incoming.draftPOs ?? DRAFT_POS_SEED);
         setCompletedGrns(incoming.completedGrns ?? []);
+        if (incoming.stockCheckStatuses) {
+          setStockCheckStatuses(incoming.stockCheckStatuses);
+        }
         setLastUpdatedAt(incoming.updatedAt ?? new Date().toISOString());
       } catch {
         // Ignore malformed payloads from other sessions.
@@ -3286,12 +3338,8 @@ const Procurement: React.FC = () => {
                     .filter((request) => request.priority !== 'Low')
                     .map((request, index) => {
                       const scId = `SC-${String(index + 1).padStart(3, '0')}`;
-                      const baseStatus: 'Assigned' | 'In Progress' | 'Completed' =
-                        request.status === 'New' || request.status === 'Quoted'
-                          ? 'Assigned'
-                          : request.status === 'PO Draft'
-                          ? 'In Progress'
-                          : 'Completed';
+                      const baseStatus: StockCheckStatus = deriveStockCheckStatusForRequest(request);
+                      const effectiveStatus: StockCheckStatus = stockCheckStatuses[request.id] ?? baseStatus;
 
                       const assignedTo =
                         request.requestedBy ||
@@ -3318,7 +3366,7 @@ const Procurement: React.FC = () => {
                         id: scId,
                         request,
                         type: request.type,
-                        status: baseStatus,
+                        status: effectiveStatus,
                         assignedTo,
                         createdDate,
                         lineItems,
@@ -3558,12 +3606,33 @@ const Procurement: React.FC = () => {
                                   View Details
                                 </button>
                                 <button
+                                  onClick={() => {
+                                    // Move this stock check to In Progress and open details
+                                    updateProcurementState((current) => ({
+                                      stockCheckStatuses: {
+                                        ...current.stockCheckStatuses,
+                                        [entry.request.id]: 'In Progress',
+                                      },
+                                    }));
+                                    setSelectedStockCheckRequest(entry.request);
+                                    setSelectedStockCheckItemName(null);
+                                    addToast('success', `${entry.id} moved to In Progress for physical count update.`);
+                                  }}
                                   className="px-3 py-1.5 rounded-full border border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100"
                                 >
                                   Update Physical Qty
                                 </button>
                                 {entry.status !== 'Completed' && (
                                   <button
+                                    onClick={() => {
+                                      updateProcurementState((current) => ({
+                                        stockCheckStatuses: {
+                                          ...current.stockCheckStatuses,
+                                          [entry.request.id]: 'Completed',
+                                        },
+                                      }));
+                                      addToast('success', `${entry.id} marked as Completed.`);
+                                    }}
                                     className="px-3 py-1.5 rounded-full border border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                                   >
                                     Mark Complete
