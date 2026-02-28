@@ -803,6 +803,168 @@ const Procurement: React.FC = () => {
     };
   }, [quotes, requests]);
 
+  const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
+    const poByRequestCode = new Map<string, PurchaseOrder>();
+    purchaseOrders.forEach((po) => {
+      if (po.requestCode) {
+        poByRequestCode.set(po.requestCode, po);
+      }
+    });
+
+    const draftPoByRequestId = new Map<string, DraftPO>();
+    draftPOs.forEach((dpo) => {
+      draftPoByRequestId.set(dpo.requestId, dpo);
+    });
+
+    const quotesByRequestId = new Map<string, VendorQuote[]>();
+    quotes.forEach((quote) => {
+      const list = quotesByRequestId.get(quote.requestId) ?? [];
+      list.push(quote);
+      quotesByRequestId.set(quote.requestId, list);
+    });
+
+    const rows: ItemTrackerRow[] = [];
+
+    requests.forEach((request) => {
+      const requestQuotes = quotesByRequestId.get(request.id) ?? [];
+      const confirmedQuote = requestQuotes.find((q) => q.status === 'Confirmed') ?? null;
+      const primaryQuote = confirmedQuote ?? requestQuotes[0] ?? null;
+      const draftPo = draftPoByRequestId.get(request.id) ?? null;
+      const po = poByRequestCode.get(request.code) ?? null;
+
+      const details: ItemDetail[] =
+        request.itemDetails && request.itemDetails.length > 0
+          ? request.itemDetails
+          : request.items.map((itemName, idx) => {
+              const qty = request.quantities?.[idx] ?? 0;
+              const plannedPrice = request.plannedPrices?.[idx] ?? 0;
+              return {
+                itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+                itemName,
+                reqQty: qty,
+                unit: request.units?.[idx] ?? '',
+                moq: '',
+                packSize: '',
+                plannedPrice,
+                leadTimeDays: 0,
+                estValue: plannedPrice * qty,
+              };
+            });
+
+      details.forEach((detail) => {
+        const itemName = detail.itemName;
+
+        let quotedVendor: string | null = null;
+        let actualPrice: number | null = null;
+        let actualVsPlanned: string | null = null;
+        let orderQty: string | null = null;
+
+        if (requestQuotes.length > 0) {
+          const sourceQuote =
+            confirmedQuote ??
+            requestQuotes.find((q) => q.lines.some((line) => line.item === itemName)) ??
+            requestQuotes[0];
+
+          const matchedLine = sourceQuote.lines.find((line) => line.item === itemName) ?? sourceQuote.lines[0];
+          quotedVendor = sourceQuote.vendor;
+          actualPrice = matchedLine?.pricePerUnit ?? null;
+          actualVsPlanned = matchedLine?.vsPlanned ?? null;
+          orderQty = matchedLine?.qty ?? null;
+        }
+
+        let advPaid: string | null = null;
+        let lrNo: string | null = null;
+
+        if (po && po.timeline) {
+          const advanceStage = po.timeline.find((step) => step.stage === 'Advance Paid' && step.done);
+          if (advanceStage) {
+            advPaid = 'Yes';
+          }
+
+          const shippedStage = po.timeline.find((step) => step.stage === 'Shipped' && step.done && step.note);
+          if (shippedStage?.note) {
+            const match = shippedStage.note.match(/LR No: ([A-Za-z0-9-]+)/i);
+            if (match) {
+              lrNo = match[1];
+            }
+          }
+        }
+
+        const expDelivery = draftPo?.expectedDelivery ?? request.dueDate ?? null;
+
+        rows.push({
+          key: `${request.id}::${detail.itemCode}`,
+          requestId: request.id,
+          requestCode: request.code,
+          type: request.type,
+          priority: request.priority,
+          requestStatus: request.status,
+          itemName: detail.itemName,
+          itemCode: detail.itemCode,
+          reqQty: detail.reqQty,
+          unit: detail.unit,
+          plannedPrice: detail.plannedPrice,
+          plannedValue: detail.estValue,
+          preferredVendor: primaryQuote?.vendor ?? null,
+          quotedVendor,
+          actualPrice,
+          actualVsPlanned,
+          poNumber: po?.poNumber ?? null,
+          poStatus: po?.status ?? null,
+          orderQty,
+          advPaid,
+          lrNo,
+          expDelivery,
+          grnRef: null,
+          quoteId: primaryQuote?.id ?? null,
+          draftPoId: draftPo?.id ?? null,
+          poId: po?.id ?? null,
+        });
+      });
+    });
+
+    return rows;
+  }, [draftPOs, purchaseOrders, quotes, requests]);
+
+  const filteredItemTrackerRows = useMemo(() => {
+    return itemTrackerRows.filter((row) => {
+      if (itemTrackerCategory !== 'All' && row.type !== itemTrackerCategory) {
+        return false;
+      }
+
+      if (itemTrackerVendor !== 'All Vendors') {
+        if (row.preferredVendor !== itemTrackerVendor && row.quotedVendor !== itemTrackerVendor) {
+          return false;
+        }
+      }
+
+      if (itemTrackerStatus !== 'All Statuses' && row.requestStatus !== itemTrackerStatus) {
+        return false;
+      }
+
+      if (!itemTrackerSearch.trim()) {
+        return true;
+      }
+
+      const q = itemTrackerSearch.toLowerCase();
+      return (
+        row.itemName.toLowerCase().includes(q) ||
+        row.itemCode.toLowerCase().includes(q) ||
+        row.requestCode.toLowerCase().includes(q) ||
+        (row.poNumber ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [itemTrackerCategory, itemTrackerRows, itemTrackerSearch, itemTrackerStatus, itemTrackerVendor]);
+
+  const itemTrackerVendors = useMemo(() => {
+    const set = new Set<string>();
+    itemTrackerRows.forEach((row) => {
+      if (row.preferredVendor) set.add(row.preferredVendor);
+      if (row.quotedVendor) set.add(row.quotedVendor);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [itemTrackerRows]);
+
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
       if (categoryFilter !== 'All' && quote.requestType !== categoryFilter) {
