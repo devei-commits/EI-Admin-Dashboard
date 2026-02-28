@@ -3281,43 +3281,307 @@ const Procurement: React.FC = () => {
               })()}
 
               {sideSection === 'Stock Check' && (
-                <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                  <p className="text-sm text-slate-700">Open stock checks by item:</p>
-                  <div className="space-y-2 mt-3">
-                    {requests
-                      .filter(r => r.priority !== 'Low')
-                      .flatMap(req => {
-                        const reqItems = req.itemDetails && req.itemDetails.length > 0
-                          ? req.itemDetails.map(item => ({
-                              request: req,
-                              itemName: item.itemName,
-                            }))
-                          : req.items.map(itemName => ({
-                              request: req,
-                              itemName,
-                            }));
+                (() => {
+                  const rawStockChecks = requests
+                    .filter((request) => request.priority !== 'Low')
+                    .map((request, index) => {
+                      const scId = `SC-${String(index + 1).padStart(3, '0')}`;
+                      const baseStatus: 'Assigned' | 'In Progress' | 'Completed' =
+                        request.status === 'New' || request.status === 'Quoted'
+                          ? 'Assigned'
+                          : request.status === 'PO Draft'
+                          ? 'In Progress'
+                          : 'Completed';
 
-                        return reqItems;
-                      })
-                      .map((entry, idx) => (
-                      <div key={`${entry.request.id}-${entry.itemName}-${idx}`} className="flex items-center justify-between text-sm p-3 bg-slate-50 rounded-lg border border-slate-200">
-                        <div>
-                          <p className="text-slate-900 font-semibold">{entry.itemName}</p>
-                          <p className="text-slate-500 text-xs mt-0.5">{entry.request.code} · Due {new Date(entry.request.dueDate).toLocaleDateString('en-IN')}</p>
+                      const assignedTo =
+                        request.requestedBy ||
+                        (request.type === 'RM'
+                          ? 'Anand Store'
+                          : 'Ravi Kumar');
+
+                      const createdDate =
+                        request.createdDate ||
+                        '2026-02-10';
+
+                      const lineItems =
+                        (request.itemDetails && request.itemDetails.length > 0
+                          ? request.itemDetails.map((item) => ({
+                              name: item.itemName,
+                              systemQty: item.reqQty,
+                            }))
+                          : request.items.map((itemName, idx) => ({
+                              name: itemName,
+                              systemQty: request.quantities?.[idx] ?? 0,
+                            }))) || [];
+
+                      return {
+                        id: scId,
+                        request,
+                        type: request.type,
+                        status: baseStatus,
+                        assignedTo,
+                        createdDate,
+                        lineItems,
+                      };
+                    });
+
+                  const filteredStockChecks = rawStockChecks.filter((entry) => {
+                    if (stockCategoryFilter !== 'All' && entry.type !== stockCategoryFilter) {
+                      return false;
+                    }
+
+                    if (stockStatusFilter !== 'All Statuses' && entry.status !== stockStatusFilter) {
+                      return false;
+                    }
+
+                    if (!stockSearch.trim()) {
+                      return true;
+                    }
+
+                    const query = stockSearch.toLowerCase();
+                    return (
+                      entry.id.toLowerCase().includes(query) ||
+                      entry.request.code.toLowerCase().includes(query) ||
+                      entry.assignedTo.toLowerCase().includes(query) ||
+                      entry.lineItems.some((line) => line.name.toLowerCase().includes(query))
+                    );
+                  });
+
+                  const totalStockChecks = rawStockChecks.length;
+                  const rmStockChecks = rawStockChecks.filter((entry) => entry.type === 'RM').length;
+                  const pmStockChecks = rawStockChecks.filter((entry) => entry.type === 'PM').length;
+                  const assignedCount = rawStockChecks.filter((entry) => entry.status === 'Assigned').length;
+                  const inProgressCount = rawStockChecks.filter((entry) => entry.status === 'In Progress').length;
+                  const completedCount = rawStockChecks.filter((entry) => entry.status === 'Completed').length;
+
+                  return (
+                    <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+                      {/* KPI strip */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                          <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">Total Stock Checks</p>
+                          <p className="mt-1 text-2xl font-bold text-slate-900">{totalStockChecks}</p>
                         </div>
-                        <button
-                          onClick={() => {
-                            setSelectedStockCheckRequest(entry.request);
-                            setSelectedStockCheckItemName(entry.itemName);
-                          }}
-                          className="px-3 py-1.5 rounded-lg border border-cyan-300 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition"
-                        >
-                          View SC
-                        </button>
+                        <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3">
+                          <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">RM Checks</p>
+                          <p className="mt-1 text-2xl font-bold text-cyan-900">{rmStockChecks}</p>
+                        </div>
+                        <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
+                          <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM Checks</p>
+                          <p className="mt-1 text-2xl font-bold text-violet-900">{pmStockChecks}</p>
+                        </div>
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                          <p className="text-[10px] tracking-[0.18em] text-amber-700 uppercase">Assigned</p>
+                          <p className="mt-1 text-2xl font-bold text-amber-900">{assignedCount}</p>
+                        </div>
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                          <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">In Progress / Completed</p>
+                          <p className="mt-1 text-2xl font-bold text-emerald-900">{inProgressCount + completedCount}</p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+
+                      {/* Filters */}
+                      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-slate-500">Category:</span>
+                          <button
+                            onClick={() => setStockCategoryFilter('All')}
+                            className={`px-2 py-1 rounded-full border text-xs ${
+                              stockCategoryFilter === 'All'
+                                ? 'border-amber-400 text-amber-800 bg-amber-50'
+                                : 'border-slate-300 text-slate-600 bg-white'
+                            }`}
+                          >
+                            All
+                          </button>
+                          {(['RM', 'PM'] as RequestType[]).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => setStockCategoryFilter(type)}
+                              className={`px-2 py-1 rounded-full border text-xs ${
+                                stockCategoryFilter === type
+                                  ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
+                                  : 'border-slate-300 text-slate-600 bg-white'
+                              }`}
+                            >
+                              {type}
+                            </button>
+                          ))}
+
+                          <span className="ml-3 text-slate-500">Status:</span>
+                          <select
+                            value={stockStatusFilter}
+                            onChange={(event) =>
+                              setStockStatusFilter(
+                                event.target.value as 'All Statuses' | 'Assigned' | 'In Progress' | 'Completed',
+                              )
+                            }
+                            className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                          >
+                            <option value="All Statuses">All Statuses</option>
+                            <option value="Assigned">Assigned</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                        </div>
+
+                        <input
+                          value={stockSearch}
+                          onChange={(event) => setStockSearch(event.target.value)}
+                          placeholder="Search SC ID, assignee, item..."
+                          className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      {/* Stock check cards */}
+                      <div className="space-y-4">
+                        {filteredStockChecks.map((entry) => (
+                          <article
+                            key={entry.id}
+                            className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm"
+                          >
+                            {/* Card header */}
+                            <div className="px-4 py-3 border-b border-slate-200 bg-linear-to-r from-slate-50 via-blue-50 to-slate-50 flex items-start justify-between gap-4">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[10px] text-slate-700">
+                                    {entry.id}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                      entry.type === 'RM'
+                                        ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
+                                        : 'bg-violet-50 text-violet-700 border-violet-200'
+                                    }`}
+                                  >
+                                    {entry.type === 'RM' ? 'Raw Material' : 'Packaging Material'}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-semibold text-slate-900">Stock Check — {entry.type === 'RM' ? 'Raw Material' : 'Packaging'}</h3>
+                                <p className="text-[11px] text-slate-600">
+                                  Assigned to <span className="font-semibold">{entry.assignedTo}</span> · Created{' '}
+                                  {new Date(entry.createdDate).toLocaleDateString('en-IN')} · For:{' '}
+                                  <span className="font-mono text-slate-700">{entry.request.code}</span>
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 text-[11px]">
+                                <span
+                                  className={`inline-flex items-center px-3 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                    entry.status === 'Completed'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                      : entry.status === 'In Progress'
+                                      ? 'bg-sky-50 text-sky-700 border-sky-300'
+                                      : 'bg-amber-50 text-amber-700 border-amber-300'
+                                  }`}
+                                >
+                                  {entry.status}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Items table */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[11px] text-slate-900">
+                                <thead>
+                                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                                    <th className="px-4 py-2 text-left">Item</th>
+                                    <th className="px-4 py-2 text-left">Zone / Rack</th>
+                                    <th className="px-4 py-2 text-center">System Qty</th>
+                                    <th className="px-4 py-2 text-center">Physical Qty</th>
+                                    <th className="px-4 py-2 text-center">Variance</th>
+                                    <th className="px-4 py-2 text-left">Batches Found</th>
+                                    <th className="px-4 py-2 text-center">Pkg Condition</th>
+                                    <th className="px-4 py-2 text-center">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {entry.lineItems.map((line, idx) => {
+                                    const systemQty = line.systemQty || 0;
+                                    const physicalQty = systemQty;
+                                    const variance = physicalQty - systemQty;
+                                    return (
+                                      <tr
+                                        key={`${entry.id}-line-${idx}`}
+                                        className="border-b border-slate-100 hover:bg-blue-50/40"
+                                      >
+                                        <td className="px-4 py-2 align-middle">
+                                          <p className="text-[12px] font-semibold text-slate-900">{line.name}</p>
+                                          <p className="text-[10px] text-slate-500">{entry.request.code}</p>
+                                        </td>
+                                        <td className="px-4 py-2 align-middle text-[11px] text-slate-700">LOC-ACT · B1-L1-S{idx + 1}</td>
+                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{systemQty}</td>
+                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{physicalQty}</td>
+                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">
+                                          {variance}
+                                        </td>
+                                        <td className="px-4 py-2 align-middle text-[11px] text-emerald-700">ETH-UV08-00{idx + 1}</td>
+                                        <td className="px-4 py-2 align-middle text-center text-[11px]">
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
+                                            Good
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-2 align-middle text-center text-[11px]">
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
+                                            OK
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {entry.lineItems.length === 0 && (
+                                    <tr>
+                                      <td
+                                        className="px-4 py-4 text-center text-[11px] text-slate-500"
+                                        colSpan={8}
+                                      >
+                                        No items to show for this stock check.
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Footer actions */}
+                            <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
+                              <p className="text-[11px] text-slate-600">
+                                All filters verified. Batch details confirmed with COA on file.
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                <button
+                                  onClick={() => {
+                                    setSelectedStockCheckRequest(entry.request);
+                                    setSelectedStockCheckItemName(null);
+                                  }}
+                                  className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                                >
+                                  View Details
+                                </button>
+                                <button
+                                  className="px-3 py-1.5 rounded-full border border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100"
+                                >
+                                  Update Physical Qty
+                                </button>
+                                {entry.status !== 'Completed' && (
+                                  <button
+                                    className="px-3 py-1.5 rounded-full border border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                                  >
+                                    Mark Complete
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                        {filteredStockChecks.length === 0 && (
+                          <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm text-[11px]">
+                            No stock checks match current filters.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
               )}
 
               {sideSection === 'Item Tracker' && (
