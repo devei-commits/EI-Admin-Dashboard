@@ -3905,35 +3905,58 @@ const Procurement: React.FC = () => {
                                 >
                                   View Details
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    updateProcurementState((current) => ({
-                                      stockCheckStatuses: {
-                                        ...current.stockCheckStatuses,
-                                        [entry.request.id]: 'In Progress',
-                                      },
-                                    }));
-                                    setUpdateStockCheckRequest(entry.request);
-                                    addToast('success', `${entry.id} moved to In Progress for physical count update.`);
-                                  }}
-                                  className="px-3 py-1.5 rounded-full border border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100"
-                                >
-                                  Update Physical Qty
-                                </button>
+                                {/* Primary stock check action: Start -> Mark Complete */}
                                 {entry.status !== 'Completed' && (
                                   <button
                                     onClick={() => {
-                                      updateProcurementState((current) => ({
-                                        stockCheckStatuses: {
-                                          ...current.stockCheckStatuses,
-                                          [entry.request.id]: 'Completed',
-                                        },
-                                      }));
-                                      addToast('success', `${entry.id} marked as Completed.`);
+                                      if (entry.status === 'Assigned') {
+                                        // Start the stock check and open the physical quantity update modal
+                                        updateProcurementState((current) => ({
+                                          stockCheckStatuses: {
+                                            ...current.stockCheckStatuses,
+                                            [entry.request.id]: 'In Progress',
+                                          },
+                                        }));
+                                        setUpdateStockCheckRequest(entry.request);
+                                        addToast('success', `${entry.id} started. You can now update physical quantities.`);
+                                      } else {
+                                        // In Progress -> Completed
+                                        updateProcurementState((current) => ({
+                                          stockCheckStatuses: {
+                                            ...current.stockCheckStatuses,
+                                            [entry.request.id]: 'Completed',
+                                          },
+                                        }));
+                                        addToast('success', `${entry.id} marked as Completed.`);
+                                      }
                                     }}
-                                    className="px-3 py-1.5 rounded-full border border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                                    className={`px-3 py-1.5 rounded-full border text-emerald-800 hover:bg-emerald-100 text-[11px] ${
+                                      entry.status === 'Assigned'
+                                        ? 'border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100'
+                                        : 'border-emerald-400 bg-emerald-50'
+                                    }`}
                                   >
-                                    Mark Complete
+                                    {entry.status === 'Assigned' ? 'Start Check' : 'Mark Complete'}
+                                  </button>
+                                )}
+                                {/* Keep Update Physical Qty available for manual adjustments once check is in progress/completed */}
+                                {(entry.status === 'In Progress' || entry.status === 'Completed') && (
+                                  <button
+                                    onClick={() => {
+                                      if (entry.status === 'Assigned') {
+                                        updateProcurementState((current) => ({
+                                          stockCheckStatuses: {
+                                            ...current.stockCheckStatuses,
+                                            [entry.request.id]: 'In Progress',
+                                          },
+                                        }));
+                                      }
+                                      setUpdateStockCheckRequest(entry.request);
+                                      addToast('info', `${entry.id} opened for physical quantity update.`);
+                                    }}
+                                    className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                                  >
+                                    Update Physical Qty
                                   </button>
                                 )}
                               </div>
