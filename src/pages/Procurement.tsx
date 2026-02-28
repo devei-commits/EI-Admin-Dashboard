@@ -4872,6 +4872,7 @@ const Procurement: React.FC = () => {
       {/* ── Stock Check Side Panel ── */}
       {selectedStockCheckRequest && (() => {
         const req = selectedStockCheckRequest;
+        const updatesForRequest = stockCheckUpdates[req.id] ?? {};
         const nonLowPriorityRequests = requests.filter((request) => request.priority !== 'Low');
         const scIndex = nonLowPriorityRequests.findIndex((request) => request.id === req.id);
         const scId = scIndex >= 0 ? `SC-${String(scIndex + 1).padStart(3, '0')}` : 'SC-000';
@@ -4899,8 +4900,18 @@ const Procurement: React.FC = () => {
               itemName: item.itemName,
               itemCode: item.itemCode,
               systemQty: item.reqQty,
-              physicalQty: item.reqQty,
-              zoneRack: `LOC-ACT · B1-L1-S${idx + 2}`,
+              physicalQty: (() => {
+                const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
+                return override?.physicalQty ?? item.reqQty;
+              })(),
+              zoneRack: (() => {
+                const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
+                const defaultZone = req.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
+                const defaultRack = `A1-L1-S${idx + 2}`;
+                const zone = override?.zone ?? defaultZone;
+                const rack = override?.rack ?? defaultRack;
+                return `${zone} · ${rack}`;
+              })(),
               batchCode: `BTH-${item.itemCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-6)}-${String(idx + 1).padStart(2, '0')}`,
               expiry: `2027-0${(idx % 3) + 6}-3${idx}`,
             }))
@@ -4908,8 +4919,27 @@ const Procurement: React.FC = () => {
               itemName,
               itemCode: `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`,
               systemQty: req.quantities?.[idx] ?? 0,
-              physicalQty: req.quantities?.[idx] ?? 0,
-              zoneRack: `LOC-ACT · B1-L1-S${idx + 2}`,
+              physicalQty: (() => {
+                const generatedCodeBase =
+                  itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
+                  String(idx + 1).padStart(3, '0');
+                const itemCode = `EI-${req.type}-${generatedCodeBase}`;
+                const override = updatesForRequest[itemCode];
+                const baseQty = req.quantities?.[idx] ?? 0;
+                return override?.physicalQty ?? baseQty;
+              })(),
+              zoneRack: (() => {
+                const generatedCodeBase =
+                  itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
+                  String(idx + 1).padStart(3, '0');
+                const itemCode = `EI-${req.type}-${generatedCodeBase}`;
+                const override = updatesForRequest[itemCode];
+                const defaultZone = req.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
+                const defaultRack = `A1-L1-S${idx + 2}`;
+                const zone = override?.zone ?? defaultZone;
+                const rack = override?.rack ?? defaultRack;
+                return `${zone} · ${rack}`;
+              })(),
               batchCode: `BTH-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || 'ITEM'}-${String(idx + 1).padStart(3, '0')}`,
               expiry: `2027-0${(idx % 3) + 6}-3${idx}`,
             }));
