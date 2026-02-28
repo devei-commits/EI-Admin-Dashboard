@@ -330,6 +330,9 @@ const Procurement: React.FC = () => {
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
+  const [stockCategoryFilter, setStockCategoryFilter] = useState<'All' | RequestType>('All');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed'>('All Statuses');
+  const [stockSearch, setStockSearch] = useState('');
 
   const vendors: Vendor[] = procurementData.vendors as Vendor[];
   const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
