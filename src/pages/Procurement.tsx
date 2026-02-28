@@ -182,6 +182,35 @@ type StockCheckLineData = {
   remarks?: string;
 };
 
+type ItemTrackerRow = {
+  key: string;
+  requestId: string;
+  requestCode: string;
+  type: RequestType;
+  priority: RequestPriority;
+  requestStatus: RequestStatus;
+  itemName: string;
+  itemCode: string;
+  reqQty: number;
+  unit: string;
+  plannedPrice: number;
+  plannedValue: number;
+  preferredVendor: string | null;
+  quotedVendor: string | null;
+  actualPrice: number | null;
+  actualVsPlanned: string | null;
+  poNumber: string | null;
+  poStatus: string | null;
+  orderQty: string | null;
+  advPaid: string | null;
+  lrNo: string | null;
+  expDelivery: string | null;
+  grnRef: string | null;
+  quoteId: string | null;
+  draftPoId: string | null;
+  poId: string | null;
+};
+
 const REQUESTS_SEED: ProcurementRequest[] = procurementData.requests as ProcurementRequest[];
 const QUOTES_SEED: VendorQuote[] = procurementData.quotes as VendorQuote[];
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -638,6 +667,10 @@ const Procurement: React.FC = () => {
   const [stockCategoryFilter, setStockCategoryFilter] = useState<'All' | RequestType>('All');
   const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed'>('All Statuses');
   const [stockSearch, setStockSearch] = useState('');
+  const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
+  const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
+  const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
+  const [itemTrackerSearch, setItemTrackerSearch] = useState('');
 
   const vendors: Vendor[] = procurementData.vendors as Vendor[];
   const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
