@@ -469,7 +469,7 @@ button, a, select, input {
 /* Mobile sidebar overlay */
 @media (max-width: 768px) {
  .mobile-sidebar-overlay {
-  @apply fixed inset-0 bg-black/50 z-40 transition-opacity;
+  @apply fixed inset-0 bg-white/60 backdrop-blur-md z-40 transition-opacity;
  }
  
  .mobile-sidebar {

@@ -640,7 +640,7 @@ const PackagingManagement = () => {
 
    {/* View/Edit Modal */}
    {isViewModalOpen && selectedItem && (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
       <div className="sticky top-0 bg-slate-800 px-6 py-4 flex justify-between items-center">
        <div><h2 className="text-xl font-bold text-white">{isEditMode ? 'Edit Package' : 'Package Details'}</h2><p className="text-gray-100 text-sm">{selectedItem.packageCode}</p></div>

@@ -4,10 +4,13 @@
  */
 import { useState, useMemo, useCallback } from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
+import { ArrowRightLeft } from 'lucide-react';
 import {
   parseSkuToGrams, buildRMLines, buildPMLines,
   lineAvailability, materialStatus, todayISO, fmtNum,
 } from '../../utils/manufacturing';
+import SwapMaterialModal from './SwapMaterialModal';
+import { useToast } from '../../context/ToastContext';
 
 interface Props {
   orderedProduct: any;
@@ -16,6 +19,7 @@ interface Props {
 
 export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
   const { state, dispatch } = useGlobalState();
+  const { addToast } = useToast();
   const [splitInput, setSplitInput] = useState(
     orderedProduct.qty <= 10000
       ? String(orderedProduct.qty)
@@ -24,12 +28,54 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
   const [previewQty, setPreviewQty] = useState(orderedProduct.qty);
   const [allowPartial, setAllowPartial] = useState(false);
   const [error, setError] = useState('');
+  const [materialSwaps, setMaterialSwaps] = useState<Record<string, { toMaterial: string; swapRatio: number }>>({});
+  const [swapModalMaterial, setSwapModalMaterial] = useState<{
+    itemName: string;
+    qty: number;
+    gap: number;
+  } | null>(null);
 
   const skuGrams = parseSkuToGrams(orderedProduct.sku || '100g');
-  const rmLines = useMemo(() => buildRMLines(previewQty, skuGrams, state.items), [previewQty, skuGrams, state.items]);
-  const pmLines = useMemo(() => buildPMLines(previewQty, state.items), [previewQty, state.items]);
+  const baseRMLines = useMemo(() => buildRMLines(previewQty, skuGrams, state.items), [previewQty, skuGrams, state.items]);
+  const basePMLines = useMemo(() => buildPMLines(previewQty, state.items), [previewQty, state.items]);
+  
+  // Apply material swaps
+  const applySwapsToLines = useCallback((lines: any[]) => {
+    return lines.map(line => {
+      const swap = materialSwaps[line.itemName];
+      if (swap) {
+        return {
+          ...line,
+          itemName: swap.toMaterial,
+          qty: line.qty * swap.swapRatio,
+          originalMaterial: line.itemName
+        };
+      }
+      return line;
+    });
+  }, [materialSwaps]);
+
+  const rmLines = useMemo(() => applySwapsToLines(baseRMLines), [baseRMLines, applySwapsToLines]);
+  const pmLines = useMemo(() => applySwapsToLines(basePMLines), [basePMLines, applySwapsToLines]);
+  
   const rmStatus = materialStatus(rmLines);
   const pmStatus = materialStatus(pmLines);
+
+  const handleSwapApplied = useCallback((swapData: {
+    fromMaterial: string;
+    toMaterial: string;
+    swapRatio: number;
+    reason: string;
+  }) => {
+    setMaterialSwaps(prev => ({
+      ...prev,
+      [swapData.fromMaterial]: {
+        toMaterial: swapData.toMaterial,
+        swapRatio: swapData.swapRatio
+      }
+    }));
+    setSwapModalMaterial(null);
+  }, []);
 
   // Max executable units from BOM
   const maxRMUnits = useMemo(() => {
@@ -187,7 +233,7 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
   }, [splits, splitsTotal, allowPartial, orderedProduct, state, dispatch, onClose, skuGrams]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-275 max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-start">
@@ -258,9 +304,19 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
                 <tbody>
                   {rmLines.map((l, i) => {
                     const avail = lineAvailability(l);
+                    const isSwapped = l.originalMaterial;
                     return (
                       <tr key={i} className="border-b">
-                        <td className="px-2 py-1.5 font-medium">{l.itemName}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{l.itemName}</span>
+                            {isSwapped && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                Swapped from {l.originalMaterial}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.qty)}</td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.stock)}</td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.free)}</td>
@@ -269,10 +325,29 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
                           {avail.gap > 0 ? fmtNum(avail.gap) : '—'}
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          {avail.sufficient
-                            ? <span className="text-green-600">✅</span>
-                            : <span className="text-red-500">⚠️</span>
-                          }
+                          <div className="flex items-center justify-center gap-1">
+                            {avail.sufficient
+                              ? <span className="text-green-600">✅</span>
+                              : (
+                                <>
+                                  <span className="text-red-500">⚠️</span>
+                                  {!isSwapped && (
+                                    <button
+                                      onClick={() => setSwapModalMaterial({
+                                        itemName: l.itemName,
+                                        qty: l.qty,
+                                        gap: avail.gap
+                                      })}
+                                      className="ml-1 w-6 h-6 rounded bg-orange-100 hover:bg-orange-200 flex items-center justify-center transition"
+                                      title="Swap material"
+                                    >
+                                      <ArrowRightLeft className="w-3 h-3 text-orange-600" />
+                                    </button>
+                                  )}
+                                </>
+                              )
+                            }
+                          </div>
                         </td>
                       </tr>
                     );
@@ -299,9 +374,19 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
                 <tbody>
                   {pmLines.map((l, i) => {
                     const avail = lineAvailability(l);
+                    const isSwapped = l.originalMaterial;
                     return (
                       <tr key={i} className="border-b">
-                        <td className="px-2 py-1.5 font-medium">{l.itemName}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{l.itemName}</span>
+                            {isSwapped && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                Swapped from {l.originalMaterial}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.qty)}</td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.stock)}</td>
                         <td className="px-2 py-1.5 text-right">{fmtNum(l.free)}</td>
@@ -310,10 +395,29 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
                           {avail.gap > 0 ? fmtNum(avail.gap) : '—'}
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          {avail.sufficient
-                            ? <span className="text-green-600">✅</span>
-                            : <span className="text-red-500">⚠️</span>
-                          }
+                          <div className="flex items-center justify-center gap-1">
+                            {avail.sufficient
+                              ? <span className="text-green-600">✅</span>
+                              : (
+                                <>
+                                  <span className="text-red-500">⚠️</span>
+                                  {!isSwapped && (
+                                    <button
+                                      onClick={() => setSwapModalMaterial({
+                                        itemName: l.itemName,
+                                        qty: l.qty,
+                                        gap: avail.gap
+                                      })}
+                                      className="ml-1 w-6 h-6 rounded bg-orange-100 hover:bg-orange-200 flex items-center justify-center transition"
+                                      title="Swap material"
+                                    >
+                                      <ArrowRightLeft className="w-3 h-3 text-orange-600" />
+                                    </button>
+                                  )}
+                                </>
+                              )
+                            }
+                          </div>
                         </td>
                       </tr>
                     );
@@ -405,6 +509,15 @@ export default function BatchPlannerModal({ orderedProduct, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Swap Material Modal */}
+      {swapModalMaterial && (
+        <SwapMaterialModal
+          material={swapModalMaterial}
+          onClose={() => setSwapModalMaterial(null)}
+          onSwapApplied={handleSwapApplied}
+        />
+      )}
     </div>
   );
 }

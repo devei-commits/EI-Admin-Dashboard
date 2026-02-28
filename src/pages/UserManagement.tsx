@@ -456,19 +456,19 @@ const UserManagement = () => {
    {!loading && (
    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
     <div className="hidden md:block overflow-x-auto">
-     <table className="w-full">
+     <table className="w-full table-fixed min-w-212.5">
       <thead className="bg-slate-50">
        <tr>
         {[
-         { key: 'name', label: 'User' },
-         { key: null, label: 'Contact' },
-         { key: 'department', label: 'Department' },
-         { key: 'role', label: 'Role' },
-         { key: 'status', label: 'Status' },
-         { key: null, label: 'Last Login' },
-         { key: null, label: 'Actions' },
-        ].map(({ key, label }) => (
-         <th key={label} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">
+         { key: 'name', label: 'User', width: 'w-[18%]' },
+         { key: null, label: 'Contact', width: 'w-[22%]' },
+         { key: 'department', label: 'Department', width: 'w-[12%]' },
+         { key: 'role', label: 'Role', width: 'w-[12%]' },
+         { key: 'status', label: 'Status', width: 'w-[10%]' },
+         { key: null, label: 'Last Login', width: 'w-[12%]' },
+         { key: null, label: 'Actions', width: 'w-[14%]' },
+        ].map(({ key, label, width }) => (
+         <th key={label} className={`${width} px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase`}>
           {key ? (
            <button onClick={() => toggleSort(key as typeof sortBy)} className="flex items-center gap-1 hover:text-slate-800">
             {label} {sortBy === key && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
@@ -498,11 +498,11 @@ const UserManagement = () => {
           </div>
          </td>
          <td className="px-4 py-3">
-          <p className="text-sm text-slate-300 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-gray-400" />{user.email}</p>
-          <p className="text-sm text-slate-500 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-gray-400" />{user.mobile}</p>
+          <p className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Mail className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.email}</p>
+          <p className="text-sm text-slate-500 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.mobile}</p>
          </td>
-         <td className="px-4 py-3"><span className="text-sm text-slate-300 flex items-center gap-1.5"><Building2 className="w-4 h-4 text-gray-400" />{user.department}</span></td>
-         <td className="px-4 py-3"><span className="text-sm font-medium text-slate-300 flex items-center gap-1.5"><Shield className="w-4 h-4 text-slate-700" />{user.role}</span></td>
+         <td className="px-4 py-3"><span className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Building2 className="w-4 h-4 shrink-0 text-gray-400" />{user.department}</span></td>
+         <td className="px-4 py-3"><span className="text-sm font-medium text-slate-300 flex items-center gap-1.5 truncate"><Shield className="w-4 h-4 shrink-0 text-slate-700" />{user.role}</span></td>
          <td className="px-4 py-3">
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
            {getStatusIcon(user.status)} {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
@@ -570,7 +570,7 @@ const UserManagement = () => {
 
    {/* View Modal */}
    {modalType === 'view' && selectedUser && (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
       <div className="bg-slate-800 p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
@@ -611,7 +611,7 @@ const UserManagement = () => {
 
    {/* Add/Edit Modal */}
    {(modalType === 'add' || modalType === 'edit') && (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
       <div className="bg-slate-800 p-5 rounded-t-2xl sticky top-0">
        <div className="flex items-center justify-between">

@@ -319,15 +319,15 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Vendor</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}></th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Vendor</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -338,12 +338,12 @@ const VendorClient: React.FC = () => {
          ) : (
           pagedVendors.map((v) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm font-mono text-gray-700">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800">{renderCellValue(v.name || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.category || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.email || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.phone || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.location || '-')}</td>
+            <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.location || '-')}</td>
             <td className="px-4 py-3 text-sm">
              <select
               value={v.status}
@@ -572,15 +572,15 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Client</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}></th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Client</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -591,12 +591,12 @@ const VendorClient: React.FC = () => {
          ) : (
           pagedClients.map((c) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm font-mono text-gray-700">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800">{renderCellValue(c.name || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.category || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.email || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.phone || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.location || '-')}</td>
+            <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.location || '-')}</td>
             <td className="px-4 py-3 text-sm">
              <select
               value={c.status}
@@ -805,7 +805,7 @@ const VendorClient: React.FC = () => {
    {/* View Modal */}
   {viewing && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
    >
@@ -1008,7 +1008,7 @@ const VendorClient: React.FC = () => {
 
   {editing && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
    >

@@ -164,7 +164,7 @@ const TreasuryApp = () => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          className="md:hidden fixed inset-0 bg-white/60 backdrop-blur-md z-40"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -500,30 +500,30 @@ const TreasuryApp = () => {
           {/* Treasury Screen */}
           {currentScreen === 'treasury' && (
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-x-auto hover:shadow-lg transition-all">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed min-w-175 text-sm">
                 <thead>
                   <tr className="border-b border-gray-300 bg-gray-50">
-                    <th className="px-6 py-4 text-left font-bold text-gray-900">Account</th>
-                    <th className="px-6 py-4 text-left font-bold text-gray-900">Type</th>
-                    <th className="px-6 py-4 text-left font-bold text-gray-900">Balance</th>
-                    <th className="px-6 py-4 text-left font-bold text-gray-900">Bank</th>
-                    <th className="px-6 py-4 text-left font-bold text-gray-900">Notes</th>
+                    <th className="w-[20%] px-4 py-3 text-left font-bold text-gray-900">Account</th>
+                    <th className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Type</th>
+                    <th className="w-[20%] px-4 py-3 text-right font-bold text-gray-900">Balance</th>
+                    <th className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Bank</th>
+                    <th className="w-[30%] px-4 py-3 text-left font-bold text-gray-900">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="border-b border-gray-200 hover:bg-blue-50 transition-colors">
-                    <td className="px-6 py-4 text-gray-900 font-medium">EI – Current A/C</td>
-                    <td className="px-6 py-4"><span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-lg border border-blue-200">Operating</span></td>
-                    <td className="px-6 py-4 font-semibold text-emerald-600">₹ 1,05,40,000</td>
-                    <td className="px-6 py-4 text-gray-700">Axis Bank</td>
-                    <td className="px-6 py-4 text-gray-700">Main collections & payouts</td>
+                    <td className="px-4 py-3 text-gray-900 font-medium">EI – Current A/C</td>
+                    <td className="px-4 py-3"><span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-lg border border-blue-200">Operating</span></td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-600">₹ 1,05,40,000</td>
+                    <td className="px-4 py-3 text-gray-700">Axis Bank</td>
+                    <td className="px-4 py-3 text-gray-700">Main collections & payouts</td>
                   </tr>
                   <tr className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-gray-900 font-medium">EI – OD Limit</td>
-                    <td className="px-6 py-4"><span className="px-3 py-1 bg-gray-100 text-slate-900 text-xs font-medium rounded-lg border border-gray-200">Working Capital</span></td>
-                    <td className="px-6 py-4 font-semibold text-slate-800">₹ 40,00,000 used</td>
-                    <td className="px-6 py-4 text-gray-700">SBI</td>
-                    <td className="px-6 py-4 text-gray-700">Limit 1.5 Cr</td>
+                    <td className="px-4 py-3 text-gray-900 font-medium">EI – OD Limit</td>
+                    <td className="px-4 py-3"><span className="px-3 py-1 bg-gray-100 text-slate-900 text-xs font-medium rounded-lg border border-gray-200">Working Capital</span></td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-800">₹ 40,00,000 used</td>
+                    <td className="px-4 py-3 text-gray-700">SBI</td>
+                    <td className="px-4 py-3 text-gray-700">Limit 1.5 Cr</td>
                   </tr>
                 </tbody>
               </table>

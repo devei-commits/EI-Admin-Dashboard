@@ -67,7 +67,7 @@ export default function GRNWizardModal({ poId, lineItemId, onClose }: Props) {
 
   if (!po || !line) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
         <div className="bg-white rounded-xl p-6">
           <p className="text-red-600">PO or line item not found.</p>
           <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded-lg">Close</button>
@@ -181,7 +181,7 @@ export default function GRNWizardModal({ poId, lineItemId, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-start">

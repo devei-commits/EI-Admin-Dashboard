@@ -238,7 +238,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
   <div className={`fixed inset-0 z-50 flex flex-col md:flex-row transition-all duration-300 ${isAnimating ? 'opacity-100' : 'opacity-0'}`}>
    {/* Backdrop */}
    <div 
-    className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity duration-300"
+    className="absolute inset-0 bg-white/60 backdrop-blur-md transition-opacity duration-300"
     onClick={handleClose}
    />
 

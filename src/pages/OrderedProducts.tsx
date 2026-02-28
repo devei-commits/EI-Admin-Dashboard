@@ -2,11 +2,14 @@ import { useMemo, useState } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { Link } from 'react-router-dom';
 import CpoDetailModal from '../components/ordermanagementcomp/CpoDetailModal';
+import BatchPlannerModal from '../components/ordermanagementcomp/BatchPlannerModal';
+import { Search, Sparkles } from 'lucide-react';
 
 const OrderedProducts = () => {
     const { state } = useGlobalState();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCpoForDetails, setSelectedCpoForDetails] = useState<any>(null);
+    const [selectedProductForBatching, setSelectedProductForBatching] = useState<any>(null);
 
     const mockCPOs = [
         {
@@ -121,24 +124,35 @@ const OrderedProducts = () => {
 
     const getStageColor = (stage: string) => {
         const colors: Record<string, string> = {
-            draft: 'bg-gray-100 text-gray-800',
-            customer_approval_pending: 'bg-yellow-100 text-yellow-800',
-            advance_paid: 'bg-blue-100 text-blue-800',
-            so_created: 'bg-green-100 text-green-800',
-            batch_planning: 'bg-purple-100 text-purple-800',
-            in_production: 'bg-orange-100 text-orange-800',
-            completed: 'bg-green-100 text-green-800',
+            draft: 'bg-gray-100 text-gray-700 border border-gray-200',
+            customer_approval_pending: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+            advance_paid: 'bg-blue-100 text-blue-800 border border-blue-200',
+            so_created: 'bg-green-100 text-green-800 border border-green-200',
+            batch_planning: 'bg-purple-100 text-purple-800 border border-purple-200',
+            in_production: 'bg-orange-100 text-orange-800 border border-orange-200',
+            completed: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
         };
-        return colors[stage] || 'bg-gray-100 text-gray-800';
+        return colors[stage] || 'bg-gray-100 text-gray-700 border border-gray-200';
     };
 
+    const formatStageLabel = (stage: string) =>
+        stage
+            .split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+
+    const totalOrders = new Set(filteredProducts.map((p) => p.soRef)).size;
+    const totalUnits = filteredProducts.reduce((sum, p) => sum + (p.qty || 0), 0);
+    const avgExecution = Math.round(filteredProducts.reduce((sum, p) => sum + (p.execPercent || 0), 0) / (filteredProducts.length || 1));
+    const needsPlanning = filteredProducts.filter((p) => !p.batches).length;
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Order Management</h1>
-                    <div className="flex gap-2 mt-2 text-sm">
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">Order Management</h1>
+                    <div className="mt-2 flex gap-2 text-sm">
                         <Link to="/" className="text-blue-600 hover:underline">
                             Dashboard
                         </Link>
@@ -146,119 +160,120 @@ const OrderedProducts = () => {
                         <span className="text-gray-600">Ordered Products</span>
                     </div>
                 </div>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition">
-                    🏭 Run Planner
+                <button className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+                    <Sparkles className="h-4 w-4" />
+                    Run Planner
                 </button>
             </div>
 
             {/* Search Bar */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <input
-                    type="text"
-                    placeholder="Search by SO, product name, or SKU..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                />
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by SO, product name, or SKU..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-4 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                    Showing <span className="font-semibold text-gray-700">{filteredProducts.length}</span> product{filteredProducts.length === 1 ? '' : 's'}
+                </p>
             </div>
 
             {/* Products Table */}
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200">
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">SO</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">PRODUCT</th>
-                                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">QTY</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">AVAILABILITY</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">EXEC%</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">STAGE</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">BATCHES</th>
-                                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">#</th>
+                            <tr className="border-b border-gray-200 bg-gray-50">
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">SO</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Product</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Qty</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Availability</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Exec%</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Stage</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Batches</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 whitespace-nowrap">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredProducts.length > 0 ? (
                                 filteredProducts.map((product, idx) => (
-                                    <tr key={product.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                        <td className="px-6 py-4">
-                                            <div>
-                                                <p className="font-semibold text-blue-600">{product.soRef}</p>
-                                                <p className="text-xs text-gray-500">20 Feb 2026</p>
+                                    <tr key={product.id} className={`border-b border-gray-100 transition-colors hover:bg-blue-50/40 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>
+                                        <td className="px-4 py-4">
+                                            <div className="min-w-0">
+                                                <p className="whitespace-nowrap font-semibold text-blue-600 hover:text-blue-700">{product.soRef}</p>
+                                                <p className="text-xs text-gray-500 whitespace-nowrap">20 Feb 2026</p>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div>
-                                                <p className="font-medium text-gray-800">{product.productName}</p>
-                                                <p className="text-xs text-gray-500">{product.sku}</p>
+                                        <td className="px-4 py-4">
+                                            <div className="min-w-0 max-w-48">
+                                                <p className="truncate font-medium text-gray-900">{product.productName}</p>
+                                                <p className="truncate text-xs text-gray-500">{product.sku}</p>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-center text-gray-700">{product.qty?.toLocaleString()}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm space-y-1">
-                                                <p className="text-gray-700">
+                                        <td className="px-4 py-4 text-right font-medium tabular-nums text-gray-700 whitespace-nowrap">{product.qty?.toLocaleString()}</td>
+                                        <td className="px-4 py-4">
+                                            <div className="space-y-0.5 text-sm">
+                                                <p className="whitespace-nowrap text-gray-700">
                                                     <span className="font-medium">RM</span> {product.availability.rm}
                                                 </p>
-                                                <p className="text-gray-700">
+                                                <p className="whitespace-nowrap text-gray-700">
                                                     <span className="font-medium">PM</span> {product.availability.pm}
                                                 </p>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-4 py-4 text-center">
                                             <div className="text-sm">
                                                 <span className="font-semibold text-orange-600">{product.execPercent}%</span>
-                                                <p className="text-xs text-gray-500">{product.execStatus}</p>
+                                                <p className="whitespace-nowrap text-xs text-gray-500">{product.execStatus}</p>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-purple-600 text-lg">•</span>
-                                                <span className="text-xs text-purple-600 font-medium">Batch setup</span>
-                                            </div>
+                                        <td className="px-4 py-4">
+                                            <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${getStageColor(product.stage)}`}>
+                                                {formatStageLabel(product.stage)}
+                                            </span>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-4 py-4">
                                             {product.batches ? (
-                                                <span className="text-green-600 font-medium text-sm">{product.batches}</span>
+                                                <span className="inline-flex whitespace-nowrap rounded-full bg-green-50 px-2.5 py-1 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-200">{product.batches}</span>
                                             ) : (
-                                                <span className="text-gray-400 text-sm">No batches</span>
+                                                <span className="text-sm text-gray-400">No batches</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
-                                            {product.batches ? (
-                                                <button className="px-4 py-1 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-                                                    View
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    onClick={() => {
-                                                        const matchedCpo = sourceCPOs.find((cpo: any) =>
-                                                            cpo.soRef === product.soRef || cpo.id === product.soId
-                                                        );
-                                                        const fallbackCpo = {
-                                                            po: product.soId || 'CPO',
-                                                            client: '—',
-                                                            value: product.lineValue || 0,
-                                                            advancePct: 0,
-                                                            payments: [],
-                                                            products: [{
+                                        <td className="px-4 py-4 text-center">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <Link to="/universal-swap-page">
+                                                    <button className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-1 text-sm font-semibold text-purple-700 transition hover:bg-purple-100">
+                                                        Swapping
+                                                    </button>
+                                                </Link>
+                                                {product.batches ? (
+                                                    <button className="rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                                                        View
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => {
+                                                            // Map product data to match BatchPlannerModal expected format
+                                                            const batchPlannerProduct = {
+                                                                so: product.soRef,
                                                                 product: product.productName,
                                                                 sku: product.sku,
                                                                 qty: product.qty,
-                                                                unitPrice: product.unitPrice,
-                                                                lineValue: product.lineValue,
-                                                            }],
-                                                            timeline: [],
-                                                            status: product.stage || 'draft',
-                                                            soRef: product.soRef,
-                                                        };
-                                                        setSelectedCpoForDetails(matchedCpo || fallbackCpo);
-                                                    }}
-                                                    className="px-4 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition"
-                                                >
-                                                    Plan
-                                                </button>
-                                            )}
+                                                                deliveryDate: '2026-03-15' // Default delivery date
+                                                            };
+                                                            setSelectedProductForBatching(batchPlannerProduct);
+                                                        }}
+                                                        className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                                                    >
+                                                        Plan
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -276,24 +291,22 @@ const OrderedProducts = () => {
 
             {/* Stats Footer */}
             {filteredProducts.length > 0 && (
-                <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <p className="text-xs text-gray-600 font-medium">Total Orders</p>
-                        <p className="text-2xl font-bold text-gray-800 mt-1">{new Set(filteredProducts.map((p) => p.soRef)).size}</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Orders</p>
+                        <p className="mt-1 text-3xl font-bold leading-none text-gray-900">{totalOrders}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <p className="text-xs text-gray-600 font-medium">Total Units</p>
-                        <p className="text-2xl font-bold text-gray-800 mt-1">{filteredProducts.reduce((sum, p) => sum + (p.qty || 0), 0).toLocaleString()}</p>
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Units</p>
+                        <p className="mt-1 text-3xl font-bold leading-none text-gray-900">{totalUnits.toLocaleString()}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <p className="text-xs text-gray-600 font-medium">Avg Execution</p>
-                        <p className="text-2xl font-bold text-gray-800 mt-1">
-                            {Math.round(filteredProducts.reduce((sum, p) => sum + (p.execPercent || 0), 0) / (filteredProducts.length || 1))}%
-                        </p>
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Avg Execution</p>
+                        <p className="mt-1 text-3xl font-bold leading-none text-gray-900">{avgExecution}%</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <p className="text-xs text-gray-600 font-medium">Needs Planning</p>
-                        <p className="text-2xl font-bold text-orange-600 mt-1">{filteredProducts.filter((p) => !p.batches).length}</p>
+                    <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 shadow-sm">
+                        <p className="text-xs font-medium uppercase tracking-wide text-orange-700">Needs Planning</p>
+                        <p className="mt-1 text-3xl font-bold leading-none text-orange-600">{needsPlanning}</p>
                     </div>
                 </div>
             )}
@@ -304,6 +317,14 @@ const OrderedProducts = () => {
                     onClose={() => setSelectedCpoForDetails(null)}
                     showActions={false}
                     showOrderedProductsCta={false}
+                />
+            )}
+
+            {/* Batch Planner Modal */}
+            {selectedProductForBatching && (
+                <BatchPlannerModal
+                    orderedProduct={selectedProductForBatching}
+                    onClose={() => setSelectedProductForBatching(null)}
                 />
             )}
         </div>

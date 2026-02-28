@@ -162,7 +162,7 @@ export const TABLE_VARIANTS = {
 
 // Modal Variants
 export const MODAL_VARIANTS = {
- backdrop: 'fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4',
+ backdrop: 'fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4',
  content: 'bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto',
  header: 'flex justify-between items-center p-6 border-b-2 border-gray-200',
  body: 'p-6 space-y-8',

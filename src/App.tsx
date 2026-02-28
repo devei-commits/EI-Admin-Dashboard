@@ -32,11 +32,14 @@ const TreasuryApp = lazy(() => import('./pages/TreasuryApp'))
 const PackagingRefactored = lazy(() => import('./pages/PackagingRefactored'))
 const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialRefactored'))
+const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
 const BOMRefactored = lazy(() => import('./pages/BOMRefactored'))
+const BMRBPR = lazy(() => import('./pages/BMRBPR'))
 const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
 const VendorClient = lazy(() => import('./pages/VendorClient'))
 const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
 const UniversalSwap = lazy(() => import('./pages/UniversalSwap'))
+const UniversalSwapPage = lazy(() => import('./pages/UniversalSwapPage'))
 const ItemGroups = lazy(() => import('./pages/ItemGroups'))
 const ItemsList = lazy(() => import('./pages/ItemsList'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
@@ -174,6 +177,11 @@ const AppLayout = () => {
                                                                <GoodReceivingPage />
                                                         </ProtectedModuleRoute>
                                                  } />
+                                                 <Route path="/bmr-bpr" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <BMRBPR />
+                                                        </ProtectedModuleRoute>
+                                                 } />
                                                  <Route path="/po" element={
                                                         <ProtectedModuleRoute moduleId="order-management">
                                                                <PurchaseOrders />
@@ -219,7 +227,6 @@ const AppLayout = () => {
                                                                <ProductSamples />
                                                         </ProtectedModuleRoute>
                                                  } />
-// ...existing code...
                                                  <Route path="/treasury" element={
                                                         <ProtectedModuleRoute moduleId="treasury">
                                                                <TreasuryApp />
@@ -242,12 +249,27 @@ const AppLayout = () => {
                                                  } />
                                                  <Route path="/bom" element={
                                                         <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
+                                                               <BOMDashboard />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/bom/new" element={
+                                                        <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
                                                                <BOMRefactored />
                                                         </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/bom/:id" element={
+                                                    <ProtectedModuleRoute moduleId="inventory" subModuleId="bom">
+                                                        <BOMRefactored />
+                                                    </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/universal-swap" element={
                                                         <ProtectedModuleRoute moduleId="inventory">
                                                                <UniversalSwap />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/universal-swap-page" element={
+                                                        <ProtectedModuleRoute moduleId="inventory">
+                                                               <UniversalSwapPage />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/item-groups" element={

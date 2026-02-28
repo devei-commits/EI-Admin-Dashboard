@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 
@@ -203,10 +203,61 @@ const ITEM_GROUPS_SEED: ItemGroup[] = [
   }
 ];
 
+const EMPTY_FORM = {
+  name: '',
+  type: 'RM' as 'RM' | 'PM',
+  primaryItem: '',
+  icon: '',
+  description: '',
+  rationale: '',
+};
+
 const ItemGroups: React.FC = () => {
-  const [itemGroups] = useState<ItemGroup[]>(ITEM_GROUPS_SEED);
+  const { items: masterItems } = useItems();
+  const { addToast } = useToast();
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>(ITEM_GROUPS_SEED);
   const [typeFilter, setTypeFilter] = useState<'All' | 'RM' | 'PM'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [selectedGroup, setSelectedGroup] = useState<ItemGroup | null>(null);
+
+  // Build primary item options filtered by the selected type
+  const primaryItemOptions = useMemo(() => {
+    return masterItems
+      .filter(i => {
+        if (form.type === 'PM') return i.type === 'packaging';
+        return i.type === 'raw-material' || i.type === 'bom';
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [masterItems, form.type]);
+
+  const handleCreateGroup = () => {
+    if (!form.name.trim()) return;
+    const nextId = String(itemGroups.length + 1);
+    const prefix = form.type === 'PM' ? 'IG-PM' : 'IG';
+    const code = `${prefix}-${String(itemGroups.filter(g => g.type === form.type).length + 1).padStart(3, '0')}`;
+    const primaryMember = masterItems.find(i => i.name === form.primaryItem);
+    const newGroup: ItemGroup = {
+      id: nextId,
+      code,
+      icon: form.icon || '🔗',
+      type: form.type,
+      name: form.name.trim(),
+      description: form.description.trim(),
+      purpose: form.rationale.trim(),
+      status: 'Active',
+      approvedMembers: primaryMember
+        ? [{ id: '1', code: primaryMember.code, name: primaryMember.name, status: 'approved' }]
+        : [],
+      proposedAlternates: [],
+      notes: form.rationale.trim(),
+    };
+    setItemGroups(prev => [...prev, newGroup]);
+    setForm(EMPTY_FORM);
+    setShowCreateModal(false);
+    addToast('success', `Item Group "${newGroup.name}" created`);
+  };
 
   const filtered = itemGroups.filter(ig => {
     const matchType = typeFilter === 'All' || ig.type === typeFilter;
@@ -300,7 +351,10 @@ const ItemGroups: React.FC = () => {
               </div>
 
               {/* New Group Button */}
-              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+              >
                 <span className="text-base leading-none">+</span> New Group
               </button>
             </div>
@@ -309,7 +363,7 @@ const ItemGroups: React.FC = () => {
           {/* Item Groups List */}
           <div className="divide-y divide-gray-100">
             {filtered.map(ig => (
-              <div key={ig.id} className="p-5 hover:bg-gray-50/50 transition-colors">
+              <div key={ig.id} className="p-5 hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setSelectedGroup(ig)}>
                 {/* Header Row */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
@@ -393,6 +447,228 @@ const ItemGroups: React.FC = () => {
         </div>
 
       </div>
+
+      {/* ── Detail Side Panel ── */}
+      {selectedGroup && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={() => setSelectedGroup(null)} />
+          {/* Panel */}
+          <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+            {/* Header */}
+            <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="text-2xl shrink-0 mt-0.5">{selectedGroup.icon}</span>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold text-gray-900 leading-snug">{selectedGroup.name}</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedGroup.description}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedGroup(null)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 shrink-0 ml-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              {/* Stat cards row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center py-3 px-2 rounded-xl border border-gray-200 bg-gray-50">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Type</p>
+                  <p className="text-lg font-extrabold text-gray-900 mt-1">{selectedGroup.type}</p>
+                </div>
+                <div className="text-center py-3 px-2 rounded-xl border border-teal-200 bg-teal-50">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Members</p>
+                  <p className="text-lg font-extrabold text-teal-600 mt-1">{selectedGroup.approvedMembers.length}</p>
+                </div>
+                <div className="text-center py-3 px-2 rounded-xl border border-amber-200 bg-amber-50">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Alternates</p>
+                  <p className="text-lg font-extrabold text-amber-600 mt-1">{selectedGroup.proposedAlternates.length}</p>
+                </div>
+              </div>
+
+              {/* Approved Members */}
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-3">Approved Members</h3>
+                <div className="space-y-2">
+                  {selectedGroup.approvedMembers.map((member, idx) => (
+                    <div key={member.id} className="border border-gray-200 rounded-xl p-3.5 hover:border-teal-300 transition-colors">
+                      <div className="flex items-center gap-2 mb-1">
+                        {idx === 0 && (
+                          <span className="text-[10px] font-bold text-teal-600">★ Primary</span>
+                        )}
+                        <span className="text-[10px] font-bold text-teal-600">·</span>
+                        <span className="font-mono text-[10px] font-bold text-teal-600">{member.code}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                      {member.ratio && member.ratio !== 1 && (
+                        <p className="text-xs text-gray-500 mt-0.5">Ratio: ×{member.ratio}</p>
+                      )}
+                    </div>
+                  ))}
+                  {selectedGroup.approvedMembers.length === 0 && (
+                    <p className="text-xs text-gray-400 italic">No approved members yet</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Proposed Alternates */}
+              {selectedGroup.proposedAlternates.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-3">Proposed Alternates</h3>
+                  <div className="space-y-2">
+                    {selectedGroup.proposedAlternates.map(alt => (
+                      <div key={alt.id} className="border border-amber-200 rounded-xl p-3.5 bg-amber-50/50">
+                        <p className="text-sm font-semibold text-gray-900">{alt.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">{alt.notes}</p>
+                        <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          alt.status === 'proposed'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {alt.status === 'proposed' ? 'Proposed' : 'Under Review'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rationale / Notes */}
+              {selectedGroup.notes && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm text-emerald-800">
+                    <span className="font-bold">💡 Rationale:</span> {selectedGroup.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setSelectedGroup(null)}
+                className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Item Group Modal ── */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={() => setShowCreateModal(false)} />
+          {/* Panel */}
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-2">
+              <h2 className="text-lg font-bold text-gray-900">Create Item Group</h2>
+              <button onClick={() => setShowCreateModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4 space-y-4">
+              {/* Row 1: Group Name + Type */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Group Name <span className="text-red-500">*</span></label>
+                  <input
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Vitamin C Derivatives"
+                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Type</label>
+                  <select
+                    value={form.type}
+                    onChange={e => setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItem: '' }))}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                  >
+                    <option value="RM">RM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 2: Primary Item + Icon */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Primary Item</label>
+                  <select
+                    value={form.primaryItem}
+                    onChange={e => setForm(f => ({ ...f, primaryItem: e.target.value }))}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                  >
+                    {primaryItemOptions.map(item => (
+                      <option key={item.id} value={item.name}>{item.name}</option>
+                    ))}
+                    {primaryItemOptions.length === 0 && (
+                      <option value="" disabled>No items available</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Icon (Emoji)</label>
+                  <input
+                    value={form.icon}
+                    onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
+                    placeholder="🔗"
+                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Description</label>
+                <input
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Short description of the group"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                />
+              </div>
+
+              {/* Rationale */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Rationale</label>
+                <textarea
+                  value={form.rationale}
+                  onChange={e => setForm(f => ({ ...f, rationale: e.target.value }))}
+                  placeholder="Why these items are grouped together"
+                  rows={3}
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => { setForm(EMPTY_FORM); setShowCreateModal(false); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateGroup}
+                disabled={!form.name.trim()}
+                className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+              >
+                Create Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

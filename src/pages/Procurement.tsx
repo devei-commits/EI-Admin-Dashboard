@@ -456,7 +456,7 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md px-4" onClick={onClose}>
       <div
         className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -4170,12 +4170,284 @@ const Procurement: React.FC = () => {
               )}
 
               {sideSection === 'Item Tracker' && (
-                <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                  <p className="text-sm text-slate-700 mb-3">Tracking all {new Set(requests.flatMap(r => r.items)).size} unique items across requests:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {Array.from(new Set(requests.flatMap(r => r.items))).map((item, idx) => (
-                      <span key={idx} className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-800 text-xs font-semibold">{item}</span>
-                    ))}
+                <div className="rounded-xl border border-blue-200 bg-white p-4 md:p-5 shadow-sm space-y-4">
+                  {/* Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base md:text-lg font-bold text-slate-900">Item Tracker — All Items Across All Stages</h2>
+                      <p className="text-xs md:text-sm text-slate-600 mt-1">
+                        Live view of every raw material and packaging item across requests, quotes, POs and deliveries.
+                      </p>
+                    </div>
+                    <div className="text-[11px] md:text-xs text-slate-500 flex items-center gap-2">
+                      <span className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold">
+                        {filteredItemTrackerRows.length} items shown
+                      </span>
+                      <span className="hidden sm:inline text-slate-400">Synced with procurement data</span>
+                    </div>
+                  </div>
+
+                  {/* Filters row */}
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 md:px-4 py-3 flex flex-wrap items-center gap-3 md:gap-4 text-[11px] md:text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-slate-600">Category:</span>
+                      <button
+                        type="button"
+                        onClick={() => setItemTrackerCategory('All')}
+                        className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${
+                          itemTrackerCategory === 'All'
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {(['RM', 'PM'] as RequestType[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setItemTrackerCategory(type)}
+                          className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${
+                            itemTrackerCategory === type
+                              ? type === 'RM'
+                                ? 'border-cyan-500 bg-cyan-50 text-cyan-800'
+                                : 'border-violet-500 bg-violet-50 text-violet-800'
+                              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-slate-600">Vendor:</span>
+                      <select
+                        value={itemTrackerVendor}
+                        onChange={(e) => setItemTrackerVendor(e.target.value)}
+                        className="min-w-35 md:min-w-45 bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
+                      >
+                        <option value="All Vendors">All Vendors</option>
+                        {itemTrackerVendors.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-slate-600">Status:</span>
+                      <select
+                        value={itemTrackerStatus}
+                        onChange={(e) => setItemTrackerStatus(e.target.value as 'All Statuses' | RequestStatus)}
+                        className="bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
+                      >
+                        <option value="All Statuses">All Statuses</option>
+                        <option value="New">New</option>
+                        <option value="Quoted">Quoted</option>
+                        <option value="PO Draft">PO Draft</option>
+                        <option value="PO Released">PO Released</option>
+                        <option value="Delivery Pending">Delivery Pending</option>
+                      </select>
+                    </div>
+
+                    <div className="ml-auto flex-1 min-w-40 max-w-xs">
+                      <input
+                        value={itemTrackerSearch}
+                        onChange={(e) => setItemTrackerSearch(e.target.value)}
+                        placeholder="Search item name, code, PO"
+                        className="w-full px-3 py-1.5 rounded-md bg-white border border-slate-300 text-[11px] md:text-xs text-slate-800 placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Items table */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="min-w-full text-[11px] md:text-xs text-slate-900">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr className="text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                          <th className="px-3 md:px-4 py-2 text-left">Item</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Type</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Request</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Priority</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Req Qty</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Planned ₹</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Request Status</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Preferred Vendor</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Quoted Vendor</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Actual ₹</th>
+                          <th className="px-3 md:px-4 py-2 text-left">PO Number</th>
+                          <th className="px-3 md:px-4 py-2 text-left">PO Status</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Order Qty</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Adv Paid</th>
+                          <th className="px-3 md:px-4 py-2 text-left">LR No</th>
+                          <th className="px-3 md:px-4 py-2 text-left">Exp. Delivery</th>
+                          <th className="px-3 md:px-4 py-2 text-left">GRN Ref</th>
+                          <th className="px-3 md:px-4 py-2 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredItemTrackerRows.map((row) => {
+                          const priorityClassName =
+                            row.priority === 'High'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : row.priority === 'Medium'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200';
+
+                          const typePillClass =
+                            row.type === 'RM'
+                              ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
+                              : 'bg-violet-50 text-violet-700 border-violet-200';
+
+                          const statusPillClass = statusBg[row.requestStatus];
+
+                          let actionLabel: string | null = null;
+                          if (row.requestStatus === 'New') actionLabel = 'Quote';
+                          else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
+                          else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
+                          else if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') actionLabel = 'PO →';
+
+                          const handleActionClick = () => {
+                            if (!actionLabel) return;
+
+                            if (row.requestStatus === 'New') {
+                              setCategoryFilter('All');
+                              setVendorFilter('All Vendors');
+                              setStatusFilter('All Statuses');
+                              setRequestStatusFilter('All Statuses');
+                              setSearchQuery(row.itemName);
+                              applyRouteState('Procurement', 'Quotations');
+                              return;
+                            }
+
+                            if (row.requestStatus === 'Quoted') {
+                              if (row.quoteId) {
+                                createDraftPO(row.quoteId);
+                              } else {
+                                addToast('warning', 'No quote found for this item');
+                              }
+                              return;
+                            }
+
+                            if (row.requestStatus === 'PO Draft') {
+                              if (row.draftPoId) {
+                                approveDraftPO(row.draftPoId);
+                                openReleasePOModal(row.draftPoId);
+                              } else {
+                                addToast('warning', 'No draft PO linked to this item');
+                              }
+                              return;
+                            }
+
+                            if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') {
+                              if (row.poId) {
+                                const po = purchaseOrders.find((p) => p.id === row.poId);
+                                if (po) {
+                                  setSelectedPO(po);
+                                } else {
+                                  addToast('warning', 'Purchase order not found');
+                                }
+                              } else {
+                                applyRouteState('Procurement', 'Issued POs');
+                              }
+                            }
+                          };
+
+                          return (
+                            <tr key={row.key} className="border-b border-slate-100 hover:bg-blue-50/40">
+                              <td className="px-3 md:px-4 py-2 align-middle">
+                                <div className="flex flex-col">
+                                  <span className="text-[11px] md:text-xs font-semibold text-slate-900">{row.itemName}</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">{row.itemCode}</span>
+                                </div>
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${typePillClass}`}>
+                                  {row.type === 'RM' ? 'RM' : 'PM'}
+                                </span>
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-[10px] font-mono text-slate-700">
+                                  {row.requestCode}
+                                </span>
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${priorityClassName}`}>
+                                  {row.priority}
+                                </span>
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
+                                {row.reqQty.toLocaleString('en-IN')} {row.unit}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
+                                ₹{row.plannedPrice.toLocaleString('en-IN')}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusPillClass}`}>
+                                  {row.requestStatus}
+                                </span>
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
+                                {row.preferredVendor ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
+                                {row.quotedVendor ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-emerald-700">
+                                {row.actualPrice != null ? `₹${row.actualPrice.toLocaleString('en-IN')}` : '—'}
+                                {row.actualVsPlanned && (
+                                  <span className="block text-[9px] text-emerald-600">{row.actualVsPlanned}</span>
+                                )}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
+                                {row.poNumber ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px]">
+                                {row.poStatus ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
+                                {row.orderQty ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
+                                {row.advPaid ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
+                                {row.lrNo ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
+                                {row.expDelivery ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
+                                {row.grnRef ?? '—'}
+                              </td>
+                              <td className="px-3 md:px-4 py-2 align-middle text-center">
+                                {actionLabel && (
+                                  <button
+                                    type="button"
+                                    onClick={handleActionClick}
+                                    className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold shadow-sm"
+                                  >
+                                    {actionLabel}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredItemTrackerRows.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={18}
+                              className="px-4 py-6 text-center text-[11px] text-slate-500"
+                            >
+                              No items match the current filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}

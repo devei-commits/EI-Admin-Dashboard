@@ -110,7 +110,7 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
 
   if (!bmrs.length) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
         <div className="bg-white rounded-xl p-6">
           <p className="text-red-600">No BMRs found.</p>
           <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded-lg">
@@ -123,7 +123,7 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div

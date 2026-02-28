@@ -210,7 +210,7 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
    {/* Mobile overlay */}
    {isOpen && (
     <div 
-     className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 lg:hidden"
+     className="fixed inset-0 bg-white/60 backdrop-blur-md z-40 lg:hidden"
      onClick={onClose}
     />
    )}

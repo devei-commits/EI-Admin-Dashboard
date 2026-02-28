@@ -72,7 +72,8 @@ const Sidebar = () => {
     '/order-management',
     '/ordered-products',
     '/procurement',
-    '/po'
+    '/po',
+    '/bmr-bpr'
   ].includes(location.pathname);
 
   // Check if any product submenu item is active
@@ -178,7 +179,7 @@ const Sidebar = () => {
       {/* Overlay - Mobile Only */}
       {isOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/30 backdrop-blur-sm z-30 mt-14"
+          className="md:hidden fixed inset-0 bg-white/60 backdrop-blur-md z-30 mt-14"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -358,6 +359,21 @@ const Sidebar = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <span>PO</span>
+                      </NavLink>
+                    </li>
+                    <li>
+                      <NavLink
+                        to="/bmr-bpr"
+                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          ? "text-slate-900 font-medium bg-slate-100/50"
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                          }`}
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>BMR/BPR</span>
                       </NavLink>
                     </li>
                   </ul>

@@ -452,7 +452,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
  }, [ticket.id, onUpdate]);
 
  return (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
    <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
     {/* Header */}
     <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-gray-50/50">
@@ -690,7 +690,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
    {/* Resolve Modal */}
    {showResolveModal && (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-60">
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-60">
      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">Resolve Ticket</h3>
       <p className="text-sm text-gray-600 mb-4">

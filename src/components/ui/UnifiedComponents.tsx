@@ -122,7 +122,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
  if (!isOpen) return null;
 
  return (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
    <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
     <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
      <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">{title}</h3>

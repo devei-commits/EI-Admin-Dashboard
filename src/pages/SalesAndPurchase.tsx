@@ -538,34 +538,34 @@ const SalesAndPurchase: React.FC = () => {
                     <>
                       {/* Desktop Table */}
                       <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full">
+                        <table className="w-full table-fixed min-w-275 text-sm">
                           <thead>
                             <tr className="border-b border-gray-200">
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order ID</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Type</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Customer</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order Status</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Invoiced</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Payment</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Packed</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Shipped</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Delivery Method</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
+                              <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Order ID</th>
+                              <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Type</th>
+                              <th className="w-[12%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Customer</th>
+                              <th className="w-[8%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Date</th>
+                              <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Status</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Order Status</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Invoiced</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Payment</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Packed</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Shipped</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Delivery</th>
+                              <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Items</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredSalesOrders.map((order) => (
                               <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
-                                <td className="py-4 px-5 leading-relaxed">
-                                  <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-800 tracking-wider">SO</span>
+                                <td className="py-3 px-3 text-gray-800 font-medium truncate">{order.orderId}</td>
+                                <td className="py-3 px-3">
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">SO</span>
                                 </td>
-                                <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.customerName || 'N/A'}</td>
-                                <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.orderDate}</td>
-                                <td className="py-4 px-5 leading-relaxed">
+                                <td className="py-3 px-3 text-gray-800 truncate">{order.customerName || 'N/A'}</td>
+                                <td className="py-3 px-3 text-gray-800 whitespace-nowrap">{order.orderDate}</td>
+                                <td className="py-3 px-3">
                                   <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium tracking-wide ${
                                     order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' :
                                     order.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
@@ -578,53 +578,53 @@ const SalesAndPurchase: React.FC = () => {
                                     {order.status}
                                   </span>
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.orderStatus ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.orderStatus}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.invoiced ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.invoiced}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.payment ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.payment}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.packed ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.packed}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.shipped ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.shipped}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.deliveryMethod ? (
                                     <span className="text-xs text-gray-600 capitalize">{order.orderStatus.deliveryMethod}</span>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-3 px-4 text-gray-800">{order.items.length}</td>
-                                <td className="py-3 px-4 text-center">
+                                <td className="py-3 px-3 text-gray-800 tabular-nums">{order.items.length}</td>
+                                <td className="py-3 px-3 text-center">
                                   <button
                                     onClick={() => openDetailModal(order)}
                                     className="px-4 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-medium"
@@ -805,85 +805,85 @@ const SalesAndPurchase: React.FC = () => {
                     <>
                       {/* Desktop Table */}
                       <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full">
+                        <table className="w-full table-fixed min-w-275 text-sm">
                           <thead>
                             <tr className="border-b border-gray-200">
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">PO ID</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Type</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Vendor</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Date</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Order Status</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Invoiced</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Payment</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Packed</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Shipped</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Delivery Method</th>
-                              <th className="text-left py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Items</th>
-                              <th className="text-center py-4 px-5 font-semibold text-gray-700 uppercase tracking-wider">Action</th>
+                              <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">PO ID</th>
+                              <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Type</th>
+                              <th className="w-[12%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Vendor</th>
+                              <th className="w-[8%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Date</th>
+                              <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Status</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Order Status</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Invoiced</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Payment</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Packed</th>
+                              <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Shipped</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Delivery</th>
+                              <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Items</th>
+                              <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredPurchaseOrders.map((order) => (
                               <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                <td className="py-4 px-5 text-gray-800 font-medium leading-relaxed">{order.orderId}</td>
-                                <td className="py-4 px-5 leading-relaxed">
-                                  <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 tracking-wider">PO</span>
+                                <td className="py-3 px-3 text-gray-800 font-medium truncate">{order.orderId}</td>
+                                <td className="py-3 px-3">
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">PO</span>
                                 </td>
-                                <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.vendorName || 'N/A'}</td>
-                                <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.orderDate}</td>
-                                <td className="py-4 px-5 leading-relaxed">
-                                  <span className={`px-3 py-1.5 rounded-full text-xs font-medium tracking-wider ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
+                                <td className="py-3 px-3 text-gray-800 truncate">{order.vendorName || 'N/A'}</td>
+                                <td className="py-3 px-3 text-gray-800 whitespace-nowrap">{order.orderDate}</td>
+                                <td className="py-3 px-3">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${order.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
                                     {order.status}
                                   </span>
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.orderStatus ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.orderStatus)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.orderStatus}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.invoiced ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.invoiced)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.invoiced}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.payment ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.payment)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.payment}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.packed ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.packed)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.packed}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.shipped ? (
-                                    <div className="flex justify-center items-center gap-2">
-                                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <span className={`w-2 h-2 shrink-0 rounded-full ${getStatusColor(order.orderStatus.shipped)}`}></span>
                                       <span className="text-xs text-gray-600 capitalize">{order.orderStatus.shipped}</span>
                                     </div>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-center">
                                   {order.orderStatus.deliveryMethod ? (
                                     <span className="text-xs text-gray-600 capitalize">{order.orderStatus.deliveryMethod}</span>
                                   ) : <span className="text-xs text-gray-400">-</span>}
                                 </td>
-                                <td className="py-4 px-5 text-gray-800 leading-relaxed">{order.items.length}</td>
-                                <td className="py-4 px-5 text-center">
+                                <td className="py-3 px-3 text-gray-800 tabular-nums">{order.items.length}</td>
+                                <td className="py-3 px-3 text-center">
                                   <div className="flex justify-center gap-1.5">
                                     <button
                                       onClick={() => openDetailModal(order)}
@@ -1911,7 +1911,7 @@ const ProcurementView: React.FC<{ state: any; dispatch: any; onItemDetail?: (id:
 
       {/* ══ Plan PO Modal ══ */}
       {planItemId && planItem && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-start justify-between p-6 border-b">
               <div>
