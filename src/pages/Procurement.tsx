@@ -150,6 +150,25 @@ type PurchaseOrder = {
   timeline?: POTimelineStep[];
 };
 
+type CompletedGrnLine = {
+  itemName: string;
+  itemCode: string;
+  orderedQty: string;
+  receivedQty: string;
+  qcPass: string;
+  qcFail: string;
+  receivedDate: string;
+  status: 'Completed';
+};
+
+type CompletedGrn = {
+  request: ProcurementRequest;
+  vendor: string;
+  poRef: string;
+  grnRef: string;
+  lines: CompletedGrnLine[];
+};
+
 const REQUESTS_SEED: ProcurementRequest[] = procurementData.requests as ProcurementRequest[];
 const QUOTES_SEED: VendorQuote[] = procurementData.quotes as VendorQuote[];
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -162,6 +181,7 @@ type LiveProcurementState = {
   requests: ProcurementRequest[];
   quotes: VendorQuote[];
   draftPOs: DraftPO[];
+  completedGrns: CompletedGrn[];
   updatedAt: string;
 };
 
@@ -177,6 +197,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
+      completedGrns: [],
       updatedAt: new Date().toISOString(),
     };
   }
@@ -187,6 +208,7 @@ const getInitialLiveState = (): LiveProcurementState => {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
+      completedGrns: [],
       updatedAt: new Date().toISOString(),
     };
   }
@@ -196,13 +218,16 @@ const getInitialLiveState = (): LiveProcurementState => {
     if (!parsed?.requests || !parsed?.quotes || !parsed?.draftPOs) {
       throw new Error('Invalid procurement state payload');
     }
-
-    return parsed;
+    return {
+      ...parsed,
+      completedGrns: parsed.completedGrns ?? [],
+    };
   } catch {
     return {
       requests: REQUESTS_SEED,
       quotes: QUOTES_SEED,
       draftPOs: DRAFT_POS_SEED,
+      completedGrns: [],
       updatedAt: new Date().toISOString(),
     };
   }
@@ -243,8 +268,8 @@ const Procurement: React.FC = () => {
   const [requests, setRequests] = useState<ProcurementRequest[]>(initialLiveState.requests);
   const [quotes, setQuotes] = useState<VendorQuote[]>(initialLiveState.quotes);
   const [draftPOs, setDraftPOs] = useState<DraftPO[]>(initialLiveState.draftPOs);
+    const [completedGrns, setCompletedGrns] = useState<CompletedGrn[]>(initialLiveState.completedGrns ?? []);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>(initialLiveState.updatedAt);
-  const [, setRealtimePulse] = useState<number>(Date.now());
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
@@ -276,6 +301,22 @@ const Procurement: React.FC = () => {
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
+  const [selectedGrn, setSelectedGrn] = useState<{
+    request: ProcurementRequest;
+    vendor: string;
+    poRef: string;
+    grnRef: string;
+    lines: {
+      itemName: string;
+      itemCode: string;
+      orderedQty: string;
+      receivedQty: string;
+      qcPass: string;
+      qcFail: string;
+      receivedDate: string;
+      status: 'Pending GRN' | 'Under GRN' | 'Completed';
+    }[];
+  } | null>(null);
   const [splitPOTarget, setSplitPOTarget] = useState<DraftPO | null>(null);
   const [splitSelectedLineIndexes, setSplitSelectedLineIndexes] = useState<number[]>([]);
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
@@ -285,6 +326,10 @@ const Procurement: React.FC = () => {
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
   const [issuedViewMode, setIssuedViewMode] = useState<'Table' | 'Cards'>('Cards');
+  const [grnCategoryFilter, setGrnCategoryFilter] = useState<'All' | RequestType>('All');
+  const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
+  const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
+  const [grnSearch, setGrnSearch] = useState('');
 
   const vendors: Vendor[] = procurementData.vendors as Vendor[];
   const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
@@ -307,16 +352,23 @@ const Procurement: React.FC = () => {
   };
 
   const updateProcurementState = (
-    updater: (current: { requests: ProcurementRequest[]; quotes: VendorQuote[]; draftPOs: DraftPO[] }) => {
+    updater: (current: {
+      requests: ProcurementRequest[];
+      quotes: VendorQuote[];
+      draftPOs: DraftPO[];
+      completedGrns: CompletedGrn[];
+    }) => {
       requests?: ProcurementRequest[];
       quotes?: VendorQuote[];
       draftPOs?: DraftPO[];
+      completedGrns?: CompletedGrn[];
     },
   ) => {
-    const next = updater({ requests, quotes, draftPOs });
+    const next = updater({ requests, quotes, draftPOs, completedGrns });
     if (next.requests) setRequests(next.requests);
     if (next.quotes) setQuotes(next.quotes);
     if (next.draftPOs) setDraftPOs(next.draftPOs);
+    if (next.completedGrns) setCompletedGrns(next.completedGrns);
   };
 
   useEffect(() => {
@@ -341,12 +393,13 @@ const Procurement: React.FC = () => {
       requests,
       quotes,
       draftPOs,
+      completedGrns,
       updatedAt: new Date().toISOString(),
     };
 
     window.localStorage.setItem(PROCUREMENT_LIVE_KEY, JSON.stringify(liveState));
     setLastUpdatedAt(liveState.updatedAt);
-  }, [draftPOs, quotes, requests]);
+  }, [completedGrns, draftPOs, quotes, requests]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -363,6 +416,7 @@ const Procurement: React.FC = () => {
         setRequests(incoming.requests ?? REQUESTS_SEED);
         setQuotes(incoming.quotes ?? QUOTES_SEED);
         setDraftPOs(incoming.draftPOs ?? DRAFT_POS_SEED);
+        setCompletedGrns(incoming.completedGrns ?? []);
         setLastUpdatedAt(incoming.updatedAt ?? new Date().toISOString());
       } catch {
         // Ignore malformed payloads from other sessions.
@@ -371,14 +425,6 @@ const Procurement: React.FC = () => {
 
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setRealtimePulse(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(interval);
   }, []);
 
   const sideCounts = useMemo(() => {
@@ -2335,214 +2381,901 @@ const Procurement: React.FC = () => {
                 </>
               )}
 
-              {sideSection === 'Issued POs' && (
-                <div className="space-y-3 rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
-                  <div className="rounded-lg border border-blue-200 bg-linear-to-r from-blue-50 to-cyan-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-slate-600">Issued POs Dashboard</span>
-                      {([
-                        { label: 'TOTAL', value: issuedPORecords.length, color: 'text-cyan-300' },
-                        { label: 'IN TRANSIT', value: issuedPORecords.filter(po => po.status === 'In Transit').length, color: 'text-amber-300' },
-                        { label: 'AT RISK', value: issuedPORecords.filter(po => po.status === 'At Risk').length, color: 'text-rose-300' },
-                        { label: 'GRN READY', value: issuedPORecords.filter(po => po.status === 'In Transit').length, color: 'text-emerald-300' },
-                      ]).map(stat => (
-                        <div key={stat.label} className="px-2.5 py-1 rounded border border-blue-200 bg-white">
-                          <p className="text-[10px] text-slate-500">{stat.label}</p>
-                          <p className={`text-sm font-bold ${
-                            stat.label === 'TOTAL' ? 'text-cyan-700' :
-                            stat.label === 'IN TRANSIT' ? 'text-amber-700' :
-                            stat.label === 'AT RISK' ? 'text-rose-700' :
-                            'text-emerald-700'
-                          }`}>{stat.value}</p>
-                        </div>
-                      ))}
+              {sideSection === 'Issued POs' && (() => {
+                const totalPos = issuedPORecords.length;
+                const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
+                const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
+                const advancePending = 1; // sample metric to mirror design
+                const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
+                const grnComplete = 1; // sample metric to mirror design
+
+                const itemisedRows = filteredIssuedPORecords.flatMap(record =>
+                  record.lineItems.map((line, index) => ({
+                    key: `${record.poNumber}-${line.itemCode}-${index}`,
+                    record,
+                    line,
+                  })),
+                );
+
+                const timelineStages = [
+                  'PO Released',
+                  'Advance Paid',
+                  'Vendor Confirmed',
+                  'Shipped',
+                  'Delivered',
+                  'Under GRN',
+                  'GRN Complete',
+                ] as const;
+
+                const getTimelineCompletedIndex = (status: string) => {
+                  if (status === 'Released') return 0;
+                  if (status === 'In Transit') return 3;
+                  if (status === 'At Risk') return 3;
+                  return 0;
+                };
+
+                return (
+                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+                    {/* Top summary strip */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 px-4 py-3 flex flex-col justify-between">
+                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">Total POs</p>
+                        <p className="mt-1 text-2xl font-bold">{totalPos}</p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">RM POs</p>
+                        <p className="mt-1 text-2xl font-bold">{rmPos}</p>
+                      </div>
+                      <div className="rounded-lg border border-violet-200 bg-violet-50 text-violet-900 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM POs</p>
+                        <p className="mt-1 text-2xl font-bold">{pmPos}</p>
+                      </div>
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                        <p className="text-[10px] tracking-[0.18em] uppercase">Advance Pending</p>
+                        <p className="mt-1 text-2xl font-bold">{advancePending}</p>
+                      </div>
+                      <div className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sky-900">
+                        <p className="text-[10px] tracking-[0.18em] uppercase">In Transit</p>
+                        <p className="mt-1 text-2xl font-bold">{inTransitCount}</p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
+                        <p className="text-[10px] tracking-[0.18em] uppercase">GRN Complete</p>
+                        <p className="mt-1 text-2xl font-bold">{grnComplete}</p>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-600">
-                      Value: <span className="text-amber-700 font-bold">₹{filteredIssuedPORecords.reduce((sum, po) => sum + po.grandTotal, 0).toLocaleString('en-IN')}</span>
-                    </div>
-                  </div>
 
-                  <div className="rounded-lg border border-blue-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <select
-                        value={issuedVendorFilter}
-                        onChange={(event) => setIssuedVendorFilter(event.target.value)}
-                        className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                      >
-                        <option value="All Vendors">All Vendors</option>
-                        {Array.from(new Set(issuedPORecords.map(record => record.vendor))).map(vendor => (
-                          <option key={vendor} value={vendor}>{vendor}</option>
-                        ))}
-                      </select>
-
-                      <select
-                        value={issuedStatusFilter}
-                        onChange={(event) => setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')}
-                        className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                      >
-                        <option value="All">All Status</option>
-                        <option value="Released">Released</option>
-                        <option value="In Transit">In Transit</option>
-                        <option value="At Risk">At Risk</option>
-                      </select>
-
-                      <div className="inline-flex rounded overflow-hidden border border-slate-300">
-                        {(['Table', 'Cards'] as const).map(mode => (
+                    {/* Filters */}
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-slate-500">Category:</span>
+                        <button
+                            onClick={() => setCategoryFilter('All')}
+                            className={`px-2 py-1 rounded-full border text-xs ${
+                            categoryFilter === 'All'
+                              ? 'border-amber-400 text-amber-800 bg-amber-50'
+                              : 'border-slate-300 text-slate-600 bg-white'
+                          }`}
+                        >
+                          All
+                        </button>
+                        {(['RM', 'PM'] as RequestType[]).map(type => (
                           <button
-                            key={mode}
-                            onClick={() => setIssuedViewMode(mode)}
-                            className={`px-2 py-1 text-xs ${issuedViewMode === mode ? 'bg-cyan-100 text-cyan-700' : 'bg-white text-slate-600'}`}
+                            key={type}
+                            onClick={() => setCategoryFilter(type)}
+                            className={`px-2 py-1 rounded-full border text-xs ${
+                              categoryFilter === type
+                                ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
+                                : 'border-slate-300 text-slate-600 bg-white'
+                            }`}
                           >
-                            {mode}
+                            {type}
                           </button>
                         ))}
+
+                        <span className="ml-3 text-slate-500">Vendor:</span>
+                        <select
+                          value={issuedVendorFilter}
+                          onChange={(event) => setIssuedVendorFilter(event.target.value)}
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          <option value="All Vendors">All Vendors</option>
+                          {Array.from(new Set(issuedPORecords.map(record => record.vendor))).map(vendor => (
+                            <option key={vendor} value={vendor}>{vendor}</option>
+                          ))}
+                        </select>
+
+                        <span className="ml-3 text-slate-500">Status:</span>
+                        <select
+                          value={issuedStatusFilter}
+                          onChange={(event) => setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')}
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          <option value="All">All Status</option>
+                          <option value="Released">Released</option>
+                          <option value="In Transit">In Transit</option>
+                          <option value="At Risk">At Risk</option>
+                        </select>
                       </div>
+
+                      <input
+                        value={issuedSearch}
+                        onChange={(event) => setIssuedSearch(event.target.value)}
+                        placeholder="Search PO no, vendor, item..."
+                        className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
+                      />
                     </div>
 
-                    <input
-                      value={issuedSearch}
-                      onChange={(event) => setIssuedSearch(event.target.value)}
-                      placeholder="Search PO #, vendor, item..."
-                      className="w-72 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
-                    />
-                  </div>
-
-                  <div className="rounded-lg border border-blue-200 bg-white overflow-x-auto">
-                    <table className="w-full min-w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] tracking-[0.12em] uppercase text-slate-500 bg-slate-50 border-b border-slate-200">
-                          <th className="px-3 py-2">Vendor</th>
-                          <th className="px-3 py-2">PO Number</th>
-                          <th className="px-3 py-2">Request</th>
-                          <th className="px-3 py-2">Items</th>
-                          <th className="px-3 py-2">Value</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">ETA</th>
-                          <th className="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredIssuedPORecords.map(record => (
-                          <tr key={`${record.request.id}-${record.poNumber}`} className="border-b border-slate-100 text-slate-700">
-                            <td className="px-3 py-2 font-semibold">{record.vendor}</td>
-                            <td className="px-3 py-2 font-mono text-cyan-700">{record.poNumber}</td>
-                            <td className="px-3 py-2">{record.requestCode}</td>
-                            <td className="px-3 py-2">{record.lineItems.length}</td>
-                            <td className="px-3 py-2 text-amber-700 font-semibold">₹{record.grandTotal.toLocaleString('en-IN')}</td>
-                            <td className="px-3 py-2">
-                              <span className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${
-                                record.status === 'In Transit' ? 'border-amber-200 bg-amber-50 text-amber-700' :
-                                record.status === 'At Risk' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-                                'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              }`}>
-                                {record.status}
-                              </span>
-                            </td>
-                            <td className={`px-3 py-2 font-semibold ${record.etaDays <= 1 ? 'text-rose-700' : 'text-slate-700'}`}>
-                              {record.etaDays >= 0 ? `${record.etaDays} d` : 'Overdue'}
-                            </td>
-                            <td className="px-3 py-2 text-right space-x-1">
-                              <button onClick={() => openIssuedPODetail(record)} className="px-2 py-1 rounded border border-cyan-300 text-cyan-700 hover:bg-cyan-50">View</button>
-                              <button onClick={() => markIssuedPOInTransit(record.request.id, record.requestCode)} className="px-2 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50">Transit</button>
-                              <button onClick={() => receiveIssuedPOGRN(record.request.id, record.requestCode)} className="px-2 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50">GRN</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="space-y-3">
-                    {filteredIssuedPORecords.map(record => {
-                      const stages = [
-                        { label: 'PO Released', done: true },
-                        { label: 'Vendor Confirmed', done: true },
-                        { label: 'In Transit', done: record.status !== 'Released' },
-                        { label: 'At Warehouse', done: record.status === 'In Transit' },
-                        { label: 'GRN', done: false },
-                      ];
-
-                      return (
-                        <div key={`${record.request.id}-${record.poNumber}-card`} className="rounded-lg border border-blue-200 bg-white p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs text-cyan-700 font-mono">{record.poNumber}</p>
-                              <p className="text-sm font-bold text-slate-900 mt-1">{record.vendor}</p>
-                              <p className="text-xs text-slate-500 mt-1">{record.requestCode} · {record.lineItems.map(line => line.item).join(', ')}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-bold text-amber-700">₹{record.grandTotal.toLocaleString('en-IN')}</p>
-                              <p className={`text-xs mt-1 ${record.etaDays <= 1 ? 'text-rose-700' : 'text-slate-600'}`}>{record.etaDays >= 0 ? `ETA ${record.etaDays} days` : 'Overdue'}</p>
-                            </div>
+                    {/* Itemised View table */}
+                    <div className="rounded-lg border border-blue-200 bg-white overflow-hidden">
+                      <div className="px-4 py-3 border-b border-blue-100 flex items-center justify-between bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sky-500 text-lg">▣</span>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Itemised View</p>
+                            <p className="text-[11px] text-slate-500">All line items across issued purchase orders</p>
                           </div>
+                        </div>
+                        <p className="text-[11px] text-slate-600">
+                          Total Value{' '}
+                          <span className="font-semibold text-amber-700">
+                            ₹{filteredIssuedPORecords.reduce((sum, po) => sum + po.grandTotal, 0).toLocaleString('en-IN')}
+                          </span>
+                        </p>
+                      </div>
 
-                          <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3 text-[11px]">
-                            {stages.map(stage => (
-                              <div key={`${record.poNumber}-${stage.label}`} className="flex items-center gap-2">
-                                <span className={`w-2.5 h-2.5 rounded-full ${stage.done ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                                <span className={`${stage.done ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>{stage.label}</span>
-                              </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">Item</th>
+                              <th className="px-4 py-2 text-left">Type</th>
+                              <th className="px-4 py-2 text-left">PO Number</th>
+                              <th className="px-4 py-2 text-left">Vendor</th>
+                              <th className="px-4 py-2 text-left">Order Qty</th>
+                              <th className="px-4 py-2 text-right">Price/Unit</th>
+                              <th className="px-4 py-2 text-right">Line Value</th>
+                              <th className="px-4 py-2 text-left">Payment Terms</th>
+                              <th className="px-4 py-2 text-left">PO Status</th>
+                              <th className="px-4 py-2 text-left">LR No</th>
+                              <th className="px-4 py-2 text-left">Exp. Delivery</th>
+                              <th className="px-4 py-2 text-left">Adv. Paid</th>
+                              <th className="px-4 py-2 text-left">GRN Ref</th>
+                              <th className="px-4 py-2 text-right">Track</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {itemisedRows.map(({ key, record, line }) => (
+                              <tr key={key} className="border-b border-slate-100 hover:bg-blue-50">
+                                <td className="px-4 py-2 align-top">
+                                  <div className="flex flex-col">
+                                    <span className="text-[12px] font-semibold text-slate-900">{line.item}</span>
+                                    <span className="text-[10px] text-slate-500">{line.itemCode}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 align-top">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    record.request.type === 'RM'
+                                      ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                                      : 'bg-violet-50 text-violet-700 border border-violet-200'
+                                  }`}>
+                                    {record.request.type}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-top font-mono text-[11px] text-sky-700">{record.poNumber}</td>
+                                <td className="px-4 py-2 align-top text-[11px]">{record.vendor}</td>
+                                <td className="px-4 py-2 align-top">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">
+                                    <span className="text-slate-700">{line.qty}</span>
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-top text-right text-[11px] text-slate-900">
+                                  ₹{line.pricePerUnit.toLocaleString('en-IN')}
+                                </td>
+                                <td className="px-4 py-2 align-top text-right text-[11px] font-semibold text-amber-700">
+                                  ₹{line.lineTotal.toLocaleString('en-IN')}
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-600">{record.paymentTerms}</td>
+                                <td className="px-4 py-2 align-top">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    record.status === 'In Transit'
+                                      ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                                      : record.status === 'At Risk'
+                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}>
+                                    {record.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-400">—</td>
+                                <td className="px-4 py-2 align-top text-[11px] text-rose-600">
+                                  {new Date(record.request.dueDate).toLocaleDateString('en-IN')}
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-400">—</td>
+                                <td className="px-4 py-2 align-top text-[11px] text-emerald-600">—</td>
+                                <td className="px-4 py-2 align-top text-right">
+                                  <button
+                                    onClick={() => openIssuedPODetail(record)}
+                                    className="px-3 py-1 rounded-full border border-slate-300 bg-white text-[10px] text-slate-800 hover:bg-slate-50"
+                                  >
+                                    Track →
+                                  </button>
+                                </td>
+                              </tr>
                             ))}
-                          </div>
-
-                          <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                            <p className="font-semibold text-slate-700 mb-1">Items in this PO</p>
-                            <ul className="list-disc pl-4 space-y-0.5">
-                              {record.lineItems.map((line, index) => (
-                                <li key={`${record.poNumber}-${line.itemCode}-${index}`}>
-                                  {line.item}: {line.qty} @ ₹{line.pricePerUnit}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <button onClick={() => openIssuedPODetail(record)} className="px-3 py-1.5 rounded border border-cyan-300 text-cyan-700 text-xs font-semibold hover:bg-cyan-50">View PO</button>
-                            <button onClick={() => markIssuedPOInTransit(record.request.id, record.requestCode)} className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-xs font-semibold hover:bg-amber-50">Mark In Transit</button>
-                            <button onClick={() => receiveIssuedPOGRN(record.request.id, record.requestCode)} className="px-3 py-1.5 rounded border border-emerald-300 text-emerald-700 text-xs font-semibold hover:bg-emerald-50">Receive GRN</button>
-                            <button onClick={() => applyRouteState('Procurement', 'GRN Monitor')} className="px-3 py-1.5 rounded border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-100">Open GRN Monitor</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {filteredIssuedPORecords.length === 0 && (
-                    <div className="rounded-lg border border-slate-200 bg-white px-5 py-8 text-center text-slate-500">
-                      No issued purchase orders match current filters.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {sideSection === 'GRN Monitor' && (
-                <div className="space-y-3">
-                  {requests.filter(r => r.status === 'Delivery Pending').map(req => (
-                    <div key={req.id} className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-mono font-bold text-slate-900">{req.code}</p>
-                          <p className="text-sm text-slate-700 mt-1">{req.items.join(', ')}</p>
-                          <p className="text-xs text-slate-500 mt-1">Expected: {new Date(req.dueDate).toLocaleDateString('en-IN')}</p>
-                        </div>
-                        <button 
-                          onClick={() => {
-                            setRequests(prev => prev.filter(r => r.id !== req.id));
-                            addToast('success', `GRN received for ${req.code}`);
-                          }}
-                          className="px-3 py-1 rounded bg-cyan-400 text-slate-900 font-semibold text-sm hover:bg-cyan-500 transition">
-                          Receive GRN →
-                        </button>
+                            {itemisedRows.length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={14}>
+                                  No issued purchase orders match current filters.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  ))}
-                  {requests.filter(r => r.status === 'Delivery Pending').length === 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                      No pending deliveries.
+
+                    {/* Tracking cards under the itemised view */}
+                    <div className="space-y-3">
+                      {filteredIssuedPORecords.map(record => {
+                        const completedIndex = getTimelineCompletedIndex(record.status);
+
+                        return (
+                          <div
+                            key={`${record.request.id}-${record.poNumber}-card`}
+                            className="rounded-lg border border-blue-200 bg-white px-4 py-4 text-xs text-slate-800 shadow-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-300 font-mono text-[10px] text-sky-700">
+                                    {record.poNumber}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded-full border border-slate-300 text-[10px] text-slate-600">
+                                    {record.request.type}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-semibold text-slate-900">{record.vendor}</p>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  {record.requestCode} · {record.lineItems.map(line => line.item).join(', ')}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-amber-700">
+                                  ₹{record.grandTotal.toLocaleString('en-IN')}
+                                </p>
+                                <p
+                                  className={`text-[11px] mt-1 ${
+                                    record.etaDays <= 1 ? 'text-rose-600' : 'text-slate-500'
+                                  }`}
+                                >
+                                  {record.etaDays >= 0 ? `ETA ${record.etaDays} days` : 'Overdue'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Timeline */}
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between mb-1.5 relative">
+                                <div className="absolute left-8 right-8 top-1/2 h-px bg-slate-200" />
+                                {timelineStages.map((stage, index) => {
+                                  const done = index <= completedIndex;
+                                  return (
+                                    <div
+                                      key={`${record.poNumber}-${stage}`}
+                                      className="relative flex flex-col items-center flex-1"
+                                    >
+                                      <div
+                                        className={`z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold shadow-sm ${
+                                          done
+                                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                                            : 'bg-white border-sky-200 text-sky-400'
+                                        }`}
+                                      >
+                                        {index + 1}
+                                      </div>
+                                      <p
+                                        className={`mt-2 text-[10px] tracking-[0.18em] uppercase ${
+                                          done ? 'text-sky-700' : 'text-sky-400'
+                                        }`}
+                                      >
+                                        {stage}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Shipment tracking + actions */}
+                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
+                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
+                                <p className="mb-1 font-semibold">Items Ordered</p>
+                                {record.lineItems.map((line, index) => (
+                                  <div
+                                    key={`${record.poNumber}-${line.itemCode}-${index}`}
+                                    className="flex items-center justify-between gap-2 py-1 border-t border-slate-800 first:border-t-0"
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="text-[11px] text-slate-900">{line.item}</span>
+                                      <span className="text-[10px] text-slate-500">{line.itemCode}</span>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[10px] text-slate-700">{line.qty}</p>
+                                      <p className="text-[10px] text-amber-700">
+                                        ₹{line.lineTotal.toLocaleString('en-IN')}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
+                                <p className="mb-1 font-semibold">Shipment Tracking</p>
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">Courier</span>
+                                    <span className="text-slate-800">Logistics Partner</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">ETA</span>
+                                    <span className="text-slate-800">{new Date(record.request.dueDate).toLocaleDateString('en-IN')}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">Status</span>
+                                    <span className="text-slate-800">{record.status}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button
+                                onClick={() => openIssuedPODetail(record)}
+                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-800 text-[11px] font-semibold hover:bg-slate-50"
+                              >
+                                Full Timeline
+                              </button>
+                              <button
+                                onClick={() => markIssuedPOInTransit(record.request.id, record.requestCode)}
+                                className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
+                              >
+                                Mark In Transit
+                              </button>
+                              <button
+                                onClick={() => receiveIssuedPOGRN(record.request.id, record.requestCode)}
+                                className="px-3 py-1.5 rounded border border-emerald-400 text-emerald-700 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100"
+                              >
+                                Mark Delivered at WH
+                              </button>
+                              <button
+                                onClick={() => applyRouteState('Procurement', 'GRN Monitor')}
+                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-700 text-[11px] font-semibold bg-white hover:bg-slate-50"
+                              >
+                                Open GRN Monitor
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
+
+              {sideSection === 'GRN Monitor' && (() => {
+                const pendingRequests = requests.filter(
+                  (request) => request.status === 'PO Released' || request.status === 'Delivery Pending',
+                );
+
+                const grnLines = pendingRequests.flatMap((request) => {
+                  const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
+                  const vendor = linkedDraftPO?.vendor ?? 'Unassigned Vendor';
+                  const poRef = (linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO');
+                  const grnRef = `GRN-${request.code}`;
+
+                  const baseLines = linkedDraftPO?.lineItems ??
+                    request.items.map((item, index) => ({
+                      item,
+                      itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
+                      qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
+                      lineTotal: request.itemDetails?.[index]?.estValue ?? 0,
+                    }));
+
+                  return baseLines.map((line, index) => ({
+                    key: `${request.id}-${index}`,
+                    request,
+                    vendor,
+                    poRef,
+                    grnRef,
+                    itemName: line.item,
+                    itemCode: line.itemCode,
+                    orderedQty: line.qty,
+                    receivedQty: line.qty,
+                    lineValue: line.lineTotal,
+                    status: (request.status === 'Delivery Pending' ? 'Under GRN' : 'Pending GRN') as
+                      | 'Pending GRN'
+                      | 'Under GRN',
+                    qcPass: '-',
+                    qcFail: '-',
+                    receivedDate: request.dueDate,
+                  }));
+                });
+
+                const filteredGrnLines = grnLines.filter((line) => {
+                  if (grnCategoryFilter !== 'All' && line.request.type !== grnCategoryFilter) {
+                    return false;
+                  }
+
+                  if (grnVendorFilter !== 'All Vendors' && line.vendor !== grnVendorFilter) {
+                    return false;
+                  }
+
+                  if (grnStatusFilter !== 'All' && line.status !== grnStatusFilter) {
+                    return false;
+                  }
+
+                  if (!grnSearch.trim()) {
+                    return true;
+                  }
+
+                  const query = grnSearch.toLowerCase();
+                  return (
+                    line.itemName.toLowerCase().includes(query) ||
+                    line.itemCode.toLowerCase().includes(query) ||
+                    line.poRef.toLowerCase().includes(query) ||
+                    line.grnRef.toLowerCase().includes(query) ||
+                    line.vendor.toLowerCase().includes(query)
+                  );
+                });
+
+                const grnSummary = Object.values(
+                  filteredGrnLines.reduce<Record<string, {
+                    request: ProcurementRequest;
+                    vendor: string;
+                    poRef: string;
+                    grnRef: string;
+                    items: string[];
+                  }>>((acc, line) => {
+                    const key = line.request.id;
+                    if (!acc[key]) {
+                      acc[key] = {
+                        request: line.request,
+                        vendor: line.vendor,
+                        poRef: line.poRef,
+                        grnRef: line.grnRef,
+                        items: [],
+                      };
+                    }
+                    if (!acc[key].items.includes(line.itemName)) {
+                      acc[key].items.push(line.itemName);
+                    }
+                    return acc;
+                  }, {}),
+                );
+
+                const totalGrns = grnLines.length;
+                const rmGrns = grnLines.filter((line) => line.request.type === 'RM').length;
+                const pmGrns = grnLines.filter((line) => line.request.type === 'PM').length;
+                const pendingGrn = grnLines.filter((line) => line.status === 'Pending GRN').length;
+                const underGrn = grnLines.filter((line) => line.status === 'Under GRN').length;
+                const grnComplete = completedGrns.length;
+
+                const completeGrnForRequest = (requestId: string, requestCode: string) => {
+                  const linesForRequest = grnLines.filter((line) => line.request.id === requestId);
+
+                  if (linesForRequest.length === 0) {
+                    updateProcurementState((current) => ({
+                      requests: current.requests.filter((request) => request.id !== requestId),
+                      completedGrns: current.completedGrns,
+                    }));
+                    addToast('success', `GRN completed for ${requestCode}`);
+                    return;
+                  }
+
+                  const completedEntry: CompletedGrn = {
+                    request: linesForRequest[0].request,
+                    vendor: linesForRequest[0].vendor,
+                    poRef: linesForRequest[0].poRef,
+                    grnRef: linesForRequest[0].grnRef,
+                    lines: linesForRequest.map((line) => ({
+                      itemName: line.itemName,
+                      itemCode: line.itemCode,
+                      orderedQty: String(line.orderedQty),
+                      receivedQty: String(line.receivedQty),
+                      qcPass: line.qcPass === '-' ? '—' : line.qcPass,
+                      qcFail: line.qcFail === '-' ? '—' : line.qcFail,
+                      receivedDate: line.receivedDate,
+                      status: 'Completed',
+                    })),
+                  };
+
+                  updateProcurementState((current) => ({
+                    requests: current.requests.filter((request) => request.id !== requestId),
+                    completedGrns: [...current.completedGrns, completedEntry],
+                  }));
+                  addToast('success', `GRN completed for ${requestCode}`);
+                };
+
+                return (
+                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+                    {/* Top summary strip */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-slate-500 uppercase">Total GRNs</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">{totalGrns}</p>
+                      </div>
+                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">RM GRNs</p>
+                        <p className="mt-1 text-2xl font-bold text-cyan-800">{rmGrns}</p>
+                      </div>
+                      <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM GRNs</p>
+                        <p className="mt-1 text-2xl font-bold text-violet-800">{pmGrns}</p>
+                      </div>
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-amber-700 uppercase">Pending GRN</p>
+                        <p className="mt-1 text-2xl font-bold text-amber-800">{pendingGrn}</p>
+                      </div>
+                      <div className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-sky-700 uppercase">Under GRN</p>
+                        <p className="mt-1 text-2xl font-bold text-sky-800">{underGrn}</p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">GRN Complete</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-800">{grnComplete}</p>
+                      </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-slate-500">Category:</span>
+                        <button
+                          onClick={() => setGrnCategoryFilter('All')}
+                          className={`px-2 py-1 rounded-full border text-xs ${
+                            grnCategoryFilter === 'All'
+                              ? 'border-amber-400 text-amber-800 bg-amber-50'
+                              : 'border-slate-300 text-slate-600 bg-white'
+                          }`}
+                        >
+                          All
+                        </button>
+                        {(['RM', 'PM'] as RequestType[]).map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setGrnCategoryFilter(type)}
+                            className={`px-2 py-1 rounded-full border text-xs ${
+                              grnCategoryFilter === type
+                                ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
+                                : 'border-slate-300 text-slate-600 bg-white'
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+
+                        <span className="ml-3 text-slate-500">Vendor:</span>
+                        <select
+                          value={grnVendorFilter}
+                          onChange={(event) => setGrnVendorFilter(event.target.value)}
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          <option value="All Vendors">All Vendors</option>
+                          {Array.from(new Set(grnLines.map((line) => line.vendor))).map((vendor) => (
+                            <option key={vendor} value={vendor}>{vendor}</option>
+                          ))}
+                        </select>
+
+                        <span className="ml-3 text-slate-500">Status:</span>
+                        <select
+                          value={grnStatusFilter}
+                          onChange={(event) =>
+                            setGrnStatusFilter(
+                              event.target.value as 'All' | 'Pending GRN' | 'Under GRN' | 'Completed',
+                            )
+                          }
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          <option value="All">All Status</option>
+                          <option value="Pending GRN">Pending GRN</option>
+                          <option value="Under GRN">Under GRN</option>
+                          <option value="Completed">Completed</option>
+                        </select>
+                      </div>
+
+                      <input
+                        value={grnSearch}
+                        onChange={(event) => setGrnSearch(event.target.value)}
+                        placeholder="Search vendor, PO no, item..."
+                        className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
+                      />
+                    </div>
+
+                    {/* Itemised GRN Lines */}
+                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-500 text-lg">◆</span>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Itemised GRN Lines</p>
+                            <p className="text-[11px] text-slate-500">Warehouse receipts by line item</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">Item</th>
+                              <th className="px-4 py-2 text-center">Type</th>
+                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
+                              <th className="px-4 py-2 text-left">Vendor</th>
+                              <th className="px-4 py-2 text-center">Ordered</th>
+                              <th className="px-4 py-2 text-center">Received</th>
+                              <th className="px-4 py-2 text-center">QC Pass</th>
+                              <th className="px-4 py-2 text-center">QC Fail</th>
+                              <th className="px-4 py-2 text-center">Received Date</th>
+                              <th className="px-4 py-2 text-center">QC By</th>
+                              <th className="px-4 py-2 text-center">Status</th>
+                              <th className="px-4 py-2 text-center">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredGrnLines.map((line) => (
+                              <tr key={line.key} className="border-b border-slate-100 hover:bg-blue-50/60">
+                                <td className="px-4 py-2 align-middle">
+                                  <div className="flex flex-col">
+                                    <span className="text-[12px] font-semibold text-slate-900">{line.itemName}</span>
+                                    <span className="text-[10px] text-slate-500">{line.itemCode}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    line.request.type === 'RM'
+                                      ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                                      : 'bg-violet-50 text-violet-700 border border-violet-200'
+                                  }`}>
+                                    {line.request.type}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-middle">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
+                                      {line.grnRef}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
+                                      {line.poRef}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 align-middle text-[11px]">{line.vendor}</td>
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-700">
+                                    {line.orderedQty}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                                    {line.receivedQty}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-middle text-center text-[11px] text-emerald-600">{line.qcPass}</td>
+                                <td className="px-4 py-2 align-middle text-center text-[11px] text-rose-500">{line.qcFail}</td>
+                                <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-700">
+                                  {new Date(line.receivedDate).toLocaleDateString('en-IN')}
+                                </td>
+                                <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-600">Meera QC</td>
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <span className="inline-flex items-center justify-center px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold min-w-24">
+                                    {line.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-middle text-center">
+                                  <button
+                                    onClick={() => completeGrnForRequest(line.request.id, line.request.code)}
+                                    className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-emerald-400 text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold"
+                                  >
+                                    Complete GRN
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {filteredGrnLines.length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={12}>
+                                  No GRN lines match current filters.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* GRN Summary Cards */}
+                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN Summary Cards</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
+                              <th className="px-4 py-2 text-left">Type</th>
+                              <th className="px-4 py-2 text-left">Vendor</th>
+                              <th className="px-4 py-2 text-left">Items</th>
+                              <th className="px-4 py-2 text-left">Received Date</th>
+                              <th className="px-4 py-2 text-left">Received By</th>
+                              <th className="px-4 py-2 text-left">QC By</th>
+                              <th className="px-4 py-2 text-left">Status</th>
+                              <th className="px-4 py-2 text-left">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {grnSummary.map((entry) => (
+                              <tr key={entry.request.id} className="border-b border-slate-100 hover:bg-blue-50/60">
+                                <td className="px-4 py-2 align-top">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
+                                      {entry.grnRef}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
+                                      {entry.poRef}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px]">{entry.request.type}</td>
+                                <td className="px-4 py-2 align-top text-[11px]">{entry.vendor}</td>
+                                <td className="px-4 py-2 align-top text-[11px]">
+                                  {entry.items.join(', ')}
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">
+                                  {new Date(entry.request.dueDate).toLocaleDateString('en-IN')}
+                                </td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">Anand Store</td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">Meera QC</td>
+                                <td className="px-4 py-2 align-top">
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] text-amber-700 font-semibold">
+                                    Under GRN
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 align-top">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const linesForEntry = grnLines
+                                          .filter((line) => line.request.id === entry.request.id)
+                                          .map((line) => ({
+                                            itemName: line.itemName,
+                                            itemCode: line.itemCode,
+                                            orderedQty: line.orderedQty,
+                                            receivedQty: line.receivedQty,
+                                            qcPass: line.qcPass,
+                                            qcFail: line.qcFail,
+                                            receivedDate: line.receivedDate,
+                                            status: line.status,
+                                          }));
+
+                                        setSelectedGrn({
+                                          request: entry.request,
+                                          vendor: entry.vendor,
+                                          poRef: entry.poRef,
+                                          grnRef: entry.grnRef,
+                                          lines: linesForEntry,
+                                        });
+                                      }}
+                                      className="px-3 py-1.5 rounded-full border border-slate-300 text-[11px] text-slate-800 bg-white hover:bg-slate-50"
+                                    >
+                                      View
+                                    </button>
+                                    <button
+                                      onClick={() => completeGrnForRequest(entry.request.id, entry.request.code)}
+                                      className="px-3 py-1.5 rounded-full border border-emerald-400 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                                    >
+                                      Complete GRN
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                            {grnSummary.length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={9}>
+                                  No GRN summary records.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Completed GRNs */}
+                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
+                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
+                        <p className="text-[11px] text-slate-500">Showing {completedGrns.length} completed GRN{completedGrns.length === 1 ? '' : 's'}</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
+                              <th className="px-4 py-2 text-left">Type</th>
+                              <th className="px-4 py-2 text-left">Vendor</th>
+                              <th className="px-4 py-2 text-left">Items</th>
+                              <th className="px-4 py-2 text-left">Received Date</th>
+                              <th className="px-4 py-2 text-left">Received By</th>
+                              <th className="px-4 py-2 text-left">QC By</th>
+                              <th className="px-4 py-2 text-left">Status</th>
+                              <th className="px-4 py-2 text-left">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {completedGrns.map((entry, index) => {
+                              const uniqueItems = Array.from(new Set(entry.lines.map((line) => line.itemName)));
+                              const receivedDate = entry.lines[0]?.receivedDate ?? entry.request.dueDate;
+
+                              return (
+                                <tr key={`${entry.request.id}-completed-${index}`} className="border-b border-slate-100 hover:bg-emerald-50/40">
+                                  <td className="px-4 py-2 align-top">
+                                    <div className="flex flex-col gap-1">
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
+                                        {entry.grnRef}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
+                                        {entry.poRef}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 align-top text-[11px]">{entry.request.type}</td>
+                                  <td className="px-4 py-2 align-top text-[11px]">{entry.vendor}</td>
+                                  <td className="px-4 py-2 align-top text-[11px]">{uniqueItems.join(', ')}</td>
+                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">
+                                    {new Date(receivedDate).toLocaleDateString('en-IN')}
+                                  </td>
+                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">Anand Store</td>
+                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">Meera QC</td>
+                                  <td className="px-4 py-2 align-top">
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
+                                      Completed
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2 align-top">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedGrn({
+                                          request: entry.request,
+                                          vendor: entry.vendor,
+                                          poRef: entry.poRef,
+                                          grnRef: entry.grnRef,
+                                          lines: entry.lines,
+                                        });
+                                      }}
+                                      className="px-3 py-1.5 rounded-full border border-slate-300 text-[11px] text-slate-800 bg-white hover:bg-slate-50"
+                                    >
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {completedGrns.length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={9}>
+                                  No completed GRNs yet.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {sideSection === 'Stock Check' && (
                 <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
@@ -2748,6 +3481,120 @@ const Procurement: React.FC = () => {
                 )}
                 <button
                   onClick={() => setSelectedPO(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── GRN Detail Side Panel ── */}
+      {selectedGrn && (() => {
+        const grn = selectedGrn;
+        const primaryStatus = grn.lines[0]?.status ?? 'Pending GRN';
+
+        return (
+          <div className="fixed inset-0 z-40 flex" onClick={() => setSelectedGrn(null)}>
+            <div className="flex-1 bg-black/20" />
+            <div
+              className="w-full sm:w-96 lg:w-120 max-w-[100vw] bg-white border-l border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 z-10 bg-white border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500 font-mono mb-1">{grn.poRef}</p>
+                  <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
+                    GRN – {grn.grnRef}
+                  </h2>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-[10px] font-semibold text-emerald-700">
+                      {primaryStatus}
+                    </span>
+                    <span className="text-[11px] text-slate-500">QC By&nbsp;<span className="font-semibold text-slate-800">Meera QC</span></span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedGrn(null)}
+                  className="text-slate-400 hover:text-slate-700 text-xl leading-none mt-1 transition-colors"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex-1 px-5 py-4 space-y-5 text-sm">
+                {/* GRN Summary */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200">
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-slate-500">PO Number</span>
+                    <span className="font-mono text-xs text-sky-700">{grn.poRef}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-slate-500">Vendor</span>
+                    <span className="font-medium text-slate-800">{grn.vendor}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-slate-500">GRN Status</span>
+                    <span className="font-medium text-emerald-700">{primaryStatus}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-slate-500">QC By</span>
+                    <span className="font-medium text-slate-800">Meera QC</span>
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div>
+                  <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Items ({grn.lines.length})</p>
+                  <div className="space-y-3">
+                    {grn.lines.map((line, idx) => (
+                      <div
+                        key={`${line.itemCode}-${idx}`}
+                        className="rounded-lg border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-bold text-sm text-slate-900">{line.itemName}</p>
+                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                          </div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
+                            {line.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-slate-600">
+                          <span>
+                            Ordered: <strong className="text-slate-900">{line.orderedQty}</strong>
+                          </span>
+                          <span>
+                            Received: <strong className="text-slate-900">{line.receivedQty}</strong>
+                          </span>
+                          <span>
+                            QC Pass: <strong className="text-emerald-600">{line.qcPass}</strong>
+                          </span>
+                          <span>
+                            QC Fail: <strong className="text-rose-500">{line.qcFail}</strong>
+                          </span>
+                          <span>
+                            Received Date:{' '}
+                            <strong className="text-slate-900">
+                              {new Date(line.receivedDate).toLocaleDateString('en-IN')}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setSelectedGrn(null)}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
                 >
                   Close
