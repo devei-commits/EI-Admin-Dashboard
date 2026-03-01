@@ -1,5 +1,7 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useVendorClient, type VendorClient as VendorClientType } from '../context/VendorClientContext';
+import { fetchVendorClients } from '../services/vendorClient.service';
+import { useToast } from '../context/ToastContext';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
 
@@ -24,7 +26,35 @@ const VendorClientSection: React.FC<{ title: string; icon?: string; children: Re
 );
 
 const VendorClient: React.FC = () => {
- const { vendorClients, deleteVendorClient, updateVendorClient } = useVendorClient();
+ const { vendorClients: contextList, deleteVendorClient, updateVendorClient } = useVendorClient();
+ const { addToast } = useToast();
+ const [apiVendors, setApiVendors] = useState<VendorClientType[]>([]);
+ const [apiClients, setApiClients] = useState<VendorClientType[]>([]);
+ const [loading, setLoading] = useState(true);
+ const [useApi, setUseApi] = useState(true);
+
+ const loadFromApi = useCallback(async () => {
+  setLoading(true);
+  const [vRes, cRes] = await Promise.all([
+   fetchVendorClients('vendor'),
+   fetchVendorClients('client'),
+  ]);
+  if (vRes.success && vRes.data) setApiVendors(vRes.data as VendorClientType[]);
+  else setApiVendors([]);
+  if (cRes.success && cRes.data) setApiClients(cRes.data as VendorClientType[]);
+  else setApiClients([]);
+  if (!vRes.success || !cRes.success) {
+   setUseApi(false);
+   addToast('error', 'Could not load from server; showing local data.');
+  }
+  setLoading(false);
+ }, [addToast]);
+
+ useEffect(() => {
+  loadFromApi();
+ }, [loadFromApi]);
+
+ const vendorClients = useApi ? [...apiVendors, ...apiClients] : contextList;
  const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master' | 'vendor-form' | 'client-form'>('vendor-master');
  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
  const [editingClientId, setEditingClientId] = useState<string | null>(null);
@@ -344,17 +374,7 @@ const VendorClient: React.FC = () => {
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.location || '-')}</td>
-            <td className="px-4 py-3 text-sm">
-             <select
-              value={v.status}
-              onChange={(e) => handleStatusChange(v.id, e.target.value as VendorClientType['status'])}
-              className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-800"
-             >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="pending">Pending</option>
-             </select>
-            </td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.status || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
@@ -371,13 +391,6 @@ const VendorClient: React.FC = () => {
                className="px-3 py-1.5 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium"
               >
                Edit
-              </button>
-              <button
-               type="button"
-               onClick={() => handleDelete(v.id)}
-               className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium"
-              >
-               Delete
               </button>
              </div>
             </td>
@@ -401,15 +414,7 @@ const VendorClient: React.FC = () => {
             <p className="font-semibold text-gray-800 truncate">{v.name}</p>
             <p className="text-sm text-slate-800">{v.category}</p>
            </div>
-           <select
-            value={v.status}
-            onChange={(e) => handleStatusChange(v.id, e.target.value as VendorClientType['status'])}
-            className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none"
-           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending">Pending</option>
-           </select>
+           <span className="text-xs font-medium text-gray-600">{v.status || '-'}</span>
           </div>
           <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
            <div className="flex justify-between">
@@ -443,13 +448,6 @@ const VendorClient: React.FC = () => {
             className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium text-sm"
            >
             Edit
-           </button>
-           <button
-            type="button"
-            onClick={() => handleDelete(v.id)}
-            className="flex-1 px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium text-sm"
-           >
-            Delete
            </button>
           </div>
          </div>
@@ -597,17 +595,7 @@ const VendorClient: React.FC = () => {
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.location || '-')}</td>
-            <td className="px-4 py-3 text-sm">
-             <select
-              value={c.status}
-              onChange={(e) => handleStatusChange(c.id, e.target.value as VendorClientType['status'])}
-              className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-slate-800"
-             >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="pending">Pending</option>
-             </select>
-            </td>
+            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.status || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
@@ -624,13 +612,6 @@ const VendorClient: React.FC = () => {
                className="px-3 py-1.5 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium"
               >
                Edit
-              </button>
-              <button
-               type="button"
-               onClick={() => handleDelete(c.id)}
-               className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium"
-              >
-               Delete
               </button>
              </div>
             </td>
@@ -654,15 +635,7 @@ const VendorClient: React.FC = () => {
             <p className="font-semibold text-gray-800 truncate">{c.name}</p>
             <p className="text-sm text-slate-800">{c.category}</p>
            </div>
-           <select
-            value={c.status}
-            onChange={(e) => handleStatusChange(c.id, e.target.value as VendorClientType['status'])}
-            className="px-2 py-1 rounded-lg border border-gray-300 bg-white text-xs font-medium focus:outline-none"
-           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending">Pending</option>
-           </select>
+           <span className="text-xs font-medium text-gray-600">{c.status || '-'}</span>
           </div>
           <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
            <div className="flex justify-between">
@@ -696,13 +669,6 @@ const VendorClient: React.FC = () => {
             className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium text-sm"
            >
             Edit
-           </button>
-           <button
-            type="button"
-            onClick={() => handleDelete(c.id)}
-            className="flex-1 px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 font-medium text-sm"
-           >
-            Delete
            </button>
           </div>
          </div>
@@ -753,6 +719,7 @@ const VendorClient: React.FC = () => {
     <VendorForm
     editingId={editingVendorId}
     onSaved={() => {
+     loadFromApi();
      setEditingVendorId(null);
      setActiveTab('vendor-master');
     }}
@@ -763,6 +730,7 @@ const VendorClient: React.FC = () => {
     <ClientForm
     editingId={editingClientId}
     onSaved={() => {
+     loadFromApi();
      setEditingClientId(null);
      setActiveTab('client-master');
     }}
@@ -1031,6 +999,7 @@ const VendorClient: React.FC = () => {
       <VendorForm
       editingId={editing.id}
       onSaved={() => {
+       loadFromApi();
        closeEdit();
        setActiveTab('vendor-master');
       }}
@@ -1039,6 +1008,7 @@ const VendorClient: React.FC = () => {
       <ClientForm
       editingId={editing.id}
       onSaved={() => {
+       loadFromApi();
        closeEdit();
        setActiveTab('client-master');
       }}

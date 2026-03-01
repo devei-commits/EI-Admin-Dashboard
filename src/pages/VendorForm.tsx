@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useVendorClient } from '../context/VendorClientContext';
 import { useToast } from '../context/ToastContext';
+import { fetchVendorClientById, createVendorClient, updateVendorClient, fetchNextCode } from '../services/vendorClient.service';
 
 interface Document {
  type: string;
@@ -91,10 +92,24 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const [currentStage, setCurrentStage] = useState(0);
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [isSaving, setIsSaving] = useState(false);
+ const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
  const existingVendor = useMemo(() => {
   if (!editingId) return null;
-  return vendorClients.find(v => v.id === editingId && v.type === 'vendor') || null;
+  const fromContext = vendorClients.find(v => v.id === editingId && v.type === 'vendor');
+  if (fromContext) return fromContext;
+  if (fetchedRecord && (fetchedRecord as { type?: string }).type === 'vendor') return fetchedRecord as any;
+  return null;
+ }, [editingId, vendorClients, fetchedRecord]);
+
+ useEffect(() => {
+  if (!editingId) { setFetchedRecord(null); return; }
+  if (vendorClients.some(v => v.id === editingId && v.type === 'vendor')) { setFetchedRecord(null); return; }
+  let cancelled = false;
+  fetchVendorClientById(editingId).then((res) => {
+   if (!cancelled && res.success && res.data) setFetchedRecord(res.data as unknown as Record<string, unknown>);
+  });
+  return () => { cancelled = true; };
  }, [editingId, vendorClients]);
 
  const [documents, setDocuments] = useState<Document[]>([]);
@@ -258,20 +273,52 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   if (currentStage > 0) setCurrentStage(currentStage - 1);
  };
 
- const generateCode = () => {
-  const counter = parseInt(localStorage.getItem('vendor_counter') || '0') + 1;
-  localStorage.setItem('vendor_counter', counter.toString());
-  const code = `EI-VEN-${counter.toString().padStart(5, '0')}`;
-  setFormData(prev => ({ ...prev, entityCode: code }));
-  addToast('success', `Entity code generated: ${code}`);
+ const generateCode = async () => {
+  const res = await fetchNextCode('vendor');
+  if (res.success && res.data) {
+   setFormData(prev => ({ ...prev, entityCode: res.data }));
+   addToast('success', `Entity code generated: ${res.data}`);
+  } else {
+   addToast('error', res.error || 'Failed to generate code');
+  }
  };
 
- const regenerateCode = () => {
-  const counter = parseInt(localStorage.getItem('vendor_counter') || '0') + 1;
-  localStorage.setItem('vendor_counter', counter.toString());
-  const code = `EI-VEN-${counter.toString().padStart(5, '0')}`;
-  setFormData(prev => ({ ...prev, entityCode: code }));
-  addToast('success', `Entity code regenerated: ${code}`);
+ const regenerateCode = async () => {
+  const res = await fetchNextCode('vendor');
+  if (res.success && res.data) {
+   setFormData(prev => ({ ...prev, entityCode: res.data }));
+   addToast('success', `Entity code regenerated: ${res.data}`);
+  } else {
+   addToast('error', res.error || 'Failed to generate code');
+  }
+ };
+
+ const handleFillMockValues = async () => {
+  const res = await fetchNextCode('vendor');
+  const code = res.success && res.data ? res.data : `EI-VEN-${Date.now().toString(36).toUpperCase()}`;
+  setFormData(prev => ({
+   ...prev,
+   entityCode: code,
+   legalName: 'Mock Vendor Ltd',
+   tradeName: 'Mock Vendor',
+   primaryEmail: 'vendor@mock.com',
+   primaryPhone: '+91-9876543210',
+   billingAddress: '123 Mock Street, Industrial Area',
+   shippingAddress: '123 Mock Street, Industrial Area',
+   state: 'Maharashtra',
+   country: 'India',
+   website: 'https://mock-vendor.example.com',
+   segment: 'RAW MATERIAL',
+   notes: 'Mock data for testing',
+   gstin: '27AABCM1234A1Z1',
+   pan: 'AABCM1234A',
+   paymentTerms: '30',
+  }));
+  setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
+  setPocs([{ name: 'John Doe', role: 'Manager', email: 'john@mock.com', phone: '+91-9876543210', level: 'Primary', preferred: 'Email', notes: '' }]);
+  setBanks([]);
+  setVendorItems([]);
+  addToast('success', 'Mock values filled. Edit as needed and submit.');
  };
 
  const addDocument = () => {
@@ -324,7 +371,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   addToast('success', 'Vendor item removed');
  };
 
- const handleSubmit = (e: React.FormEvent) => {
+ const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!validateStage(currentStage, true)) return;
   setIsSaving(true);
@@ -342,53 +389,65 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   };
 
   if (editingId && existingVendor) {
-   updateVendorClient(editingId, payload);
-   addToast('success', 'Vendor updated successfully!');
-   localStorage.removeItem(draftKey);
+   const res = await updateVendorClient(editingId, {
+    name: payload.name,
+    email: payload.email,
+    phone: payload.phone,
+    location: payload.location,
+    country: payload.country,
+    category: payload.category,
+    paymentTerms: payload.paymentTerms,
+    notes: payload.notes,
+    data: payload.data as Record<string, unknown>,
+   });
+   if (res.success) {
+    addToast('success', 'Vendor updated successfully!');
+    localStorage.removeItem(draftKey);
+    setIsSaving(false);
+    onSaved?.();
+    return;
+   }
+   addToast('error', res.error || 'Failed to update vendor');
    setIsSaving(false);
-   onSaved?.();
    return;
   }
 
-  const newVendor = {
-   id: Date.now().toString(),
-   type: 'vendor' as const,
+  const res = await createVendorClient({
+   type: 'vendor',
+   entityCode: formData.entityCode || '',
    name: payload.name,
    email: payload.email,
    phone: payload.phone,
    location: payload.location,
    country: payload.country,
-   city: '',
    category: payload.category,
-   rating: 0,
-   status: 'pending' as const,
-   moq: '',
-   leadTime: '',
+   status: 'pending',
    paymentTerms: payload.paymentTerms,
    notes: payload.notes,
-   createdAt: new Date().toISOString(),
-   lastModified: new Date().toISOString(),
-   data: payload.data,
-  };
-
-  addVendorClient(newVendor);
-  addToast('success', 'Vendor created successfully!');
-  localStorage.removeItem(draftKey);
-  
-  setFormData({
-   setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '',
-   legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
-   billingAddress: '', shippingAddress: '', state: '', country: 'India',
-   website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
-   paymentTerms: '', customTerms: '', creditLimit: '', penalty: '',
-   tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
-   agreementType: '', agreementStatus: '', startDate: '', endDate: '',
-   agreementLink: '', owner: '', agreementNotes: '',
+   data: payload.data as Record<string, unknown>,
   });
-  setDocuments([]); setPocs([]); setBanks([]); setVendorItems([]);
-  setCurrentStage(0);
+
+  if (res.success) {
+   addToast('success', 'Vendor created successfully!');
+   localStorage.removeItem(draftKey);
+   setFormData({
+    setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '',
+    legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
+    billingAddress: '', shippingAddress: '', state: '', country: 'India',
+    website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
+    paymentTerms: '', customTerms: '', creditLimit: '', penalty: '',
+    tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
+    agreementType: '', agreementStatus: '', startDate: '', endDate: '',
+    agreementLink: '', owner: '', agreementNotes: '',
+   });
+   setDocuments([]); setPocs([]); setBanks([]); setVendorItems([]);
+   setCurrentStage(0);
+   setIsSaving(false);
+   onSaved?.();
+   return;
+  }
+  addToast('error', res.error || 'Failed to create vendor');
   setIsSaving(false);
-  onSaved?.();
  };
 
  const getProgressPercentage = () => ((currentStage + 1) / stages.length) * 100;
@@ -406,7 +465,16 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       <h2 className="text-xl font-bold text-gray-800">{currentStage}) {stages[currentStage].title}</h2>
       <p className="text-sm text-gray-500 mt-1">{stages[currentStage].hint}</p>
      </div>
-     <div className="flex gap-2">
+     <div className="flex gap-2 flex-wrap">
+      {!editingId && (
+       <button
+        type="button"
+        onClick={handleFillMockValues}
+        className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
+       >
+        Fill mock values
+       </button>
+      )}
       <button
        type="button"
        onClick={handlePrevStage}
