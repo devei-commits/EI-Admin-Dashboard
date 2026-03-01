@@ -1,143 +1,240 @@
-import React, { useState } from 'react';
-import { useItems } from '../context/ItemsContext';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
+import { fetchRawMaterialsList } from '../services/rawMaterials.service';
+import type { RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchItemsMaster } from '../services/itemsMaster.service';
+import type { ItemMasterRecord } from '../services/itemsMaster.service';
+import { fetchSwapHistory, applySwap } from '../services/universalSwap.service';
+import type { SwapHistoryRecord } from '../services/universalSwap.service';
+import { searchUsers } from '../services/user.service';
+import type { UserSearchHit } from '../services/user.service';
 
-type SwapRecord = {
-  id: string;
-  fromIngredient: string;
-  toIngredient: string;
-  swapRatio: number;
-  reason: string;
-  approvedBy: string;
-  date: string;
-  affectedPRs: string[];
-};
-
-type ProductRecord = {
-  id: string;
-  code: string;
-  name: string;
-  rmCount: number;
-  ingredients: string[];
-  selected: boolean;
-};
+type ProductSelection = ItemMasterRecord & { selected: boolean };
 
 const UniversalSwap: React.FC = () => {
-  const { items: _items } = useItems();
   const { addToast } = useToast();
-  
-  // Mock data - replace with actual data from context/API
-  const mockProducts: ProductRecord[] = [
-    { id: '1', code: 'EI-PR-00001', name: 'EI Sunscreen Lotion SPF50+ PA++++', rmCount: 16, ingredients: ['Glycerin', 'Niacinamide', 'Zinc Oxide'], selected: true },
-    { id: '2', code: 'EI-PR-00002', name: 'EI Gentle Foaming Facewash 150ml', rmCount: 12, ingredients: ['Glycerin', 'SLES 70%', 'Cocamidopropyl Betaine'], selected: true },
-  ];
-
-  const [products, setProducts] = useState<ProductRecord[]>(mockProducts);
-  const [swapHistory, setSwapHistory] = useState<SwapRecord[]>([
-    {
-      id: '1',
-      fromIngredient: 'Cetearyl Alcohol',
-      toIngredient: 'Behenyl Alcohol',
-      swapRatio: 0.95,
-      reason: 'Cost optimization - 12% cheaper',
-      approvedBy: 'Rajesh Kumar',
-      date: '2026-02-15',
-      affectedPRs: ['EI-PR-00001', 'EI-PR-00003']
-    }
-  ]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
+  const [products, setProducts] = useState<ProductSelection[]>([]);
+  const [swapHistory, setSwapHistory] = useState<SwapHistoryRecord[]>([]);
+  const [loadingRms, setLoadingRms] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [applying, setApplying] = useState(false);
 
   const [formData, setFormData] = useState({
-    fromIngredient: '',
-    toIngredient: '',
+    fromRawMaterialId: '' as string | number,
+    toRawMaterialId: '' as string | number,
     swapRatio: 1.0,
     reason: '',
-    approvedBy: ''
+    approvedBy: '',
+    approvedByUserId: null as number | null,
   });
+
+  const [approverQuery, setApproverQuery] = useState('');
+  const [approverDropdownOpen, setApproverDropdownOpen] = useState(false);
+  const [approverResults, setApproverResults] = useState<UserSearchHit[]>([]);
+  const [approverSearching, setApproverSearching] = useState(false);
+  const approverBlurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const approverContainerRef = useRef<HTMLDivElement>(null);
 
   const [showPreview, setShowPreview] = useState(false);
 
-  // Get all unique ingredients from products
-  const allIngredients = Array.from(new Set(products.flatMap(p => p.ingredients))).sort();
+  const loadRawMaterials = useCallback(async () => {
+    setLoadingRms(true);
+    try {
+      const list = await fetchRawMaterialsList();
+      setRawMaterials(list ?? []);
+    } catch (_e) {
+      setRawMaterials([]);
+      addToast('error', 'Failed to load raw materials');
+    } finally {
+      setLoadingRms(false);
+    }
+  }, [addToast]);
+
+  const loadSwapHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetchSwapHistory();
+      if (res.success && res.data) setSwapHistory(res.data);
+      else setSwapHistory([]);
+    } catch (_e) {
+      setSwapHistory([]);
+      addToast('error', 'Failed to load swap history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    loadRawMaterials();
+    loadSwapHistory();
+  }, [loadRawMaterials, loadSwapHistory]);
+
+  // Debounced user search for approver
+  useEffect(() => {
+    const q = approverQuery.trim();
+    if (!q) {
+      setApproverResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setApproverSearching(true);
+      const res = await searchUsers(q);
+      setApproverSearching(false);
+      if (res.success && res.data) setApproverResults(res.data);
+      else setApproverResults([]);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [approverQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (approverContainerRef.current && !approverContainerRef.current.contains(e.target as Node)) {
+        setApproverDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectApprover = (user: UserSearchHit) => {
+    setFormData((prev) => ({
+      ...prev,
+      approvedBy: user.display_name,
+      approvedByUserId: user.userid,
+    }));
+    setApproverQuery('');
+    setApproverResults([]);
+    setApproverDropdownOpen(false);
+  };
+
+  const clearApprover = () => {
+    setFormData((prev) => ({ ...prev, approvedBy: '', approvedByUserId: null }));
+    setApproverQuery('');
+    setApproverResults([]);
+    setApproverDropdownOpen(false);
+  };
+
+  const fromRawMaterialId = formData.fromRawMaterialId ? String(formData.fromRawMaterialId) : '';
+  const toRawMaterialId = formData.toRawMaterialId ? String(formData.toRawMaterialId) : '';
+
+  useEffect(() => {
+    if (!fromRawMaterialId) {
+      setProducts([]);
+      return;
+    }
+    setLoadingItems(true);
+    fetchItemsMaster(undefined, undefined, fromRawMaterialId)
+      .then((res) => {
+        if (res.success && res.data) {
+          setProducts(res.data.map((item) => ({ ...item, selected: true })));
+        } else {
+          setProducts([]);
+        }
+      })
+      .catch(() => setProducts([]))
+      .finally(() => setLoadingItems(false));
+  }, [fromRawMaterialId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [id]: id === 'swapRatio' ? parseFloat(value) : value
+      [id]: id === 'swapRatio' ? parseFloat(value) || 1 : value,
     }));
   };
 
   const toggleProduct = (id: string) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, selected: !p.selected } : p));
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
   };
 
   const handlePreview = () => {
-    if (!formData.fromIngredient || !formData.toIngredient) {
-      addToast('error', 'Please select both FROM and TO ingredients');
+    if (!fromRawMaterialId || !toRawMaterialId) {
+      addToast('error', 'Please select both FROM and TO raw materials');
       return;
     }
     setShowPreview(true);
   };
 
-  const handleApplySwap = () => {
-    if (!formData.reason.trim() || !formData.approvedBy.trim()) {
-      addToast('error', 'Reason and Approved By are required');
+  const selectedProducts = products.filter((p) => p.selected);
+  const affectedProductsCount = selectedProducts.length;
+
+  const handleApplySwap = async () => {
+    if (!formData.reason.trim()) {
+      addToast('error', 'Reason is required');
+      return;
+    }
+    if (!formData.approvedBy.trim()) {
+      addToast('error', 'Please select an approver from the list');
+      return;
+    }
+    if (!fromRawMaterialId || !toRawMaterialId) {
+      addToast('error', 'Please select both FROM and TO raw materials');
+      return;
+    }
+    if (affectedProductsCount === 0) {
+      addToast('error', 'Select at least one product to apply the swap');
       return;
     }
 
-    const selectedPRs = products.filter(p => p.selected && p.ingredients.includes(formData.fromIngredient));
-    
-    if (selectedPRs.length === 0) {
-      addToast('error', 'No selected PRs contain the FROM ingredient');
-      return;
+    setApplying(true);
+    try {
+      const res = await applySwap({
+        fromRawMaterialId: parseInt(fromRawMaterialId, 10),
+        toRawMaterialId: parseInt(toRawMaterialId, 10),
+        swapRatio: formData.swapRatio,
+        reason: formData.reason.trim(),
+        approvedBy: formData.approvedBy.trim(),
+        approvedByUserId: formData.approvedByUserId ?? undefined,
+        selectedItemIds: selectedProducts.map((p) => p.id),
+      });
+      if (res.success) {
+        addToast('success', `Swap applied. ${res.data?.updatedItemsCount ?? 0} product(s) updated.`);
+        await loadSwapHistory();
+        setFormData({
+          fromRawMaterialId: '',
+          toRawMaterialId: '',
+          swapRatio: 1.0,
+          reason: '',
+          approvedBy: '',
+          approvedByUserId: null,
+        });
+        setApproverQuery('');
+        setApproverResults([]);
+        setShowPreview(false);
+        if (fromRawMaterialId) {
+          const itemRes = await fetchItemsMaster(undefined, undefined, fromRawMaterialId);
+          if (itemRes.success && itemRes.data) {
+            setProducts(itemRes.data.map((item) => ({ ...item, selected: true })));
+          }
+        }
+      } else {
+        addToast('error', res.error || 'Failed to apply swap');
+      }
+    } catch (_e) {
+      addToast('error', 'Failed to apply swap');
+    } finally {
+      setApplying(false);
     }
-
-    const newSwap: SwapRecord = {
-      id: Date.now().toString(),
-      fromIngredient: formData.fromIngredient,
-      toIngredient: formData.toIngredient,
-      swapRatio: formData.swapRatio,
-      reason: formData.reason,
-      approvedBy: formData.approvedBy,
-      date: new Date().toISOString().split('T')[0],
-      affectedPRs: selectedPRs.map(p => p.code)
-    };
-
-    setSwapHistory(prev => [newSwap, ...prev]);
-    addToast('success', `Swap applied to ${selectedPRs.length} product(s)`);
-    
-    // Reset form
-    setFormData({
-      fromIngredient: '',
-      toIngredient: '',
-      swapRatio: 1.0,
-      reason: '',
-      approvedBy: ''
-    });
-    setShowPreview(false);
   };
 
-  const affectedProductsCount = products.filter(p => 
-    p.selected && p.ingredients.includes(formData.fromIngredient)
-  ).length;
-
   const stats = {
-    totalPRs: products.length,
-    totalIngredients: allIngredients.length,
+    totalRMs: rawMaterials.length,
+    totalIngredients: rawMaterials.length,
     swapHistoryCount: swapHistory.length,
   };
 
   const statCards = [
-    { label: 'PRS IN SYSTEM', value: stats.totalPRs, sub: 'Formula records', accent: 'border-l-indigo-500', num: 'text-indigo-600' },
+    { label: 'RAW MATERIALS', value: stats.totalRMs, sub: 'Swappable ingredients', accent: 'border-l-indigo-500', num: 'text-indigo-600' },
     { label: 'SWAP HISTORY', value: stats.swapHistoryCount, sub: 'Applied swaps', accent: 'border-l-emerald-500', num: 'text-emerald-600' },
-    { label: 'TOTAL INGREDIENTS', value: stats.totalIngredients, sub: 'Swappable RMs', accent: 'border-l-amber-500', num: 'text-amber-600' },
+    { label: 'TOTAL INGREDIENTS', value: stats.totalIngredients, sub: 'From raw materials table', accent: 'border-l-amber-500', num: 'text-amber-600' },
   ];
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
       <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
 
-        {/* ── Page Header ── */}
         <div className="relative">
           <div className="absolute inset-0 bg-linear-to-r from-indigo-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
@@ -146,14 +243,13 @@ const UniversalSwap: React.FC = () => {
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Ingredient Operations</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Universal Ingredient Swap</h1>
-            <p className="text-sm text-gray-600">Swap an ingredient across selected PRs without editing each formula individually. Selective PR exemption supported.</p>
+            <p className="text-sm text-gray-600">Swap a raw material across selected products (items). Lists and apply-to/exempt read from the raw materials table.</p>
           </div>
         </div>
 
-        {/* ── Stat Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {statCards.map(card => (
-            <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
+          {statCards.map((card) => (
+            <div key={card.label} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
               <div className={`h-1 bg-linear-to-r from-indigo-400 to-indigo-600 ${card.accent}`} />
               <div className="px-4 py-4">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
@@ -164,7 +260,6 @@ const UniversalSwap: React.FC = () => {
           ))}
         </div>
 
-        {/* ── Swap Form Card ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
           <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-indigo-50/50 to-transparent">
             <div className="flex items-center gap-2">
@@ -174,38 +269,39 @@ const UniversalSwap: React.FC = () => {
           </div>
 
           <div className="p-5 space-y-5">
-            {/* From / To / Ratio Row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label htmlFor="fromIngredient" className="block text-xs font-semibold text-gray-600 mb-1.5">
-                  SWAP FROM — INGREDIENT TO REPLACE
+                <label htmlFor="fromRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  SWAP FROM — RAW MATERIAL TO REPLACE
                 </label>
                 <select
-                  id="fromIngredient"
-                  value={formData.fromIngredient}
+                  id="fromRawMaterialId"
+                  value={fromRawMaterialId}
                   onChange={handleInputChange}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  disabled={loadingRms}
                 >
-                  <option value="">— Select ingredient —</option>
-                  {allIngredients.map(ing => (
-                    <option key={ing} value={ing}>{ing}</option>
+                  <option value="">— Select raw material —</option>
+                  {rawMaterials.map((rm) => (
+                    <option key={rm.id} value={rm.id}>{rm.name || rm.code}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label htmlFor="toIngredient" className="block text-xs font-semibold text-gray-600 mb-1.5">
-                  SWAP TO — REPLACEMENT INGREDIENT
+                <label htmlFor="toRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  SWAP TO — REPLACEMENT RAW MATERIAL
                 </label>
                 <select
-                  id="toIngredient"
-                  value={formData.toIngredient}
+                  id="toRawMaterialId"
+                  value={toRawMaterialId}
                   onChange={handleInputChange}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  disabled={loadingRms}
                 >
-                  <option value="">— Select ingredient —</option>
-                  {allIngredients.map(ing => (
-                    <option key={ing} value={ing}>{ing}</option>
+                  <option value="">— Select raw material —</option>
+                  {rawMaterials.map((rm) => (
+                    <option key={rm.id} value={rm.id}>{rm.name || rm.code}</option>
                   ))}
                 </select>
               </div>
@@ -228,7 +324,6 @@ const UniversalSwap: React.FC = () => {
               </div>
             </div>
 
-            {/* Reason / Approved By Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="reason" className="block text-xs font-semibold text-gray-600 mb-1.5">
@@ -244,24 +339,68 @@ const UniversalSwap: React.FC = () => {
                 />
               </div>
 
-              <div>
+              <div ref={approverContainerRef} className="relative">
                 <label htmlFor="approvedBy" className="block text-xs font-semibold text-gray-600 mb-1.5">
                   APPROVED BY
                 </label>
-                <input
-                  type="text"
-                  id="approvedBy"
-                  value={formData.approvedBy}
-                  onChange={handleInputChange}
-                  placeholder="Enter approver name"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="approvedBy"
+                    value={approverDropdownOpen ? approverQuery : formData.approvedBy}
+                    onChange={(e) => {
+                      setApproverQuery(e.target.value);
+                      setApproverDropdownOpen(true);
+                      if (!e.target.value) clearApprover();
+                    }}
+                    onFocus={() => {
+                      if (approverQuery.trim()) setApproverDropdownOpen(true);
+                    }}
+                    onBlur={() => {
+                      approverBlurRef.current = setTimeout(() => setApproverDropdownOpen(false), 150);
+                    }}
+                    placeholder="Type to search users..."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  {formData.approvedBy && !approverDropdownOpen && (
+                    <button
+                      type="button"
+                      onClick={clearApprover}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                      aria-label="Clear approver"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+                {approverDropdownOpen && (approverQuery.trim() || approverResults.length > 0) && (
+                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                    {approverSearching ? (
+                      <div className="px-3 py-4 text-sm text-gray-500">Searching…</div>
+                    ) : approverResults.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-gray-500">
+                        {approverQuery.trim() ? 'No users found. Try another name or email.' : 'Type a name or email to search.'}
+                      </div>
+                    ) : (
+                      approverResults.map((user) => (
+                        <button
+                          key={user.userid}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-sm flex flex-col gap-0.5 border-b border-gray-50 last:border-0"
+                          onMouseDown={(e) => { e.preventDefault(); selectApprover(user); }}
+                        >
+                          <span className="font-medium text-gray-900">{user.display_name}</span>
+                          <span className="text-xs text-gray-500">{user.email}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── Product Selection Card ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
           <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-blue-50/50 to-transparent">
             <div className="flex items-center justify-between">
@@ -269,9 +408,9 @@ const UniversalSwap: React.FC = () => {
                 <span className="text-lg">📋</span>
                 <span className="text-sm font-semibold text-gray-900">Apply To / Exempt</span>
               </div>
-              {formData.fromIngredient && (
+              {fromRawMaterialId && (
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                  {affectedProductsCount} PR(s) affected
+                  {loadingItems ? 'Loading…' : `${affectedProductsCount} product(s) selected`}
                 </span>
               )}
             </div>
@@ -279,93 +418,87 @@ const UniversalSwap: React.FC = () => {
 
           <div className="p-6">
             <p className="text-xs text-gray-500 mb-3">
-              Check PRs to apply swap. Uncheck to exempt. Only PRs containing the "From" ingredient are affected after preview.
+              Products that contain the selected &quot;From&quot; raw material. Check to apply swap, uncheck to exempt.
             </p>
 
-            <div className="space-y-2">
-              {products.map(pr => {
-                const hasFromIngredient = formData.fromIngredient && pr.ingredients.includes(formData.fromIngredient);
-                const willBeAffected = hasFromIngredient && pr.selected;
-
-                return (
-                  <div
-                    key={pr.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                      willBeAffected
-                        ? 'border-indigo-300 bg-indigo-50/50'
-                        : hasFromIngredient
-                        ? 'border-gray-200 bg-gray-50/50'
-                        : 'border-gray-100 bg-white opacity-60'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={pr.selected}
-                      onChange={() => toggleProduct(pr.id)}
-                      disabled={!hasFromIngredient && !!formData.fromIngredient}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-800 text-sm">{pr.name}</span>
-                        {willBeAffected && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                            WILL SWAP
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-gray-500 font-mono">{pr.code}</span>
-                        <span className="text-xs text-gray-400">·</span>
-                        <span className="text-xs text-gray-500">{pr.rmCount} RMs</span>
-                        {hasFromIngredient && (
-                          <>
-                            <span className="text-xs text-gray-400">·</span>
-                            <span className="text-xs text-emerald-600 font-medium">✓ Contains {formData.fromIngredient}</span>
-                          </>
-                        )}
+            {loadingItems ? (
+              <p className="text-sm text-gray-500 py-4">Loading products…</p>
+            ) : products.length === 0 && fromRawMaterialId ? (
+              <p className="text-sm text-gray-500 py-4">No products use this raw material.</p>
+            ) : !fromRawMaterialId ? (
+              <p className="text-sm text-gray-500 py-4">Select a &quot;From&quot; raw material to see affected products.</p>
+            ) : (
+              <div className="space-y-2">
+                {products.map((pr) => {
+                  const willBeAffected = pr.selected;
+                  return (
+                    <div
+                      key={pr.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                        willBeAffected ? 'border-indigo-300 bg-indigo-50/50' : 'border-gray-200 bg-gray-50/50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pr.selected}
+                        onChange={() => toggleProduct(pr.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-800 text-sm">{pr.name || pr.code}</span>
+                          {willBeAffected && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                              WILL SWAP
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-500 font-mono">{pr.code}</span>
+                          <span className="text-xs text-gray-400">·</span>
+                          <span className="text-xs text-gray-500">{pr.rawMaterialIds?.length ?? 0} RMs</span>
+                        </div>
                       </div>
                     </div>
-                    {!hasFromIngredient && formData.fromIngredient && (
-                      <span className="text-xs text-gray-400 shrink-0">—</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
-            {/* Action Buttons */}
             <div className="flex items-center gap-3 mt-5 pt-5 border-t border-gray-100">
               <button
                 onClick={handlePreview}
-                disabled={!formData.fromIngredient || !formData.toIngredient}
+                disabled={!fromRawMaterialId || !toRawMaterialId}
                 className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 👁 Preview
               </button>
               <button
                 onClick={handleApplySwap}
-                disabled={!showPreview || affectedProductsCount === 0}
+                disabled={!showPreview || affectedProductsCount === 0 || applying}
                 className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                ✓ Apply Swap
+                {applying ? 'Applying…' : '✓ Apply Swap'}
               </button>
               {showPreview && (
                 <span className="text-xs text-emerald-600 font-medium ml-2">
-                  ✓ Preview ready — {affectedProductsCount} PR(s) selected
+                  ✓ Preview ready — {affectedProductsCount} product(s) selected
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── Swap History ── */}
-        {swapHistory.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-            <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-emerald-50/50 to-transparent">
-              <span className="text-sm font-semibold text-gray-900">Swap History</span>
-            </div>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-emerald-50/50 to-transparent">
+            <span className="text-sm font-semibold text-gray-900">Swap History</span>
+          </div>
 
+          {loadingHistory ? (
+            <div className="p-6 text-sm text-gray-500">Loading history…</div>
+          ) : swapHistory.length === 0 ? (
+            <div className="p-6 text-sm text-gray-500">No swap history yet.</div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -373,14 +506,13 @@ const UniversalSwap: React.FC = () => {
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From → To</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected PRs</th>
+                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Products</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {swapHistory.map(swap => (
+                  {swapHistory.map((swap) => (
                     <tr key={swap.id} className="hover:bg-linear-to-r hover:from-emerald-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
                       <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap text-sm font-medium">{swap.date}</td>
                       <td className="px-4 py-3.5">
@@ -390,14 +522,17 @@ const UniversalSwap: React.FC = () => {
                           <span className="font-semibold text-emerald-600 group-hover:text-emerald-700">{swap.toIngredient}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-700 font-mono">{swap.swapRatio.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-gray-700 font-mono">{Number(swap.swapRatio).toFixed(2)}</td>
                       <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={swap.reason}>{swap.reason}</td>
                       <td className="px-4 py-3 text-gray-600">{swap.approvedBy}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
-                          {swap.affectedPRs.map(pr => (
-                            <span key={pr} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                              {pr}
+                          {(swap.affectedItemCodes && swap.affectedItemCodes.length > 0
+                            ? swap.affectedItemCodes
+                            : swap.affectedItemIds?.map(String) ?? []
+                          ).map((code) => (
+                            <span key={code} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                              {code}
                             </span>
                           ))}
                         </div>
@@ -407,8 +542,8 @@ const UniversalSwap: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
       </div>
     </div>

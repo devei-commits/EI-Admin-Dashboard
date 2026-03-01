@@ -43,11 +43,12 @@ export interface CreateItemMasterPayload {
   rawMaterialIds?: number[];
 }
 
-export async function fetchItemsMaster(search?: string, type?: string): Promise<ServiceResult<ItemMasterRecord[]>> {
+export async function fetchItemsMaster(search?: string, type?: string, rawMaterialId?: string | number): Promise<ServiceResult<ItemMasterRecord[]>> {
   try {
     const params = new URLSearchParams();
     if (search != null && search.trim()) params.set('search', search.trim());
     if (type != null && type.trim()) params.set('type', type.trim());
+    if (rawMaterialId != null && String(rawMaterialId).trim()) params.set('rawMaterialId', String(rawMaterialId).trim());
     const qs = params.toString();
     const list = await api.get<ItemMasterRecord[]>(`/api/v1/items-master${qs ? `?${qs}` : ''}`);
     return { data: list ?? [], error: null, success: true };

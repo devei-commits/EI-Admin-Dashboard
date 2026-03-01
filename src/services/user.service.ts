@@ -35,6 +35,31 @@ export interface StaffUserFromApi {
 
 // ==================== User CRUD Operations ====================
 
+/** Minimal user for approver/search dropdown */
+export interface UserSearchHit {
+  userid: number;
+  display_name: string;
+  email: string;
+}
+
+/**
+ * Search staff users by name or email. Backend: GET /api/v1/users/search?q=...
+ * Use for approver dropdown (e.g. Universal Swap). Any authenticated user can call.
+ */
+export async function searchUsers(q: string): Promise<ServiceResult<UserSearchHit[]>> {
+  try {
+    const query = typeof q === 'string' && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '?q=';
+    const list = await api.get<UserSearchHit[]>(`/api/v1/users/search${query}`);
+    return { data: list ?? [], error: null, success: true };
+  } catch (err) {
+    return {
+      data: null,
+      error: { message: err instanceof Error ? err.message : 'Error', status: 500 } as any,
+      success: false,
+    };
+  }
+}
+
 /**
  * Fetch staff users only (internal team with staff_profiles). Backend: GET /api/v1/users/getusers?staffOnly=true
  */
