@@ -24,6 +24,7 @@ export interface RawMaterialFromApi {
 }
 
 export interface RawMaterialRecord {
+  id: string;
   code: string;
   name: string;
   inci: string;
@@ -40,6 +41,7 @@ export interface RawMaterialRecord {
 
 function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
   return {
+    id: row.id ?? '',
     code: row.code ?? '',
     name: row.name ?? '',
     inci: row.inci ?? '',

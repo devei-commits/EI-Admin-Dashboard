@@ -24,6 +24,7 @@ export interface PackMaterialFromApi {
 }
 
 export interface PackMaterialRecord {
+  id: string;
   code: string;
   description: string;
   type: string;
@@ -40,6 +41,7 @@ export interface PackMaterialRecord {
 
 function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
   return {
+    id: row.id ?? '',
     code: row.code ?? '',
     description: row.description ?? '',
     type: row.type ?? '',

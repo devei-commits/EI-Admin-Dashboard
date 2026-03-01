@@ -1,35 +1,149 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useItems } from '../context/ItemsContext';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
+import {
+  fetchItemsMaster,
+  updateItemMaster,
+  deleteItemMaster,
+  createItemMaster,
+  type ItemMasterRecord,
+  type CreateItemMasterPayload,
+} from '../services/itemsMaster.service';
+import { fetchBOMs } from '../services/bom.service';
+import { fetchPackMaterialsList } from '../services/packMaterials.service';
+import { fetchRawMaterialsList } from '../services/rawMaterials.service';
+
+/** List of selected items + dropdown to add more. */
+function LinkedMultiField({
+  label,
+  options,
+  selectedIds,
+  onChange,
+}: {
+  label: string;
+  options: { id: number; label: string }[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const available = options.filter((o) => !selectedIds.includes(o.id));
+  const [dropdownVal, setDropdownVal] = useState<string>('');
+
+  const add = () => {
+    const id = dropdownVal ? Number(dropdownVal) : null;
+    if (id != null && !Number.isNaN(id) && !selectedIds.includes(id)) {
+      onChange([...selectedIds, id]);
+      setDropdownVal('');
+    }
+  };
+
+  const remove = (id: number) => {
+    onChange(selectedIds.filter((x) => x !== id));
+  };
+
+  const selectedLabels = selectedIds
+    .map((id) => options.find((o) => o.id === id))
+    .filter(Boolean) as { id: number; label: string }[];
+
+  return (
+    <div className="col-span-2 space-y-2">
+      <label className="block text-sm font-semibold text-gray-700 mb-2">{label}</label>
+      {selectedLabels.length > 0 ? (
+        <ul className="mb-2 rounded-lg border border-gray-200 divide-y divide-gray-100 bg-gray-50/50">
+          {selectedLabels.map((opt) => (
+            <li key={opt.id} className="flex items-center justify-between px-3 py-2 text-sm">
+              <span className="text-gray-800">{opt.label}</span>
+              <button
+                type="button"
+                onClick={() => remove(opt.id)}
+                className="text-red-600 hover:text-red-800 hover:bg-red-50 rounded p-1"
+                aria-label="Remove"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500 mb-2">None added yet.</p>
+      )}
+      <div className="flex gap-2">
+        <select
+          value={dropdownVal}
+          onChange={(e) => setDropdownVal(e.target.value)}
+          className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        >
+          <option value="">— Add one —</option>
+          {available.map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={add}
+          disabled={!dropdownVal || available.length === 0}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const ItemsMaster: React.FC = () => {
- const { items, updateItem, deleteItem } = useItems();
- const { addToast } = useToast();
- const safeItems = Array.isArray(items) ? items : [];
- const [selectedItem, setSelectedItem] = useState<any>(null);
- const [isModalOpen, setIsModalOpen] = useState(false);
- const [editMode, setEditMode] = useState(false);
- const [editedData, setEditedData] = useState<any>(null);
- 
- // Search & Filtering
- const [searchQuery, setSearchQuery] = useState('');
- const [typeFilters, setTypeFilters] = useState<string[]>([]);
- const [dateFrom, setDateFrom] = useState('');
- const [dateTo, setDateTo] = useState('');
- 
- // Sorting
- const [sortField, setSortField] = useState<string>('createdAt');
- const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
- 
- // Pagination
- const [currentPage, setCurrentPage] = useState(1);
- const [itemsPerPage, setItemsPerPage] = useState(10);
- 
- // Bulk selection
- const [selectedIds, setSelectedIds] = useState<string[]>([]);
- 
- // Loading state
- const [isLoading, setIsLoading] = useState(false);
+  const { addToast } = useToast();
+  const [list, setList] = useState<ItemMasterRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<ItemMasterRecord | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editedData, setEditedData] = useState<Partial<CreateItemMasterPayload> | null>(null);
+  const [bomOptions, setBomOptions] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [pmOptions, setPmOptions] = useState<Array<{ id: number; code: string; description: string }>>([]);
+  const [rmOptions, setRmOptions] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createData, setCreateData] = useState<Partial<CreateItemMasterPayload>>({ type: 'product', status: 'Active', bomIds: [], rawMaterialIds: [], packMaterialIds: [] });
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    const res = await fetchItemsMaster();
+    if (res.success && res.data) setList(res.data);
+    else {
+      setLoadError(typeof res.error === 'string' ? res.error : (res.error && typeof res.error === 'object' && 'message' in res.error ? String((res.error as { message: string }).message) : 'Failed to load items'));
+      setList([]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { loadItems(); }, 0);
+    return () => clearTimeout(t);
+  }, [loadItems]);
+
+  const safeItems = list.map((item): ItemMasterRecord & { lastModified: string } => ({
+    ...item,
+    lastModified: item.updatedAt ?? item.createdAt ?? '',
+  }));
+
+  // Search & Filtering
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilters, setTypeFilters] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Sorting
+  const [sortField, setSortField] = useState<string>('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const isLoading = loading;
 
  // Filter and sort items
  const filteredAndSortedItems = useMemo(() => {
@@ -38,10 +152,10 @@ const ItemsMaster: React.FC = () => {
   // Search filter
   if (searchQuery.trim()) {
    const query = searchQuery.toLowerCase();
-   result = result.filter(item => 
+   result = result.filter(item =>
     item.name?.toLowerCase().includes(query) ||
     item.code?.toLowerCase().includes(query) ||
-    JSON.stringify(item.data)?.toLowerCase().includes(query)
+    (item.linked && JSON.stringify(item.linked)).toLowerCase().includes(query)
    );
   }
   
@@ -60,22 +174,17 @@ const ItemsMaster: React.FC = () => {
   
   // Sorting
   result.sort((a, b) => {
-   let aVal = a[sortField];
-   let bVal = b[sortField];
-   
+   let aVal: string | number = sortField === 'lastModified' ? (a as { lastModified?: string }).lastModified ?? a.updatedAt : (a[sortField as keyof typeof a] as string);
+   let bVal: string | number = sortField === 'lastModified' ? (b as { lastModified?: string }).lastModified ?? b.updatedAt : (b[sortField as keyof typeof b] as string);
    if (sortField === 'createdAt' || sortField === 'lastModified') {
-    aVal = new Date(aVal).getTime();
-    bVal = new Date(bVal).getTime();
-   } else {
-    aVal = String(aVal || '').toLowerCase();
-    bVal = String(bVal || '').toLowerCase();
+    const aNum = new Date(String(aVal)).getTime();
+    const bNum = new Date(String(bVal)).getTime();
+    return sortDirection === 'asc' ? (aNum > bNum ? 1 : -1) : (bNum > aNum ? 1 : -1);
    }
-   
-   if (sortDirection === 'asc') {
-    return aVal > bVal ? 1 : -1;
-   } else {
-    return aVal < bVal ? 1 : -1;
-   }
+   aVal = String(aVal || '').toLowerCase();
+   bVal = String(bVal || '').toLowerCase();
+   if (sortDirection === 'asc') return aVal > bVal ? 1 : -1;
+   return bVal > aVal ? 1 : -1;
   });
   
   return result;
@@ -122,30 +231,21 @@ const ItemsMaster: React.FC = () => {
   );
  };
 
- const handleBulkDelete = () => {
-  if (selectedIds.length === 0) return;
-  if (window.confirm(`Are you sure you want to delete ${selectedIds.length} items?`)) {
-   setIsLoading(true);
-   selectedIds.forEach(id => deleteItem(id));
-   setSelectedIds([]);
-   setIsLoading(false);
-   addToast('success', `${selectedIds.length} items deleted successfully`);
-  }
- };
-
- // Auto-save draft every 30 seconds if editing
- useEffect(() => {
-  if (editMode && editedData) {
-   const timer = setTimeout(() => {
-    if (selectedItem) {
-     const draftKey = `draft_${selectedItem.id}`;
-     localStorage.setItem(draftKey, JSON.stringify(editedData));
-     addToast('info', 'Draft auto-saved');
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} items?`)) return;
+    setLoading(true);
+    let done = 0;
+    for (const id of selectedIds) {
+      const result = await deleteItemMaster(id);
+      if (result.success) done++;
     }
-   }, 30000);
-   return () => clearTimeout(timer);
-  }
- }, [editedData, editMode, selectedItem, addToast]);
+    setSelectedIds([]);
+    await loadItems();
+    setLoading(false);
+    addToast('success', `${done} item(s) deleted successfully`);
+  };
+
 
  const handleExportExcel = () => {
   try {
@@ -157,7 +257,7 @@ const ItemsMaster: React.FC = () => {
     getTypeLabel(item.type),
     new Date(item.createdAt).toLocaleDateString(),
     new Date(item.lastModified).toLocaleDateString(),
-    item.data?.status || 'N/A'
+    item.status || 'N/A'
    ]);
 
    // Convert to CSV
@@ -182,63 +282,147 @@ const ItemsMaster: React.FC = () => {
   }
  };
 
- const handleView = (item: any) => {
-  setSelectedItem(item);
-  setEditedData(JSON.parse(JSON.stringify(item.data)));
-  setEditMode(false);
-  setIsModalOpen(true);
- };
+  const loadOptionsForEdit = useCallback(async () => {
+    const [bomRes, pmList, rmList] = await Promise.all([
+      fetchBOMs(),
+      fetchPackMaterialsList(),
+      fetchRawMaterialsList(),
+    ]);
+    if (bomRes.success && bomRes.data) {
+      setBomOptions(bomRes.data.map(b => ({ id: Number(b.id), code: b.bomCode, name: b.name ?? b.bomCode })));
+    }
+    setPmOptions((pmList ?? []).map(p => ({ id: Number(p.id), code: p.code, description: p.description ?? p.code })));
+    setRmOptions((rmList ?? []).map(r => ({ id: Number(r.id), code: r.code, name: r.name ?? r.code })));
+  }, []);
 
- const handleEdit = () => {
-  setEditMode(true);
- };
-
- const handleSaveEdit = () => {
-  if (selectedItem) {
-   const updatedItem = {
-    ...selectedItem,
-    data: editedData,
-    lastModified: new Date().toISOString(),
-   };
-   updateItem(selectedItem.id, updatedItem);
-   setIsModalOpen(false);
-   setEditMode(false);
-   setSelectedItem(null);
-   addToast('success', 'Item updated successfully');
-  }
- };
-
- const handleDelete = (id: string) => {
-  if (window.confirm('Are you sure you want to delete this item?')) {
-   deleteItem(id);
-   addToast('success', 'Item deleted successfully');
-  }
- };
-
- const getTypeLabel = (type: string) => {
-  const labels: Record<string, string> = {
-   'raw-material': 'Raw Material',
-   'bom': 'BOM',
-   'packaging': 'Packaging',
+  const handleOpenCreate = () => {
+    setCreateData({ type: 'product', status: 'Active', bomIds: [], rawMaterialIds: [], packMaterialIds: [] });
+    setIsCreateModalOpen(true);
+    loadOptionsForEdit();
   };
-  return labels[type] || type;
- };
 
- const getTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
-   'raw-material': 'bg-blue-100 text-blue-800',
-   'bom': 'bg-green-100 text-green-800',
-   'packaging': 'bg-purple-100 text-purple-800',
+  const handleFillMockValues = () => {
+    const uniqueCode = `IM-MOCK-${Date.now().toString(36).toUpperCase()}`;
+    setCreateData({
+      code: uniqueCode,
+      name: 'Mock Product (test)',
+      type: 'product',
+      status: 'Active',
+      bomIds: bomOptions.length > 0 ? [bomOptions[0].id] : [],
+      rawMaterialIds: rmOptions.length > 0 ? [rmOptions[0].id] : [],
+      packMaterialIds: pmOptions.length > 0 ? [pmOptions[0].id] : [],
+    });
+    addToast('success', 'Mock values filled. Edit as needed and click Create.');
   };
-  return colors[type] || 'bg-gray-100 text-gray-800';
- };
+
+  const handleCreateSubmit = async () => {
+    if (!createData.code?.trim()) { addToast('error', 'Code is required'); return; }
+    const codeTrimmed = createData.code.trim();
+    const existingCodes = list.map((i) => i.code.trim().toLowerCase());
+    if (existingCodes.includes(codeTrimmed.toLowerCase())) {
+      addToast('error', 'An item with this code already exists. Use a unique code.');
+      return;
+    }
+    const payload: CreateItemMasterPayload = {
+      code: createData.code.trim(),
+      name: createData.name?.trim(),
+      type: createData.type ?? 'product',
+      status: createData.status ?? 'Active',
+      bomIds: createData.bomIds ?? [],
+      packMaterialIds: createData.packMaterialIds ?? [],
+      rawMaterialIds: createData.rawMaterialIds ?? [],
+    };
+    const result = await createItemMaster(payload);
+    if (result.success) {
+      await loadItems();
+      setIsCreateModalOpen(false);
+      addToast('success', 'Item created successfully');
+    } else {
+      addToast('error', typeof result.error === 'string' ? result.error : result.error?.message ?? 'Failed to create');
+    }
+  };
+
+  const handleView = (item: ItemMasterRecord & { lastModified?: string }) => {
+    setSelectedItem(item);
+    setEditedData({
+      code: item.code,
+      name: item.name,
+      type: item.type,
+      status: item.status ?? '',
+      bomIds: item.bomIds ?? [],
+      packMaterialIds: item.packMaterialIds ?? [],
+      rawMaterialIds: item.rawMaterialIds ?? [],
+    });
+    setEditMode(false);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = () => {
+    setEditMode(true);
+    loadOptionsForEdit();
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedItem || !editedData) return;
+    const payload: Partial<CreateItemMasterPayload> = {
+      code: editedData.code,
+      name: editedData.name,
+      type: editedData.type,
+      status: editedData.status,
+      bomIds: editedData.bomIds ?? [],
+      packMaterialIds: editedData.packMaterialIds ?? [],
+      rawMaterialIds: editedData.rawMaterialIds ?? [],
+    };
+    const result = await updateItemMaster(selectedItem.id, payload);
+    if (result.success) {
+      await loadItems();
+      setIsModalOpen(false);
+      setEditMode(false);
+      setSelectedItem(null);
+      setEditedData(null);
+      addToast('success', 'Item updated successfully');
+    } else {
+      addToast('error', typeof result.error === 'string' ? result.error : result.error?.message ?? 'Failed to update');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    const result = await deleteItemMaster(id);
+    if (result.success) {
+      await loadItems();
+      addToast('success', 'Item deleted successfully');
+    } else {
+      addToast('error', typeof result.error === 'string' ? result.error : result.error?.message ?? 'Failed to delete');
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      'product': 'Product',
+      'raw-material': 'Raw Material',
+      'bom': 'BOM',
+      'packaging': 'Packaging',
+    };
+    return labels[type] || type;
+  };
+
+  const getTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      'product': 'bg-indigo-100 text-indigo-800',
+      'raw-material': 'bg-blue-100 text-blue-800',
+      'bom': 'bg-green-100 text-green-800',
+      'packaging': 'bg-purple-100 text-purple-800',
+    };
+    return colors[type] || 'bg-gray-100 text-gray-800';
+  };
 
  const getSortIcon = (field: string) => {
   if (sortField !== field) return '↕';
   return sortDirection === 'asc' ? '↑' : '↓';
  };
 
- const formatKeyLabel = (rawKey: string): string => {
+ const _formatKeyLabel = (rawKey: string): string => {
   if (!rawKey) return '';
 
   // First, remove all spaces around single characters (e.g., "C F. Y I E L D P E R C E N T A G E" -> "CF.YIELDPERCENTAGE")
@@ -304,13 +488,14 @@ const ItemsMaster: React.FC = () => {
   setCurrentPage(1);
  };
 
- // Stats
- const stats = useMemo(() => ({
-  total: safeItems.length,
-  rawMaterial: safeItems.filter(i => i.type === 'raw-material').length,
-  bom: safeItems.filter(i => i.type === 'bom').length,
-  packaging: safeItems.filter(i => i.type === 'packaging').length,
- }), [safeItems]);
+  // Stats
+  const stats = useMemo(() => ({
+    total: safeItems.length,
+    product: safeItems.filter(i => i.type === 'product').length,
+    rawMaterial: safeItems.filter(i => i.type === 'raw-material').length,
+    bom: safeItems.filter(i => i.type === 'bom').length,
+    packaging: safeItems.filter(i => i.type === 'packaging').length,
+  }), [safeItems]);
 
  return (
   <div className="min-h-screen bg-gray-50 p-4">
@@ -320,6 +505,12 @@ const ItemsMaster: React.FC = () => {
      <div className="flex justify-between items-center mb-6">
       <h1 className="text-2xl font-bold text-gray-800">Items Master</h1>
       <div className="flex gap-2">
+       <button
+        onClick={handleOpenCreate}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+       >
+        Add Item
+       </button>
        <button
         onClick={handleExportExcel}
         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
@@ -333,10 +524,14 @@ const ItemsMaster: React.FC = () => {
      </div>
      
      {/* Stats Cards */}
-     <div className="grid grid-cols-4 gap-4">
+     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
        <p className="text-sm text-gray-600">Total Items</p>
        <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
+      </div>
+      <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+       <p className="text-sm text-indigo-600">Products</p>
+       <p className="text-2xl font-bold text-indigo-800">{stats.product}</p>
       </div>
       <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
        <p className="text-sm text-blue-600">Raw Materials</p>
@@ -352,6 +547,10 @@ const ItemsMaster: React.FC = () => {
       </div>
      </div>
     </div>
+
+    {loadError && (
+     <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{loadError}</div>
+    )}
 
     {/* Search & Filters */}
     <div className="bg-white rounded-lg shadow-sm p-6">
@@ -384,7 +583,7 @@ const ItemsMaster: React.FC = () => {
        <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-gray-700">Type:</span>
         <div className="flex gap-2">
-         {['raw-material', 'bom', 'packaging'].map(type => (
+         {['product', 'raw-material', 'bom', 'packaging'].map(type => (
           <button
            key={type}
            onClick={() => handleTypeFilterToggle(type)}
@@ -653,121 +852,68 @@ const ItemsMaster: React.FC = () => {
 
       {/* Modal Content */}
       <div className="p-6">
-       {editMode ? (
+       {editMode && editedData ? (
         <div className="space-y-4">
          <h3 className="text-lg font-semibold text-gray-800 mb-4">Edit Item</h3>
          <div className="grid grid-cols-2 gap-4">
-          {Object.entries(editedData).map(([key, value]: [string, any]) => {
-           if (typeof value === 'object' && value !== null) return null;
-           if (Array.isArray(value)) return null;
-           
-           return (
-            <div key={key}>
-             <label className="block text-sm font-semibold text-gray-700 mb-2 capitalize">
-              {key.replace(/([A-Z])/g, ' $1').trim()}
-             </label>
-             {typeof value === 'boolean' ? (
-              <select
-               value={value ? 'true' : 'false'}
-               onChange={(e) =>
-                setEditedData({
-                 ...editedData,
-                 [key]: e.target.value === 'true',
-                })
-               }
-               className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-               <option value="true">Yes</option>
-               <option value="false">No</option>
-              </select>
-             ) : (
-              <input
-               type={typeof value === 'number' ? 'number' : 'text'}
-               value={value || ''}
-               onChange={(e) =>
-                setEditedData({
-                 ...editedData,
-                 [key]: e.target.value,
-                })
-               }
-               className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-             )}
-            </div>
-           );
-          })}
+          <div>
+           <label className="block text-sm font-semibold text-gray-700 mb-2">Code</label>
+           <input value={editedData.code ?? ''} onChange={(e) => setEditedData({ ...editedData, code: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+           <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+           <input value={editedData.name ?? ''} onChange={(e) => setEditedData({ ...editedData, name: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+           <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+           <select value={editedData.type ?? 'product'} onChange={(e) => setEditedData({ ...editedData, type: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="product">Product</option>
+            <option value="bom">BOM</option>
+            <option value="packaging">Packaging</option>
+            <option value="raw-material">Raw Material</option>
+           </select>
+          </div>
+          <div>
+           <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+           <input value={editedData.status ?? ''} onChange={(e) => setEditedData({ ...editedData, status: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Active" />
+          </div>
+          <LinkedMultiField
+           label="Linked BOMs"
+           options={bomOptions.map((b) => ({ id: b.id, label: `${b.code} — ${b.name}` }))}
+           selectedIds={editedData.bomIds ?? []}
+           onChange={(bomIds) => setEditedData({ ...editedData, bomIds })}
+          />
+          <LinkedMultiField
+           label="Linked Raw Materials"
+           options={rmOptions.map((r) => ({ id: r.id, label: `${r.code} — ${r.name}` }))}
+           selectedIds={editedData.rawMaterialIds ?? []}
+           onChange={(rawMaterialIds) => setEditedData({ ...editedData, rawMaterialIds })}
+          />
+          <LinkedMultiField
+           label="Linked Pack Materials"
+           options={pmOptions.map((p) => ({ id: p.id, label: `${p.code} — ${p.description}` }))}
+           selectedIds={editedData.packMaterialIds ?? []}
+           onChange={(packMaterialIds) => setEditedData({ ...editedData, packMaterialIds })}
+          />
          </div>
         </div>
        ) : (
         <div className="space-y-6">
-         {/* Display all form fields organized by sections */}
-         {Object.entries(selectedItem.data).length > 0 ? (
-          <div className="space-y-6">
-           {Object.entries(selectedItem.data).map(([key, value]: [string, any]) => {
-            // Skip empty values
-            if (value === '' || value === null || value === undefined) return null;
-            
-            // Handle arrays (like vendors, documents, etc.)
-            if (Array.isArray(value)) {
-             if (value.length === 0) return null;
-             return (
-              <div key={key} className="border-t pt-4">
-               <h4 className="text-md font-semibold text-gray-800 mb-3">
-                {formatKeyLabel(key)}
-               </h4>
-               <div className="bg-gray-50 rounded-lg p-4">
-                {value.map((item, idx) => (
-                 <div key={idx} className="mb-3 pb-3 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
-                  <div className="grid grid-cols-2 gap-2">
-                   {Object.entries(item).map(([itemKey, itemValue]: [string, any]) => (
-                    <div key={itemKey}>
-                     <span className="text-xs font-semibold text-gray-600 uppercase">
-                      {itemKey}:
-                     </span>
-                     <span className="text-sm text-gray-800 ml-2">
-                      {String(itemValue)}
-                     </span>
-                    </div>
-                   ))}
-                  </div>
-                 </div>
-                ))}
-               </div>
-              </div>
-             );
-            }
-            
-            // Handle objects
-            if (typeof value === 'object' && value !== null) {
-             return null;
-            }
-            
-            // Handle simple values
-            return (
-             <div key={key} className="grid grid-cols-3 gap-2 border-b pb-3">
-              <div className="col-span-1">
-               <label className="text-xs font-semibold text-gray-600">
-                {formatKeyLabel(key)}
-               </label>
-              </div>
-              <div className="col-span-2">
-               <p className="text-sm text-gray-800 wrap-break-words">
-                {typeof value === 'boolean' ? (
-                 <span className={`px-2 py-1 rounded text-xs font-semibold ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                  {value ? 'Yes' : 'No'}
-                 </span>
-                ) : (
-                 String(value)
-                )}
-               </p>
-              </div>
-             </div>
-            );
-           })}
-          </div>
-         ) : (
-          <p className="text-gray-500 text-center py-8">No data available</p>
-         )}
+         <div className="grid grid-cols-2 gap-4">
+          <div><p className="text-xs font-semibold text-gray-500">Code</p><p className="text-gray-900">{selectedItem.code}</p></div>
+          <div><p className="text-xs font-semibold text-gray-500">Name</p><p className="text-gray-900">{selectedItem.name}</p></div>
+          <div><p className="text-xs font-semibold text-gray-500">Type</p><p className="text-gray-900">{getTypeLabel(selectedItem.type)}</p></div>
+          <div><p className="text-xs font-semibold text-gray-500">Status</p><p className="text-gray-900">{selectedItem.status ?? '—'}</p></div>
+          {selectedItem.linked?.boms && selectedItem.linked.boms.length > 0 && (
+           <div className="col-span-2"><p className="text-xs font-semibold text-gray-500">Linked BOMs</p><ul className="mt-1 text-gray-900 list-disc list-inside">{selectedItem.linked.boms.map(b => (<li key={b.id}>{b.code} — {b.name}</li>))}</ul></div>
+          )}
+          {selectedItem.linked?.rawMaterials && selectedItem.linked.rawMaterials.length > 0 && (
+           <div className="col-span-2"><p className="text-xs font-semibold text-gray-500">Linked Raw Materials</p><ul className="mt-1 text-gray-900 list-disc list-inside">{selectedItem.linked.rawMaterials.map(r => (<li key={r.id}>{r.code} — {r.name}</li>))}</ul></div>
+          )}
+          {selectedItem.linked?.packMaterials && selectedItem.linked.packMaterials.length > 0 && (
+           <div className="col-span-2"><p className="text-xs font-semibold text-gray-500">Linked Pack Materials</p><ul className="mt-1 text-gray-900 list-disc list-inside">{selectedItem.linked.packMaterials.map(p => (<li key={p.id}>{p.code} — {p.description}</li>))}</ul></div>
+          )}
+         </div>
         </div>
        )}
 
@@ -780,7 +926,7 @@ const ItemsMaster: React.FC = () => {
          </div>
          <div>
           <p className="font-semibold text-gray-700">Last Modified:</p>
-          <p>{new Date(selectedItem.lastModified).toLocaleString()}</p>
+          <p>{new Date((selectedItem as { lastModified?: string }).lastModified ?? selectedItem.updatedAt ?? selectedItem.createdAt).toLocaleString()}</p>
          </div>
         </div>
        </div>
@@ -817,6 +963,68 @@ const ItemsMaster: React.FC = () => {
          Edit
         </button>
        )}
+      </div>
+     </div>
+    </div>
+   )}
+
+   {/* Create Item Modal */}
+   {isCreateModalOpen && (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+     <div className="bg-white rounded-lg shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="p-6 border-b border-gray-200 flex justify-between items-center flex-wrap gap-2">
+       <h2 className="text-xl font-bold text-gray-800">Add Item</h2>
+       <div className="flex items-center gap-2">
+        <button type="button" onClick={handleFillMockValues} className="px-3 py-1.5 text-sm bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition">
+         Fill mock values
+        </button>
+        <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+       </div>
+      </div>
+      <div className="p-6 space-y-4">
+       <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Code *</label>
+        <input value={createData.code ?? ''} onChange={(e) => setCreateData({ ...createData, code: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. IM-PROD-004" />
+       </div>
+       <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+        <input value={createData.name ?? ''} onChange={(e) => setCreateData({ ...createData, name: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Product name" />
+       </div>
+       <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+        <select value={createData.type ?? 'product'} onChange={(e) => setCreateData({ ...createData, type: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+         <option value="product">Product</option>
+         <option value="bom">BOM</option>
+         <option value="packaging">Packaging</option>
+         <option value="raw-material">Raw Material</option>
+        </select>
+       </div>
+       <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+        <input value={createData.status ?? 'Active'} onChange={(e) => setCreateData({ ...createData, status: e.target.value })} className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+       </div>
+       <LinkedMultiField
+        label="Linked BOMs"
+        options={bomOptions.map((b) => ({ id: b.id, label: `${b.code} — ${b.name}` }))}
+        selectedIds={createData.bomIds ?? []}
+        onChange={(bomIds) => setCreateData({ ...createData, bomIds })}
+       />
+       <LinkedMultiField
+        label="Linked Raw Materials"
+        options={rmOptions.map((r) => ({ id: r.id, label: `${r.code} — ${r.name}` }))}
+        selectedIds={createData.rawMaterialIds ?? []}
+        onChange={(rawMaterialIds) => setCreateData({ ...createData, rawMaterialIds })}
+       />
+       <LinkedMultiField
+        label="Linked Pack Materials"
+        options={pmOptions.map((p) => ({ id: p.id, label: `${p.code} — ${p.description}` }))}
+        selectedIds={createData.packMaterialIds ?? []}
+        onChange={(packMaterialIds) => setCreateData({ ...createData, packMaterialIds })}
+       />
+      </div>
+      <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+       <button onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancel</button>
+       <button onClick={handleCreateSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
       </div>
      </div>
     </div>
