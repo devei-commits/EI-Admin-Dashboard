@@ -1,0 +1,127 @@
+/**
+ * Item Groups API — CRUD for RM/PM groups with member_ids from raw_materials / pack_materials.
+ * Backend: GET/POST /api/v1/item-groups, GET/PUT/DELETE /api/v1/item-groups/:id
+ */
+
+import type { ServiceResult } from '../types/api.types';
+import { api } from '../lib/apiClient';
+
+export interface ItemGroupMember {
+  id: string;
+  code: string;
+  name: string;
+  ratio?: number;
+  status: 'approved';
+}
+
+export interface ItemGroupAlternate {
+  id: string;
+  name: string;
+  notes: string;
+  status: 'proposed' | 'under-review';
+  ratio?: number;
+}
+
+export interface ItemGroupRecord {
+  id: string;
+  code: string;
+  icon: string;
+  type: 'RM' | 'PM';
+  name: string;
+  description: string;
+  purpose: string;
+  status: string;
+  notes: string;
+  approvedMembers: ItemGroupMember[];
+  proposedAlternates: ItemGroupAlternate[];
+  member_ids: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateItemGroupPayload {
+  code: string;
+  icon?: string;
+  type: 'RM' | 'PM';
+  name: string;
+  description?: string;
+  purpose?: string;
+  status?: string;
+  notes?: string;
+  member_ids?: number[];
+  proposedAlternates?: ItemGroupAlternate[];
+}
+
+export async function fetchItemGroups(type?: 'RM' | 'PM'): Promise<ServiceResult<ItemGroupRecord[]>> {
+  try {
+    const qs = type ? `?type=${type}` : '';
+    const list = await api.get<ItemGroupRecord[]>(`/api/v1/item-groups${qs}`);
+    return { data: list ?? [], error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load item groups';
+    return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function fetchItemGroupById(id: string): Promise<ServiceResult<ItemGroupRecord>> {
+  try {
+    const row = await api.get<ItemGroupRecord>(`/api/v1/item-groups/${id}`);
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load item group';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function createItemGroup(payload: CreateItemGroupPayload): Promise<ServiceResult<ItemGroupRecord>> {
+  try {
+    const body = {
+      code: payload.code,
+      icon: payload.icon ?? null,
+      type: payload.type,
+      name: payload.name,
+      description: payload.description ?? null,
+      purpose: payload.purpose ?? null,
+      status: payload.status ?? 'Active',
+      notes: payload.notes ?? null,
+      member_ids: payload.member_ids ?? [],
+      proposed_alternates: payload.proposedAlternates ?? [],
+    };
+    const row = await api.post<ItemGroupRecord>('/api/v1/item-groups', body);
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to create item group';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function updateItemGroup(id: string, payload: Partial<CreateItemGroupPayload>): Promise<ServiceResult<ItemGroupRecord>> {
+  try {
+    const body: Record<string, unknown> = {};
+    if (payload.code !== undefined) body.code = payload.code;
+    if (payload.icon !== undefined) body.icon = payload.icon;
+    if (payload.type !== undefined) body.type = payload.type;
+    if (payload.name !== undefined) body.name = payload.name;
+    if (payload.description !== undefined) body.description = payload.description;
+    if (payload.purpose !== undefined) body.purpose = payload.purpose;
+    if (payload.status !== undefined) body.status = payload.status;
+    if (payload.notes !== undefined) body.notes = payload.notes;
+    if (payload.member_ids !== undefined) body.member_ids = payload.member_ids;
+    if (payload.proposedAlternates !== undefined) body.proposed_alternates = payload.proposedAlternates;
+    const row = await api.put<ItemGroupRecord>(`/api/v1/item-groups/${id}`, body);
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update item group';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function deleteItemGroup(id: string): Promise<ServiceResult<null>> {
+  try {
+    await api.delete(`/api/v1/item-groups/${id}`);
+    return { data: null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to delete item group';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
