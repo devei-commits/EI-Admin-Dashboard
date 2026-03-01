@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -1099,13 +1100,6 @@ const PackagingRefactored: React.FC = () => {
 
 // ─── Pack Materials Dashboard ─────────────────────────────────────────────────
 
-type PMRecord = {
- code: string; description: string; type: string; level: string;
- group: string | null; material: string; sizeSpec: string;
- pricePerPc: number; moq: number; leadTimeDays: number;
- printStatus: string; products: string[];
-};
-
 const TYPE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
  Monocarton:  { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
  Bottle:      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
@@ -1121,19 +1115,6 @@ const PRINT_STATUS_STYLES: Record<string, { bg: string; text: string; border: st
  'Artwork approved':   { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200' },
  'N/A':                { bg: 'bg-gray-50',    text: 'text-gray-500',    border: 'border-gray-200' },
 };
-
-const PM_SEED: PMRecord[] = [
- { code: 'EI-PM-BOX-001',  description: 'Sunscreen 50g Monocarton',             type: 'Monocarton',  level: 'Secondary', group: null,         material: '300 GSM Duplex Board',          sizeSpec: '52x52x35mm',        pricePerPc: 2.8,  moq: 5000,  leadTimeDays: 21, printStatus: 'Approved',         products: ['PR-002'] },
- { code: 'EI-PM-BOX-002',  description: 'Facewash 150ml Monocarton',            type: 'Monocarton',  level: 'Secondary', group: null,         material: '300 GSM Duplex Board',          sizeSpec: '52x52x168mm',       pricePerPc: 3.2,  moq: 5000,  leadTimeDays: 21, printStatus: 'Approved',         products: ['PR-002'] },
- { code: 'EI-PM-BTL-001',  description: '150ml Clear PET Pump Bottle',          type: 'Bottle',      level: 'Primary',   group: 'Primary +1', material: 'PET (Food Grade)',              sizeSpec: '150ml / 28/410',    pricePerPc: 5.5,  moq: 5000,  leadTimeDays: 21, printStatus: 'Label awaited',    products: ['PR-002'] },
- { code: 'EI-PM-CAP-001',  description: 'Oval Flip-Top Cap for 25mm Tube',      type: 'Closure',     level: 'Primary',   group: null,         material: 'PP White',                      sizeSpec: '25mm neck',         pricePerPc: 0.65, moq: 10000, leadTimeDays: 14, printStatus: 'N/A',              products: ['PR-002'] },
- { code: 'EI-PM-LBL-001',  description: 'Facewash Front Label 100×80mm',        type: 'Label',       level: 'Primary',   group: 'Primary +1', material: 'BOPP Self Adhesive',            sizeSpec: '100mm × 80mm',      pricePerPc: 0.65, moq: 10000, leadTimeDays: 14, printStatus: 'Approved',         products: ['PR-002'] },
- { code: 'EI-PM-PMP-001',  description: '24/410 Lotion Pump White',             type: 'Pump',        level: 'Primary',   group: null,         material: 'PP/PE',                         sizeSpec: '24/410 / 33mm dia', pricePerPc: 2.2,  moq: 5000,  leadTimeDays: 14, printStatus: 'N/A',              products: ['PR-002'] },
- { code: 'EI-PM-TUB-001',  description: '50g Aluminium Laminated Tube',         type: 'Tube',        level: 'Primary',   group: 'Primary +1', material: 'Aluminium/Plastic Laminate',    sizeSpec: '50g / 82mm × 32mm', pricePerPc: 4.2,  moq: 5000,  leadTimeDays: 21, printStatus: 'Artwork approved', products: ['PR-002'] },
-];
-
-const ALL_TYPES = Array.from(new Set(PM_SEED.map(p => p.type))).sort();
-const ALL_LEVELS = Array.from(new Set(PM_SEED.map(p => p.level))).sort();
 
 function formatPrice(n: number) {
  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
@@ -1159,8 +1140,30 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
  const [typeFilter, setTypeFilter] = useState('');
  const [levelFilter, setLevelFilter] = useState('');
  const [sortAsc, setSortAsc] = useState(true);
+ const [allPMs, setAllPMs] = useState<PackMaterialRecord[]>([]);
+ const [loading, setLoading] = useState(true);
+ const [loadError, setLoadError] = useState<string | null>(null);
 
- const allPMs = PM_SEED; // static seed; merge context items if needed
+ const loadPackMaterials = useCallback(async () => {
+  setLoading(true);
+  setLoadError(null);
+  try {
+   const list = await fetchPackMaterialsList();
+   setAllPMs(list);
+  } catch (e) {
+   setLoadError(e instanceof Error ? e.message : 'Failed to load pack materials');
+   setAllPMs([]);
+  } finally {
+   setLoading(false);
+  }
+ }, []);
+
+ useEffect(() => {
+  loadPackMaterials();
+ }, [loadPackMaterials]);
+
+ const allTypes = Array.from(new Set(allPMs.map(p => p.type))).filter(Boolean).sort();
+ const allLevels = Array.from(new Set(allPMs.map(p => p.level))).filter(Boolean).sort();
 
  const filtered = allPMs.filter(pm => {
   const q = search.toLowerCase();
@@ -1203,6 +1206,21 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
      </div>
     </div>
 
+    {/* ── Loading / Error ── */}
+    {loading && (
+     <div className="flex items-center justify-center py-12 text-gray-500">
+      <span className="animate-pulse">Loading pack materials…</span>
+     </div>
+    )}
+    {!loading && loadError && (
+     <div className="py-8 text-center">
+      <p className="text-red-600 mb-2">{loadError}</p>
+      <button type="button" onClick={loadPackMaterials} className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Retry</button>
+     </div>
+    )}
+
+    {!loading && !loadError && (
+     <>
     {/* ── Stat Cards ── */}
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
      {statCards.map(card => (
@@ -1246,7 +1264,7 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
         className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
        >
         <option value="">All Types</option>
-        {ALL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
        </select>
        {/* level filter */}
        <select
@@ -1255,7 +1273,7 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
         className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
        >
         <option value="">All Levels</option>
-        {ALL_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+        {allLevels.map(l => <option key={l} value={l}>{l}</option>)}
        </select>
        {/* new PM button */}
        <button
@@ -1360,6 +1378,9 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
       </table>
      </div>
     </div>
+
+     </>
+    )}
 
    </div>
   </div>

@@ -1,72 +1,46 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination } from '../components/ui';
+import { useDebounce } from '../hooks/useDebounce';
+import { fetchPackagingList, type PackagingItem } from '../services/packaging.service';
 
 type TabType = 'management' | 'list';
-
-interface PackagingItem {
- id: string;
- packageCode: string;
- packageName: string;
- packageSKU: string;
- bottom: string;
- capType: string;
- bottomName: string;
- bottomMaterial: string;
- capName: string;
- capMaterial: string;
- bottomColor: string;
- capColor: string;
- bottomWeight: string;
- capWeight: string;
- dispenserVolume: string;
- minimumOrderQuantity: string;
- budget: string;
- comments: string;
- status: 'active' | 'inactive';
- createdAt: string;
-}
-
-const PACKAGING_STORAGE_KEY = 'eisthetic_packaging_items';
-
-const defaultPackagingItems: PackagingItem[] = [
- { id: 'PKG001', packageCode: 'PKG-BTL-001', packageName: '30ml Dropper Bottle', packageSKU: 'SKU-DRP-30',
-  bottom: 'round', capType: 'dropper', bottomName: 'Amber Glass', bottomMaterial: 'glass', capName: 'Black Dropper',
-  capMaterial: 'plastic', bottomColor: 'Amber', capColor: 'Black', bottomWeight: '45g', capWeight: '8g',
-  dispenserVolume: '30ml', minimumOrderQuantity: '1000', budget: 'medium', comments: 'Standard serum bottle',
-  status: 'active', createdAt: '2024-01-10' },
- { id: 'PKG002', packageCode: 'PKG-JAR-001', packageName: '50ml Cream Jar', packageSKU: 'SKU-JAR-50',
-  bottom: 'flat', capType: 'screw', bottomName: 'Frosted Glass', bottomMaterial: 'glass', capName: 'Gold Lid',
-  capMaterial: 'metal', bottomColor: 'Frosted White', capColor: 'Gold', bottomWeight: '85g', capWeight: '25g',
-  dispenserVolume: '50ml', minimumOrderQuantity: '500', budget: 'high', comments: 'Premium cream jar',
-  status: 'active', createdAt: '2024-01-15' },
- { id: 'PKG003', packageCode: 'PKG-PMP-001', packageName: '100ml Pump Bottle', packageSKU: 'SKU-PMP-100',
-  bottom: 'round', capType: 'pump', bottomName: 'Clear PET', bottomMaterial: 'plastic', capName: 'White Pump',
-  capMaterial: 'plastic', bottomColor: 'Clear', capColor: 'White', bottomWeight: '35g', capWeight: '12g',
-  dispenserVolume: '100ml', minimumOrderQuantity: '2000', budget: 'low', comments: 'Economy lotion bottle',
-  status: 'active', createdAt: '2024-01-20' },
-];
 
 const PackagingManagement = () => {
  const [activeTab, setActiveTab] = useState<TabType>('management');
  const [searchQuery, setSearchQuery] = useState('');
+ const debouncedSearch = useDebounce(searchQuery, 300);
  const [entriesPerPage, setEntriesPerPage] = useState(10);
  const [currentPage, setCurrentPage] = useState(1);
  const [selectedItem, setSelectedItem] = useState<PackagingItem | null>(null);
  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
  const [isEditMode, setIsEditMode] = useState(false);
 
- const [packagingItems, setPackagingItems] = useState<PackagingItem[]>(() => {
+ const [packagingItems, setPackagingItems] = useState<PackagingItem[]>([]);
+ const [loading, setLoading] = useState(true);
+ const [loadError, setLoadError] = useState<string | null>(null);
+
+ const loadPackaging = useCallback(async () => {
+  setLoading(true);
+  setLoadError(null);
   try {
-   const stored = localStorage.getItem(PACKAGING_STORAGE_KEY);
-   if (stored) return JSON.parse(stored);
-  } catch (_error) { /* parse error — fall back to defaults */ }
-  return defaultPackagingItems;
- });
+   const list = await fetchPackagingList(debouncedSearch);
+   setPackagingItems(list);
+  } catch (e) {
+   setLoadError(e instanceof Error ? e.message : 'Failed to load packaging');
+   setPackagingItems([]);
+  } finally {
+   setLoading(false);
+  }
+ }, [debouncedSearch]);
 
  useEffect(() => {
-  localStorage.setItem(PACKAGING_STORAGE_KEY, JSON.stringify(packagingItems));
- }, [packagingItems]);
+  loadPackaging();
+ }, [loadPackaging]);
+
+ useEffect(() => {
+  setCurrentPage(1);
+ }, [debouncedSearch]);
 
  const [packageImage, setPackageImage] = useState<File | null>(null);
  const [packageCapImage, setPackageCapImage] = useState<File | null>(null);
@@ -153,13 +127,9 @@ const PackagingManagement = () => {
   setPackagingItems(prev => prev.map(item => item.id === id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item));
  };
 
- const filteredItems = packagingItems.filter(item =>
-  item.packageCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  item.packageName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  item.capType.toLowerCase().includes(searchQuery.toLowerCase())
- );
- const totalPages = Math.ceil(filteredItems.length / entriesPerPage);
- const paginatedItems = filteredItems.slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage);
+ // List is already filtered by API when search is sent (real-time dynamic search)
+ const totalPages = Math.ceil(packagingItems.length / entriesPerPage);
+ const paginatedItems = packagingItems.slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage);
 
  const getBudgetBadgeColor = (budget: string) => {
   switch (budget.toLowerCase()) {
@@ -548,10 +518,27 @@ const PackagingManagement = () => {
        <SearchInput
         value={searchQuery}
         onChange={setSearchQuery}
-        placeholder="Search packaging..."
+        placeholder="Search by code, name, SKU, cap type..."
        />
       </div>
 
+      {loading && (
+       <div className="flex items-center justify-center py-12 text-gray-500">
+        <span className="animate-pulse">Loading packaging...</span>
+       </div>
+      )}
+      {!loading && loadError && (
+       <div className="py-8 text-center">
+        <p className="text-red-600 mb-2">{loadError}</p>
+        <button type="button" onClick={loadPackaging} className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700">Retry</button>
+       </div>
+      )}
+      {!loading && !loadError && packagingItems.length === 0 && (
+       <div className="py-12 text-center text-gray-500">No packaging entries found.</div>
+      )}
+
+      {!loading && !loadError && packagingItems.length > 0 && (
+       <>
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">
        {paginatedItems.map((item) => (
@@ -631,9 +618,11 @@ const PackagingManagement = () => {
        currentPage={currentPage}
        totalPages={totalPages}
        onPageChange={setCurrentPage}
-       totalItems={filteredItems.length}
+       totalItems={packagingItems.length}
        itemsPerPage={entriesPerPage}
       />
+       </>
+      )}
      </div>
     )}
    </div>
