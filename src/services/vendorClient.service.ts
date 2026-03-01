@@ -3,12 +3,12 @@
  * Backend: GET /api/v1/vendor-client?type=, GET /api/v1/vendor-client/next-code?type=, GET/POST/PUT/DELETE /api/v1/vendor-client/:id
  */
 
-import type { ServiceResult } from '../types/api.types';
-import { api } from '../lib/apiClient';
+import type { ServiceResult } from "../types/api.types";
+import { api } from "../lib/apiClient";
 
 export interface VendorClientRecord {
   id: string;
-  type: 'vendor' | 'client';
+  type: "vendor" | "client";
   name: string;
   email: string;
   phone: string;
@@ -16,7 +16,7 @@ export interface VendorClientRecord {
   country: string;
   city?: string;
   category: string;
-  status: 'active' | 'inactive' | 'pending';
+  status: "active" | "inactive" | "pending";
   paymentTerms: string;
   notes: string;
   rating: number;
@@ -28,7 +28,7 @@ export interface VendorClientRecord {
 }
 
 export interface CreateVendorClientPayload {
-  type: 'vendor' | 'client';
+  type: "vendor" | "client";
   entityCode: string;
   name?: string;
   email?: string;
@@ -43,38 +43,55 @@ export interface CreateVendorClientPayload {
   data?: Record<string, unknown>;
 }
 
-export async function fetchVendorClients(type?: 'vendor' | 'client'): Promise<ServiceResult<VendorClientRecord[]>> {
+export async function fetchVendorClients(
+  type?: "vendor" | "client",
+): Promise<ServiceResult<VendorClientRecord[]>> {
   try {
-    const qs = type ? `?type=${type}` : '';
-    const list = await api.get<VendorClientRecord[]>(`/api/v1/vendor-client${qs}`);
+    const qs = type ? `?type=${type}` : "";
+    const list = await api.get<VendorClientRecord[]>(
+      `/api/v1/vendor-client${qs}`,
+    );
     return { data: list ?? [], error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to load vendor/client list';
+    const message =
+      e instanceof Error ? e.message : "Failed to load vendor/client list";
     return { data: [], error: message, success: false };
   }
 }
 
-export async function fetchVendorClientById(id: string): Promise<ServiceResult<VendorClientRecord>> {
+export async function fetchVendorClientById(
+  id: string,
+): Promise<ServiceResult<VendorClientRecord>> {
   try {
-    const row = await api.get<VendorClientRecord>(`/api/v1/vendor-client/${id}`);
+    const row = await api.get<VendorClientRecord>(
+      `/api/v1/vendor-client/${id}`,
+    );
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to load vendor/client';
+    const message =
+      e instanceof Error ? e.message : "Failed to load vendor/client";
     return { data: null, error: message, success: false };
   }
 }
 
-export async function fetchNextCode(type: 'vendor' | 'client'): Promise<ServiceResult<string>> {
+export async function fetchNextCode(
+  type: "vendor" | "client",
+): Promise<ServiceResult<string>> {
   try {
-    const res = await api.get<{ nextCode: string }>(`/api/v1/vendor-client/next-code?type=${type}`);
-    return { data: res?.nextCode ?? '', error: null, success: true };
+    const res = await api.get<{ nextCode: string }>(
+      `/api/v1/vendor-client/next-code?type=${type}`,
+    );
+    return { data: res?.nextCode ?? "", error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to generate next code';
-    return { data: '', error: message, success: false };
+    const message =
+      e instanceof Error ? e.message : "Failed to generate next code";
+    return { data: "", error: message, success: false };
   }
 }
 
-export async function createVendorClient(payload: CreateVendorClientPayload): Promise<ServiceResult<VendorClientRecord>> {
+export async function createVendorClient(
+  payload: CreateVendorClientPayload,
+): Promise<ServiceResult<VendorClientRecord>> {
   try {
     const body = {
       type: payload.type,
@@ -86,35 +103,52 @@ export async function createVendorClient(payload: CreateVendorClientPayload): Pr
       country: payload.country,
       city: payload.city,
       category: payload.category,
-      status: payload.status ?? 'pending',
+      status: payload.status ?? "pending",
       paymentTerms: payload.paymentTerms,
       notes: payload.notes,
       data: payload.data ?? {},
     };
-    const row = await api.post<VendorClientRecord>('/api/v1/vendor-client', body);
+    const row = await api.post<VendorClientRecord>(
+      "/api/v1/vendor-client",
+      body,
+    );
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to create vendor/client';
-    return { data: null, error: message, success: false };
+    const err = e as Error & { status?: number; body?: { error?: string } };
+    const message =
+      err.body?.error ?? (err instanceof Error ? err.message : "Failed to create vendor/client");
+    return { data: null, error: { code: "ERROR", message, timestamp: new Date().toISOString() }, success: false };
   }
 }
 
-export async function updateVendorClient(id: string, payload: Partial<CreateVendorClientPayload> & { data?: Record<string, unknown> }): Promise<ServiceResult<VendorClientRecord>> {
+export async function updateVendorClient(
+  id: string,
+  payload: Partial<CreateVendorClientPayload> & {
+    data?: Record<string, unknown>;
+  },
+): Promise<ServiceResult<VendorClientRecord>> {
   try {
-    const row = await api.put<VendorClientRecord>(`/api/v1/vendor-client/${id}`, payload);
+    const row = await api.put<VendorClientRecord>(
+      `/api/v1/vendor-client/${id}`,
+      payload,
+    );
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to update vendor/client';
+    const message =
+      e instanceof Error ? e.message : "Failed to update vendor/client";
     return { data: null, error: message, success: false };
   }
 }
 
-export async function deleteVendorClient(id: string): Promise<ServiceResult<null>> {
+export async function deleteVendorClient(
+  id: string,
+): Promise<ServiceResult<null>> {
   try {
     await api.delete(`/api/v1/vendor-client/${id}`);
     return { data: null, error: null, success: true };
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Failed to delete vendor/client';
+    const message =
+      e instanceof Error ? e.message : "Failed to delete vendor/client";
     return { data: null, error: message, success: false };
   }
 }

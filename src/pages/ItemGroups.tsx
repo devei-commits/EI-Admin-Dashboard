@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
 import {
   fetchItemGroups,
+  fetchNextItemGroupCode,
   createItemGroup,
   updateItemGroup,
   type ItemGroupRecord,
   type CreateItemGroupPayload,
+  type ItemGroupAlternate,
 } from '../services/itemGroups.service';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
@@ -16,6 +18,7 @@ const EMPTY_FORM = {
   name: '',
   type: 'RM' as 'RM' | 'PM',
   primaryItemId: '',
+  code: '',
   icon: '🔗',
   description: '',
   rationale: '',
@@ -33,7 +36,7 @@ const ItemGroups: React.FC = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [selectedGroup, setSelectedGroup] = useState<ItemGroupRecord | null>(null);
   const [editingGroup, setEditingGroup] = useState<ItemGroupRecord | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; description: string; purpose: string; notes: string; status: string; member_ids: number[] }>({ name: '', description: '', purpose: '', notes: '', status: 'Active', member_ids: [] });
+  const [editForm, setEditForm] = useState<{ name: string; description: string; purpose: string; notes: string; status: string; member_ids: number[]; proposedAlternates: ItemGroupAlternate[] }>({ name: '', description: '', purpose: '', notes: '', status: 'Active', member_ids: [], proposedAlternates: [] });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -59,11 +62,16 @@ const ItemGroups: React.FC = () => {
     return rawMaterials.map(r => ({ id: r.id, name: r.name || r.code }));
   }, [form.type, rawMaterials, packMaterials]);
 
+  useEffect(() => {
+    if (!showCreateModal) return;
+    fetchNextItemGroupCode(form.type).then(res => {
+      if (res.success && res.data?.nextCode) setForm(f => ({ ...f, code: res.data!.nextCode }));
+    });
+  }, [showCreateModal, form.type]);
+
   const handleCreateGroup = async () => {
     if (!form.name.trim()) return;
-    const sameTypeCount = itemGroups.filter(g => g.type === form.type).length;
-    const prefix = form.type === 'PM' ? 'IG-PM' : 'IG';
-    const code = `${prefix}-${String(sameTypeCount + 1).padStart(3, '0')}`;
+    const code = form.code?.trim() || (form.type === 'PM' ? 'IG-PM-001' : 'IG-001');
     const member_ids = form.primaryItemId ? [parseInt(form.primaryItemId, 10)] : [];
     const payload: CreateItemGroupPayload = {
       code,
@@ -89,6 +97,16 @@ const ItemGroups: React.FC = () => {
 
   const openEdit = (group: ItemGroupRecord) => {
     setEditingGroup(group);
+    const alts = Array.isArray(group.proposedAlternates) ? group.proposedAlternates : [];
+    const normalized = alts.map(a => ({
+      ...a,
+      id: a.id || String(a.item_id ?? ''),
+      item_id: a.item_id ?? (a.id != null ? parseInt(String(a.id), 10) : 0),
+      code: a.code ?? '',
+      name: a.name ?? '',
+      notes: a.notes ?? '',
+      status: (a.status === 'under-review' ? 'under-review' : 'proposed') as 'proposed' | 'under-review',
+    }));
     setEditForm({
       name: group.name,
       description: group.description || '',
@@ -96,6 +114,7 @@ const ItemGroups: React.FC = () => {
       notes: group.notes || '',
       status: group.status || 'Active',
       member_ids: group.member_ids ? [...group.member_ids] : [],
+      proposedAlternates: normalized,
     });
   };
 
@@ -105,11 +124,34 @@ const ItemGroups: React.FC = () => {
     return rawMaterials.map(r => ({ id: parseInt(r.id, 10), code: r.code, name: r.name || r.code }));
   }, [editingGroup, rawMaterials, packMaterials]);
 
+  /** RM/PM items that can be added as proposed alternates (not already approved members, not already in proposed list). */
+  const availableAlternatesForEdit = useMemo(() => {
+    const memberIds = new Set(editForm.member_ids);
+    const alternateIds = new Set(editForm.proposedAlternates.map(a => a.item_id));
+    return availableMembersForEdit.filter(m => !memberIds.has(m.id) && !alternateIds.has(m.id));
+  }, [availableMembersForEdit, editForm.member_ids, editForm.proposedAlternates]);
+
   const toggleEditMember = (id: number) => {
     setEditForm(prev => ({
       ...prev,
       member_ids: prev.member_ids.includes(id) ? prev.member_ids.filter(m => m !== id) : [...prev.member_ids, id],
     }));
+  };
+
+  const updateEditAlternate = (index: number, patch: Partial<ItemGroupAlternate>) => {
+    setEditForm(prev => ({
+      ...prev,
+      proposedAlternates: prev.proposedAlternates.map((a, i) => i === index ? { ...a, ...patch } : a),
+    }));
+  };
+  const addEditAlternate = (item: { id: number; code: string; name: string }) => {
+    setEditForm(prev => ({
+      ...prev,
+      proposedAlternates: [...prev.proposedAlternates, { id: String(item.id), item_id: item.id, code: item.code, name: item.name, notes: '', status: 'proposed' as const }],
+    }));
+  };
+  const removeEditAlternate = (index: number) => {
+    setEditForm(prev => ({ ...prev, proposedAlternates: prev.proposedAlternates.filter((_, i) => i !== index) }));
   };
 
   const handleSaveEdit = async () => {
@@ -122,6 +164,7 @@ const ItemGroups: React.FC = () => {
       notes: editForm.notes,
       status: editForm.status,
       member_ids: editForm.member_ids,
+      proposedAlternates: editForm.proposedAlternates.map(a => ({ item_id: a.item_id, notes: a.notes, status: a.status })),
     });
     setSaving(false);
     if (res.success && res.data) {
@@ -356,6 +399,48 @@ const ItemGroups: React.FC = () => {
                       {availableMembersForEdit.length === 0 && <p className="text-xs text-gray-400 p-2">No {editingGroup.type === 'RM' ? 'raw' : 'pack'} materials in DB.</p>}
                     </div>
                   </div>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-2">Proposed alternates</h3>
+                    <p className="text-[11px] text-gray-500 mb-2">Select {editingGroup.type === 'RM' ? 'raw materials' : 'pack materials'} from the list to add as proposed alternates.</p>
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {editForm.proposedAlternates.map((alt, idx) => (
+                        <div key={`${alt.item_id}-${idx}`} className="border border-amber-200 rounded-lg p-2 bg-amber-50/50 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-mono text-amber-800">{alt.code}</span>
+                            <span className="text-sm text-gray-800 truncate flex-1 min-w-0">{alt.name}</span>
+                            <button type="button" onClick={() => removeEditAlternate(idx)} className="p-1.5 rounded hover:bg-red-100 text-red-600 shrink-0" title="Remove">×</button>
+                          </div>
+                          <input value={alt.notes} onChange={e => updateEditAlternate(idx, { notes: e.target.value })} placeholder="Notes" className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded" />
+                          <select value={alt.status} onChange={e => updateEditAlternate(idx, { status: e.target.value as 'proposed' | 'under-review' })} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded bg-white">
+                            <option value="proposed">Proposed</option>
+                            <option value="under-review">Under review</option>
+                          </select>
+                        </div>
+                      ))}
+                      {editForm.proposedAlternates.length === 0 && <p className="text-xs text-gray-400 p-2">No proposed alternates. Add from the list below.</p>}
+                    </div>
+                    {availableAlternatesForEdit.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select
+                          className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700"
+                          value=""
+                          onChange={e => {
+                            const id = e.target.value ? parseInt(e.target.value, 10) : 0;
+                            const item = availableAlternatesForEdit.find(m => m.id === id);
+                            if (item) addEditAlternate(item);
+                            e.target.value = '';
+                          }}
+                        >
+                          <option value="">— Add {editingGroup?.type === 'PM' ? 'pack material' : 'raw material'} —</option>
+                          {availableAlternatesForEdit.map(m => (
+                            <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-gray-400">No more {editingGroup?.type === 'RM' ? 'raw materials' : 'pack materials'} available to add as alternates.</p>
+                    )}
+                  </div>
                 </>
               ) : (
                 <>
@@ -446,13 +531,17 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Type</label>
-                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '' }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
                     <option value="RM">RM</option>
                     <option value="PM">PM</option>
                   </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Code</label>
+                  <input value={form.code} readOnly className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600" placeholder="From server" />
+                </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Primary Item</label>
                   <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">

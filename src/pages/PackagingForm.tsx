@@ -184,42 +184,10 @@ const PackagingRefactored: React.FC = () => {
   const [tempVendor, setTempVendor] = useState({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
   const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
 
-  // Load draft (single toast per session)
-  useEffect(() => {
-    const draft = localStorage.getItem('packaging_draft_new');
-    if (!draft) return;
-
-    try {
-      const parsed = JSON.parse(draft);
-      setFormData(parsed);
-      if (parsed.itemCode) setGeneratedCode(parsed.itemCode);
-
-      const toastFlagKey = 'packaging_draft_toast_shown';
-      if (!sessionStorage.getItem(toastFlagKey)) {
-        sessionStorage.setItem(toastFlagKey, '1');
-        addToast('info', 'Packaging draft loaded');
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }, [addToast]);
-
-  // Auto-save
-  useEffect(() => {
-    if (!autoSaveOn) return;
-    const timer = setInterval(() => {
-      if (Object.values(formData).some(v => Boolean(v))) {
-        doSave(true);
-      }
-    }, 30000);
-    return () => clearInterval(timer);
-  }, [formData, autoSaveOn]);
-
   const doSave = (silent = false) => {
-    localStorage.setItem('packaging_draft_new', JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }));
     const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     setLastSaved(now);
-    if (!silent) addToast('success', 'Draft saved!');
+    if (!silent) addToast('success', 'Draft saved locally (session only)');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -314,7 +282,6 @@ const PackagingRefactored: React.FC = () => {
 
   const handleReset = () => {
     if (window.confirm('Reset all form data? This cannot be undone.')) {
-      localStorage.removeItem('packaging_draft_new');
       setGeneratedCode('');
       setFormData(prev => ({ ...prev, itemCode: '', pmCategory: '', status: 'Draft', version: 'v1.0' }));
       setCurrentSection(0);

@@ -174,16 +174,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  }, [editingId]);
 
  useEffect(() => {
-  const timer = setInterval(() => {
-   if (Object.values(formData).some(v => Boolean(v))) {
-    const draftData = { formData, documents, pocs, banks, vendorItems };
-    localStorage.setItem(draftKey, JSON.stringify(draftData));
-   }
-  }, 30000);
-  return () => clearInterval(timer);
- }, [formData, documents, pocs, banks, vendorItems, draftKey]);
-
- useEffect(() => {
   if (existingVendor) {
    const data = (existingVendor.data || {}) as any;
      const entityCode =
@@ -220,21 +210,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    setCurrentStage(0);
    return;
   }
-
-  const draft = localStorage.getItem(draftKey);
-  if (draft) {
-   try {
-    const parsed = JSON.parse(draft);
-    if (parsed.formData) setFormData(parsed.formData);
-    if (parsed.documents) setDocuments(parsed.documents);
-    if (parsed.pocs) setPocs(parsed.pocs);
-    if (parsed.banks) setBanks(parsed.banks);
-    if (parsed.vendorItems) setVendorItems(parsed.vendorItems);
-   } catch (_e) {
-    /* ignored */
-   }
-  }
- }, [existingVendor, draftKey]);
+ }, [existingVendor]);
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { name, value } = e.target;
@@ -402,7 +378,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    });
    if (res.success) {
     addToast('success', 'Vendor updated successfully!');
-    localStorage.removeItem(draftKey);
     setIsSaving(false);
     onSaved?.();
     return;
@@ -429,7 +404,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
   if (res.success) {
    addToast('success', 'Vendor created successfully!');
-   localStorage.removeItem(draftKey);
    setFormData({
     setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '',
     legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
@@ -561,7 +535,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </div>
         <div>
          <label className={labelClass}>Next Code Preview</label>
-         <input type="text" value={formData.entityCode || `EI-VEN-${(parseInt(localStorage.getItem('vendor_counter') || '0') + 1).toString().padStart(5, '0')}`} readOnly className={`${inputClass} bg-gray-50`} />
+         <input type="text" value={formData.entityCode || '— Generate to get code —'} readOnly className={`${inputClass} bg-gray-50`} />
         </div>
        </div>
        <div className="flex gap-2 flex-wrap">

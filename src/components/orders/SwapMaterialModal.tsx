@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useItems } from '../../context/ItemsContext';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext';
+import { fetchRawMaterialsList } from '../../services/rawMaterials.service';
 import { ArrowRightLeft } from 'lucide-react';
 import { UnifiedModal } from '../ui/UnifiedComponents';
 
@@ -24,9 +24,8 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
   onClose,
   onSwapApplied
 }) => {
-  const { items } = useItems();
   const { addToast } = useToast();
-  
+  const [rawMaterials, setRawMaterials] = useState<Array<{ id: string; name: string }>>([]);
   const [formData, setFormData] = useState({
     toMaterial: '',
     swapRatio: 1.0,
@@ -34,13 +33,15 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
     approvedBy: ''
   });
 
-  // Filter items to show only same category materials as alternatives
-  const availableMaterials = items
-    .filter(item => 
-      item.type === 'raw-material' && 
-      item.name !== material.itemName
-    )
-    .map(item => item.name)
+  useEffect(() => {
+    fetchRawMaterialsList().then(list => {
+      setRawMaterials(list?.map(r => ({ id: r.id, name: r.name || r.code })) ?? []);
+    }).catch(() => setRawMaterials([]));
+  }, []);
+
+  const availableMaterials = rawMaterials
+    .filter(r => r.name !== material.itemName)
+    .map(r => r.name)
     .sort();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {

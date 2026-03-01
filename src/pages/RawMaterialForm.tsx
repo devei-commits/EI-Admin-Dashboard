@@ -4,7 +4,6 @@ import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
-import { useAutoSave } from '../hooks/useAutoSave';
 import { fetchRawMaterialsList, createRawMaterial, type RawMaterialRecord } from '../services/rawMaterials.service';
 
 const RawMaterialRefactored: React.FC = () => {
@@ -195,26 +194,6 @@ const RawMaterialRefactored: React.FC = () => {
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
 
-useAutoSave('raw_material_draft_new', formData);
-
-// Load draft on mount (single toast per session)
-useEffect(() => {
- const draft = localStorage.getItem('raw_material_draft_new');
- if (!draft) return;
-
- try {
-  setFormData(JSON.parse(draft));
-
-  const toastFlagKey = 'raw_material_draft_toast_shown';
-  if (!sessionStorage.getItem(toastFlagKey)) {
-   sessionStorage.setItem(toastFlagKey, '1');
-   addToast('info', 'Raw Material draft loaded');
-  }
- } catch {
-  // ignore parse errors
- }
-}, [addToast]);
-
  const stages = [
   'Primary Info',
   'QC Categorisation & Coding',
@@ -334,7 +313,6 @@ useEffect(() => {
   try {
    await createRawMaterial(formData as Record<string, unknown>);
    addToast('success', 'Raw Material saved successfully!');
-   localStorage.removeItem('raw_material_draft_new');
    setDashboardRefreshKey(k => k + 1);
    setPageTab('dashboard');
   } catch (err) {
@@ -872,8 +850,7 @@ if (pageTab === 'dashboard') {
    primaryFields={getPrimaryFields('rawMaterial')}
    onFillMock={() => setFormData(RM_MOCK_FORM)}
    onSave={() => {
-    localStorage.setItem('raw_material_draft_new', JSON.stringify(formData));
-    addToast('success', 'Draft saved!');
+    addToast('success', 'Draft saved (session only)');
    }}
    onSubmit={handleSubmit}
   >

@@ -15,8 +15,6 @@ import {
 } from '../services/salesPurchase.service';
 import { useToast } from '../context/ToastContext';
 
-const STORAGE_KEY = 'eisthetic_sales_purchase_orders';
-
 const _getStatusColor = (status: string) => {
   switch (status) {
     case 'pending': return 'bg-yellow-400';
@@ -54,15 +52,8 @@ const SalesAndPurchase: React.FC = () => {
       setUseApi(true);
     } else {
       setUseApi(false);
-      const savedOrders = localStorage.getItem(STORAGE_KEY);
-      if (savedOrders) {
-        try {
-          setOrders(JSON.parse(savedOrders));
-        } catch (_error) {
-          /* ignored */
-        }
-      }
-      if (!soRes.success || !poRes.success) addToast('error', 'Could not load orders from server; using local data.');
+      setOrders([]);
+      if (!soRes.success || !poRes.success) addToast('error', 'Could not load orders from server.');
     }
     setLoading(false);
   }, [addToast]);
@@ -95,10 +86,6 @@ const SalesAndPurchase: React.FC = () => {
     }
   }, [state.orders?.salesOrders, useApi]);
 
-  // Persist to localStorage when not using API
-  useEffect(() => {
-    if (!useApi) localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-  }, [orders, useApi]);
 
   const [formData, setFormData] = useState({
     customerName: '',
@@ -407,46 +394,8 @@ const SalesAndPurchase: React.FC = () => {
     addToast('success', 'Mock values filled for Purchase Order. Edit as needed and save.');
   };
 
-  const syncToOrderHub = (order: Order) => {
-    try {
-      // Get existing OrderHub orders
-      const orderHubOrders = JSON.parse(localStorage.getItem('eisthetic_order_hub_orders') || '[]');
-
-      // Create an OrderHub order from SO/PO
-      const orderHubOrder = {
-        id: order.id,
-        soPoId: order.id, // Link back to SO/PO
-        orderNo: order.orderId,
-        orderType: order.type,
-        sku: order.items[0]?.sku || 'N/A',
-        itemName: order.items[0]?.productName || 'N/A',
-        qty: order.items[0]?.quantity || 0,
-        unitRate: order.items[0]?.rate || '0.00',
-        odrDate: order.orderDate,
-        estDelDate: order.formData.expectedShipmentDate || '',
-        comDate: '',
-        licenseArch: 'PENDING',
-        licenseEI: 'PENDING',
-        stage: 'Stage 1: Review',
-        currentStatus: 'PENDING',
-        pocForCurrentStatus: 'S1',
-        comments: order.formData.customerNotes || order.formData.termsConditions || '',
-        currentStage: 1,
-        stageProgress: {
-          1: 'in-progress',
-          2: 'pending',
-          3: 'pending',
-          4: 'pending',
-          5: 'pending',
-          6: 'pending'
-        }
-      };
-
-      orderHubOrders.push(orderHubOrder);
-      localStorage.setItem('eisthetic_order_hub_orders', JSON.stringify(orderHubOrders));
-    } catch (_error) {
-      /* ignored */
-    }
+  const syncToOrderHub = (_order: Order) => {
+    // No localStorage: pure backend integration; Order Hub would use API when available
   };
 
   const openDetailModal = (order: Order) => {

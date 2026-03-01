@@ -26,7 +26,7 @@ const VendorClientSection: React.FC<{ title: string; icon?: string; children: Re
 );
 
 const VendorClient: React.FC = () => {
- const { vendorClients: contextList, deleteVendorClient, updateVendorClient } = useVendorClient();
+ const { deleteVendorClient, updateVendorClient } = useVendorClient();
  const { addToast } = useToast();
  const [apiVendors, setApiVendors] = useState<VendorClientType[]>([]);
  const [apiClients, setApiClients] = useState<VendorClientType[]>([]);
@@ -54,7 +54,7 @@ const VendorClient: React.FC = () => {
   loadFromApi();
  }, [loadFromApi]);
 
- const vendorClients = useApi ? [...apiVendors, ...apiClients] : contextList;
+ const vendorClients = [...apiVendors, ...apiClients];
  const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master' | 'vendor-form' | 'client-form'>('vendor-master');
  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
  const [editingClientId, setEditingClientId] = useState<string | null>(null);

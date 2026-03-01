@@ -314,7 +314,6 @@ const BOMRefactored: React.FC = () => {
 
     const result = await createBOM(payload);
     if (result.success && result.data) {
-      localStorage.removeItem('bom_draft_new');
       addToast('success', 'BOM saved successfully!');
       navigate('/bom');
     } else {
@@ -470,10 +469,7 @@ const BOMRefactored: React.FC = () => {
       primaryFields={getPrimaryFields('bom')}
       onFillMock={() => setFormData(BOM_MOCK_FORM)}
       onReset={() => setFormData(emptyBomForm())}
-      onSave={() => {
-        localStorage.setItem('bom_draft_new', JSON.stringify(formData));
-        addToast('success', 'Draft saved!');
-      }}
+      onSave={() => addToast('success', 'Draft saved (session only)')}
       onSubmit={handleSubmit}
     >
       {renderStageContent()}

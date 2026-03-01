@@ -16,11 +16,16 @@ export interface ItemGroupMember {
 
 export interface ItemGroupAlternate {
   id: string;
+  item_id: number; // raw_material.id or pack_material.id
+  code: string;
   name: string;
   notes: string;
   status: 'proposed' | 'under-review';
   ratio?: number;
 }
+
+/** Payload shape when sending proposed alternates to the API (item_id + optional notes/status). */
+export type ProposedAlternateInput = { item_id: number; notes?: string; status?: 'proposed' | 'under-review' };
 
 export interface ItemGroupRecord {
   id: string;
@@ -50,6 +55,16 @@ export interface CreateItemGroupPayload {
   notes?: string;
   member_ids?: number[];
   proposedAlternates?: ItemGroupAlternate[];
+}
+
+export async function fetchNextItemGroupCode(type: 'RM' | 'PM'): Promise<ServiceResult<{ nextCode: string }>> {
+  try {
+    const res = await api.get<{ nextCode: string }>(`/api/v1/item-groups/next-code?type=${type}`);
+    return { data: res ?? { nextCode: type === 'PM' ? 'IG-PM-001' : 'IG-001' }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to get next code';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
 }
 
 export async function fetchItemGroups(type?: 'RM' | 'PM'): Promise<ServiceResult<ItemGroupRecord[]>> {
@@ -95,7 +110,9 @@ export async function createItemGroup(payload: CreateItemGroupPayload): Promise<
   }
 }
 
-export async function updateItemGroup(id: string, payload: Partial<CreateItemGroupPayload>): Promise<ServiceResult<ItemGroupRecord>> {
+export type UpdateItemGroupPayload = Partial<Omit<CreateItemGroupPayload, 'proposedAlternates'>> & { proposedAlternates?: ProposedAlternateInput[] };
+
+export async function updateItemGroup(id: string, payload: UpdateItemGroupPayload): Promise<ServiceResult<ItemGroupRecord>> {
   try {
     const body: Record<string, unknown> = {};
     if (payload.code !== undefined) body.code = payload.code;
