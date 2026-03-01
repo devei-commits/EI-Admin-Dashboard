@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import React from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
 
 const SalesOrders: React.FC = () => {

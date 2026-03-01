@@ -1,11 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useGlobalState } from '../context/GlobalStateContext';
 import ItemDetailModal from '../components/orders/ItemDetailModal';
 import DraftSplitModal from '../components/orders/DraftSplitModal';
-import DelayImpactModal from '../components/orders/DelayImpactModal';
 import SalesTab from './salesPurchase/SalesTab';
 import PurchaseTab from './salesPurchase/PurchaseTab';
 import { OrderStatus, Order } from '../types/salesPurchase.types';
+import {
+  fetchSalesOrders,
+  fetchPurchaseOrders,
+  createSalesOrder,
+  createPurchaseOrder,
+  updateSalesOrder,
+  updatePurchaseOrder,
+} from '../services/salesPurchase.service';
+import { useToast } from '../context/ToastContext';
 
 const STORAGE_KEY = 'eisthetic_sales_purchase_orders';
 
@@ -20,7 +28,10 @@ const _getStatusColor = (status: string) => {
 
 const SalesAndPurchase: React.FC = () => {
   const { state, dispatch } = useGlobalState();
+  const { addToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [useApi, setUseApi] = useState(true);
   const [activeTab, setActiveTab] = useState<'sales' | 'purchase'>('sales');
   const [viewMode, setViewMode] = useState<'dashboard' | 'form' | 'procurement'>('dashboard');
   const [orderType, setOrderType] = useState<'SO' | 'PO' | null>(null);
@@ -33,18 +44,36 @@ const SalesAndPurchase: React.FC = () => {
   const [itemDetailModalId, setItemDetailModalId] = useState<string | null>(null);
   const [draftSplitModalId, setDraftSplitModalId] = useState<string | null>(null);
   const [delayImpactModalPoId, setDelayImpactModalPoId] = useState<string | null>(null);
+  const [editingDraftOrder, setEditingDraftOrder] = useState<Order | null>(null);
 
-  // Load orders from localStorage on mount AND merge with global state
-  useEffect(() => {
-    const savedOrders = localStorage.getItem(STORAGE_KEY);
-    if (savedOrders) {
-      try {
-        setOrders(JSON.parse(savedOrders));
-      } catch (_error) {
-        /* ignored */
+  const loadFromApi = useCallback(async () => {
+    setLoading(true);
+    const [soRes, poRes] = await Promise.all([fetchSalesOrders(), fetchPurchaseOrders()]);
+    if (soRes.success && poRes.success) {
+      setOrders([...(soRes.data ?? []), ...(poRes.data ?? [])]);
+      setUseApi(true);
+    } else {
+      setUseApi(false);
+      const savedOrders = localStorage.getItem(STORAGE_KEY);
+      if (savedOrders) {
+        try {
+          setOrders(JSON.parse(savedOrders));
+        } catch (_error) {
+          /* ignored */
+        }
       }
+      if (!soRes.success || !poRes.success) addToast('error', 'Could not load orders from server; using local data.');
     }
-    // Also merge global state sales orders into the local list if they exist
+    setLoading(false);
+  }, [addToast]);
+
+  // Load from API on mount, else fallback to localStorage + global state
+  useEffect(() => {
+    loadFromApi();
+  }, [loadFromApi]);
+
+  useEffect(() => {
+    if (!useApi) return;
     if (state.orders?.salesOrders?.length > 0) {
       const globalSOs: Order[] = state.orders.salesOrders.map((so: any) => ({
         id: so.so,
@@ -64,12 +93,12 @@ const SalesAndPurchase: React.FC = () => {
         return [...prev, ...newOrders];
       });
     }
-  }, [state.orders?.salesOrders]);
+  }, [state.orders?.salesOrders, useApi]);
 
-  // Save orders to localStorage whenever they change
+  // Persist to localStorage when not using API
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-  }, [orders]);
+    if (!useApi) localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  }, [orders, useApi]);
 
   const [formData, setFormData] = useState({
     customerName: '',
@@ -146,71 +175,236 @@ const SalesAndPurchase: React.FC = () => {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleSaveOrder = (draft: boolean) => {
-    if (!formData.orderId || !formData.orderDate) {
-      alert('Please fill in required fields (Order ID and Date)');
+  const handleSaveOrder = async (draft: boolean) => {
+    const orderIdVal = orderType === 'PO' ? (formData.poNumber || formData.orderId) : formData.orderId;
+    if (!orderIdVal?.trim() || !formData.orderDate) {
+      addToast('error', orderType === 'PO' ? 'Please fill PO Number and Date' : 'Please fill in Order ID and Date');
       return;
     }
 
-    const orderId = `${orderType}-${Date.now()}`;
+    const status = draft ? 'Draft' : 'Submitted';
+    const orderStatus = editingDraftOrder?.orderStatus ?? { orderStatus: '', invoiced: '', payment: '', packed: '', shipped: '', deliveryMethod: '' };
+
+    const payload = {
+      orderId: orderIdVal.trim(),
+      orderDate: formData.orderDate,
+      expectedShipmentDate: formData.expectedShipmentDate || undefined,
+      reference: formData.reference || undefined,
+      paymentTerms: formData.paymentTerms || undefined,
+      status,
+      formData: { ...formData, orderId: orderIdVal },
+      items: [...items],
+      orderStatus,
+    };
+
+    if (useApi && editingDraftOrder) {
+      const numericId = editingDraftOrder.id.replace(/^(SO|PO)-/, '');
+      if (editingDraftOrder.type === 'SO') {
+        const res = await updateSalesOrder(numericId, { ...payload, customerName: formData.customerName, branch: formData.branch });
+        if (res.success) {
+          await loadFromApi();
+          addToast('success', 'Draft sales order updated.');
+          resetFormAndClose();
+          return;
+        }
+        addToast('error', res.error || 'Failed to update draft');
+        return;
+      }
+      if (editingDraftOrder.type === 'PO') {
+        const res = await updatePurchaseOrder(numericId, { ...payload, vendorName: formData.vendorName, branch: formData.branch });
+        if (res.success) {
+          await loadFromApi();
+          addToast('success', 'Draft purchase order updated.');
+          resetFormAndClose();
+          return;
+        }
+        addToast('error', res.error || 'Failed to update draft');
+        return;
+      }
+    }
+
+    if (useApi) {
+      if (orderType === 'SO') {
+        const res = await createSalesOrder({ ...payload, customerName: formData.customerName, branch: formData.branch });
+        if (res.success && res.data) {
+          await loadFromApi();
+          if (!draft) syncToOrderHub(res.data);
+          addToast('success', `Sales order ${draft ? 'saved as draft' : 'submitted'}.`);
+          resetFormAndClose();
+          return;
+        }
+        addToast('error', res.error || 'Failed to create sales order');
+        return;
+      }
+      if (orderType === 'PO') {
+        const res = await createPurchaseOrder({ ...payload, vendorName: formData.vendorName, branch: formData.branch });
+        if (res.success && res.data) {
+          await loadFromApi();
+          if (!draft) syncToOrderHub(res.data);
+          addToast('success', `Purchase order ${draft ? 'saved as draft' : 'submitted'}.`);
+          resetFormAndClose();
+          return;
+        }
+        addToast('error', res.error || 'Failed to create purchase order');
+        return;
+      }
+    }
 
     const newOrder: Order = {
-      id: orderId,
+      id: `${orderType}-${Date.now()}`,
       type: orderType as 'SO' | 'PO',
-      orderId: formData.orderId,
+      orderId: orderIdVal,
       customerName: formData.customerName,
       vendorName: formData.vendorName,
       orderDate: formData.orderDate,
-      status: draft ? 'Draft' : 'Submitted',
-      items: items,
-      formData: formData,
-      orderStatus: {
-        orderStatus: '',
-        invoiced: '',
-        payment: '',
-        packed: '',
-        shipped: '',
-        deliveryMethod: '',
-      },
+      status,
+      items: [...items],
+      formData: { ...formData },
+      orderStatus,
     };
+    setOrders(prev => [...prev, newOrder]);
+    if (!draft) syncToOrderHub(newOrder);
+    addToast('success', `${orderType} ${draft ? 'saved as draft' : 'submitted'}.`);
+    resetFormAndClose();
+  };
 
-    // Save to SalesAndPurchase
-    setOrders([...orders, newOrder]);
+  const initialFormData = {
+    customerName: '',
+    vendorName: '',
+    branch: '',
+    orderId: '',
+    reference: '',
+    orderDate: '',
+    expectedShipmentDate: '',
+    paymentTerms: '',
+    poNumber: '',
+    scheduledQty: '',
+    bundleNumber: '',
+    bmr: '',
+    bpl: '',
+    bundleQty: '',
+    warehouseInversionNumber: '',
+    discount: '',
+    shippingCharges: '',
+    roundOff: '',
+    customerNotes: '',
+    termsConditions: '',
+  };
 
-    // If submitted (not draft), also sync to OrderHub
-    if (!draft) {
-      syncToOrderHub(newOrder);
-    }
-
-    alert(`${orderType} ${draft ? 'saved as draft' : 'submitted'} successfully!`);
-
-    // Reset form
-    setFormData({
-      customerName: '',
-      vendorName: '',
-      branch: '',
-      orderId: '',
-      reference: '',
-      orderDate: '',
-      expectedShipmentDate: '',
-      paymentTerms: '',
-      poNumber: '',
-      scheduledQty: '',
-      bundleNumber: '',
-      bmr: '',
-      bpl: '',
-      bundleQty: '',
-      warehouseInversionNumber: '',
-      discount: '',
-      shippingCharges: '',
-      roundOff: '',
-      customerNotes: '',
-      termsConditions: '',
-    });
+  const resetFormAndClose = () => {
+    setFormData(initialFormData);
     setItems([]);
+    setEditingDraftOrder(null);
     setOrderType(null);
     setViewMode('dashboard');
     setActiveTab(orderType === 'SO' ? 'sales' : 'purchase');
+  };
+
+  /** Open the create form pre-filled with a draft SO/PO so user can edit and save. */
+  const openDraftInForm = (order: Order) => {
+    const fd = order.formData || {};
+    const asStr = (v: unknown) => (v != null ? String(v) : '');
+    setFormData({
+      ...initialFormData,
+      ...Object.fromEntries(Object.entries(fd).map(([k, v]) => [k, asStr(v)])),
+      orderId: order.orderId || asStr(fd.orderId),
+      customerName: (order.type === 'SO' ? order.customerName : undefined) ?? asStr(fd.customerName),
+      vendorName: (order.type === 'PO' ? order.vendorName : undefined) ?? asStr(fd.vendorName),
+      branch: asStr(fd.branch ?? order.formData?.branch),
+      orderDate: order.orderDate || asStr(fd.orderDate),
+      expectedShipmentDate: (order as any).expectedShipmentDate ?? asStr(fd.expectedShipmentDate),
+      reference: asStr(fd.reference),
+      paymentTerms: asStr(fd.paymentTerms),
+      poNumber: asStr(fd.poNumber ?? fd.orderId),
+      discount: asStr(fd.discount),
+      shippingCharges: asStr(fd.shippingCharges),
+      roundOff: asStr(fd.roundOff),
+      customerNotes: asStr(fd.customerNotes),
+      termsConditions: asStr(fd.termsConditions),
+    });
+    setItems(
+      (order.items || []).map((item: any, i: number) => ({
+        id: i + 1,
+        itemName: item.itemName ?? '',
+        batchNumber: item.batchNumber ?? '',
+        expiryDate: item.expiryDate ?? '',
+        mrpUnit: item.mrpUnit ?? '',
+        mrp: item.mrp ?? '',
+        quantity: item.quantity ?? '',
+        rate: item.rate ?? '',
+        tax: item.tax ?? '',
+        ...item,
+      }))
+    );
+    setEditingDraftOrder(order);
+    setOrderType(order.type);
+    setViewMode('form');
+    setShowDetailModal(false);
+    setActiveTab(order.type === 'SO' ? 'sales' : 'purchase');
+  };
+
+  const handleFillMockValuesSO = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    setFormData(prev => ({
+      ...prev,
+      customerName: 'Customer 1',
+      branch: 'Branch A',
+      orderId: `SO-MOCK-${Date.now().toString(36).toUpperCase()}`,
+      reference: 'REF-MOCK',
+      orderDate: today,
+      expectedShipmentDate: nextWeek,
+      paymentTerms: 'NET 30',
+      poNumber: '',
+      scheduledQty: '100',
+      bundleNumber: 'BND-001',
+      bmr: 'BMR-001',
+      bpl: 'BPL-001',
+      bundleQty: '10',
+      warehouseInversionNumber: 'WH-INV-001',
+      discount: '5',
+      shippingCharges: '100',
+      roundOff: '0',
+      customerNotes: 'Mock sales order for testing.',
+      termsConditions: 'Standard terms apply.',
+    }));
+    setItems([
+      { id: 1, itemName: 'Product Alpha', batchNumber: 'B001', expiryDate: '', mrpUnit: '500', mrp: '500', quantity: '20', rate: '450', tax: '18' },
+      { id: 2, itemName: 'Product Beta', batchNumber: 'B002', expiryDate: '', mrpUnit: '300', mrp: '300', quantity: '50', rate: '280', tax: '12' },
+    ]);
+    addToast('success', 'Mock values filled for Sales Order. Edit as needed and save.');
+  };
+
+  const handleFillMockValuesPO = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    setFormData(prev => ({
+      ...prev,
+      vendorName: 'Vendor 1',
+      branch: 'Branch A',
+      orderId: '',
+      poNumber: `PO-MOCK-${Date.now().toString(36).toUpperCase()}`,
+      reference: 'REF-PO-MOCK',
+      orderDate: today,
+      expectedShipmentDate: nextWeek,
+      paymentTerms: 'NET 30',
+      scheduledQty: '200',
+      bundleNumber: 'BND-PO-001',
+      bmr: 'BMR-PO-001',
+      bpl: 'BPL-PO-001',
+      bundleQty: '25',
+      warehouseInversionNumber: 'WH-PO-001',
+      discount: '0',
+      shippingCharges: '250',
+      roundOff: '0',
+      customerNotes: 'Mock purchase order for testing.',
+      termsConditions: 'Standard PO terms.',
+    }));
+    setItems([
+      { id: 1, itemName: 'Raw Material X', batchNumber: 'RM-B01', expiryDate: '', mrpUnit: '100', mrp: '100', quantity: '100', rate: '95', tax: '18' },
+      { id: 2, itemName: 'Raw Material Y', batchNumber: 'RM-B02', expiryDate: '', mrpUnit: '80', mrp: '80', quantity: '200', rate: '75', tax: '12' },
+    ]);
+    addToast('success', 'Mock values filled for Purchase Order. Edit as needed and save.');
   };
 
   const syncToOrderHub = (order: Order) => {
@@ -273,6 +467,61 @@ const SalesAndPurchase: React.FC = () => {
       setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
     }
   };
+
+  /** Persist Order Status Tracking to backend and refresh. */
+  const handleSaveOrderStatusTracking = async () => {
+    if (!selectedOrder || !useApi) return;
+    const numericId = selectedOrder.id.replace(/^(SO|PO)-/, '');
+    const orderStatus = selectedOrder.orderStatus;
+    if (selectedOrder.type === 'SO') {
+      const res = await updateSalesOrder(numericId, { orderStatus });
+      if (res.success && res.data) {
+        await loadFromApi();
+        setSelectedOrder(res.data);
+        addToast('success', 'Order status tracking updated.');
+      } else addToast('error', res.error || 'Failed to update status');
+    } else {
+      const res = await updatePurchaseOrder(numericId, { orderStatus });
+      if (res.success && res.data) {
+        await loadFromApi();
+        setSelectedOrder(res.data);
+        addToast('success', 'Order status tracking updated.');
+      } else addToast('error', res.error || 'Failed to update status');
+    }
+  };
+
+  /** Delay modal: new expected date state and handlers */
+  const delayOrder = delayImpactModalPoId ? orders.find(o => o.id === delayImpactModalPoId) : null;
+  const [delayEstimatedDate, setDelayEstimatedDate] = useState('');
+  const handleDelayUpdate = async () => {
+    if (!delayOrder || delayOrder.type !== 'PO' || !delayEstimatedDate.trim()) {
+      addToast('error', 'Please enter an estimated delivery date.');
+      return;
+    }
+    const numericId = delayOrder.id.replace(/^PO-/, '');
+    const res = await updatePurchaseOrder(numericId, {
+      expectedShipmentDate: delayEstimatedDate.trim(),
+      formData: { ...delayOrder.formData, expectedShipmentDate: delayEstimatedDate.trim() },
+    });
+    if (res.success) {
+      await loadFromApi();
+      setDelayImpactModalPoId(null);
+      setDelayEstimatedDate('');
+      addToast('success', 'Expected delivery date updated.');
+    } else addToast('error', res.error || 'Failed to update date');
+  };
+
+  useEffect(() => {
+    if (delayOrder) {
+      const current =
+        delayOrder.expectedShipmentDate ??
+        delayOrder.formData?.expectedShipmentDate ??
+        '';
+      setDelayEstimatedDate(typeof current === 'string' ? current : '');
+    } else {
+      setDelayEstimatedDate('');
+    }
+  }, [delayImpactModalPoId, delayOrder?.id]);
 
   const filterStatuses = [
     'All',
@@ -451,7 +700,7 @@ const SalesAndPurchase: React.FC = () => {
                   setCustomField={setCustomField}
                   setSelectedFilters={setSelectedFilters}
                   setShowFiltersOff={() => setShowFilters(false)}
-                  onCreateSO={() => { setOrderType('SO'); setViewMode('form'); }}
+                  onCreateSO={() => { setEditingDraftOrder(null); setOrderType('SO'); setViewMode('form'); }}
                 />
               ) : (
                 <PurchaseTab
@@ -466,7 +715,7 @@ const SalesAndPurchase: React.FC = () => {
                   setCustomField={setCustomField}
                   setSelectedFilters={setSelectedFilters}
                   setShowFiltersOff={() => setShowFilters(false)}
-                  onCreatePO={() => { setOrderType('PO'); setViewMode('form'); }}
+                  onCreatePO={() => { setEditingDraftOrder(null); setOrderType('PO'); setViewMode('form'); }}
                   setDraftSplitModalId={setDraftSplitModalId}
                   setDelayImpactModalPoId={setDelayImpactModalPoId}
                 />
@@ -515,16 +764,27 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - SO Form */}
       {viewMode === 'form' && orderType === 'SO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-green-500 px-8 py-4 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-white">Create New Sales Order</h2>
-            <button
-              onClick={() => setOrderType(null)}
-              className="bg-white text-green-600 hover:bg-gray-100 p-2 rounded-lg transition-all shadow-md hover:shadow-lg"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="bg-green-500 px-8 py-4 flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-xl font-bold text-white">{editingDraftOrder ? 'Edit Draft Sales Order' : 'Create New Sales Order'}</h2>
+            <div className="flex items-center gap-2">
+              {!editingDraftOrder && (
+                <button
+                  type="button"
+                  onClick={handleFillMockValuesSO}
+                  className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
+                >
+                  Fill mock values
+                </button>
+              )}
+              <button
+                onClick={() => { setEditingDraftOrder(null); setOrderType(null); }}
+                className="bg-white text-green-600 hover:bg-gray-100 p-2 rounded-lg transition-all shadow-md hover:shadow-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="p-8 space-y-6 overflow-y-auto max-h-[calc(100vh-300px)]">
@@ -728,10 +988,10 @@ const SalesAndPurchase: React.FC = () => {
               Cancel
             </button>
             <button onClick={() => handleSaveOrder(true)} className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all font-medium">
-              Save as Draft
+              {editingDraftOrder ? 'Update draft' : 'Save as Draft'}
             </button>
             <button onClick={() => handleSaveOrder(false)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-medium">
-              Save & Submit
+              {editingDraftOrder ? 'Submit order' : 'Save & Submit'}
             </button>
           </div>
         </div>
@@ -740,16 +1000,27 @@ const SalesAndPurchase: React.FC = () => {
       {/* Form View - PO Form */}
       {viewMode === 'form' && orderType === 'PO' && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-blue-500 px-8 py-4 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-white">Create New Purchase Order</h2>
-            <button
-              onClick={() => setOrderType(null)}
-              className="bg-white text-blue-600 hover:bg-gray-100 p-2 rounded-lg transition-all shadow-md hover:shadow-lg"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="bg-blue-500 px-8 py-4 flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-xl font-bold text-white">{editingDraftOrder ? 'Edit Draft Purchase Order' : 'Create New Purchase Order'}</h2>
+            <div className="flex items-center gap-2">
+              {!editingDraftOrder && (
+                <button
+                  type="button"
+                  onClick={handleFillMockValuesPO}
+                  className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
+                >
+                  Fill mock values
+                </button>
+              )}
+              <button
+                onClick={() => { setEditingDraftOrder(null); setOrderType(null); }}
+                className="bg-white text-blue-600 hover:bg-gray-100 p-2 rounded-lg transition-all shadow-md hover:shadow-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="p-8 space-y-6 overflow-y-auto max-h-[calc(100vh-300px)]">
@@ -953,10 +1224,10 @@ const SalesAndPurchase: React.FC = () => {
               Cancel
             </button>
             <button onClick={() => handleSaveOrder(true)} className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-medium">
-              Save as Draft
+              {editingDraftOrder ? 'Update draft' : 'Save as Draft'}
             </button>
             <button onClick={() => handleSaveOrder(false)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium">
-              Save & Submit
+              {editingDraftOrder ? 'Submit order' : 'Save & Submit'}
             </button>
           </div>
         </div>
@@ -1133,6 +1404,17 @@ const SalesAndPurchase: React.FC = () => {
                     </select>
                   </div>
                 </div>
+                {useApi && (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={handleSaveOrderStatusTracking}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium text-sm"
+                    >
+                      Update order status in database
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Additional Info */}
@@ -1154,6 +1436,14 @@ const SalesAndPurchase: React.FC = () => {
             </div>
 
             <div className="bg-gray-50 px-8 py-4 flex justify-end gap-3 border-t border-gray-200 sticky bottom-0">
+              {selectedOrder.status === 'Draft' && (
+                <button
+                  onClick={() => openDraftInForm(selectedOrder)}
+                  className="px-6 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all font-medium"
+                >
+                  Edit in form
+                </button>
+              )}
               <button
                 onClick={() => setShowDetailModal(false)}
                 className="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-all font-medium"
@@ -1179,11 +1469,35 @@ const SalesAndPurchase: React.FC = () => {
           onClose={() => setDraftSplitModalId(null)}
         />
       )}
-      {delayImpactModalPoId && (
-        <DelayImpactModal
-          poId={delayImpactModalPoId}
-          onClose={() => setDelayImpactModalPoId(null)}
-        />
+      {delayImpactModalPoId && delayOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Update expected delivery date</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Purchase order: {delayOrder.id}</p>
+            <input
+              type="date"
+              value={delayEstimatedDate}
+              onChange={e => setDelayEstimatedDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setDelayImpactModalPoId(null); setDelayEstimatedDate(''); }}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelayUpdate}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+              >
+                Update date
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
