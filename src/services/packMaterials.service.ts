@@ -65,3 +65,45 @@ export async function fetchPackMaterialsList(search?: string): Promise<PackMater
   const list = await api.get<PackMaterialFromApi[]>(path);
   return (list ?? []).map(mapApiToRecord);
 }
+
+/**
+ * Get next code for a series prefix (e.g. EI-PM-PRI -> EI-PM-PRI-00001).
+ * Backend counts existing codes with that prefix and returns next.
+ */
+export async function fetchNextPackMaterialCode(prefix: string): Promise<string> {
+  const p = encodeURIComponent(prefix.trim());
+  const res = await api.get<{ nextCode: string }>(`/api/v1/pack-materials/next-code?prefix=${p}`);
+  return res?.nextCode ?? `${prefix}-00001`;
+}
+
+/** Payload for creating a pack material (camelCase; backend accepts snake_case too). */
+export interface CreatePackMaterialPayload {
+  code?: string;
+  itemCode?: string;
+  description?: string;
+  name?: string;
+  type?: string;
+  itemCategory?: string;
+  level?: string;
+  group?: string;
+  material?: string;
+  matBody?: string;
+  size_spec?: string;
+  specNominal?: string;
+  price_per_pc?: number;
+  pricePerPc?: number;
+  moq?: number;
+  lead_time_days?: number;
+  leadTimeDays?: number;
+  print_status?: string;
+  printStatus?: string;
+  products?: string[];
+}
+
+/**
+ * Create pack material. Returns created record.
+ */
+export async function createPackMaterial(payload: CreatePackMaterialPayload): Promise<PackMaterialRecord> {
+  const row = await api.post<PackMaterialFromApi>('/api/v1/pack-materials', payload);
+  return mapApiToRecord(row);
+}

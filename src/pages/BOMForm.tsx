@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
@@ -6,15 +7,53 @@ import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useDraftLoader } from '../hooks/useDraftLoader';
-const BOMRefactored: React.FC = () => {
-  const { addItem } = useItems();
-  const { addToast } = useToast();
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [_isSaving, _setIsSaving] = useState(false);
-  const [currentStage, setCurrentStage] = useState(0);
+import { createBOM } from '../services/bom.service';
 
-  const [formData, setFormData] = useState({
-    // Primary Info
+interface BOMFormState {
+  [key: string]: unknown;
+  bomCode: string;
+  bomSku: string;
+  bomCategory: string;
+  bomUnit: string;
+  bomHsn: string;
+  bomTaxPreference: string;
+  bomReturnable: boolean;
+  bomAssociateItems: string;
+  type: string;
+  status: string;
+  version: string;
+  client: string;
+  name: string;
+  dosage: string;
+  packSize: string;
+  site: string;
+  category: string;
+  claims: string;
+  project: string;
+  market: string;
+  createdBy: string;
+  reviewedBy: string;
+  desc: string;
+  specBulk: string;
+  specProcess: string;
+  specFg: string;
+  specPack: string;
+  specTests: string;
+  specRelease: string;
+  batch: string;
+  yield: string;
+  overage: string;
+  line: string;
+  notes: string;
+  regulatory: string;
+  phRange: string;
+  description: string;
+  rmLines: Array<{ code: string; name: string; phase: string; func: string; pct: number; uom: string; spec: string; notes: string }>;
+  pmLines: Array<{ code: string; name: string; cat: string; qty: number; uom: string; notes: string }>;
+}
+
+function emptyBomForm(): BOMFormState {
+  return {
     bomCode: '',
     bomSku: '',
     bomCategory: '',
@@ -23,8 +62,6 @@ const BOMRefactored: React.FC = () => {
     bomTaxPreference: 'Taxable',
     bomReturnable: false,
     bomAssociateItems: '',
-
-    // BOM Setup & Coding
     type: 'BULK',
     status: 'Draft',
     version: 'v1.0',
@@ -40,8 +77,6 @@ const BOMRefactored: React.FC = () => {
     createdBy: '',
     reviewedBy: '',
     desc: '',
-
-    // Specs & Yield
     specBulk: '',
     specProcess: '',
     specFg: '',
@@ -53,33 +88,77 @@ const BOMRefactored: React.FC = () => {
     overage: '',
     line: '',
     notes: '',
-
-    // Header / regulatory extras
     regulatory: '',
     phRange: '',
     description: '',
+    rmLines: [] as Array<{ code: string; name: string; phase: string; func: string; pct: number; uom: string; spec: string; notes: string }>,
+    pmLines: [] as Array<{ code: string; name: string; cat: string; qty: number; uom: string; notes: string }>,
+  };
+}
 
-    // ARRAYS (no temp fields!)
-    rmLines: [] as Array<{
-      code: string;
-      name: string;
-      phase: string;
-      func: string;
-      pct: number;
-      uom: string;
-      spec: string;
-      notes: string;
-    }>,
+/** Mock form data for BOM (Fill mock values). Matches schema used in seed. */
+const BOM_MOCK_FORM: BOMFormState = {
+  ...emptyBomForm(),
+  bomCode: 'BOM-FG-001',
+  bomSku: 'SKU-VC-SERUM-30',
+  bomCategory: 'Skincare',
+  bomUnit: 'GM',
+  bomHsn: '330499',
+  bomTaxPreference: 'Taxable',
+  bomReturnable: false,
+  bomAssociateItems: 'Sample Sachet, Gift Box',
+  type: 'FG',
+  status: 'Draft',
+  version: 'v1.0',
+  client: 'Esthetic Insights',
+  name: 'Vitamin C Serum 30ml',
+  dosage: '10% w/w',
+  packSize: '30ml',
+  site: 'Baddi Plant',
+  category: 'FMCG',
+  claims: 'Brightens skin, Reduces dark spots',
+  project: 'Project Glow',
+  market: 'India, USA',
+  createdBy: 'John Doe',
+  reviewedBy: 'Jane Smith',
+  desc: 'Vitamin C serum with niacinamide and ferulic acid. Oil-free, suitable for all skin types.',
+  specBulk: 'Clear to slightly yellow liquid; pH 3.0–3.5.',
+  specProcess: 'Cold process; add actives below 40°C.',
+  specFg: 'pH 3.0–3.5; viscosity 2000–4000 cPs.',
+  specPack: '30ml amber dropper bottle; batch code on bottom.',
+  specTests: 'Stability 3M/6M; preservative efficacy.',
+  specRelease: 'All tests pass; QA sign-off.',
+  batch: '100 KG',
+  yield: '98',
+  overage: '2',
+  line: 'Line 1',
+  notes: 'Store in cool place; avoid direct sunlight.',
+  regulatory: 'EU Compliant; ISO 22716.',
+  phRange: '3.0 - 3.5',
+  description: 'Vitamin C Serum BOM for 30ml pack',
+  rmLines: [
+    { code: 'EI-RM-BASE-001', name: 'Aqua (Purified Water)', phase: 'A', func: 'Solvent', pct: 70, uom: 'GM', spec: 'BP/EP', notes: '' },
+    { code: 'EI-RM-ACT-002', name: 'Niacinamide', phase: 'A', func: 'Active', pct: 5, uom: 'GM', spec: '98%', notes: '' },
+    { code: 'EI-RM-ACT-003', name: 'Ascorbyl Glucoside', phase: 'A', func: 'Active', pct: 10, uom: 'GM', spec: '98%', notes: '' },
+    { code: 'EI-RM-EMUL-001', name: 'Cetearyl Alcohol', phase: 'B', func: 'Emulsifier', pct: 2, uom: 'GM', spec: 'NF', notes: '' },
+    { code: 'EI-RM-PRES-001', name: 'Phenoxyethanol', phase: 'C', func: 'Preservative', pct: 0.5, uom: 'GM', spec: 'EP', notes: '' },
+  ],
+  pmLines: [
+    { code: 'EI-PM-BTL-001', name: '30ml Amber Dropper Bottle', cat: 'Primary', qty: 1, uom: 'PCS', notes: '' },
+    { code: 'EI-PM-CAP-001', name: 'Dropper Cap', cat: 'Closure', qty: 1, uom: 'PCS', notes: '' },
+    { code: 'EI-PM-LBL-001', name: 'Front Label 50x80mm', cat: 'Label', qty: 1, uom: 'PCS', notes: '' },
+  ],
+};
 
-    pmLines: [] as Array<{
-      code: string;
-      name: string;
-      cat: string;
-      qty: number;
-      uom: string;
-      notes: string;
-    }>,
-  });
+const BOMRefactored: React.FC = () => {
+  const navigate = useNavigate();
+  const { addItem: _addItem } = useItems();
+  const { addToast } = useToast();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [_isSaving, _setIsSaving] = useState(false);
+  const [currentStage, setCurrentStage] = useState(0);
+
+  const [formData, setFormData] = useState<BOMFormState>(() => emptyBomForm());
 
   // Temp fields separated
   const [tempRMLine, setTempRMLine] = useState({
@@ -183,7 +262,7 @@ const BOMRefactored: React.FC = () => {
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const validation = validatePrimaryFields(formData, 'bom');
     if (!validation.valid) {
       setErrors(validation.errors);
@@ -191,18 +270,56 @@ const BOMRefactored: React.FC = () => {
       return;
     }
 
-    const newItem = {
-      id: Date.now().toString(),
-      type: 'bom' as const,
-      name: formData.name || 'Unnamed BOM',
-      code: formData.bomCode || 'BOM-' + Date.now().toString().slice(-6),
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      data: formData,
+    const payload = {
+      bomCode: formData.bomCode,
+      bomSku: formData.bomSku || undefined,
+      bomCategory: formData.bomCategory || undefined,
+      bomUnit: formData.bomUnit || undefined,
+      bomHsn: formData.bomHsn || undefined,
+      bomTaxPreference: formData.bomTaxPreference || undefined,
+      bomReturnable: formData.bomReturnable,
+      bomAssociateItems: formData.bomAssociateItems || undefined,
+      type: formData.type || undefined,
+      status: formData.status || undefined,
+      version: formData.version || undefined,
+      client: formData.client || undefined,
+      name: formData.name || undefined,
+      dosage: formData.dosage || undefined,
+      packSize: formData.packSize || undefined,
+      site: formData.site || undefined,
+      category: formData.category || undefined,
+      claims: formData.claims || undefined,
+      project: formData.project || undefined,
+      market: formData.market || undefined,
+      createdBy: formData.createdBy || undefined,
+      reviewedBy: formData.reviewedBy || undefined,
+      desc: formData.desc || undefined,
+      specBulk: formData.specBulk || undefined,
+      specProcess: formData.specProcess || undefined,
+      specFg: formData.specFg || undefined,
+      specPack: formData.specPack || undefined,
+      specTests: formData.specTests || undefined,
+      specRelease: formData.specRelease || undefined,
+      batch: formData.batch || undefined,
+      yield: formData.yield || undefined,
+      overage: formData.overage || undefined,
+      line: formData.line || undefined,
+      notes: formData.notes || undefined,
+      regulatory: formData.regulatory || undefined,
+      phRange: formData.phRange || undefined,
+      description: formData.description || undefined,
+      rmLines: formData.rmLines?.length ? formData.rmLines : undefined,
+      pmLines: formData.pmLines?.length ? formData.pmLines : undefined,
     };
-    addItem(newItem);
-    addToast('success', 'BOM saved successfully!');
-    localStorage.removeItem('bom_draft_new');
+
+    const result = await createBOM(payload);
+    if (result.success && result.data) {
+      localStorage.removeItem('bom_draft_new');
+      addToast('success', 'BOM saved successfully!');
+      navigate('/bom');
+    } else {
+      addToast('error', result.error && typeof result.error === 'object' && 'message' in result.error ? result.error.message : 'Failed to save BOM');
+    }
   };
 
   // Stage content rendering
@@ -351,6 +468,8 @@ const BOMRefactored: React.FC = () => {
       formData={formData}
       onInputChange={handleInputChange}
       primaryFields={getPrimaryFields('bom')}
+      onFillMock={() => setFormData(BOM_MOCK_FORM)}
+      onReset={() => setFormData(emptyBomForm())}
       onSave={() => {
         localStorage.setItem('bom_draft_new', JSON.stringify(formData));
         addToast('success', 'Draft saved!');
@@ -366,7 +485,7 @@ const BOMRefactored: React.FC = () => {
 const InputField: React.FC<{
   label: string;
   id: string;
-  value: any;
+  value: string | number | boolean;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
   type?: string;
   placeholder?: string;
@@ -376,7 +495,7 @@ const InputField: React.FC<{
     <input
       type={type}
       id={id}
-      value={value || ''}
+      value={String(value ?? '')}
       onChange={onChange}
       placeholder={placeholder}
       className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -387,7 +506,7 @@ const InputField: React.FC<{
 const SelectField: React.FC<{
   label: string;
   id: string;
-  value: any;
+  value: string | number | boolean;
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   options: string[];
 }> = ({ label, id, value, onChange, options }) => (
@@ -395,7 +514,7 @@ const SelectField: React.FC<{
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
     <select
       id={id}
-      value={value || ''}
+      value={String(value ?? '')}
       onChange={onChange}
       className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
@@ -410,7 +529,7 @@ const SelectField: React.FC<{
 const TextareaField: React.FC<{
   label: string;
   id: string;
-  value: any;
+  value: string | number | boolean;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   rows?: number;
   placeholder?: string;
@@ -419,7 +538,7 @@ const TextareaField: React.FC<{
     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
     <textarea
       id={id}
-      value={value || ''}
+      value={String(value ?? '')}
       onChange={onChange}
       rows={rows}
       placeholder={placeholder}

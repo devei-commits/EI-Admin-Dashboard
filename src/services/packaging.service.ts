@@ -99,3 +99,48 @@ export async function fetchPackagingById(id: string): Promise<PackagingItem | nu
     return null;
   }
 }
+
+/** Payload for create (camelCase). */
+export interface PackagingCreatePayload {
+  packageCode?: string;
+  packageName?: string;
+  packageSKU?: string;
+  bottom?: string;
+  capType?: string;
+  bottomName?: string;
+  bottomMaterial?: string;
+  capName?: string;
+  capMaterial?: string;
+  bottomColor?: string;
+  capColor?: string;
+  bottomWeight?: string;
+  capWeight?: string;
+  dispenserVolume?: string;
+  minimumOrderQuantity?: string;
+  budget?: string;
+  comments?: string;
+  status?: 'active' | 'inactive';
+}
+
+/**
+ * Create packaging. Returns created item.
+ */
+export async function createPackaging(payload: PackagingCreatePayload): Promise<PackagingItem> {
+  const row = await api.post<PackagingItemFromApi>('/api/v1/packaging', payload);
+  return mapApiToPackagingItem(row);
+}
+
+/**
+ * Update packaging by id.
+ */
+export async function updatePackaging(id: string, payload: Partial<PackagingCreatePayload>): Promise<PackagingItem> {
+  const row = await api.put<PackagingItemFromApi>(`/api/v1/packaging/${id}`, payload);
+  return mapApiToPackagingItem(row);
+}
+
+/**
+ * Delete packaging by id.
+ */
+export async function deletePackaging(id: string): Promise<void> {
+  await api.delete(`/api/v1/packaging/${id}`);
+}

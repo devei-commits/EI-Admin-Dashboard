@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchNextPackMaterialCode, createPackMaterial, type PackMaterialRecord } from '../services/packMaterials.service';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -23,6 +23,22 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
+/** Mock form data for testing (Pack Materials / BPR form). */
+const PACKAGING_FORM_MOCK = {
+  pmCategory: 'PRI',
+  qcGroup: 'Packaging QC',
+  pkgSku: 'PKG-MOCK-001',
+  name: 'Mock 30ml Dropper Bottle',
+  level: 'Primary',
+  itemCategory: 'Bottle',
+  intendedUse: 'Serum',
+  matBody: 'PET',
+  matClosure: 'PP',
+  specNominal: '30ml',
+  colorType: 'Clear',
+  identityNotes: 'Mock data for testing',
+};
+
 const SECTIONS = [
   '0) QC / PM Categorisation',
   '1) Identity',
@@ -41,15 +57,15 @@ const SECTIONS = [
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const PackagingRefactored: React.FC = () => {
-  const { addItem } = useItems();
+  const { addItem: _addItem } = useItems(); // BPR submit posts to API; addItem unused here
   const { addToast } = useToast();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
+  const [bprRefreshKey, setBprRefreshKey] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentSection, setCurrentSection] = useState(0);
   const [autoSaveOn, setAutoSaveOn] = useState(true);
   const [lastSaved, setLastSaved] = useState<string>('—');
   const [generatedCode, setGeneratedCode] = useState('');
-  const counterRef = useRef<Record<string, number>>({});
 
   const [formData, setFormData] = useState({
     itemCode: '',
@@ -168,14 +184,6 @@ const PackagingRefactored: React.FC = () => {
   const [tempVendor, setTempVendor] = useState({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
   const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
 
-  // Load counters from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('pm_code_counters');
-    if (stored) {
-      try { counterRef.current = JSON.parse(stored); } catch { /* ignore */ }
-    }
-  }, []);
-
   // Load draft (single toast per session)
   useEffect(() => {
     const draft = localStorage.getItem('packaging_draft_new');
@@ -222,15 +230,18 @@ const PackagingRefactored: React.FC = () => {
     }));
   };
 
-  // Code generation
+  // Code generation (next code comes from backend)
   const getCodePreview = () => {
     const cat = PM_CATEGORIES[formData.pmCategory];
     if (!cat) return { prefix: '—', next: '—' };
-    const counter = counterRef.current[formData.pmCategory] ?? 0;
-    return { prefix: cat.prefix, next: String(counter + 1).padStart(5, '0') };
+    if (generatedCode && generatedCode.startsWith(cat.prefix)) {
+      const suffix = generatedCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
+      return { prefix: cat.prefix, next: suffix };
+    }
+    return { prefix: cat.prefix, next: '…' };
   };
 
-  const generateCode = (confirm = false) => {
+  const generateCode = async (confirm = false) => {
     if (!formData.pmCategory) {
       addToast('error', 'Select a PM Category first');
       return;
@@ -240,14 +251,15 @@ const PackagingRefactored: React.FC = () => {
       if (!ok) return;
     }
     const cat = PM_CATEGORIES[formData.pmCategory];
-    const current = counterRef.current[formData.pmCategory] ?? 0;
-    const next = current + 1;
-    const code = `${cat.prefix}-${String(next).padStart(5, '0')}`;
-    counterRef.current[formData.pmCategory] = next;
-    localStorage.setItem('pm_code_counters', JSON.stringify(counterRef.current));
-    setGeneratedCode(code);
-    setFormData(prev => ({ ...prev, itemCode: code }));
-    addToast('success', `Code generated: ${code}`);
+    try {
+      const code = await fetchNextPackMaterialCode(cat.prefix);
+      setGeneratedCode(code);
+      setFormData(prev => ({ ...prev, itemCode: code }));
+      addToast('success', `Code generated: ${code}`);
+    } catch (err) {
+      console.error(err);
+      addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
+    }
   };
 
   // Variant ops
@@ -339,22 +351,33 @@ const PackagingRefactored: React.FC = () => {
     input.click();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
     if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
     const code = generatedCode || formData.itemCode;
-    const newItem = {
-      id: Date.now().toString(),
-      type: 'packaging' as const,
-      name: formData.name || `PM Item ${code}`,
+    const firstVendor = formData.vendors[0];
+    const payload = {
       code,
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      data: { ...formData, itemCode: code },
+      description: formData.name || `PM Item ${code}`,
+      type: formData.itemCategory || formData.pmCategory || undefined,
+      level: formData.level || undefined,
+      group: formData.subCategory || undefined,
+      material: formData.matBody || undefined,
+      size_spec: formData.specNominal || undefined,
+      price_per_pc: firstVendor?.price != null ? Number(firstVendor.price) : undefined,
+      moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
+      lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
+      print_status: formData.deco || undefined,
     };
-    addItem(newItem);
-    addToast('success', 'Packaging item saved!');
-    localStorage.removeItem('packaging_draft_new');
+    try {
+      await createPackMaterial(payload);
+      localStorage.removeItem('packaging_draft_new');
+      addToast('success', 'Packaging item saved!');
+      setBprRefreshKey(k => k + 1);
+      setPageTab('bpr');
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
+    }
   };
 
   // ── Section Content ──────────────────────────────────────────────────────────
@@ -435,8 +458,9 @@ const PackagingRefactored: React.FC = () => {
                     <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
+                    type="button"
                     onClick={() => generateCode()}
                     className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
                   >
@@ -444,12 +468,20 @@ const PackagingRefactored: React.FC = () => {
                   </button>
                   {generatedCode && (
                     <button
+                      type="button"
                       onClick={() => generateCode(true)}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
                     >
                       Regenerate (change category)
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, ...PACKAGING_FORM_MOCK }))}
+                    className="px-4 py-1.5 border border-amber-300 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+                  >
+                    Fill mock values
+                  </button>
                 </div>
               </div>
             </div>
@@ -929,7 +961,7 @@ const PackagingRefactored: React.FC = () => {
   };
 
   // ── BPR tab ──────────────────────────────────────────────────────────────────
-  if (pageTab === 'bpr') return <BprDashboard onSwitchToForm={() => setPageTab('form')} />;
+  if (pageTab === 'bpr') return <BprDashboard refreshKey={bprRefreshKey} onSwitchToForm={() => setPageTab('form')} />;
 
   // ── Main two-panel layout ────────────────────────────────────────────────────
   return (
@@ -1135,7 +1167,7 @@ function GroupChipPM({ group }: { group: string }) {
  );
 }
 
-const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm }) => {
+const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }> = ({ refreshKey = 0, onSwitchToForm }) => {
  const [search, setSearch] = useState('');
  const [typeFilter, setTypeFilter] = useState('');
  const [levelFilter, setLevelFilter] = useState('');
@@ -1160,7 +1192,7 @@ const BprDashboard: React.FC<{ onSwitchToForm: () => void }> = ({ onSwitchToForm
 
  useEffect(() => {
   loadPackMaterials();
- }, [loadPackMaterials]);
+ }, [loadPackMaterials, refreshKey]);
 
  const allTypes = Array.from(new Set(allPMs.map(p => p.type))).filter(Boolean).sort();
  const allLevels = Array.from(new Set(allPMs.map(p => p.level))).filter(Boolean).sort();

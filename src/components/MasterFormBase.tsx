@@ -19,6 +19,8 @@ interface MasterFormBaseProps {
  children: ReactNode;
  onSave?: () => void;
  onSubmit?: () => void;
+ onFillMock?: () => void;
+ onReset?: () => void;
  primaryFields?: string[];
 }
 
@@ -42,6 +44,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  children,
  onSave,
  onSubmit,
+ onFillMock,
+ onReset,
  primaryFields = []
 }) => {
  // Utility functions that may be used by child components
@@ -72,8 +76,27 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       {title}
      </h1>
      <div className="flex items-center gap-2">
+      {onFillMock && (
+       <button
+        type="button"
+        onClick={onFillMock}
+        className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+       >
+        Fill mock values
+       </button>
+      )}
+      {onReset && (
+       <button
+        type="button"
+        onClick={onReset}
+        className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+       >
+        Reset Form
+       </button>
+      )}
       {onSave && (
        <button
+        type="button"
         onClick={onSave}
         className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
        >
@@ -82,6 +105,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       )}
       {onSubmit && (
        <button
+        type="button"
         onClick={onSubmit}
         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
        >

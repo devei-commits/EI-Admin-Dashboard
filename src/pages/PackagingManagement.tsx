@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination } from '../components/ui';
 import { useDebounce } from '../hooks/useDebounce';
-import { fetchPackagingList, type PackagingItem } from '../services/packaging.service';
+import { fetchPackagingList, createPackaging, updatePackaging, deletePackaging, type PackagingItem } from '../services/packaging.service';
 
 type TabType = 'management' | 'list';
 
@@ -96,31 +96,104 @@ const PackagingManagement = () => {
   }
  };
 
- const handleSubmit = (e: React.FormEvent) => {
+ const emptyForm = () => ({
+  packageCode: '', packageName: '', packageSKU: '', packageBottom: '', bottom: '', capType: '',
+  bottomName: '', bottomMaterial: '', capName: '', capMaterial: '', bottomColor: '', capColor: '',
+  bottomWeight: '', capWeight: '', dispenserVolume: '', minimumOrderQuantity: '', budget: '', comments: ''
+ });
+
+ /** Full mock form for quick testing (all fields filled). */
+ const PACKAGING_MOCK_FORM = {
+  packageCode: 'PKG-MOCK-001',
+  packageName: '30ml Amber Dropper Bottle',
+  packageSKU: 'sku1',
+  packageBottom: 'round',
+  bottom: 'round',
+  capType: 'dropper',
+  bottomName: 'Amber Glass',
+  bottomMaterial: 'glass',
+  capName: 'Black Dropper',
+  capMaterial: 'plastic',
+  bottomColor: 'Amber',
+  capColor: 'Black',
+  bottomWeight: '45g',
+  capWeight: '8g',
+  dispenserVolume: '30ml',
+  minimumOrderQuantity: '1000',
+  budget: 'medium',
+  comments: 'Mock data for testing submit. Standard serum bottle, ready to submit.',
+ };
+
+ const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  const newItem: PackagingItem = {
-   id: `PKG${String(packagingItems.length + 1).padStart(3, '0')}`,
-   ...formData,
-   status: 'active',
-   createdAt: new Date().toISOString().split('T')[0]
-  };
-  setPackagingItems(prev => [...prev, newItem]);
-  setFormData({ packageCode: '', packageName: '', packageSKU: '', packageBottom: '', bottom: '', capType: '',
-   bottomName: '', bottomMaterial: '', capName: '', capMaterial: '', bottomColor: '', capColor: '',
-   bottomWeight: '', capWeight: '', dispenserVolume: '', minimumOrderQuantity: '', budget: '', comments: '' });
-  setActiveTab('list');
+  try {
+   await createPackaging({
+    packageCode: formData.packageCode,
+    packageName: formData.packageName,
+    packageSKU: formData.packageSKU,
+    bottom: formData.bottom,
+    capType: formData.capType,
+    bottomName: formData.bottomName,
+    bottomMaterial: formData.bottomMaterial,
+    capName: formData.capName,
+    capMaterial: formData.capMaterial,
+    bottomColor: formData.bottomColor,
+    capColor: formData.capColor,
+    bottomWeight: formData.bottomWeight,
+    capWeight: formData.capWeight,
+    dispenserVolume: formData.dispenserVolume,
+    minimumOrderQuantity: formData.minimumOrderQuantity,
+    budget: formData.budget,
+    comments: formData.comments,
+    status: 'active'
+   });
+   setFormData(emptyForm());
+   await loadPackaging();
+   setActiveTab('list');
+  } catch (err) {
+   console.error(err);
+   setLoadError(err instanceof Error ? err.message : 'Failed to create packaging');
+  }
  };
 
  const handleViewItem = (item: PackagingItem) => { setSelectedItem(item); setIsViewModalOpen(true); setIsEditMode(false); };
  const handleEditItem = (item: PackagingItem) => { setSelectedItem(item); setIsViewModalOpen(true); setIsEditMode(true); };
- const handleUpdateItem = () => {
+ const handleUpdateItem = async () => {
   if (!selectedItem) return;
-  setPackagingItems(prev => prev.map(item => item.id === selectedItem.id ? selectedItem : item));
-  setIsViewModalOpen(false); setSelectedItem(null); setIsEditMode(false);
+  try {
+   await updatePackaging(selectedItem.id, {
+    packageCode: selectedItem.packageCode,
+    packageName: selectedItem.packageName,
+    packageSKU: selectedItem.packageSKU,
+    bottom: selectedItem.bottom,
+    capType: selectedItem.capType,
+    bottomName: selectedItem.bottomName,
+    bottomMaterial: selectedItem.bottomMaterial,
+    capName: selectedItem.capName,
+    capMaterial: selectedItem.capMaterial,
+    bottomColor: selectedItem.bottomColor,
+    capColor: selectedItem.capColor,
+    bottomWeight: selectedItem.bottomWeight,
+    capWeight: selectedItem.capWeight,
+    dispenserVolume: selectedItem.dispenserVolume,
+    minimumOrderQuantity: selectedItem.minimumOrderQuantity,
+    budget: selectedItem.budget,
+    comments: selectedItem.comments,
+    status: selectedItem.status
+   });
+   setIsViewModalOpen(false); setSelectedItem(null); setIsEditMode(false);
+   loadPackaging();
+  } catch (err) {
+   console.error(err);
+  }
  };
- const handleDeleteItem = (id: string) => {
-  if (window.confirm('Are you sure you want to delete this packaging item?')) {
-   setPackagingItems(prev => prev.filter(item => item.id !== id));
+ const handleDeleteItem = async (id: string) => {
+  if (!window.confirm('Are you sure you want to delete this packaging item?')) return;
+  try {
+   await deletePackaging(id);
+   loadPackaging();
+  } catch (err) {
+   console.error(err);
   }
  };
  const handleToggleStatus = (id: string) => {
@@ -170,6 +243,24 @@ const PackagingManagement = () => {
 
     {/* Form Content */}
     {activeTab === 'management' && (
+     <>
+     {/* Top-level actions (like Raw Materials) */}
+     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/80 flex flex-wrap items-center gap-3">
+      <button
+       type="button"
+       onClick={() => setFormData(PACKAGING_MOCK_FORM)}
+       className="px-4 py-2 bg-amber-100 text-amber-800 font-medium rounded-lg hover:bg-amber-200 transition-colors text-sm"
+      >
+       Fill mock values
+      </button>
+      <button
+       type="button"
+       onClick={() => setFormData(emptyForm())}
+       className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-sm"
+      >
+       Reset Form
+      </button>
+     </div>
      <form onSubmit={handleSubmit} className="p-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
        {/* Left Column */}
@@ -492,16 +583,15 @@ const PackagingManagement = () => {
        </div>
       </div>
 
-      {/* Submit Button */}
-      <div className="mt-6 flex gap-4">
+      {/* Submit */}
+      <div className="mt-6 flex flex-wrap gap-4">
        <button type="submit" className="px-6 py-2.5 bg-slate-800 text-white font-medium rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
         Submit
        </button>
-       <button type="button" onClick={() => setFormData({ packageCode: '', packageName: '', packageSKU: '', packageBottom: '', bottom: '', capType: '', bottomName: '', bottomMaterial: '', capName: '', capMaterial: '', bottomColor: '', capColor: '', bottomWeight: '', capWeight: '', dispenserVolume: '', minimumOrderQuantity: '', budget: '', comments: '' })}
-        className="px-6 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">Reset Form</button>
       </div>
      </form>
+     </>
     )}
 
     {activeTab === 'list' && (

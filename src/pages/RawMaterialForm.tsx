@@ -1,17 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { fetchRawMaterialsList, createRawMaterial, type RawMaterialRecord } from '../services/rawMaterials.service';
 
 const RawMaterialRefactored: React.FC = () => {
- const { addItem } = useItems();
+ useItems(); // items list now loaded from API on dashboard
  const { addToast } = useToast();
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [currentStage, setCurrentStage] = useState(0);
  const [pageTab, setPageTab] = useState<'dashboard' | 'form'>('dashboard');
+ const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
  const [formData, setFormData] = useState({
   // Primary Info
@@ -116,6 +118,71 @@ const RawMaterialRefactored: React.FC = () => {
    remarks: string;
   }>,
  });
+
+ /** Mock form data for testing submit (Fill mock values). */
+ const RM_MOCK_FORM = {
+  rmSku: 'EI-RM-MOCK-001',
+  rmTaxPreference: 'Taxable',
+  rmReturnable: false,
+  rmAssociateItems: '',
+  rmCategory: 'ACTIVE',
+  qcInspectionGroup: 'Chemical QC',
+  subCategory: 'Actives',
+  hazardHandlingClass: '',
+  seriesPrefix: 'EI-RM-ACT',
+  inciName: 'Glycerin',
+  tradeCommercialName: 'Glycerin USP',
+  functionRole: 'Humectant',
+  rmType: 'Liquid',
+  casNo: '56-81-5',
+  einecs: '200-289-5',
+  countryOfOrigin: 'IN',
+  manufacturer: 'Mock Supplier',
+  synonyms: '',
+  internalNotes: 'Mock data for testing',
+  primaryUom: 'KG',
+  issueUom: 'KG',
+  conversionFactor: '1',
+  standardPackSize: '25',
+  hsnCode: '29054500',
+  gst: '12',
+  accountingCategory: 'Raw Material',
+  preferredCurrency: 'INR',
+  grade: 'USP',
+  compliance: 'ISO',
+  allergenRequired: false,
+  gmoRequired: false,
+  sdsAvailable: true,
+  coaAvailable: true,
+  regulatoryNotes: '',
+  assayPurity: '99.5% min',
+  appearanceSpec: 'Clear colourless',
+  phSpec: '5-7',
+  moistureLod: '0.5% max',
+  heavyMetalsSpec: '10 ppm max',
+  microbialSpec: 'TAMC 1000',
+  odorColorSpec: 'Odourless',
+  otherSpecs: '',
+  recommendedUseLevel: '2-5%',
+  maxUseLevel: '10%',
+  solubility: 'Water miscible',
+  processingGuidance: 'Add to water phase',
+  incompatibilities: '',
+  stabilityNotes: '24M',
+  claims: 'Hydrating',
+  storageConditions: 'Cool dry',
+  shelfLife: '36M',
+  retestPeriod: '12M',
+  warehouseLocation: 'A1',
+  batchTracking: 'Yes',
+  fifoFefo: 'FIFO',
+  minimumStock: '100',
+  reorderLevel: '500',
+  handlingNotes: '',
+  vendors: [] as Array<{ id: string; name: string; location: string; moq: number; unitPrice: number; leadTime: number; approved: string; priceValidTill: string }>,
+  documents: [] as Array<{ id: string; type: string; link: string; date: string }>,
+  tests: [] as Array<{ id: string; name: string; result: string; date: string; approvedBy: string; remarks: string }>,
+ };
 
  // Temp fields separated
  const [tempVendor, setTempVendor] = useState({ 
@@ -257,26 +324,23 @@ useEffect(() => {
   }));
  };
 
- const handleSubmit = () => {
+ const handleSubmit = async () => {
   const validation = validatePrimaryFields(formData, 'rawMaterial');
   if (!validation.valid) {
    setErrors(validation.errors);
    addToast('error', 'Please fill all primary fields');
    return;
   }
-
-  const newItem = {
-   id: Date.now().toString(),
-   type: 'raw-material' as const,
-   name: formData.inciName || 'Unnamed Raw Material',
-   code: formData.rmSku || 'RM-' + Date.now().toString().slice(-6),
-   createdAt: new Date().toISOString(),
-   lastModified: new Date().toISOString(),
-   data: formData,
-  };
-  addItem(newItem);
-  addToast('success', 'Raw Material saved successfully!');
-  localStorage.removeItem('raw_material_draft_new');
+  try {
+   await createRawMaterial(formData as Record<string, unknown>);
+   addToast('success', 'Raw Material saved successfully!');
+   localStorage.removeItem('raw_material_draft_new');
+   setDashboardRefreshKey(k => k + 1);
+   setPageTab('dashboard');
+  } catch (err) {
+   console.error(err);
+   addToast('error', err instanceof Error ? err.message : 'Failed to save raw material');
+  }
  };
 
  // Stage content rendering
@@ -792,9 +856,9 @@ useEffect(() => {
  };
 
  // If on dashboard tab, show dashboard instead of form
- if (pageTab === 'dashboard') {
-  return <RawMaterialDashboard onSwitchToForm={() => setPageTab('form')} />;
- }
+if (pageTab === 'dashboard') {
+  return <RawMaterialDashboard refreshKey={dashboardRefreshKey} onSwitchToForm={() => setPageTab('form')} />;
+}
 
  return (
   <MasterFormBase
@@ -806,6 +870,7 @@ useEffect(() => {
    formData={formData}
    onInputChange={handleInputChange}
    primaryFields={getPrimaryFields('rawMaterial')}
+   onFillMock={() => setFormData(RM_MOCK_FORM)}
    onSave={() => {
     localStorage.setItem('raw_material_draft_new', JSON.stringify(formData));
     addToast('success', 'Draft saved!');
@@ -818,56 +883,36 @@ useEffect(() => {
 };
 
 type RawMaterialDashboardProps = {
+ refreshKey?: number;
  onSwitchToForm: () => void;
 };
 
-// ─── Static RM seed (23 master records) ──────────────────────────────────────
-type RMRecord = {
- code: string; name: string; inci: string; category: string;
- rmType: string; uom: string; pricePerKg: number; gst: number;
- shelf: string; status: string; products: string[]; group: string | null;
-};
-
-const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
- ACTIVE:        { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
- BOTANICAL:     { bg: 'bg-green-50',    text: 'text-green-700',    border: 'border-green-200' },
- BASE:          { bg: 'bg-slate-100',   text: 'text-slate-600',    border: 'border-slate-200' },
- EMULSIFIER:    { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
- EXCIPIENT:     { bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
- FRAGRANCE:     { bg: 'bg-yellow-50',   text: 'text-yellow-700',   border: 'border-yellow-200' },
- POLYMER:       { bg: 'bg-violet-50',   text: 'text-violet-700',   border: 'border-violet-200' },
- PRESERVATIVE:  { bg: 'bg-pink-50',     text: 'text-pink-700',     border: 'border-pink-200' },
- SURFACTANT:    { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200' },
- 'UV FILTER':   { bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
-};
-
-const RM_SEED: RMRecord[] = [
- { code: 'EI-RM-ACT-001', name: 'Glycerin',                   inci: 'Glycerin',                         category: 'ACTIVE',       rmType: 'Liquid', uom: 'KG', pricePerKg: 55,   gst: 12, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-ACT-002', name: 'Niacinamide',                inci: 'Niacinamide',                      category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 1450, gst: 12, shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-ACT-003', name: 'Ascorbyl Glucoside',         inci: 'Ascorbyl Glucoside',               category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 4800, gst: 12, shelf: '18M', status: 'Active', products: ['PR-001'],          group: 'Primary' },
- { code: 'EI-RM-ACT-004', name: 'Allantoin',                  inci: 'Allantoin',                        category: 'ACTIVE',       rmType: 'Solid',  uom: 'KG', pricePerKg: 780,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: null },
- { code: 'EI-RM-ACT-005', name: 'Tocopheryl Acetate',         inci: 'Tocopheryl Acetate',               category: 'ACTIVE',       rmType: 'Liquid', uom: 'KG', pricePerKg: 2200, gst: 12, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
- { code: 'EI-RM-ACT-006', name: 'Aloe Vera Extract',          inci: 'Aloe Barbadensis Leaf Juice',      category: 'BOTANICAL',    rmType: 'Liquid', uom: 'KG', pricePerKg: 280,  gst: 5,  shelf: '18M', status: 'Active', products: ['PR-002'],          group: null },
- { code: 'EI-RM-BASE-001',name: 'Aqua (Purified Water)',       inci: 'Aqua',                             category: 'BASE',         rmType: 'Liquid', uom: 'KG', pricePerKg: 8.85, gst: 8,  shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-EMUL-001',name: 'Cetearyl Alcohol',            inci: 'Cetearyl Alcohol',                 category: 'EMULSIFIER',   rmType: 'Solid',  uom: 'KG', pricePerKg: 185,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: 'Primary +1' },
- { code: 'EI-RM-EMUL-002',name: 'Ceteareth-20',                inci: 'Ceteareth-20',                     category: 'EMULSIFIER',   rmType: 'Solid',  uom: 'KG', pricePerKg: 310,  gst: 12, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Alt +1' },
- { code: 'EI-RM-EXCIP-001',name:'Sodium Hydroxide (50%)',      inci: 'Sodium Hydroxide',                 category: 'EXCIPIENT',    rmType: 'Liquid', uom: 'KG', pricePerKg: 45,   gst: 18, shelf: '24M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-EXCIP-002',name:'Citric Acid Monohydrate',     inci: 'Citric Acid',                      category: 'EXCIPIENT',    rmType: 'Solid',  uom: 'KG', pricePerKg: 85,   gst: 12, shelf: '36M', status: 'Active', products: ['PR-002'],          group: null },
- { code: 'EI-RM-FRAG-001',name: 'Parfum — Solar Breeze',       inci: 'Parfum',                           category: 'FRAGRANCE',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1500, gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
- { code: 'EI-RM-FRAG-002',name: 'Parfum — Jasmine Fresh',      inci: 'Parfum',                           category: 'FRAGRANCE',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1600, gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: null },
- { code: 'EI-RM-POLY-001',name: 'Carbomer 980',                inci: 'Carbomer',                         category: 'POLYMER',      rmType: 'Solid',  uom: 'KG', pricePerKg: 900,  gst: 18, shelf: '36M', status: 'Active', products: ['PR-001'],          group: 'Primary +1' },
- { code: 'EI-RM-POLY-002',name: 'Carbopol 940',                inci: 'Carbomer',                         category: 'POLYMER',      rmType: 'Solid',  uom: 'KG', pricePerKg: 850,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: 'Alt +1' },
- { code: 'EI-RM-PRES-001',name: 'Phenoxyethanol',              inci: 'Phenoxyethanol',                   category: 'PRESERVATIVE', rmType: 'Liquid', uom: 'KG', pricePerKg: 520,  gst: 18, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: 'Primary' },
- { code: 'EI-RM-SURF-001',name: 'SLES 70%',                    inci: 'Sodium Laureth Sulfate',           category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 125,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-002'],          group: 'Primary +1' },
- { code: 'EI-RM-SURF-002',name: 'Cocamidopropyl Betaine',      inci: 'Cocamidopropyl Betaine',           category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 190,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Alt +1' },
- { code: 'EI-RM-SURF-003',name: 'Decyl Glucoside',             inci: 'Decyl Glucoside',                  category: 'SURFACTANT',   rmType: 'Liquid', uom: 'KG', pricePerKg: 240,  gst: 18, shelf: '18M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-UVF-001', name: 'Ethylhexyl Methoxycinnamate',inci: 'Ethylhexyl Methoxycinnamate',      category: 'UV FILTER',    rmType: 'Liquid', uom: 'KG', pricePerKg: 1200, gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: 'Primary' },
- { code: 'EI-RM-UVF-002', name: 'Titanium Dioxide (nano)',     inci: 'Titanium Dioxide',                 category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 650,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001'],          group: null },
- { code: 'EI-RM-UVF-003', name: 'Zinc Oxide (nano)',           inci: 'Zinc Oxide',                       category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 720,  gst: 12, shelf: '36M', status: 'Active', products: ['PR-001','PR-002'], group: null },
- { code: 'EI-RM-UVF-004', name: 'Avobenzone',                  inci: 'Butyl Methoxydibenzoylmethane',    category: 'UV FILTER',    rmType: 'Solid',  uom: 'KG', pricePerKg: 980,  gst: 18, shelf: '24M', status: 'Active', products: ['PR-001'],          group: null },
+/** Palette of category badge styles; any category (including new ones from API) gets a stable style via hash. */
+const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
+ { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
+ { bg: 'bg-green-50',    text: 'text-green-700',    border: 'border-green-200' },
+ { bg: 'bg-slate-100',   text: 'text-slate-600',    border: 'border-slate-200' },
+ { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
+ { bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
+ { bg: 'bg-yellow-50',   text: 'text-yellow-700',   border: 'border-yellow-200' },
+ { bg: 'bg-violet-50',   text: 'text-violet-700',   border: 'border-violet-200' },
+ { bg: 'bg-pink-50',     text: 'text-pink-700',     border: 'border-pink-200' },
+ { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200' },
+ { bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
+ { bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200' },
+ { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200' },
+ { bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200' },
+ { bg: 'bg-sky-50',      text: 'text-sky-700',     border: 'border-sky-200' },
+ { bg: 'bg-gray-100',    text: 'text-gray-600',     border: 'border-gray-200' },
 ];
 
-const ALL_CATEGORIES = Array.from(new Set(RM_SEED.map(r => r.category))).sort();
+function getCategoryStyle(category: string): { bg: string; text: string; border: string } {
+ if (!category) return CATEGORY_STYLE_PALETTE[CATEGORY_STYLE_PALETTE.length - 1];
+ let hash = 0;
+ for (let i = 0; i < category.length; i++) hash = ((hash << 5) - hash) + category.charCodeAt(i);
+ const index = Math.abs(hash) % CATEGORY_STYLE_PALETTE.length;
+ return CATEGORY_STYLE_PALETTE[index];
+}
 
 function formatPrice(n: number) {
  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
@@ -888,12 +933,33 @@ function GroupChip({ group }: { group: string }) {
  );
 }
 
-const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToForm }) => {
+const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm }) => {
  const [search, setSearch] = useState('');
  const [catFilter, setCatFilter] = useState('');
  const [sortAsc, setSortAsc] = useState(true);
+ const [allRMs, setAllRMs] = useState<RawMaterialRecord[]>([]);
+ const [loading, setLoading] = useState(true);
+ const [loadError, setLoadError] = useState<string | null>(null);
 
- const allRMs = RM_SEED; // static seed; merge context items if needed
+ const loadRawMaterials = useCallback(async () => {
+  setLoading(true);
+  setLoadError(null);
+  try {
+   const list = await fetchRawMaterialsList();
+   setAllRMs(list);
+  } catch (e) {
+   setLoadError(e instanceof Error ? e.message : 'Failed to load raw materials');
+   setAllRMs([]);
+  } finally {
+   setLoading(false);
+  }
+ }, []);
+
+ useEffect(() => {
+  loadRawMaterials();
+ }, [loadRawMaterials, refreshKey]);
+
+ const allCategories = Array.from(new Set(allRMs.map(r => r.category))).filter(Boolean).sort();
 
  const filtered = allRMs.filter(rm => {
   const q = search.toLowerCase();
@@ -935,6 +1001,21 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
      </div>
     </div>
 
+    {/* ── Loading / Error ── */}
+    {loading && (
+     <div className="flex items-center justify-center py-12 text-gray-500">
+      <span className="animate-pulse">Loading raw materials…</span>
+     </div>
+    )}
+    {!loading && loadError && (
+     <div className="py-8 text-center">
+      <p className="text-red-600 mb-2">{loadError}</p>
+      <button type="button" onClick={loadRawMaterials} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
+     </div>
+    )}
+
+    {!loading && !loadError && (
+     <>
     {/* ── Stat Cards ── */}
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
      {statCards.map(card => (
@@ -978,7 +1059,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
         className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all hover:bg-gray-100"
        >
         <option value="">All Categories</option>
-        {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
        </select>
        {/* new RM button */}
        <button
@@ -1026,7 +1107,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
           </td>
          </tr>
         ) : filtered.map((rm, _idx) => {
-         const catStyle = CATEGORY_STYLES[rm.category] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+         const catStyle = getCategoryStyle(rm.category);
          return (
           <tr key={rm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
            {/* code */}
@@ -1078,6 +1159,9 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ onSwitchToF
       </table>
      </div>
     </div>
+
+     </>
+    )}
 
    </div>
   </div>
