@@ -105,7 +105,7 @@ const PENDING_ITEMS: PendingItem[] = [
 ];
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'New Order', icon: <Plus className="w-5 h-5" />, href: '/order-management', color: 'amber', description: 'Create new order' },
+  { label: 'New Order', icon: <Plus className="w-5 h-5" />, href: '/procurement', color: 'amber', description: 'Create new order' },
   { label: 'Add User', icon: <Users className="w-5 h-5" />, href: '/user-management', color: 'blue', description: 'Add team member' },
   { label: 'View Tasks', icon: <CheckSquare className="w-5 h-5" />, href: '/task-management', color: 'green', description: 'Manage tasks' },
   { label: 'Enquiries', icon: <MessageSquare className="w-5 h-5" />, href: '/enquiry-management', color: 'purple', description: 'Handle enquiries' },
@@ -117,7 +117,7 @@ const MODULE_CARDS: ModuleCard[] = [
   {
     title: 'Order Management',
     icon: <Package className="w-6 h-6" />,
-    href: '/order-management',
+    href: '/procurement',
     color: 'amber',
     stats: [{ label: 'Total', value: 156 }, { label: 'Pending', value: 23 }],
     description: 'Create and manage orders',
@@ -163,12 +163,12 @@ const MODULE_CARDS: ModuleCard[] = [
     description: 'Handle customer enquiries',
   },
   {
-    title: 'Good Receiving',
+    title: 'Procurement',
     icon: <ClipboardList className="w-6 h-6" />,
-    href: '/good-receiving',
+    href: '/procurement',
     color: 'teal',
     stats: [{ label: 'Pending', value: 8 }, { label: 'Approved', value: 156 }],
-    description: 'Manage GRN process',
+    description: 'Manage procurement process',
   },
   {
     title: 'Treasury',
@@ -396,7 +396,7 @@ const Dashboard = () => {
     }
     if (selectedCategory !== 'all') {
       const categoryMap: Record<string, string[]> = {
-        orders: ['Order Management', 'Order Hub', 'Good Receiving', 'Order List'],
+        orders: ['Order Management', 'Order Hub', 'Procurement', 'Order List'],
         users: ['User Management', 'Role Management'],
         inventory: ['Items Master', 'Raw Materials', 'BOM Management', 'Packaging', 'Active Ingredients'],
         finance: ['Treasury', 'Sales & Purchase', 'Coupons', 'Discounts'],
@@ -440,7 +440,7 @@ const Dashboard = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/order-management" />
+        <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/procurement" />
         <StatCard title="Pending Review" value={state.orders?.customerPOs?.filter((po: any) => po.status.includes('pending')).length || 0} icon={<Clock className="w-6 h-6" />} change="urgent" changeType="down" color="orange" link="/order-hub" />
         <StatCard title="Active Users" value={42} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
         <StatCard title="Open Enquiries" value={89} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />

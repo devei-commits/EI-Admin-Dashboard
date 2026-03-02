@@ -118,8 +118,8 @@ const UniversalSwapPage = () => {
       <div className="p-8">
         <div className="text-center">
           <p className="text-gray-500">Please select a product and view RM Plan to see details.</p>
-          <Link to="/ordered-products" className="mt-4 inline-block text-blue-600 hover:underline">
-            ← Back to Ordered Products
+          <Link to="/procurement" className="mt-4 inline-block text-blue-600 hover:underline">
+            ← Back to Procurement
           </Link>
         </div>
       </div>
@@ -133,7 +133,7 @@ const UniversalSwapPage = () => {
         <div className="p-4 border-b border-gray-200 bg-slate-800 text-white">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold">Order Management System</h2>
-            <Link to="/ordered-products" className="text-gray-300 hover:text-white">
+            <Link to="/procurement" className="text-gray-300 hover:text-white">
               <ArrowLeft size={18} />
             </Link>
           </div>
@@ -211,7 +211,7 @@ const UniversalSwapPage = () => {
             <h1 className="text-2xl font-bold text-gray-900">Selected Product → Items Involved</h1>
             <p className="text-sm text-gray-500 mt-1">Stage-specific BOM (without touching masters)</p>
           </div>
-          <Link to="/ordered-products" className="text-blue-600 hover:underline text-sm font-medium">
+          <Link to="/procurement" className="text-blue-600 hover:underline text-sm font-medium">
             Back to Orders
           </Link>
         </div>
@@ -475,7 +475,7 @@ const UniversalSwapPage = () => {
 
         {/* Action Buttons */}
         <div className="mt-6 flex justify-end gap-3 pb-6">
-          <Link to="/ordered-products">
+          <Link to="/procurement">
             <button className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition">
               Cancel
             </button>

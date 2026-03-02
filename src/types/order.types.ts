@@ -20,9 +20,7 @@ export type StageStatus = 'pending' | 'in-progress' | 'completed';
 
 export type BOMStatus = 'PENDING' | 'APPROVED' | 'IN_STOCK' | 'ORDERED';
 
-export type ReceivingStatus = 'Pending' | 'Completed' | 'Rejected';
 
-export type ItemCondition = 'Good' | 'Damaged' | 'Partial';
 
 // ==================== Order Interfaces ====================
 export interface Product {
@@ -73,31 +71,6 @@ export interface BOMItem {
  status: BOMStatus;
 }
 
-// ==================== Good Receiving Types ====================
-export interface ReceivedItem {
- id: string;
- itemName: string;
- orderedQty: number;
- receivedQty: number;
- unit: string;
- condition: ItemCondition;
- notes: string;
-}
-
-export interface GoodReceivingRecord {
- id: string;
- grNumber: string;
- orderId: string;
- supplierName: string;
- receivedDate: string;
- receivedBy: string;
- invoiceNumber: string;
- totalItems: number;
- status: ReceivingStatus;
- items: ReceivedItem[];
- remarks?: string;
- createdAt: string;
-}
 
 // ==================== Audit Types ====================
 export interface AuditLog {

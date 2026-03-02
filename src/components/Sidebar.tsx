@@ -68,12 +68,12 @@ const Sidebar = () => {
 
   // Check if any order submenu item is active
   const isOrderActive = [
-    '/good-receiving',
-    '/order-management',
-    '/ordered-products',
     '/procurement',
-    '/po',
-    '/bmr-bpr'
+    '/warehouse',
+    '/planning',
+    '/production',
+    '/fulfillment',
+    '/client-hub'
   ].includes(location.pathname);
 
   // Check if any product submenu item is active
@@ -267,20 +267,21 @@ const Sidebar = () => {
                   ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
                   }`}>
-                  <div className="flex items-center">
-                    <NavLink
-                      to="/order-management"
-                      onClick={() => { setOrderOpen(true); handleLinkClick(); }}
-                      className="flex-1 flex items-center px-4 py-3 text-left w-full"
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setOrderOpen(!orderOpen)}
+                      className="flex-1 flex items-center px-4 py-3 text-left cursor-pointer"
                     >
                       <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                       </svg>
                       <span className="font-medium">Order Management</span>
-                    </NavLink>
+                    </button>
                     <button
+                      type="button"
                       onClick={() => setOrderOpen(!orderOpen)}
-                      className="p-2 rounded hover:bg-gray-100 transition-colors"
+                      className="p-2 rounded hover:bg-gray-100 transition-colors shrink-0"
                     >
                       <svg
                         className={`w-5 h-5 transition-transform duration-300 ease-in-out ${orderOpen ? "rotate-180" : ""}`}
@@ -295,40 +296,10 @@ const Sidebar = () => {
                 </div>
                 {/* Submenu with smooth animation */}
                 <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${orderOpen ? "max-h-96" : "max-h-0"
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${orderOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
                   <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
-                    <li>
-                      <NavLink
-                        to="/order-management"
-                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                          ? "text-slate-900 font-medium bg-slate-100/50"
-                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                          }`}
-                        onClick={handleLinkClick}
-                      >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <span>CPO/SO</span>
-                      </NavLink>
-                    </li>
-                    <li>
-                      <NavLink
-                        to="/ordered-products"
-                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                          ? "text-slate-900 font-medium bg-slate-100/50"
-                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                          }`}
-                        onClick={handleLinkClick}
-                      >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                        <span>Ordered Products</span>
-                      </NavLink>
-                    </li>
                     <li>
                       <a
                         href="/procurement"
@@ -347,34 +318,89 @@ const Sidebar = () => {
                       </a>
                     </li>
                     <li>
-                      <NavLink
-                        to="/po"
-                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                          ? "text-slate-900 font-medium bg-slate-100/50"
-                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                          }`}
+                      <a
+                        href="/warehouse"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                         onClick={handleLinkClick}
                       >
                         <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                         </svg>
-                        <span>PO</span>
-                      </NavLink>
+                        <span>Warehouse</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
                     </li>
                     <li>
-                      <NavLink
-                        to="/bmr-bpr"
-                        className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                          ? "text-slate-900 font-medium bg-slate-100/50"
-                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                          }`}
+                      <a
+                        href="/planning"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                         onClick={handleLinkClick}
                       >
                         <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
-                        <span>BMR/BPR</span>
-                      </NavLink>
+                        <span>Planning</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href="/production"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                        </svg>
+                        <span>Production</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href="/fulfillment"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                        </svg>
+                        <span>Fulfillment</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href="/client-hub"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        onClick={handleLinkClick}
+                      >
+                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM4.318 20H3v-2a6 6 0 018-5.656" />
+                        </svg>
+                        <span>Client Hub</span>
+                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
+                        </svg>
+                      </a>
                     </li>
                   </ul>
                 </div>

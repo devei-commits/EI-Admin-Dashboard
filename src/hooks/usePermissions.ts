@@ -324,7 +324,7 @@ export const usePermissions = (): UsePermissionsReturn => {
 export const MODULE_ROUTE_MAP: Record<string, string> = {
  'dashboard': '/',
  'pis': '/pis',
- 'order-management': '/order-management',
+ 'order-management': '/procurement',
  'inventory': '/raw-material',
  'vendor-client': '/vendor-client',
  'sales-purchase': '/sales-and-purchase',
@@ -350,8 +350,12 @@ export const MODULE_ROUTE_MAP: Record<string, string> = {
 export const ROUTE_MODULE_MAP: Record<string, string> = {
  '/': 'dashboard',
  '/pis': 'pis',
- '/order-management': 'order-management',
- '/good-receiving': 'order-management',
+ '/procurement': 'order-management',
+ '/warehouse': 'order-management',
+ '/planning': 'order-management',
+ '/production': 'order-management',
+ '/fulfillment': 'order-management',
+ '/client-hub': 'order-management',
  '/raw-material': 'inventory',
  '/packaging': 'inventory',
  '/bom': 'inventory',

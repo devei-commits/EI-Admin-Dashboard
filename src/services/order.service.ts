@@ -9,7 +9,6 @@
 import type {
  Order,
  BOMItem,
- GoodReceivingRecord,
  OrderFilter,
  SavedFilter,
  AuditLog,
@@ -175,56 +174,6 @@ export async function updateBOMItemStatus(
  };
 }
 
-// ==================== Good Receiving Operations ====================
-
-/**
- * Fetch good receiving records
- * @placeholder Returns mock data - replace with API call
- */
-export async function fetchGoodReceivingRecords(
- _params?: QueryParams
-): Promise<ServiceResult<GoodReceivingRecord[]>> {
- // TODO: Replace with actual API call
- // return apiClient.get<GoodReceivingRecord[]>('/good-receiving', { params });
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
-
-/**
- * Create good receiving record
- * @placeholder Returns mock data - replace with API call
- */
-export async function createGoodReceivingRecord(
- _record: Partial<GoodReceivingRecord>
-): Promise<ServiceResult<GoodReceivingRecord>> {
- // TODO: Replace with actual API call
- // return apiClient.post<GoodReceivingRecord>('/good-receiving', record);
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
-
-/**
- * Update good receiving status
- * @placeholder Returns mock data - replace with API call
- */
-export async function updateGoodReceivingStatus(
- _recordId: string,
- _status: GoodReceivingRecord['status']
-): Promise<ServiceResult<GoodReceivingRecord>> {
- // TODO: Replace with actual API call
- // return apiClient.patch<GoodReceivingRecord>(`/good-receiving/${recordId}/status`, { status });
- return {
-  data: null,
-  error: null,
-  success: true,
- };
-}
 
 // ==================== Saved Filters ====================
 

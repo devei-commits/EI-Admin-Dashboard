@@ -17,9 +17,6 @@ const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const RoleManagement = lazy(() => import('./pages/RoleManagement'))
 const UserManagement = lazy(() => import('./pages/UserManagement'))
-const OrderManagement = lazy(() => import('./pages/OrderManagement'))
-const OrderedProducts = lazy(() => import('./pages/OrderedProducts'))
-const GoodReceivingPage = lazy(() => import('./pages/GoodReceiving'))
 
 const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
 const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
@@ -34,7 +31,6 @@ const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialForm'))
 const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
 const BOMRefactored = lazy(() => import('./pages/BOMForm'))
-const BMRBPR = lazy(() => import('./pages/BMRPage'))
 const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
 const VendorClient = lazy(() => import('./pages/VendorClient'))
 const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
@@ -45,7 +41,11 @@ const ItemsList = lazy(() => import('./pages/ItemsList'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
 const Procurement = lazy(() => import('./pages/procurement/index'))
-const PurchaseOrders = lazy(() => import('./components/orders/PurchaseOrders'))
+const WarehousePage = lazy(() => import('./pages/WarehousePage'))
+const Planning = lazy(() => import('./pages/Planning'))
+const Production = lazy(() => import('./pages/Production'))
+const Fulfillment = lazy(() => import('./pages/Fulfillment'))
+const ClientHub = lazy(() => import('./pages/ClientHub'))
 
 // Loading spinner component
 const PageLoader = () => (
@@ -100,6 +100,11 @@ const AppLayout = () => {
        const isPISRoute = location.pathname === '/pis' || location.pathname.startsWith('/pis/');
        const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
        const isProcurementRoute = location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
+       const isWarehouseRoute = location.pathname === '/warehouse' || location.pathname.startsWith('/warehouse/');
+       const isPlanningRoute = location.pathname === '/planning' || location.pathname.startsWith('/planning/');
+       const isProductionRoute = location.pathname === '/production' || location.pathname.startsWith('/production/');
+       const isFulfillmentRoute = location.pathname === '/fulfillment' || location.pathname.startsWith('/fulfillment/');
+       const isClientHubRoute = location.pathname === '/client-hub' || location.pathname.startsWith('/client-hub/');
 
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
@@ -143,6 +148,86 @@ const AppLayout = () => {
               );
        }
 
+       if (isWarehouseRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/warehouse" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <WarehousePage />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
+       if (isPlanningRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/planning" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Planning />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
+       if (isProductionRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/production" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Production />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
+       if (isFulfillmentRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/fulfillment" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Fulfillment />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
+       if (isClientHubRoute) {
+              return (
+                     <Suspense fallback={<PageLoader />}>
+                            <ErrorBoundary>
+                                   <Routes>
+                                          <Route path="/client-hub" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <ClientHub />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                   </Routes>
+                            </ErrorBoundary>
+                     </Suspense>
+              );
+       }
+
        // Otherwise render with admin sidebar
        return (
               <div className="flex flex-row min-h-screen bg-background">
@@ -160,36 +245,6 @@ const AppLayout = () => {
                                                  <Route path="/user-management" element={
                                                         <ProtectedModuleRoute moduleId="user-management">
                                                                <UserManagement />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/order-management" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
-                                                               <OrderManagement />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/ordered-products" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
-                                                               <OrderedProducts />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/good-receiving" element={
-                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="goods-receiving">
-                                                               <GoodReceivingPage />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/bmr-bpr" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
-                                                               <BMRBPR />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/po" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
-                                                               <PurchaseOrders />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/procurement" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
-                                                               <Procurement />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/catalogue-management" element={
