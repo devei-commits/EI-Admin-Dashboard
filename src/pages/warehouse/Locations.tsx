@@ -296,7 +296,7 @@ const WarehouseLocations = () => {
                   {getRackSlotMap(selectedRack.rack).map(slot => (
                     <div
                       key={`${selectedRack.rack.id}-${slot.code}-${slot.label}`}
-                      className={`rounded-lg border p-2 text-center min-h-[56px] flex flex-col items-center justify-center ${
+                      className={`rounded-lg border p-2 text-center min-h-14 flex flex-col items-center justify-center ${
                         slot.isFilled
                           ? 'bg-cyan-100 border-cyan-300 text-cyan-800'
                           : 'bg-slate-50 border-slate-200 text-slate-500'
