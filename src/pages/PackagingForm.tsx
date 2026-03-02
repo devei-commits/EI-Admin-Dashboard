@@ -935,7 +935,7 @@ const PackagingRefactored: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
+        <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setPageTab('bpr')}
@@ -985,7 +985,7 @@ const PackagingRefactored: React.FC = () => {
 
       {/* ── Body: Sidebar + Content ─────────────────────────────────────────── */}
       <div className="flex-1">
-        <div className="flex gap-4 items-stretch max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-4">
+        <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
 
           {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
           <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
@@ -1059,7 +1059,7 @@ const PackagingRefactored: React.FC = () => {
         <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
           {/* Content header with Prev/Next */}
           <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-            <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="w-full px-6 py-3 flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-gray-800">{SECTIONS[currentSection]}</h2>
               </div>
@@ -1084,7 +1084,7 @@ const PackagingRefactored: React.FC = () => {
 
           {/* Section body */}
           <div className="px-4 py-6">
-            <div className="max-w-5xl mx-auto">
+            <div className="w-full">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
                 {renderSection()}
               </div>

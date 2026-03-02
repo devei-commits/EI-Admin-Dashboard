@@ -71,7 +71,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
   <div className="min-h-screen bg-gray-50 flex flex-col">
    {/* Top header bar */}
    <div className="bg-white border-b border-gray-200">
-    <div className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
+    <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
      <h1 className="text-base md:text-lg font-bold text-gray-800 leading-tight truncate">
       {title}
      </h1>
@@ -118,7 +118,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
 
    {/* Body: Sidebar + Content, similar to Packaging layout */}
    <div className="flex-1">
-    <div className="flex gap-4 items-stretch max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-4">
+    <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
      {/* Left sidebar with stages */}
      <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
       <div className="px-4 pt-4 pb-3 border-b border-gray-100">

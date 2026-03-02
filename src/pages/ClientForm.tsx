@@ -468,7 +468,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
   const sectionTitleClass = "text-xs font-bold text-gray-500 tracking-widest uppercase mb-4";
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+  return (
+    <div className="p-6 w-full">
       {/* Header with Progress */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex justify-between items-start mb-4">

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useVendorClient } from '../context/VendorClientContext';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient, updateVendorClient, fetchNextCode } from '../services/vendorClient.service';
+import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode } from '../services/vendorClient.service';
 
 interface Document {
  type: string;
@@ -87,7 +87,7 @@ type VendorFormProps = {
 };
 
 const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) => {
- const { vendorClients, addVendorClient, updateVendorClient } = useVendorClient();
+ const { vendorClients } = useVendorClient();
  const { addToast } = useToast();
  const [currentStage, setCurrentStage] = useState(0);
  const [errors, setErrors] = useState<Record<string, string>>({});
@@ -249,13 +249,21 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   if (currentStage > 0) setCurrentStage(currentStage - 1);
  };
 
+ const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+   return (error as { message: string }).message;
+  }
+  return fallback;
+ };
+
  const generateCode = async () => {
   const res = await fetchNextCode('vendor');
   if (res.success && res.data) {
    setFormData(prev => ({ ...prev, entityCode: res.data }));
    addToast('success', `Entity code generated: ${res.data}`);
   } else {
-   addToast('error', res.error || 'Failed to generate code');
+    addToast('error', getErrorMessage(res.error, 'Failed to generate code'));
   }
  };
 
@@ -265,7 +273,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    setFormData(prev => ({ ...prev, entityCode: res.data }));
    addToast('success', `Entity code regenerated: ${res.data}`);
   } else {
-   addToast('error', res.error || 'Failed to generate code');
+    addToast('error', getErrorMessage(res.error, 'Failed to generate code'));
   }
  };
 
@@ -365,7 +373,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   };
 
   if (editingId && existingVendor) {
-   const res = await updateVendorClient(editingId, {
+   const res = await updateVendorClientApi(editingId, {
     name: payload.name,
     email: payload.email,
     phone: payload.phone,
@@ -382,7 +390,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     onSaved?.();
     return;
    }
-   addToast('error', res.error || 'Failed to update vendor');
+   addToast('error', getErrorMessage(res.error, 'Failed to update vendor'));
    setIsSaving(false);
    return;
   }
@@ -420,7 +428,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    onSaved?.();
    return;
   }
-  addToast('error', res.error || 'Failed to create vendor');
+   addToast('error', getErrorMessage(res.error, 'Failed to create vendor'));
   setIsSaving(false);
  };
 
@@ -431,7 +439,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const sectionTitleClass = "text-xs font-bold text-gray-500 tracking-widest uppercase mb-4";
 
  return (
-  <div className="p-6 max-w-5xl mx-auto">
+  <div className="p-6 w-full">
    {/* Header with Progress */}
    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
     <div className="flex justify-between items-start mb-4">
@@ -741,7 +749,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({...tempPoc, notes: e.target.value})} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
         </div>
         <div>
-         <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-slate-800 text-white border border-amber-600 rounded-lg hover:bg-slate-800 transition font-medium text-sm font-semibold">
+         <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-slate-800 text-white border border-amber-600 rounded-lg hover:bg-slate-800 transition font-semibold text-sm">
           + Add POC
          </button>
         </div>
