@@ -31,9 +31,7 @@ const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialForm'))
 const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
 const BOMRefactored = lazy(() => import('./pages/BOMForm'))
-const ItemsMaster = lazy(() => import('./pages/ItemsMaster'))
 const VendorClient = lazy(() => import('./pages/VendorClient'))
-const SalesAndPurchase = lazy(() => import('./pages/SalesAndPurchase'))
 const UniversalSwap = lazy(() => import('./pages/UniversalSwap'))
 const UniversalSwapPage = lazy(() => import('./pages/UniversalSwapPage'))
 const ItemGroups = lazy(() => import('./pages/ItemGroups'))
@@ -337,19 +335,9 @@ const AppLayout = () => {
                                                                <ItemsList />
                                                         </ProtectedModuleRoute>
                                                  } />
-                                                 <Route path="/items-master" element={
-                                                        <ProtectedModuleRoute moduleId="items-master">
-                                                               <ItemsMaster />
-                                                        </ProtectedModuleRoute>
-                                                 } />
                                                  <Route path="/vendor-client" element={
                                                         <ProtectedModuleRoute moduleId="vendor-client">
                                                                <VendorClient />
-                                                        </ProtectedModuleRoute>
-                                                 } />
-                                                 <Route path="/sales-and-purchase" element={
-                                                        <ProtectedModuleRoute moduleId="sales-purchase">
-                                                               <SalesAndPurchase />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/task-management" element={

@@ -713,7 +713,7 @@ const TreasuryApp = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">POs Awaiting Advance Approval</h3>
                   {treasuryPOs.length === 0 ? (
-                    <p className="text-gray-400 text-sm py-6 text-center">No POs awaiting advance payment. Create planned lines from Procurement → SalesAndPurchase.</p>
+                    <p className="text-gray-400 text-sm py-6 text-center">No POs awaiting advance payment. Create planned lines from Procurement.</p>
                   ) : (
                     <div className="space-y-3">
                       {treasuryPOs.map((po: any) => {

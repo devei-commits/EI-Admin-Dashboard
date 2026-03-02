@@ -46,10 +46,8 @@ const Sidebar = () => {
 
   // Masters section
   const showInventory = canAccess('inventory');
-  const showItemsMaster = canAccess('items-master');
   const showVendorClient = canAccess('vendor-client');
-  const showSalesPurchase = canAccess('sales-purchase');
-  const showMastersSection = showInventory || showItemsMaster || showVendorClient || showSalesPurchase;
+  const showMastersSection = showInventory || showVendorClient;
 
   // Handle logout
   const handleLogout = () => {
@@ -88,9 +86,7 @@ const Sidebar = () => {
     '/packaging',
     '/raw-material',
     '/bom',
-    '/items-master',
     '/vendor-client',
-    '/sales-and-purchase',
     '/universal-swap',
     '/item-groups',
     '/items-list'
@@ -640,40 +636,6 @@ const Sidebar = () => {
                         </NavLink>
                       </li>
                     )}
-                    {showItemsMaster && (
-                      <li>
-                        <NavLink
-                          to="/items-master"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          onClick={handleLinkClick}
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                          </svg>
-                          <span>Items Master</span>
-                        </NavLink>
-                      </li>
-                    )}
-                    {showSalesPurchase && (
-                      <li>
-                        <NavLink
-                          to="/sales-and-purchase"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                            }`}
-                          onClick={handleLinkClick}
-                        >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Sales & Purchase</span>
-                        </NavLink>
-                      </li>
-                    )}
                     {showInventory && (
                       <li>
                         <NavLink
@@ -687,7 +649,7 @@ const Sidebar = () => {
                           <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          <span>Items List</span>
+                          <span>Price List</span>
                         </NavLink>
                       </li>
                     )}

@@ -206,7 +206,7 @@ const Warehouse: React.FC = () => {
         navigate('/procurement');
         break;
       case 'locations':
-        navigate('/items-master');
+        navigate('/item-groups');
         break;
       default:
         break;

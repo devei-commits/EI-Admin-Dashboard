@@ -269,55 +269,6 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
   ]
  },
  {
-  moduleId: 'sales-purchase',
-  moduleName: 'Sales & Purchase',
-  icon: 'transaction',
-  description: 'Sales and purchase transactions',
-  subModules: [
-   {
-    subModuleId: 'sales-orders',
-    subModuleName: 'Sales Orders',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'so-number', columnName: 'SO Number', view: false, edit: false },
-     { columnId: 'client', columnName: 'Client', view: false, edit: false },
-     { columnId: 'products', columnName: 'Products', view: false, edit: false },
-     { columnId: 'total-value', columnName: 'Total Value', view: false, edit: false },
-     { columnId: 'so-date', columnName: 'Order Date', view: false, edit: false },
-     { columnId: 'so-status', columnName: 'Status', view: false, edit: false },
-    ]
-   },
-   {
-    subModuleId: 'purchase-orders',
-    subModuleName: 'Purchase Orders',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'po-number', columnName: 'PO Number', view: false, edit: false },
-     { columnId: 'vendor', columnName: 'Vendor', view: false, edit: false },
-     { columnId: 'items', columnName: 'Items', view: false, edit: false },
-     { columnId: 'total-value', columnName: 'Total Value', view: false, edit: false },
-     { columnId: 'po-date', columnName: 'Order Date', view: false, edit: false },
-     { columnId: 'delivery-date', columnName: 'Expected Delivery', view: false, edit: false },
-     { columnId: 'po-status', columnName: 'Status', view: false, edit: false },
-    ]
-   },
-   {
-    subModuleId: 'invoices',
-    subModuleName: 'Invoices',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'invoice-number', columnName: 'Invoice Number', view: false, edit: false },
-     { columnId: 'client-vendor', columnName: 'Client/Vendor', view: false, edit: false },
-     { columnId: 'amount', columnName: 'Amount', view: false, edit: false },
-     { columnId: 'tax', columnName: 'Tax', view: false, edit: false },
-     { columnId: 'total', columnName: 'Total', view: false, edit: false },
-     { columnId: 'due-date', columnName: 'Due Date', view: false, edit: false },
-     { columnId: 'payment-status', columnName: 'Payment Status', view: false, edit: false },
-    ]
-   }
-  ]
- },
- {
   moduleId: 'treasury',
   moduleName: 'Treasury Management',
   icon: 'treasury',
@@ -531,31 +482,6 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
      { columnId: 'category-name', columnName: 'Category Name', view: false, edit: false },
      { columnId: 'parent-category', columnName: 'Parent Category', view: false, edit: false },
      { columnId: 'products-count', columnName: 'Products Count', view: false, edit: false },
-    ]
-   }
-  ]
- },
- {
-  moduleId: 'items-master',
-  moduleName: 'Items Master',
-  icon: 'items',
-  description: 'Master item database',
-  subModules: [
-   {
-    subModuleId: 'items-list',
-    subModuleName: 'Items List',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'item-code', columnName: 'Item Code', view: false, edit: false },
-     { columnId: 'item-name', columnName: 'Item Name', view: false, edit: false },
-     { columnId: 'category', columnName: 'Category', view: false, edit: false },
-     { columnId: 'sub-category', columnName: 'Sub Category', view: false, edit: false },
-     { columnId: 'uom', columnName: 'Unit of Measure', view: false, edit: false },
-     { columnId: 'hsn-code', columnName: 'HSN Code', view: false, edit: false },
-     { columnId: 'gst-rate', columnName: 'GST Rate', view: false, edit: false },
-     { columnId: 'stock-qty', columnName: 'Stock Quantity', view: false, edit: false },
-     { columnId: 'reorder-level', columnName: 'Reorder Level', view: false, edit: false },
-     { columnId: 'status', columnName: 'Status', view: false, edit: false },
     ]
    }
   ]

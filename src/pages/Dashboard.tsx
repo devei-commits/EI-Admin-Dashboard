@@ -179,14 +179,6 @@ const MODULE_CARDS: ModuleCard[] = [
     description: 'Financial management',
   },
   {
-    title: 'Items Master',
-    icon: <Box className="w-6 h-6" />,
-    href: '/items-master',
-    color: 'cyan',
-    stats: [{ label: 'Items', value: 234 }, { label: 'Categories', value: 18 }],
-    description: 'Product catalog',
-  },
-  {
     title: 'Raw Materials',
     icon: <Beaker className="w-6 h-6" />,
     href: '/raw-material',
@@ -217,14 +209,6 @@ const MODULE_CARDS: ModuleCard[] = [
     color: 'slate',
     stats: [{ label: 'Vendors', value: 34 }, { label: 'Clients', value: 56 }],
     description: 'Manage business partners',
-  },
-  {
-    title: 'Sales & Purchase',
-    icon: <TrendingUp className="w-6 h-6" />,
-    href: '/sales-and-purchase',
-    color: 'red',
-    stats: [{ label: 'This Month', value: '₹45L' }],
-    description: 'Track transactions',
   },
   {
     title: 'Active Ingredients',
@@ -445,7 +429,7 @@ const Dashboard = () => {
         <StatCard title="Active Users" value={42} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
         <StatCard title="Open Enquiries" value={89} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
         <StatCard title="Open Tasks" value={18} icon={<CheckSquare className="w-6 h-6" />} change={`127 completed`} changeType="neutral" color="green" link="/task-management" />
-        <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/items-master" />
+        <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/raw-material" />
       </div>
 
       {/* Quick Actions */}
