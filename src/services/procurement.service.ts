@@ -1,4 +1,5 @@
 import type { ServiceResult } from '../types/api.types';
+import { api } from '../lib/apiClient';
 
 export interface ProcurementRequest {
   id: string;
@@ -12,14 +13,25 @@ export interface ProcurementRequest {
   estimatedCost?: number;
 }
 
-// MOCK — replace with: return api.get<ProcurementRequest[]>('/api/v1/procurement')
+// Fetch all procurement requests
 export async function fetchProcurementRequests(): Promise<ServiceResult<ProcurementRequest[]>> {
-  return { data: [], error: null, success: true };
+  try {
+    const data = await api.get<ProcurementRequest[]>('/api/v1/procurement');
+    return { data, error: null, success: true };
+  } catch (error) {
+    const err = error instanceof Error ? error.message : 'Failed to fetch procurement requests';
+    return { data: null, error: err, success: false };
+  }
 }
 
-// MOCK — replace with: return api.post<ProcurementRequest>('/api/v1/procurement', payload)
+// Create a new procurement request
 export async function createProcurementRequest(
-  _payload: Partial<ProcurementRequest>
+  payload: Record<string, unknown>
 ): Promise<ServiceResult<ProcurementRequest>> {
-  return { data: null, error: null, success: true };
-}
+  try {
+    const data = await api.post<ProcurementRequest>('/api/v1/procurement', payload);
+    return { data, error: null, success: true };
+  } catch (error) {
+    const err = error instanceof Error ? error.message : 'Failed to create procurement request';
+    return { data: null, error: err, success: false };
+  }
