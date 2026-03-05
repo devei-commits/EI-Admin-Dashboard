@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
@@ -1135,13 +1136,19 @@ function GroupChipPM({ group }: { group: string }) {
 }
 
 const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }> = ({ refreshKey = 0, onSwitchToForm }) => {
- const [search, setSearch] = useState('');
+ const [searchParams] = useSearchParams();
+ const pmFromQuery = searchParams.get('pm') ?? '';
+ const [search, setSearch] = useState(pmFromQuery);
  const [typeFilter, setTypeFilter] = useState('');
  const [levelFilter, setLevelFilter] = useState('');
  const [sortAsc, setSortAsc] = useState(true);
  const [allPMs, setAllPMs] = useState<PackMaterialRecord[]>([]);
  const [loading, setLoading] = useState(true);
  const [loadError, setLoadError] = useState<string | null>(null);
+
+ useEffect(() => {
+  if (pmFromQuery) setSearch(pmFromQuery);
+ }, [pmFromQuery]);
 
  const loadPackMaterials = useCallback(async () => {
   setLoading(true);

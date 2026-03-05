@@ -28,6 +28,8 @@ export interface ItemListTierRow {
   moq_min: number;
   moq_max: number | null;
   price_per_unit: number;
+  valid_till?: string | null;
+  note?: string | null;
 }
 
 export interface ItemListVendorRateRow {
@@ -64,6 +66,32 @@ export interface CreateTierPayload {
   moq_min: number;
   moq_max?: number | null;
   price_per_unit: number;
+  valid_till?: string | null;
+  note?: string | null;
+}
+
+/** Page item: RM/PM from masters with optional vendorRates (for Price Lists view). */
+export interface PriceListItemPage {
+  code: string;
+  name: string;
+  type: 'RM' | 'PM';
+  uom?: string;
+  gst?: number;
+  pricePerUnit: number;
+  pack_type?: string;
+  level?: string;
+  moq?: number;
+  raw_material_id?: number | null;
+  pack_material_id?: number | null;
+  itemsListId: number | null;
+  vendorRates: Array<{
+    id: number;
+    vendor_id: number;
+    vendor_name: string | null;
+    vendor_code: string | null;
+    currency: string;
+    tiers: ItemListTierRow[];
+  }>;
 }
 
 export async function fetchItemsList(type?: 'RM' | 'PM'): Promise<ServiceResult<ItemListRecord[]>> {
@@ -73,6 +101,16 @@ export async function fetchItemsList(type?: 'RM' | 'PM'): Promise<ServiceResult<
     return { data: list ?? [], error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load items list';
+    return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function fetchPriceListPage(type: 'RM' | 'PM'): Promise<ServiceResult<PriceListItemPage[]>> {
+  try {
+    const list = await api.get<PriceListItemPage[]>(`/api/v1/items-list/page?type=${encodeURIComponent(type)}`);
+    return { data: list ?? [], error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load price list page';
     return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
   }
 }
