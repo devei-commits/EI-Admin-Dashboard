@@ -129,9 +129,9 @@ const Sidebar = () => {
   }, [isMastersActive]);
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${isActive
-      ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
-      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+    `flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 ${isActive
+      ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
+      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
     }`;
 
   const handleLinkClick = () => {
@@ -192,13 +192,13 @@ const Sidebar = () => {
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-3">Menu</p>
-          <ul className="space-y-1">
+        <nav className="flex-1 p-5 overflow-y-auto">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-5 mb-4">Menu</p>
+          <ul className="space-y-2">
             {showDashboard && (
               <li>
                 <NavLink to="/" className={linkClass} onClick={handleLinkClick}>
-                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                   </svg>
                   <span className="font-medium">Dashboard</span>
@@ -215,9 +215,9 @@ const Sidebar = () => {
                     const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
                     window.open(`/pis?role=${userRole}`, '_blank');
                   }}
-                  className="flex items-center px-4 py-3 rounded-lg transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent w-full text-left"
+                  className="flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm w-full text-left"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5 mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5 mr-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" />
                   </svg>
                   <span className="font-medium">PIS</span>
@@ -230,7 +230,7 @@ const Sidebar = () => {
             {showRoleManagement && (
               <li>
                 <NavLink to="/role-management" className={linkClass} onClick={handleLinkClick}>
-                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                   <span className="font-medium">Role Management</span>
@@ -240,7 +240,7 @@ const Sidebar = () => {
             {showUserManagement && (
               <li>
                 <NavLink to="/user-management" className={linkClass} onClick={handleLinkClick}>
-                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
                   <span className="font-medium">User Management</span>
@@ -250,7 +250,7 @@ const Sidebar = () => {
             {showTaskManagement && (
               <li>
                 <NavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
-                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                   </svg>
                   <span className="font-medium">Task Management</span>
@@ -259,15 +259,15 @@ const Sidebar = () => {
             )}
             {showOrderSection && (
               <li>
-                <div className={`rounded-lg transition-all duration-200 ${isOrderActive || orderOpen
-                  ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                <div className={`rounded-xl transition-all duration-200 ${isOrderActive || orderOpen
+                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => setOrderOpen(!orderOpen)}
-                      className="flex-1 flex items-center px-4 py-3 text-left cursor-pointer"
+                      className="flex-1 flex items-center px-5 py-3.5 text-left cursor-pointer"
                     >
                       <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -277,7 +277,7 @@ const Sidebar = () => {
                     <button
                       type="button"
                       onClick={() => setOrderOpen(!orderOpen)}
-                      className="p-2 rounded hover:bg-gray-100 transition-colors shrink-0"
+                      className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
                     >
                       <svg
                         className={`w-5 h-5 transition-transform duration-300 ease-in-out ${orderOpen ? "rotate-180" : ""}`}
@@ -295,13 +295,13 @@ const Sidebar = () => {
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${orderOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
+                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     <li>
                       <a
                         href="/procurement"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
                         <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -318,10 +318,10 @@ const Sidebar = () => {
                         href="/warehouse"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                         </svg>
                         <span>Warehouse</span>
@@ -335,10 +335,10 @@ const Sidebar = () => {
                         href="/planning"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         <span>Planning</span>
@@ -352,10 +352,10 @@ const Sidebar = () => {
                         href="/production"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                         </svg>
                         <span>Production</span>
@@ -369,10 +369,10 @@ const Sidebar = () => {
                         href="/fulfillment"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                         </svg>
                         <span>Fulfillment</span>
@@ -386,10 +386,10 @@ const Sidebar = () => {
                         href="/client-hub"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                         onClick={handleLinkClick}
                       >
-                        <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM4.318 20H3v-2a6 6 0 018-5.656" />
                         </svg>
                         <span>Client Hub</span>
@@ -404,14 +404,14 @@ const Sidebar = () => {
             )}
             {showProductSection && (
               <li>
-                <div className={`rounded-lg transition-all duration-200 ${isProductActive || productOpen
-                  ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                <div className={`rounded-xl transition-all duration-200 ${isProductActive || productOpen
+                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center">
                     <NavLink
                       to="/catalogue-management"
-                      className="flex-1 flex items-center px-4 py-3"
+                      className="flex-1 flex items-center px-5 py-3.5"
                       onClick={handleLinkClick}
                     >
                       <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -421,7 +421,7 @@ const Sidebar = () => {
                     </NavLink>
                     <button
                       onClick={() => setProductOpen(!productOpen)}
-                      className="p-2 rounded hover:bg-gray-100 transition-colors"
+                      className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <svg
                         className={`w-5 h-5 transition-transform duration-300 ease-in-out ${productOpen ? "rotate-180" : ""}`}
@@ -439,18 +439,18 @@ const Sidebar = () => {
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${productOpen ? "max-h-96" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
+                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showCatalogueManagement && (
                       <li>
                         <NavLink
                           to="/catalogue-management"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                           </svg>
                           <span>Catalogue Management</span>
@@ -461,13 +461,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/packaging-management"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Packaging Management</span>
@@ -478,13 +478,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/active-ingredients"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                           </svg>
                           <span>Active Ingredients</span>
@@ -497,17 +497,17 @@ const Sidebar = () => {
             )}
             {showMastersSection && (
               <li>
-                <div className={`rounded-lg transition-all duration-200 ${isMastersActive || mastersOpen
-                  ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                <div className={`rounded-xl transition-all duration-200 ${isMastersActive || mastersOpen
+                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => setMastersOpen(!mastersOpen)}
-                      className="flex-1 flex items-center px-4 py-3 text-left cursor-pointer"
+                      className="flex-1 flex items-center px-5 py-3.5 text-left cursor-pointer"
                     >
-                      <svg className="w-5 h-5 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <svg className="w-5 h-5 mr-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 0 0 3.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008Z" />
                       </svg>
                       <span className="font-medium">Masters</span>
@@ -515,7 +515,7 @@ const Sidebar = () => {
                     <button
                       type="button"
                       onClick={() => setMastersOpen(!mastersOpen)}
-                      className="p-2 rounded hover:bg-gray-100 transition-colors shrink-0"
+                      className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
                     >
                       <svg
                         className={`w-5 h-5 transition-transform duration-300 ease-in-out ${mastersOpen ? "rotate-180" : ""}`}
@@ -533,18 +533,18 @@ const Sidebar = () => {
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${mastersOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
+                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showInventory && (
                       <li>
                         <NavLink
                           to="/raw-material"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                           </svg>
                           <span>Raw Materials</span>
@@ -555,13 +555,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/packaging"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Packaging</span>
@@ -572,13 +572,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/bom"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                           </svg>
                           <span>Products (PR)</span>
@@ -589,13 +589,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/item-groups"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                           </svg>
                           <span>Item Groups</span>
@@ -606,13 +606,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/universal-swap"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                           </svg>
                           <span>Universal Swap</span>
@@ -623,13 +623,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/vendor-client"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.697M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <span>Vendors and Client</span>
@@ -640,13 +640,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/items-list"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                           <span>Price List</span>
@@ -665,9 +665,9 @@ const Sidebar = () => {
                     handleLinkClick();
                     window.open('/treasury', '_blank');
                   }}
-                  className="flex items-center px-4 py-3 rounded-lg transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent w-full text-left"
+                  className="flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm w-full text-left"
                 >
-                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span className="font-medium">Treasury</span>
@@ -679,14 +679,14 @@ const Sidebar = () => {
             )}
             {showEnquirySection && (
               <li>
-                <div className={`rounded-lg transition-all duration-200 ${isEnquiryActive || enquiryOpen
-                  ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+                <div className={`rounded-xl transition-all duration-200 ${isEnquiryActive || enquiryOpen
+                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center">
                     <NavLink
                       to="/enquiry-management"
-                      className="flex-1 flex items-center px-4 py-3"
+                      className="flex-1 flex items-center px-5 py-3.5"
                       onClick={handleLinkClick}
                     >
                       <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -696,7 +696,7 @@ const Sidebar = () => {
                     </NavLink>
                     <button
                       onClick={() => setEnquiryOpen(!enquiryOpen)}
-                      className="p-2 rounded hover:bg-gray-100 transition-colors"
+                      className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <svg
                         className={`w-5 h-5 transition-transform duration-300 ease-in-out ${enquiryOpen ? "rotate-180" : ""}`}
@@ -714,18 +714,18 @@ const Sidebar = () => {
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${enquiryOpen ? "max-h-96" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-6 border-l-2 border-slate-100 pl-3 py-2 my-1 space-y-1.5">
+                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showDoctorAppointments && (
                       <li>
                         <NavLink
                           to="/doctor-appointments"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           <span>Doctor Appointments</span>
@@ -736,13 +736,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/contact-enquiry"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                           <span>Contact Enquiry</span>
@@ -753,13 +753,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/new-developments"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                           <span>New Developments</span>
@@ -770,13 +770,13 @@ const Sidebar = () => {
                       <li>
                         <NavLink
                           to="/product-samples"
-                          className={({ isActive }) => `flex items-center px-4 py-2 rounded-lg transition-all duration-200 text-sm group ${isActive
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
                             }`}
                           onClick={handleLinkClick}
                         >
-                          <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Product Samples</span>
@@ -791,11 +791,11 @@ const Sidebar = () => {
         </nav>
 
         {/* Footer Section with User Info */}
-        <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
+        <div className="p-5 border-t border-gray-100 bg-gray-50/50 space-y-3">
           {/* User Info */}
           {user && (
             <div className="flex items-center gap-3 px-2">
-              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-md">
+              <div className="w-11 h-11 bg-slate-800 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-md">
                 {(user.name ?? user.email ?? 'U').split(' ').map(n => n[0]).filter(Boolean).join('').substring(0, 2) || 'U'}
               </div>
               <div className="flex-1 min-w-0">
@@ -808,7 +808,7 @@ const Sidebar = () => {
           {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 rounded-lg transition-all duration-200 text-sm font-medium group"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 rounded-xl transition-all duration-200 text-sm font-medium group shadow-sm hover:shadow"
           >
             <svg className="w-4 h-4 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
