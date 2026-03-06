@@ -1,281 +1,83 @@
-import React, { useState, useMemo } from 'react';
-
-interface InventoryItem {
-  id: string;
-  code: string;
-  itemName: string;
-  category: string;
-  type: 'RM' | 'PM' | 'FG/PR';
-  zone: string;
-  rack: string;
-  whStock: number;
-  ml1Stock: number;
-  ml2Stock: number;
-  stockInHand: number;
-  reserved: number;
-  inTransit: number;
-  reorderPt: number;
-  avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock' | 'Under QC';
-}
-
-// Sample inventory data
-const INVENTORY_DATA: InventoryItem[] = [
-  {
-    id: '1',
-    code: 'EI-RM-BASE-001',
-    itemName: 'Aqua (Purified Water)',
-    category: 'Aqua - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S3',
-    whStock: 380,
-    ml1Stock: 120,
-    ml2Stock: 60,
-    stockInHand: 560,
-    reserved: 200,
-    inTransit: 300,
-    reorderPt: 400,
-    avgMo: 400,
-    status: 'In Stock'
-  },
-  {
-    id: '2',
-    code: 'EI-RM-ACT-001',
-    itemName: 'Glycerin',
-    category: 'Glycerin - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S2',
-    whStock: 95,
-    ml1Stock: 30,
-    ml2Stock: 15,
-    stockInHand: 140,
-    reserved: 60,
-    inTransit: 80,
-    reorderPt: 90,
-    avgMo: 90,
-    status: 'In Stock'
-  },
-  {
-    id: '3',
-    code: 'EI-RM-EMUL-001',
-    itemName: 'Cetearyl Alcohol',
-    category: 'Cetearyl Alcohol - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S4',
-    whStock: 42,
-    ml1Stock: 8,
-    ml2Stock: 5,
-    stockInHand: 55,
-    reserved: 30,
-    inTransit: 40,
-    reorderPt: 20,
-    avgMo: 20,
-    status: 'In Stock'
-  },
-  {
-    id: '4',
-    code: 'EI-RM-EMUL-002',
-    itemName: 'Ceteareth-20',
-    category: 'Ceteareth-20 - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S1',
-    whStock: 28,
-    ml1Stock: 5,
-    ml2Stock: 3,
-    stockInHand: 36,
-    reserved: 20,
-    inTransit: 25,
-    reorderPt: 20,
-    avgMo: 25,
-    status: 'In Stock'
-  },
-  {
-    id: '5',
-    code: 'EI-RM-POLY-001',
-    itemName: 'Carbomer 980',
-    category: 'Carbomer - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S3',
-    whStock: 12,
-    ml1Stock: 2,
-    ml2Stock: 1,
-    stockInHand: 15,
-    reserved: 8,
-    inTransit: 10,
-    reorderPt: 10,
-    avgMo: 10,
-    status: 'Low Stock'
-  },
-  {
-    id: '6',
-    code: 'EI-RM-POLY-002',
-    itemName: 'Carbopol 940',
-    category: 'Carbomer - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S3',
-    whStock: 10,
-    ml1Stock: 2,
-    ml2Stock: 0,
-    stockInHand: 12,
-    reserved: 6,
-    inTransit: 10,
-    reorderPt: 10,
-    avgMo: 7,
-    status: 'Low Stock'
-  },
-  {
-    id: '7',
-    code: 'EI-RM-PRES-001',
-    itemName: 'Phenoxyethanol',
-    category: 'Phenoxyethanol - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A3-L1-S1',
-    whStock: 18,
-    ml1Stock: 4,
-    ml2Stock: 2,
-    stockInHand: 24,
-    reserved: 12,
-    inTransit: 15,
-    reorderPt: 15,
-    avgMo: 12,
-    status: 'In Stock'
-  },
-  {
-    id: '8',
-    code: 'EI-RM-EXCIP-001',
-    itemName: 'Sodium Hydroxide 50%',
-    category: 'Sodium Hydroxide - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A3-L1-S1',
-    whStock: 35,
-    ml1Stock: 5,
-    ml2Stock: 3,
-    stockInHand: 43,
-    reserved: 15,
-    inTransit: 25,
-    reorderPt: 15,
-    avgMo: 15,
-    status: 'In Stock'
-  },
-  {
-    id: '9',
-    code: 'EI-RM-EXCIP-002',
-    itemName: 'Citric Acid Monohydrate',
-    category: 'Citric Acid - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A3-L1-S1',
-    whStock: 22,
-    ml1Stock: 3,
-    ml2Stock: 2,
-    stockInHand: 27,
-    reserved: 10,
-    inTransit: 10,
-    reorderPt: 8,
-    avgMo: 8,
-    status: 'In Stock'
-  },
-  {
-    id: '10',
-    code: 'EI-RM-SURF-001',
-    itemName: 'SLES 70%',
-    category: 'Sodium Laureth Sulfate - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S2',
-    whStock: 95,
-    ml1Stock: 25,
-    ml2Stock: 15,
-    stockInHand: 135,
-    reserved: 60,
-    inTransit: 80,
-    reorderPt: 75,
-    avgMo: 75,
-    status: 'In Stock'
-  },
-  {
-    id: '11',
-    code: 'EI-RM-SURF-002',
-    itemName: 'CAPB 35%',
-    category: 'Cocamidopropyl Betaine - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S3',
-    whStock: 55,
-    ml1Stock: 15,
-    ml2Stock: 8,
-    stockInHand: 78,
-    reserved: 30,
-    inTransit: 40,
-    reorderPt: 35,
-    avgMo: 35,
-    status: 'In Stock'
-  },
-  {
-    id: '12',
-    code: 'EI-RM-SURF-003',
-    itemName: 'SCI (Sodium Cocoyl Isethionate)',
-    category: 'Sodium Cocoyl Isethionate - KG',
-    type: 'RM',
-    zone: 'A',
-    rack: 'A1-L1-S3',
-    whStock: 30,
-    ml1Stock: 8,
-    ml2Stock: 4,
-    stockInHand: 42,
-    reserved: 20,
-    inTransit: 25,
-    reorderPt: 25,
-    avgMo: 20,
-    status: 'In Stock'
-  },
-];
+import React, { useState, useMemo, useEffect } from 'react';
+import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
+import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
 
 const WarehouseInventory: React.FC = () => {
   const [filterType, setFilterType] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
+  const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof InventoryItem; direction: 'asc' | 'desc' } | null>(null);
+  const [inventoryData, setInventoryData] = useState<WarehouseInventoryRow[]>([]);
+  const [itemGroups, setItemGroups] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Filter and search
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchWarehouseInventory()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setInventoryData(res.data.rows);
+          setItemGroups(
+            (res.data.itemGroups ?? []).map((g) => ({
+              id: String(g.id),
+              code: g.code,
+              name: g.name || g.code,
+            }))
+          );
+        } else {
+          setInventoryData([]);
+          setError(res.error || 'Failed to load inventory');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInventoryData([]);
+          setError('Failed to load inventory');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const filteredData = useMemo(() => {
-    let filtered = INVENTORY_DATA;
-
-    // Apply type filter
-    if (filterType === 'RM') filtered = filtered.filter(item => item.type === 'RM');
-    else if (filterType === 'PM') filtered = filtered.filter(item => item.type === 'PM');
-    else if (filterType === 'FG/PR') filtered = filtered.filter(item => item.type === 'FG/PR');
-    else if (filterType === 'Low') filtered = filtered.filter(item => item.status === 'Low Stock' || item.status === 'Critical');
-
-    // Apply search
-    if (searchTerm) {
+    let filtered = inventoryData;
+    if (filterType === 'RM') filtered = filtered.filter((item) => item.type === 'RM');
+    else if (filterType === 'PM') filtered = filtered.filter((item) => item.type === 'PM');
+    else if (filterType === 'FG/PR') filtered = filtered.filter((item) => item.type === 'FG/PR');
+    else if (filterType === 'Low') filtered = filtered.filter((item) => item.status === 'Low Stock' || item.status === 'Critical');
+    if (itemGroupFilter) {
+      filtered = filtered.filter((item) => item.itemGroupCodes.includes(itemGroupFilter));
+    }
+    if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(item =>
-        item.code.toLowerCase().includes(term) ||
-        item.itemName.toLowerCase().includes(term) ||
-        item.category.toLowerCase().includes(term)
+      filtered = filtered.filter(
+        (item) =>
+          item.code.toLowerCase().includes(term) ||
+          item.name.toLowerCase().includes(term) ||
+          item.subtitle.toLowerCase().includes(term)
       );
     }
-
     return filtered;
-  }, [filterType, searchTerm]);
+  }, [filterType, itemGroupFilter, searchTerm, inventoryData]);
 
-  // Calculate KPIs
-  const kpis = {
-    totalSKUs: INVENTORY_DATA.length,
-    inStock: INVENTORY_DATA.filter(item => item.status === 'In Stock').length,
-    lowStock: INVENTORY_DATA.filter(item => item.status === 'Low Stock').length,
-    criticalOut: INVENTORY_DATA.filter(item => item.status === 'Critical' || item.status === 'Out of Stock').length,
-    fgUnderQC: INVENTORY_DATA.filter(item => item.status === 'Under QC').length,
-    inTransit: INVENTORY_DATA.reduce((sum, item) => sum + item.inTransit, 0),
-  };
+  const kpis = useMemo(
+    () => ({
+      totalSKUs: inventoryData.length,
+      inStock: inventoryData.filter((item) => item.status === 'In Stock').length,
+      lowStock: inventoryData.filter((item) => item.status === 'Low Stock').length,
+      criticalOut: inventoryData.filter((item) => item.status === 'Critical').length,
+      fgUnderQC: 0,
+      inTransit: inventoryData.reduce((sum, item) => sum + item.inTransit, 0),
+    }),
+    [inventoryData]
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -366,19 +168,17 @@ const WarehouseInventory: React.FC = () => {
             <h2 className="text-xl font-bold text-gray-900">Inventory</h2>
             <div className="flex flex-wrap gap-2 mt-3">
               {[
-                { label: 'All', value: 'All' as const, count: INVENTORY_DATA.length },
-                { label: 'RM', value: 'RM' as const, count: INVENTORY_DATA.filter(i => i.type === 'RM').length },
-                { label: 'PM', value: 'PM' as const, count: INVENTORY_DATA.filter(i => i.type === 'PM').length },
-                { label: 'FG/PR', value: 'FG/PR' as const, count: INVENTORY_DATA.filter(i => i.type === 'FG/PR').length },
-                { label: 'Low', value: 'Low' as const, count: INVENTORY_DATA.filter(i => i.status === 'Low Stock' || i.status === 'Critical').length },
-              ].map(filter => (
+                { label: 'All', value: 'All' as const, count: inventoryData.length },
+                { label: 'RM', value: 'RM' as const, count: inventoryData.filter((i) => i.type === 'RM').length },
+                { label: 'PM', value: 'PM' as const, count: inventoryData.filter((i) => i.type === 'PM').length },
+                { label: 'FG/PR', value: 'FG/PR' as const, count: inventoryData.filter((i) => i.type === 'FG/PR').length },
+                { label: '△ Low', value: 'Low' as const, count: inventoryData.filter((i) => i.status === 'Low Stock' || i.status === 'Critical').length },
+              ].map((filter) => (
                 <button
                   key={filter.value}
                   onClick={() => setFilterType(filter.value)}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                    filterType === filter.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    filterType === filter.value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {filter.label} ({filter.count})
@@ -387,8 +187,8 @@ const WarehouseInventory: React.FC = () => {
             </div>
           </div>
 
-          {/* Search & Quick Filters */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search, Item group filter & Actions */}
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
             <input
               type="text"
               placeholder="Search item, code, category..."
@@ -396,7 +196,19 @@ const WarehouseInventory: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
-            <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <select
+              value={itemGroupFilter}
+              onChange={(e) => setItemGroupFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white min-w-[180px]"
+            >
+              <option value="">All item groups</option>
+              {itemGroups.map((g) => (
+                <option key={g.id} value={g.code}>
+                  {g.name} ({g.code})
+                </option>
+              ))}
+            </select>
+            <button type="button" className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
               + Location
             </button>
             <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
@@ -405,7 +217,14 @@ const WarehouseInventory: React.FC = () => {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Loading / Error */}
+        {loading && (
+          <div className="py-12 text-center text-gray-500">Loading inventory…</div>
+        )}
+        {error && !loading && (
+          <div className="py-12 text-center text-red-600">{error}</div>
+        )}
+        {!loading && !error && (
         <div className="w-full">
           <table className="w-full text-xs">
             <thead>
@@ -413,6 +232,7 @@ const WarehouseInventory: React.FC = () => {
                 <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">CODE</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM NAME</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">TYPE</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM GROUPS</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ZONE/RACK</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">WH STOCK</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML1 STOCK</th>
@@ -427,18 +247,29 @@ const WarehouseInventory: React.FC = () => {
             </thead>
             <tbody>
               {filteredData.map((item, index) => (
-                <tr key={index} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                   <td className="px-2 py-2 font-mono text-blue-600 font-semibold text-xs">{item.code}</td>
                   <td className="px-2 py-2">
                     <div>
-                      <p className="font-medium text-gray-900 text-xs">{item.itemName}</p>
-                      <p className="text-xs text-gray-500">{item.category}</p>
+                      <p className="font-medium text-gray-900 text-xs">{item.name}</p>
+                      <p className="text-xs text-gray-500">{item.subtitle}</p>
                     </div>
                   </td>
                   <td className="px-2 py-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border inline-block whitespace-nowrap ${getTypeColor(item.type)}`}>
                       {item.type}
                     </span>
+                  </td>
+                  <td className="px-2 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {item.itemGroupNames.length > 0
+                        ? item.itemGroupNames.map((gn) => (
+                            <span key={gn} className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-medium">
+                              {gn}
+                            </span>
+                          ))
+                        : <span className="text-gray-400 text-[10px]">—</span>}
+                    </div>
                   </td>
                   <td className="px-2 py-2">
                     <div className="flex items-center gap-1">
@@ -495,11 +326,10 @@ const WarehouseInventory: React.FC = () => {
 
         {/* Results Info */}
         <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-          <p>Showing {filteredData.length} of {INVENTORY_DATA.length} items</p>
-          <button className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors">
-            Load More
-          </button>
+          <p>Showing {filteredData.length} of {inventoryData.length} items</p>
         </div>
+        </div>
+        )}
         </div>
         </div>
       </div>

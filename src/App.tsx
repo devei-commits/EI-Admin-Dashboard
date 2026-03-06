@@ -151,7 +151,7 @@ const AppLayout = () => {
                      <Suspense fallback={<PageLoader />}>
                             <ErrorBoundary>
                                    <Routes>
-                                          <Route path="/warehouse" element={
+                                          <Route path="/warehouse/*" element={
                                                  <ProtectedModuleRoute moduleId="order-management">
                                                         <WarehousePage />
                                                  </ProtectedModuleRoute>

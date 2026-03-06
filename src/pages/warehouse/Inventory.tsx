@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, MapPin, Grid3x3, X } from 'lucide-react';
+import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
 
 export interface InventoryItem {
   id: string;
@@ -19,6 +20,11 @@ export interface InventoryItem {
   reorderPt: number;
   avgMo: number;
   status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  /** Item group names/codes this item belongs to (from masters) */
+  itemGroupNames?: string[];
+  itemGroupCodes?: string[];
+  /** Backend warehouse_inventory.id for persisting adjust stock */
+  warehouseInventoryId?: number;
   batchNumber?: string;
   expiryDate?: string;
   manufacturer?: string;
@@ -804,16 +810,99 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   );
 };
 
+/** Map API row to InventoryItem for table/sidebar */
+function rowToInventoryItem(row: {
+  id: string;
+  code: string;
+  name: string;
+  subtitle: string;
+  type: 'RM' | 'PM' | 'FG/PR';
+  itemGroupNames: string[];
+  itemGroupCodes: string[];
+  zone: string;
+  rack: string;
+  whStock: number;
+  whUnit: string;
+  ml1Stock: number;
+  ml2Stock: number;
+  stockInHand: number;
+  reserved: number;
+  inTransit: number;
+  reorderPt: number;
+  avgMo: number;
+  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  warehouseInventoryId?: number;
+}): InventoryItem {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    subtitle: row.subtitle,
+    type: row.type,
+    zone: row.zone,
+    rack: row.rack,
+    whStock: row.whStock,
+    whUnit: row.whUnit,
+    ml1Stock: row.ml1Stock,
+    ml2Stock: row.ml2Stock,
+    stockInHand: row.stockInHand,
+    reserved: row.reserved,
+    inTransit: row.inTransit,
+    reorderPt: row.reorderPt,
+    avgMo: row.avgMo,
+    status: row.status,
+    itemGroupNames: row.itemGroupNames,
+    itemGroupCodes: row.itemGroupCodes,
+    warehouseInventoryId: row.warehouseInventoryId,
+  };
+}
+
 const WarehouseInventory = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
+  const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>(mockInventoryData);
+  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
+  const [itemGroups, setItemGroups] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isAdjustMode, setIsAdjustMode] = useState(false);
+  const [savingAdjust, setSavingAdjust] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [racks, setRacks] = useState<Rack[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchWarehouseInventory()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          const items = res.data.rows.map(rowToInventoryItem);
+          setInventoryData(items);
+          setItemGroups(
+            (res.data.itemGroups || []).map((g) => ({ id: g.id, code: g.code, name: g.name || g.code }))
+          );
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[Warehouse Inventory] Loaded', { count: items.length, sample: items[0] });
+          }
+        } else {
+          setError(res.error || 'Failed to load inventory');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.message || 'Failed to load inventory');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateInventoryItem = (itemId: string, field: keyof InventoryItem, value: number) => {
     setInventoryData(prev =>
@@ -836,6 +925,55 @@ const WarehouseInventory = () => {
       }
       return updated;
     });
+  };
+
+  const handleDoneAdjustStock = async () => {
+    const item = selectedItem;
+    if (!item) {
+      setIsAdjustMode(false);
+      return;
+    }
+    if (item.warehouseInventoryId != null) {
+      setSavingAdjust(true);
+      const res = await updateWarehouseStock(item.warehouseInventoryId, {
+        wh_stock: item.whStock,
+        ml1_stock: item.ml1Stock,
+        ml2_stock: item.ml2Stock,
+        reserved: item.reserved,
+      });
+      setSavingAdjust(false);
+      if (res.success && res.data) {
+        const d = res.data;
+        const stockInHand = (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
+        setInventoryData(prev =>
+          prev.map((i) =>
+            i.id === item.id
+              ? {
+                  ...i,
+                  whStock: Number(d.wh_stock) ?? i.whStock,
+                  ml1Stock: Number(d.ml1_stock) ?? i.ml1Stock,
+                  ml2Stock: Number(d.ml2_stock) ?? i.ml2Stock,
+                  stockInHand,
+                  reserved: Number(d.reserved) ?? i.reserved,
+                }
+              : i
+          )
+        );
+        setSelectedItem((prev) =>
+          prev?.id === item.id
+            ? {
+                ...prev,
+                whStock: Number(d.wh_stock) ?? prev.whStock,
+                ml1Stock: Number(d.ml1_stock) ?? prev.ml1Stock,
+                ml2Stock: Number(d.ml2_stock) ?? prev.ml2Stock,
+                stockInHand,
+                reserved: Number(d.reserved) ?? prev.reserved,
+              }
+            : prev
+        );
+      }
+    }
+    setIsAdjustMode(false);
   };
 
   const addLocation = (locationData: Omit<Location, 'id' | 'createdAt'>) => {
@@ -871,6 +1009,13 @@ const WarehouseInventory = () => {
       items = items.filter(item => item.status === 'Low Stock' || item.status === 'Critical');
     }
 
+    // Apply item group filter
+    if (itemGroupFilter) {
+      items = items.filter(
+        item => item.itemGroupCodes?.includes(itemGroupFilter) || item.itemGroupNames?.includes(itemGroupFilter)
+      );
+    }
+
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -883,7 +1028,7 @@ const WarehouseInventory = () => {
     }
 
     return items;
-  }, [searchQuery, activeFilter, inventoryData]);
+  }, [searchQuery, activeFilter, itemGroupFilter, inventoryData]);
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -891,7 +1036,7 @@ const WarehouseInventory = () => {
     const inStock = inventoryData.filter(item => item.status === 'In Stock').length;
     const lowStock = inventoryData.filter(item => item.status === 'Low Stock').length;
     const critical = inventoryData.filter(item => item.status === 'Critical' || item.status === 'Out of Stock').length;
-    const fgUnderQc = 1; // Mock value
+    const fgUnderQc = 0; // Backend has no FG-under-QC count yet; derive from inventory/QC API when available
     const inTransit = inventoryData.filter(item => item.inTransit > 0).length;
 
     return { total, inStock, lowStock, critical, fgUnderQc, inTransit };
@@ -982,7 +1127,7 @@ const WarehouseInventory = () => {
           {/* Filter Tabs */}
           <div className="mb-4">
             <h1 className="text-2xl font-bold text-gray-900 mb-4">Inventory</h1>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
               {[
                 { key: 'All', label: `All (${counts.all})` },
                 { key: 'RM', label: `RM (${counts.rm})` },
@@ -1002,6 +1147,21 @@ const WarehouseInventory = () => {
                   {filter.label}
                 </button>
               ))}
+              {/* Item groups filter */}
+              <label className="sr-only" htmlFor="item-group-filter">Filter by item group</label>
+              <select
+                id="item-group-filter"
+                value={itemGroupFilter}
+                onChange={(e) => setItemGroupFilter(e.target.value)}
+                className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="">All item groups</option>
+                {itemGroups.map((g) => (
+                  <option key={g.id} value={g.code}>
+                    {g.name} ({g.code})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1037,6 +1197,15 @@ const WarehouseInventory = () => {
 
       {/* Inventory Table */}
       <div className="p-6">
+        {error && (
+          <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            {error}
+          </div>
+        )}
+        {loading ? (
+          <div className="py-12 text-center text-gray-500">Loading inventory…</div>
+        ) : (
+        <>
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1050,6 +1219,9 @@ const WarehouseInventory = () => {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Type
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Item groups
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Zone / Rack
@@ -1098,6 +1270,11 @@ const WarehouseInventory = () => {
                       <div className="text-xs text-gray-500">{item.subtitle}</div>
                     </td>
                     <td className="px-4 py-3">{getTypeBadge(item.type)}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-600">
+                        {item.itemGroupNames?.length ? item.itemGroupNames.join(', ') : '—'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-gray-400" />
@@ -1172,6 +1349,8 @@ const WarehouseInventory = () => {
               Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -1360,15 +1539,37 @@ const WarehouseInventory = () => {
                   </div>
                 </div>
               </div>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Open Stock Requests</p>
+                <p className="text-[11px] text-slate-600 mb-2">Reserved at which BRM / batch — open requests for this item.</p>
+                <div className="bg-amber-50/50 border border-amber-200 rounded p-3">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-left text-slate-600 border-b border-amber-200">
+                        <th className="py-1 pr-2">Request / BRM</th>
+                        <th className="py-1 pr-2">Qty</th>
+                        <th className="py-1 pr-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td colSpan={3} className="py-2 text-slate-500 italic">No open stock requests</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 sticky bottom-0 bg-white">
               <button
                 type="button"
-                onClick={() => setIsAdjustMode(prev => !prev)}
-                className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors"
+                onClick={isAdjustMode ? handleDoneAdjustStock : () => setIsAdjustMode(true)}
+                disabled={savingAdjust}
+                className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors disabled:opacity-60"
               >
-                {isAdjustMode ? 'Done' : 'Adjust Stock'}
+                {isAdjustMode ? (savingAdjust ? 'Saving…' : 'Done') : 'Adjust Stock'}
               </button>
               <button
                 type="button"

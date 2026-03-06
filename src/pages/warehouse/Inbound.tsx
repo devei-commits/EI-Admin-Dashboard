@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
+import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Passed' | 'In Progress' | 'Pending' | 'Failed';
@@ -16,9 +17,12 @@ interface LineItem {
   rcvdQty: number;
   invoiceQty: number;
   unitPrice: number;
-  diff: number;
-  qcStatus: 'Pass' | 'Hold' | 'Pending';
+  diff?: number;
+  qcStatus: 'Pass' | 'Hold' | 'Pending' | 'Fail';
   qcBy: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
+  product_id?: number;
 }
 
 interface GRNRecord {
@@ -39,279 +43,113 @@ interface GRNRecord {
   grnDate?: string;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
+  noOfBoxes?: number | null;
+  unitsPerBox?: number | null;
+  locationPrefix?: string | null;
+  grnBatchMfg?: string | null;
+  expiry?: string | null;
+  mfgBatch?: string | null;
+  generatedLabels?: GeneratedLabel[] | null;
 }
 
-const mockGRNData: GRNRecord[] = [
-  {
-    id: '1',
-    grnNo: 'EI-GRN-2025-001',
-    poNo: 'EI-PO-2025-001',
-    vendor: 'Chemspec India Pvt Ltd',
-    type: 'RM',
-    items: 5,
-    poValue: 312400,
-    expectedDate: '2025-11-20',
-    receivedDate: '2025-11-19',
-    assignedTo: 'Karan Nair (WH Supervisor)',
-    qcStatus: 'Passed',
-    status: 'GRN Complete',
-    invoiceNo: 'CHEM-INV-2025-1112',
-    invoiceAmount: 312400,
-    grnDate: '2025-11-20',
-    workflowSteps: ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'],
-    lineItems: [
-      {
-        id: 'l1',
-        item: 'Homosalate',
-        itemCode: 'EI-RM-UV-001',
-        poQty: 60,
-        rcvdQty: 60,
-        invoiceQty: 60,
-        unitPrice: 520,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Meera QC',
-      },
-      {
-        id: 'l2',
-        item: 'Octinoxate',
-        itemCode: 'EI-RM-UV-002',
-        poQty: 50,
-        rcvdQty: 50,
-        invoiceQty: 50,
-        unitPrice: 600,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Meera QC',
-      },
-      {
-        id: 'l3',
-        item: 'Octocrylene',
-        itemCode: 'EI-RM-UV-003',
-        poQty: 80,
-        rcvdQty: 80,
-        invoiceQty: 80,
-        unitPrice: 590,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Meera QC',
-      },
-    ],
-  },
-  {
-    id: '2',
-    grnNo: 'EI-GRN-2025-002',
-    poNo: 'EI-PO-2025-002',
-    vendor: 'Chemspec India',
-    type: 'RM',
-    items: 4,
-    poValue: 185600,
-    expectedDate: '2025-11-22',
-    receivedDate: '2025-11-21',
-    assignedTo: 'Ravi Kumar',
-    qcStatus: 'In Progress',
-    status: 'Under GRN',
-    invoiceNo: 'CHEM-INV-2025-1115',
-    invoiceAmount: 185200,
-    grnDate: '2025-11-22',
-    workflowSteps: ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation'],
-    lineItems: [
-      {
-        id: 'l4',
-        item: 'SLES 70%',
-        itemCode: 'EI-RMS-SLES-002',
-        poQty: 150,
-        rcvdQty: 148,
-        invoiceQty: 150,
-        unitPrice: 125,
-        diff: -2,
-        qcStatus: 'Hold',
-        qcBy: 'Meera QC',
-      },
-      {
-        id: 'l5',
-        item: 'CAPB 35%',
-        itemCode: 'EI-RMS-CAPB-002',
-        poQty: 80,
-        rcvdQty: 80,
-        invoiceQty: 80,
-        unitPrice: 195,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Meera QC',
-      },
-      {
-        id: 'l6',
-        item: 'SCI',
-        itemCode: 'EI-RMS-SCI-001',
-        poQty: 100,
-        rcvdQty: 100,
-        invoiceQty: 100,
-        unitPrice: 250,
-        diff: 0,
-        qcStatus: 'Hold',
-        qcBy: 'Pending',
-      },
-    ],
-  },
-  {
-    id: '3',
-    grnNo: 'EI-GRN-2025-003',
-    poNo: 'EI-PO-2025-003',
-    vendor: 'Packwell Industries',
-    type: 'PM',
-    items: 3,
-    poValue: 79250,
-    expectedDate: '2025-11-25',
-    receivedDate: '2025-11-24',
-    assignedTo: 'Santosh Kumar',
-    qcStatus: 'Passed',
-    status: 'GRN Complete',
-    invoiceNo: 'PKW-INV-2025-1118',
-    invoiceAmount: 79250,
-    grnDate: '2025-11-25',
-    workflowSteps: ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'],
-    lineItems: [
-      {
-        id: 'l7',
-        item: 'HDPE Bottles 100ml',
-        itemCode: 'EI-PKG-HDPE-100',
-        poQty: 5000,
-        rcvdQty: 5000,
-        invoiceQty: 5000,
-        unitPrice: 8,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Ravi QC',
-      },
-      {
-        id: 'l8',
-        item: 'Caps & Closures',
-        itemCode: 'EI-PKG-CAPS-20',
-        poQty: 5000,
-        rcvdQty: 5000,
-        invoiceQty: 5000,
-        unitPrice: 2,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Ravi QC',
-      },
-      {
-        id: 'l9',
-        item: 'Labels 100x50',
-        itemCode: 'EI-PKG-LBL-100',
-        poQty: 10000,
-        rcvdQty: 10000,
-        invoiceQty: 10000,
-        unitPrice: 1.5,
-        diff: 0,
-        qcStatus: 'Pass',
-        qcBy: 'Ravi QC',
-      },
-    ],
-  },
-  {
-    id: '4',
-    grnNo: 'EI-GRN-2025-004',
-    poNo: 'EI-PO-2025-004',
-    vendor: 'Packwell Industries',
-    type: 'PM',
-    items: 4,
-    poValue: 125600,
-    expectedDate: '2025-11-28',
-    receivedDate: null,
-    assignedTo: 'Unassigned',
-    qcStatus: 'Pending',
-    status: 'In Transit',
-    lineItems: [
-      {
-        id: 'l10',
-        item: 'PET Bottles 500ml',
-        itemCode: 'EI-PKG-PET-500',
-        poQty: 2000,
-        rcvdQty: 0,
-        invoiceQty: 0,
-        unitPrice: 15,
-        diff: 0,
-        qcStatus: 'Pending',
-        qcBy: 'Pending',
-      },
-      {
-        id: 'l11',
-        item: 'Carton Boxes',
-        itemCode: 'EI-PKG-CART-50',
-        poQty: 500,
-        rcvdQty: 0,
-        invoiceQty: 0,
-        unitPrice: 25,
-        diff: 0,
-        qcStatus: 'Pending',
-        qcBy: 'Pending',
-      },
-      {
-        id: 'l12',
-        item: 'Tape & Accessories',
-        itemCode: 'EI-PKG-TAPE-KIT',
-        poQty: 100,
-        rcvdQty: 0,
-        invoiceQty: 0,
-        unitPrice: 50,
-        diff: 0,
-        qcStatus: 'Pending',
-        qcBy: 'Pending',
-      },
-      {
-        id: 'l13',
-        item: 'Bubble Wrap (Roll)',
-        itemCode: 'EI-PKG-BUBBLE-10',
-        poQty: 50,
-        rcvdQty: 0,
-        invoiceQty: 0,
-        unitPrice: 200,
-        diff: 0,
-        qcStatus: 'Pending',
-        qcBy: 'Pending',
-      },
-    ],
-  },
-];
-
 // GRN Detail Modal Component
-const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void }) => {
+const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(grn.lineItems || []);
-  const [labelsGenerated, setLabelsGenerated] = useState(false);
+  const [labelsGenerated, setLabelsGenerated] = useState(!!(grn.generatedLabels && grn.generatedLabels.length > 0));
+  const [labels, setLabels] = useState<GeneratedLabel[] | null>(grn.generatedLabels ?? null);
+  const [generatingLabels, setGeneratingLabels] = useState(false);
+  const [labelError, setLabelError] = useState<string | null>(null);
+  const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
+  const [unitsPerBox, setUnitsPerBox] = useState(String(grn.unitsPerBox ?? ''));
+  const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
+  const [grnBatchMfg, setGrnBatchMfg] = useState(grn.grnBatchMfg ?? '');
+  const [expiry, setExpiry] = useState(grn.expiry ?? '');
+  const [mfgBatch, setMfgBatch] = useState(grn.mfgBatch ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleLineItemChange = (itemId: string, field: 'rcvdQty' | 'qcStatus', value: string | number) => {
     setEditedLineItems(prev =>
-      prev.map(item =>
-        item.id === itemId
-          ? { ...item, [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']: field === 'rcvdQty' ? parseInt(value as string) || 0 : value }
-          : item
-      )
+      prev.map(item => {
+        if (item.id !== itemId) return item;
+        const next = { ...item, [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']: field === 'rcvdQty' ? parseInt(value as string) || 0 : value };
+        if (field === 'rcvdQty') {
+          const rcvdQty = next.rcvdQty;
+          const diff = rcvdQty - item.poQty;
+          if (diff < 0) next.qcStatus = 'Hold'; // shortfall => auto Hold
+        }
+        return next;
+      })
     );
   };
 
   const allQCPassed = editedLineItems.length > 0 && editedLineItems.every(item => item.qcStatus === 'Pass');
 
+  const persistUpdate = async (payload: { status?: string; qcStatus?: string; workflowSteps?: string[] }) => {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const res = await updateGRN(grn.id, {
+        assignedTo,
+        grnDate: grnDate || undefined,
+        lineItems: editedLineItems,
+        noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
+        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
+        locationPrefix: locationPrefix || undefined,
+        grnBatchMfg: grnBatchMfg || undefined,
+        expiry: expiry || undefined,
+        mfgBatch: mfgBatch || undefined,
+        ...payload,
+      });
+      const updated: GRNRecord = {
+        id: res.id,
+        grnNo: res.grnNo,
+        poNo: res.poNo,
+        vendor: res.vendor,
+        type: res.type as GRNType,
+        items: res.items,
+        poValue: res.poValue,
+        expectedDate: res.expectedDate,
+        receivedDate: res.receivedDate,
+        assignedTo: res.assignedTo,
+        qcStatus: res.qcStatus as QCStatus,
+        status: res.status as GRNStatus,
+        lineItems: res.lineItems,
+        workflowSteps: (res.workflowSteps || []) as WorkflowStep[],
+        invoiceNo: res.invoiceNo ?? undefined,
+        invoiceAmount: res.invoiceAmount ?? undefined,
+        grnDate: res.grnDate ?? undefined,
+        noOfBoxes: res.noOfBoxes ?? undefined,
+        unitsPerBox: res.unitsPerBox ?? undefined,
+        locationPrefix: res.locationPrefix ?? undefined,
+        grnBatchMfg: res.grnBatchMfg ?? undefined,
+        expiry: res.expiry ?? undefined,
+        mfgBatch: res.mfgBatch ?? undefined,
+        generatedLabels: res.generatedLabels ?? undefined,
+      };
+      onSaveChanges(updated);
+      if (payload.status === 'GRN Complete') onClose();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveOnly = () => persistUpdate({});
+
   const handleCompleteGRN = () => {
     if (!allQCPassed) {
-      alert('⚠️ All items must have QC Status "Pass" before completing GRN. Please review the QC status of all line items.');
+      setSaveError('All items must have QC Status "Pass" before completing GRN.');
       return;
     }
-    // Update parent state with changes, status, and QC status
-    const updatedGRN = { 
-      ...grn, 
-      assignedTo, 
-      grnDate, 
-      lineItems: editedLineItems,
-      status: 'GRN Complete' as GRNStatus,
-      qcStatus: 'Passed' as QCStatus
-    };
-    onSaveChanges(updatedGRN);
-    alert('✓ GRN completed successfully!');
-    onClose();
+    persistUpdate({
+      status: 'GRN Complete',
+      qcStatus: 'Passed',
+      workflowSteps: WORKFLOW_STEPS_REQUIRED,
+    });
   };
 
   const getWorkflowStepColor = (step: WorkflowStep) => {
@@ -329,25 +167,26 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">GRN — {grn.grnNo}</h2>
-            <p className="text-xs text-slate-600 mt-1">{grn.vendor}</p>
+            <h2 className="text-lg font-bold text-slate-900">GRN — {grn.grnNo}</h2>
+            <p className="text-sm text-slate-600 mt-0.5">{grn.vendor}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600"
+            aria-label="Close"
           >
-            <X className="w-5 h-5 text-slate-600" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Status Badge */}
-          <div className="flex items-center gap-2">
+        <div className="p-6 space-y-8">
+          {/* Status and type */}
+          <div className="flex flex-wrap items-center gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
               grn.workflowSteps?.length === WORKFLOW_STEPS_REQUIRED.length
                 ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
@@ -379,11 +218,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
           )}
 
           {/* PO Details Section */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-200">
-              PO Details
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700">PO & shipment</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">GRN NO.</p>
                 <p className="text-sm font-mono font-bold text-blue-600">{grn.grnNo}</p>
@@ -423,13 +260,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
           {/* Assign GRN Team Section */}
-          <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
-              Assign GRN Team
-            </h3>
+          <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-700">Assign & dates</h3>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
@@ -438,13 +273,15 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
                 <select
                   value={assignedTo}
                   onChange={(e) => setAssignedTo(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                 >
-                  <option value={grn.assignedTo}>{grn.assignedTo}</option>
-                  <option value="Karan Nair (WH Supervisor)">Karan Nair (WH Supervisor)</option>
-                  <option value="Ravi Kumar">Ravi Kumar</option>
-                  <option value="Santosh Kumar (WH Executive)">Santosh Kumar (WH Executive)</option>
-                  <option value="Anand Store">Anand Store</option>
+                  <option value="">Unassigned</option>
+                  {assignableUsers.map((u) => (
+                    <option key={u.id} value={u.displayName}>{u.displayName}</option>
+                  ))}
+                  {assignedTo && !assignableUsers.some((u) => u.displayName === assignedTo) && (
+                    <option value={assignedTo}>{assignedTo}</option>
+                  )}
                 </select>
               </div>
               <div className="flex-1">
@@ -459,14 +296,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
                 />
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Line Items Table */}
           {grn.lineItems && grn.lineItems.length > 0 && (
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-200">
-                Line Items — Qty Check vs PO vs Invoice
-              </h3>
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-700">Line items — qty & QC</h3>
               <div className="overflow-x-auto border border-slate-200 rounded-lg">
                 <table className="w-full text-xs">
                   <thead className="bg-slate-100 border-b border-slate-200">
@@ -502,7 +337,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
                         <td className="px-3 py-2 text-center font-medium text-amber-600">₹{item.unitPrice}</td>
                         <td className="px-3 py-2 text-center">
                           {(() => {
-                            const calculatedDiff = item.rcvdQty - item.poQty;
+                            const calculatedDiff = item.rcvdQty - item.poQty; // positive = over-received, negative = shortfall
                             return (
                               <span className={`font-bold ${calculatedDiff === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {calculatedDiff === 0 ? '0' : calculatedDiff > 0 ? `+${calculatedDiff}` : calculatedDiff}
@@ -536,117 +371,150 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Generate QRN Labels Section */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-200">
-              Generate QRN Labels
-            </h3>
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-              <p className="text-xs text-slate-600 mb-4">Labels will be generated per item per batch received.</p>
+          {/* Label data & Generate QR Labels */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
+            <p className="text-xs text-slate-600">Fill below and click Generate Labels. Each box gets a QR containing: GRN id, units/box, location prefix, batch mfg, expiry, mfg batch.</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">No of boxes</label>
+                <input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Units/box</label>
+                <input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix</label>
+                <input type="text" value={locationPrefix} onChange={(e) => setLocationPrefix(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" placeholder="e.g. WH-A" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
+                <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Expiry</label>
+                <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mfg batch</label>
+                <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
               {!labelsGenerated ? (
                 <button
-                  onClick={() => setLabelsGenerated(true)}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors"
+                  onClick={async () => {
+                    setLabelError(null);
+                    setGeneratingLabels(true);
+                    try {
+                      const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
+                      const res = await generateGRNLabels(grn.id, {
+                        noOfBoxes: numBoxes,
+                        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
+                        locationPrefix: locationPrefix || undefined,
+                        grnBatchMfg: grnBatchMfg || undefined,
+                        expiry: expiry || undefined,
+                        mfgBatch: mfgBatch || undefined,
+                      });
+                      setLabels(res.labels);
+                      setLabelsGenerated(true);
+                    } catch (e) {
+                      setLabelError(e instanceof Error ? e.message : 'Failed to generate labels');
+                    } finally {
+                      setGeneratingLabels(false);
+                    }
+                  }}
+                  disabled={generatingLabels}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  ✓ Generate Labels
+                  {generatingLabels ? 'Generating…' : '✓ Generate Labels'}
                 </button>
               ) : (
                 <button
-                  onClick={() => setLabelsGenerated(false)}
+                  onClick={() => { setLabelsGenerated(false); setLabels(null); }}
                   className="px-4 py-2 bg-slate-400 text-white rounded-lg font-medium text-sm hover:bg-slate-500 transition-colors"
                 >
                   Hide Labels
                 </button>
               )}
             </div>
-          </div>
+            {labelError && <p className="text-sm text-red-600">{labelError}</p>}
+          </section>
 
-          {/* Label Preview Section */}
-          {labelsGenerated && editedLineItems.length > 0 && (
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-200">
-                Label Preview — Print per Batch
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {editedLineItems.map((item) => (
-                  <div key={item.id} className="bg-white border-2 border-slate-300 rounded-lg p-5 shadow-sm">
-                    <div className="text-center mb-4">
-                      <p className="text-xs font-mono font-bold text-slate-900">EI WAREHOUSE — INBOUND LABEL</p>
-                    </div>
-                    <div className="space-y-2 text-xs mb-4">
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">Item</span>
-                        <span className="text-slate-900 font-mono">{item.itemCode}</span>
+          {/* QR Label Preview — one card per box with scan payload */}
+          {labelsGenerated && labels && labels.length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-700">Label preview (scan shows: GRN id, units/box, location prefix, batch mfg, expiry, mfg batch)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {labels.map((label) => {
+                  let payload: { grn_id?: number; units_per_box?: number; location_prefix?: string; grn_batch_mfg?: string; expiry?: string; mfg_batch?: string; box_index?: number } = {};
+                  try {
+                    payload = JSON.parse(label.qrPayload);
+                  } catch {
+                    payload = {};
+                  }
+                  return (
+                    <div key={label.boxIndex} className="bg-white border-2 border-slate-300 rounded-lg p-4 shadow-sm">
+                      <div className="text-center mb-2">
+                        <p className="text-xs font-mono font-bold text-slate-900">Box {label.boxIndex}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">Name</span>
-                        <span className="text-slate-900">{item.item}</span>
+                      <div className="flex justify-center mb-3">
+                        <img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-32 h-32 object-contain" />
                       </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">GRN</span>
-                        <span className="text-slate-900 font-mono">{grn.grnNo}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">PO</span>
-                        <span className="text-slate-900 font-mono">{grn.poNo}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">Vendor</span>
-                        <span className="text-slate-900">{grn.vendor}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">Rcvd Qty</span>
-                        <span className="text-slate-900 font-mono">{item.rcvdQty} RM</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">Date</span>
-                        <span className="text-slate-900 font-mono">{new Date(grnDate).toLocaleDateString('en-IN', { year: '2-digit', month: 'numeric', day: 'numeric' })}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="font-semibold text-slate-700">QC</span>
-                        <span className={`font-semibold ${
-                          item.qcStatus === 'Pass' ? 'text-emerald-600' : item.qcStatus === 'Hold' ? 'text-amber-600' : 'text-slate-600'
-                        }`}>
-                          {item.qcStatus}
-                        </span>
+                      <div className="space-y-1 text-xs text-slate-600">
+                        <p><span className="font-semibold">GRN id:</span> {payload.grn_id}</p>
+                        <p><span className="font-semibold">Units/box:</span> {payload.units_per_box}</p>
+                        <p><span className="font-semibold">Location:</span> {payload.location_prefix || '—'}</p>
+                        <p><span className="font-semibold">Batch mfg:</span> {payload.grn_batch_mfg || '—'}</p>
+                        <p><span className="font-semibold">Expiry:</span> {payload.expiry || '—'}</p>
+                        <p><span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}</p>
                       </div>
                     </div>
-                    {/* Barcode */}
-                    <div className="flex justify-center gap-1 pt-2 border-t border-slate-200">
-                      {Array.from({ length: 15 }).map((_, i) => (
-                        <div key={i} className={`h-8 w-1 ${i % 3 === 0 ? 'bg-slate-800' : 'bg-slate-400'}`} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <p className="text-xs text-slate-600 mt-4">GRN pending - qty mismatch on Bill of Lading</p>
+            </section>
+          )}
+
+          {/* Save error */}
+          {saveError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+              {saveError}
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 transition-colors"
+              disabled={saving}
+              className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               Close
             </button>
             <button
+              onClick={handleSaveOnly}
+              disabled={saving}
+              className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button
               onClick={handleCompleteGRN}
-              disabled={!allQCPassed && grn.status === 'In Transit'}
-              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors ${
+              disabled={saving || (!allQCPassed && grn.status === 'In Transit')}
+              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
                 grn.status === 'In Transit'
                   ? allQCPassed
-                    ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
-                    : 'bg-slate-400 cursor-not-allowed opacity-60'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-slate-400 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              {grn.status === 'In Transit' ? '✓ Complete GRN & Initiate Stock' : 'Save Changes'}
+              {grn.status === 'In Transit' ? '✓ Complete GRN & Initiate Stock' : 'Mark complete'}
             </button>
           </div>
         </div>
@@ -655,20 +523,117 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges }: { grn: GRNRecord; onClo
   );
 };
 
+function mapApiToGRNRecord(r: {
+  id: string;
+  grnNo: string;
+  poNo: string;
+  vendor: string;
+  type: 'RM' | 'PM';
+  items: number;
+  poValue: number;
+  expectedDate: string;
+  receivedDate: string | null;
+  assignedTo: string;
+  qcStatus: string;
+  status: string;
+  lineItems?: LineItem[];
+  workflowSteps?: WorkflowStep[];
+  invoiceNo?: string | null;
+  invoiceAmount?: number | null;
+  grnDate?: string | null;
+  noOfBoxes?: number | null;
+  unitsPerBox?: number | null;
+  locationPrefix?: string | null;
+  grnBatchMfg?: string | null;
+  expiry?: string | null;
+  mfgBatch?: string | null;
+  generatedLabels?: GeneratedLabel[] | null;
+}): GRNRecord {
+  return {
+    id: r.id,
+    grnNo: r.grnNo,
+    poNo: r.poNo,
+    vendor: r.vendor,
+    type: r.type,
+    items: r.items,
+    poValue: r.poValue,
+    expectedDate: r.expectedDate,
+    receivedDate: r.receivedDate,
+    assignedTo: r.assignedTo,
+    qcStatus: r.qcStatus as QCStatus,
+    status: r.status as GRNStatus,
+    lineItems: r.lineItems,
+    workflowSteps: r.workflowSteps,
+    invoiceNo: r.invoiceNo ?? undefined,
+    invoiceAmount: r.invoiceAmount ?? undefined,
+    grnDate: r.grnDate ?? undefined,
+    noOfBoxes: r.noOfBoxes ?? undefined,
+    unitsPerBox: r.unitsPerBox ?? undefined,
+    locationPrefix: r.locationPrefix ?? undefined,
+    grnBatchMfg: r.grnBatchMfg ?? undefined,
+    expiry: r.expiry ?? undefined,
+    mfgBatch: r.mfgBatch ?? undefined,
+    generatedLabels: r.generatedLabels ?? undefined,
+  };
+}
+
 const WarehouseInbound = () => {
   const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Under GRN' | 'Completed'>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [grnData, setGrnData] = useState<GRNRecord[]>(mockGRNData);
+  const [grnData, setGrnData] = useState<GRNRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [selectedGRN, setSelectedGRN] = useState<GRNRecord | null>(null);
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [grnDate, setGrnDate] = useState<string>('');
+
+  useEffect(() => {
+    fetchGRNList()
+      .then((list) => {
+        setGrnData(list.map(mapApiToGRNRecord));
+      })
+      .catch(() => {
+        setGrnData([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchGRNAssignableUsers()
+      .then(setAssignableUsers)
+      .catch(() => setAssignableUsers([]));
+  }, []);
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    if (toastRef.current) window.clearTimeout(toastRef.current);
+    setToast({ message, type });
+    toastRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastRef.current = null;
+    }, 2500);
+  };
+
+  // Update status from table dropdown (like MRN)
+  const handleStatusChange = async (grnId: string, newStatus: GRNStatus) => {
+    try {
+      await updateGRN(grnId, { status: newStatus });
+      setGrnData(prev =>
+        prev.map(grn => (grn.id === grnId ? { ...grn, status: newStatus } : grn))
+      );
+      showToast(`Status updated to ${newStatus}.`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to update status', 'error');
+    }
+  };
 
   // Handle saving changes from modal back to dashboard
   const handleSaveChanges = (updatedGRN: GRNRecord) => {
     setGrnData(prev =>
       prev.map(grn => (grn.grnNo === updatedGRN.grnNo ? updatedGRN : grn))
     );
-    // Update selectedGRN to reflect changes in modal
     setSelectedGRN(updatedGRN);
   };
 
@@ -745,47 +710,60 @@ const WarehouseInbound = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto p-6 bg-slate-50">
-      <div className="max-w-400 mx-auto space-y-6">
+    <div className="flex-1 overflow-auto bg-slate-50/80 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50">
+          <div
+            className={`px-3 py-2 rounded-lg border text-sm font-medium shadow-lg ${
+              toast.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border-rose-200'
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Inbound GRN Tracker</h1>
-          <p className="text-sm text-slate-600 mt-1">Monitor and manage goods receipt notes</p>
+        <div className="mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Inbound</h1>
+          <p className="text-sm text-slate-600 mt-1">Goods receipt notes — receive, check, and complete GRNs</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-linear-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200 shadow-sm">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Total GRNs</p>
-            <p className="text-4xl font-bold text-blue-900">{totalGRNs}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
+            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">Total GRNs</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{totalGRNs}</p>
           </div>
 
-          <div className="bg-linear-to-br from-amber-50 to-amber-100 rounded-xl p-5 border border-amber-200 shadow-sm">
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Under GRN</p>
-            <p className="text-4xl font-bold text-amber-900">{underGRN}</p>
+          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
+            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1">Under GRN</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{underGRN}</p>
           </div>
 
-          <div className="bg-linear-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200 shadow-sm">
-            <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider mb-1">On Hold</p>
-            <p className="text-4xl font-bold text-orange-900">{onHold}</p>
+          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm hidden sm:block">
+            <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-1">On Hold</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{onHold}</p>
           </div>
 
-          <div className="bg-linear-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200 shadow-sm">
-            <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider mb-1">In Transit</p>
-            <p className="text-4xl font-bold text-purple-900">{inTransit}</p>
+          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
+            <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">In Transit</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{inTransit}</p>
           </div>
 
-          <div className="bg-linear-to-br from-emerald-50 to-emerald-100 rounded-xl p-5 border border-emerald-200 shadow-sm">
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-1">Completed</p>
-            <p className="text-4xl font-bold text-emerald-900">{completed}</p>
+          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">Completed</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{completed}</p>
           </div>
         </div>
 
-        {/* Navigation and Search */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Filters and search */}
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             {/* Tabs */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {(['All', 'Pending', 'Under GRN', 'Completed'] as const).map(tab => (
                 <button
                   key={tab}
@@ -802,26 +780,26 @@ const WarehouseInbound = () => {
             </div>
 
             {/* Search */}
-            <div className="relative">
+            <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search GRN, PO, vendor..."
-                className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full lg:w-80"
+                placeholder="Search GRN, PO, vendor…"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               />
             </div>
           </div>
         </div>
 
         {/* Data Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[800px]">
               <thead>
-                <tr className="bg-linear-to-r from-slate-50 to-slate-100 border-b border-slate-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">GRN No.</th>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">GRN No.</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">PO No.</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Vendor</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
@@ -832,13 +810,28 @@ const WarehouseInbound = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned To</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">QC</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredData.map((grn) => (
-                  <tr key={grn.id} className="hover:bg-blue-50/50 transition-colors">
-                    <td className="px-4 py-4">
+                {loading ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                  </tr>
+                ) : filteredData.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">No GRNs found</td>
+                  </tr>
+                ) : (
+                filteredData.map((grn) => (
+                  <tr
+                    key={grn.id}
+                    className="hover:bg-amber-50/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedGRN(grn)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
+                  >
+                    <td className="px-4 py-3.5">
                       <span className="text-sm font-mono font-medium text-blue-600">{grn.grnNo}</span>
                     </td>
                     <td className="px-4 py-4">
@@ -882,45 +875,22 @@ const WarehouseInbound = () => {
                         {grn.qcStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusColor(grn.status)}`}>
-                        {grn.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => setSelectedGRN(grn)}
-                          className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-                        >
-                          View
-                        </button>
-                        {grn.status === 'Under GRN' && (
-                          <button
-                            onClick={() => setSelectedGRN(grn)}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-sm"
-                          >
-                            Process →
-                          </button>
-                        )}
-                        {grn.status === 'In Transit' && (
-                          <button
-                            onClick={() => setSelectedGRN(grn)}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-all shadow-sm"
-                          >
-                            Start GRN
-                          </button>
-                        )}
-                      </div>
+                    <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={grn.status}
+                        onChange={(e) => handleStatusChange(grn.id, e.target.value as GRNStatus)}
+                        className={`text-xs font-medium rounded-lg border px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${getStatusColor(grn.status)}`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="In Transit">In Transit</option>
+                        <option value="Under GRN">Under GRN</option>
+                        <option value="On Hold">On Hold</option>
+                        <option value="Delayed">Delayed</option>
+                        <option value="GRN Complete">GRN Complete</option>
+                      </select>
                     </td>
                   </tr>
-                ))}
-                {filteredData.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-sm text-slate-500">
-                      No GRN records found matching your criteria.
-                    </td>
-                  </tr>
+                ))
                 )}
               </tbody>
             </table>
@@ -928,7 +898,7 @@ const WarehouseInbound = () => {
         </div>
 
         {/* GRN Detail Modal */}
-        {selectedGRN && <GRNDetailModal grn={selectedGRN} onClose={() => setSelectedGRN(null)} onSaveChanges={handleSaveChanges} />}
+        {selectedGRN && <GRNDetailModal grn={selectedGRN} onClose={() => setSelectedGRN(null)} onSaveChanges={handleSaveChanges} assignableUsers={assignableUsers} />}
       </div>
     </div>
   );

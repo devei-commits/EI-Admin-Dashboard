@@ -1,17 +1,30 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, type MRNRecordFromApi, type AssignablePicker } from '../../services/mrn.service';
+
+/** API status -> UI display status */
+const API_TO_UI_STATUS: Record<string, 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed'> = {
+  Pending: 'Pending Pick',
+  Picked: 'In Pick',
+  'In Transfer': 'In Transfer',
+  Completed: 'Completed',
+};
+const UI_TO_API_STATUS: Record<string, string> = {
+  'Pending Pick': 'Pending',
+  'In Pick': 'Picked',
+  'In Transfer': 'In Transfer',
+  'Completed': 'Completed',
+};
 
 interface MRN {
   id: string;
   mrnNo: string;
   requestedBy: string;
-  requestedByType: string;
-  productName: string;
-  productCode: string;
-  batchSize: string;
-  itemsCount: number;
-  requiredDate: string;
-  picker: string | null;
   status: 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed';
+  assignedPicker: string;
+  transferTeam: string;
+  itemsCount: number;
+  notes: string;
+  lineItems: { id: string; name: string; itemCode: string; quantity: number; unit: string; notes?: string; raw_material_id?: number; pack_material_id?: number; product_id?: number }[];
 }
 
 interface PickLineItem {
@@ -25,94 +38,35 @@ interface PickLineItem {
 
 type StatusFilter = 'All' | 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed';
 
-const mockMRNs: MRN[] = [
-  {
-    id: '1',
-    mrnNo: 'EI-MRN-2025-001',
-    requestedBy: 'Batch Mfg',
-    requestedByType: 'ML1',
-    productName: 'EI Sunscreen SPF50+',
-    productCode: 'BTH-SUN-001',
-    batchSize: '500 KG',
-    itemsCount: 12,
-    requiredDate: '2025-11-20',
-    picker: null,
-    status: 'Pending Pick',
-  },
-  {
-    id: '2',
-    mrnNo: 'EI-MRN-2025-002',
-    requestedBy: 'Batch Mfg',
-    requestedByType: 'ML1',
-    productName: 'EI Gentle Foaming Facewash',
-    productCode: 'BTH-FW-001',
-    batchSize: '500 KG',
-    itemsCount: 8,
-    requiredDate: '2025-11-21',
-    picker: 'Santosh Kumar',
-    status: 'In Pick',
-  },
-  {
-    id: '3',
-    mrnNo: 'EI-MRN-2025-003',
-    requestedBy: 'Packaging',
-    requestedByType: 'ML2',
-    productName: 'EI Sunscreen SPF50+ — Fill & Pack',
-    productCode: 'BTH-SUN-001-PACK',
-    batchSize: '10,000 units',
-    itemsCount: 3,
-    requiredDate: '2025-11-22',
-    picker: 'Ravi Kumar',
-    status: 'In Transfer',
-  },
-  {
-    id: '4',
-    mrnNo: 'EI-MRN-2025-004',
-    requestedBy: 'Batch Mfg',
-    requestedByType: 'ML2',
-    productName: 'EI Gentle Foaming Facewash',
-    productCode: 'BTH-FW-002',
-    batchSize: '500 KG',
-    itemsCount: 2,
-    requiredDate: '2025-11-17',
-    picker: 'Karan Nair',
-    status: 'Completed',
-  },
-];
-
-const mockPickItemsByMrn: Record<string, PickLineItem[]> = {
-  '1': [
-    { id: 'p1', name: 'Aqua (Purified Water)', location: 'A1-L2-S3', available: 380, required: 261.5, uom: 'KG' },
-    { id: 'p2', name: 'Glycerin', location: 'A1-L1-S5', available: 95, required: 15, uom: 'KG' },
-    { id: 'p3', name: 'Homosalate', location: 'B1-L1-S1', available: 58, required: 50, uom: 'KG' },
-    { id: 'p4', name: 'Octinoxate', location: 'B1-L1-S2', available: 28, required: 37.5, uom: 'KG' },
-    { id: 'p5', name: 'Octocrylene', location: 'B1-L2-S1', available: 32, required: 40, uom: 'KG' },
-    { id: 'p6', name: 'Avobenzone', location: 'B1-L2-S2', available: 10, required: 15, uom: 'KG' },
-    { id: 'p7', name: 'Cetearyl Alcohol', location: 'A2-L1-S4', available: 42, required: 15, uom: 'KG' },
-    { id: 'p8', name: 'Ceteareth-20', location: 'A2-L1-S5', available: 28, required: 10, uom: 'KG' },
-    { id: 'p9', name: 'Tocopheryl Acetate', location: 'B2-L2-S2', available: 6, required: 2.5, uom: 'KG' },
-    { id: 'p10', name: 'Niacinamide', location: 'B2-L1-S1', available: 22, required: 10, uom: 'KG' },
-    { id: 'p11', name: 'Ascorbyl Glucoside', location: 'B2-L1-S2', available: 4, required: 5, uom: 'KG' },
-    { id: 'p12', name: 'Phenoxyethanol', location: 'B2-L2-S1', available: 18, required: 4, uom: 'KG' },
-  ],
-  '2': [
-    { id: 'p13', name: 'SLES 70%', location: 'A2-L1-S3', available: 95, required: 65, uom: 'KG' },
-    { id: 'p14', name: 'CAPB 35%', location: 'A2-L2-S3', available: 55, required: 40, uom: 'KG' },
-    { id: 'p15', name: 'SCI', location: 'A2-L3-S2', available: 30, required: 15, uom: 'KG' },
-  ],
-  '3': [
-    { id: 'p16', name: '50ml Airless Pump Bottle', location: 'C1-L3-S2', available: 2500, required: 1200, uom: 'PCS' },
-    { id: 'p17', name: '100ml Airless Pump Bottle', location: 'C1-L3-S4', available: 1800, required: 850, uom: 'PCS' },
-    { id: 'p18', name: '30ml Tube with Flip Cap', location: 'C2-L2-S1', available: 3200, required: 950, uom: 'PCS' },
-  ],
-  '4': [
-    { id: 'p19', name: 'Cetearyl Alcohol', location: 'A2-L1-S4', available: 42, required: 8, uom: 'KG' },
-    { id: 'p20', name: 'Ceteareth-20', location: 'A2-L1-S5', available: 28, required: 6, uom: 'KG' },
-  ],
-};
+function mapApiToMRN(r: MRNRecordFromApi): MRN {
+  const status = API_TO_UI_STATUS[r.status] ?? 'Pending Pick';
+  return {
+    id: r.id,
+    mrnNo: r.mrnNo,
+    requestedBy: r.requestedBy || '—',
+    status,
+    assignedPicker: r.assignedPicker || '',
+    transferTeam: r.transferTeam || '',
+    itemsCount: (r.lineItems || []).length,
+    notes: r.notes || '',
+    lineItems: (r.lineItems || []).map((li) => ({
+      id: li.id,
+      name: li.item || li.itemCode || '—',
+      itemCode: li.itemCode || '',
+      quantity: li.quantity,
+      unit: li.unit || '',
+      notes: li.notes,
+      raw_material_id: li.raw_material_id,
+      pack_material_id: li.pack_material_id,
+      product_id: li.product_id,
+    })),
+  };
+}
 
 const OutboundDashboard = () => {
-  const [mrnData, setMrnData] = useState<MRN[]>(mockMRNs);
+  const [mrnData, setMrnData] = useState<MRN[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assignablePickers, setAssignablePickers] = useState<AssignablePicker[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [selectedMRNId, setSelectedMRNId] = useState<string | null>(null);
@@ -137,6 +91,25 @@ const OutboundDashboard = () => {
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [list, pickers] = await Promise.all([fetchMRNList(), fetchMRNAssignablePickers()]);
+        if (!cancelled) {
+          setMrnData(list.map(mapApiToMRN));
+          setAssignablePickers(pickers);
+        }
+      } catch (e) {
+        if (!cancelled) setMrnData([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     if (toastTimerRef.current) {
       window.clearTimeout(toastTimerRef.current);
@@ -148,20 +121,29 @@ const OutboundDashboard = () => {
     }, 2500);
   };
 
-  const activePickItems = selectedMRN ? mockPickItemsByMrn[selectedMRN.id] ?? [] : [];
+  const activePickItems: PickLineItem[] = selectedMRN
+    ? selectedMRN.lineItems.map((li) => ({
+        id: li.id,
+        name: li.name,
+        location: '—',
+        available: 0,
+        required: li.quantity,
+        uom: li.unit,
+      }))
+    : [];
 
   const handleOpenPanel = (mrn: MRN, mode: 'pick' | 'view') => {
     setSelectedMRNId(mrn.id);
     setPanelMode(mode);
 
     const existingState = pickStateByMrn[mrn.id];
-    setAssignedPicker(existingState?.assignedPicker ?? mrn.picker ?? '');
-    setAssignedTransferBy(existingState?.assignedTransferBy ?? '');
+    setAssignedPicker(existingState?.assignedPicker ?? mrn.assignedPicker ?? '');
+    setAssignedTransferBy(existingState?.assignedTransferBy ?? mrn.transferTeam ?? '');
     setPickedItems(existingState?.pickedItems ?? {});
 
     const initialQty: Record<string, string> = {};
-    (mockPickItemsByMrn[mrn.id] ?? []).forEach((item) => {
-      initialQty[item.id] = existingState?.pickedQty?.[item.id] ?? String(item.required);
+    mrn.lineItems.forEach((li) => {
+      initialQty[li.id] = existingState?.pickedQty?.[li.id] ?? String(li.quantity);
     });
     setPickedQty(initialQty);
   };
@@ -182,74 +164,98 @@ const OutboundDashboard = () => {
     }));
   };
 
-  const handleSavePick = () => {
-    if (!selectedMRN) return;
-    if (!assignedPicker) {
-      showToast('Please assign a picker before saving.', 'error');
-      return;
-    }
-
-    const hasAnyPickedItem = Object.values(pickedItems).some(Boolean);
-    if (!hasAnyPickedItem) {
-      showToast('Please select at least one picked item before saving.', 'error');
-      return;
-    }
-
-    persistPanelState(selectedMRN.id);
-    setMrnData((prev) =>
-      prev.map((mrn) =>
-        mrn.id === selectedMRN.id
-          ? {
-              ...mrn,
-              picker: assignedPicker,
-              status: 'In Pick',
-            }
-          : mrn
-      )
-    );
-    showToast(`Pick saved for ${selectedMRN.mrnNo}. Status updated to In Pick.`);
+  const buildLineItemsForSave = () => {
+    if (!selectedMRN) return [];
+    return selectedMRN.lineItems.map((li) => ({
+      id: li.id,
+      raw_material_id: li.raw_material_id,
+      pack_material_id: li.pack_material_id,
+      product_id: li.product_id,
+      quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity),
+      unit: li.unit || '',
+      notes: li.notes || '',
+    }));
   };
 
-  const handleInitiateTransfer = () => {
+  const handleSaveChanges = async () => {
     if (!selectedMRN) return;
-    if (!assignedPicker) {
-      showToast('Please assign a picker before initiating transfer.', 'error');
-      return;
-    }
-    if (!assignedTransferBy) {
-      showToast('Please assign transfer team before initiating transfer.', 'error');
-      return;
-    }
-
     persistPanelState(selectedMRN.id);
-    setMrnData((prev) =>
-      prev.map((mrn) =>
-        mrn.id === selectedMRN.id
-          ? {
-              ...mrn,
-              picker: assignedPicker,
-              status: 'In Transfer',
-            }
-          : mrn
-      )
-    );
-    closePickPanel();
-    showToast(`Transfer initiated for ${selectedMRN.mrnNo}. Status updated to In Transfer.`);
+    try {
+      await updateMRN(selectedMRN.id, {
+        assignedPicker: assignedPicker || undefined,
+        transferTeam: assignedTransferBy || undefined,
+        lineItems: buildLineItemsForSave(),
+      });
+      setMrnData((prev) =>
+        prev.map((mrn) =>
+          mrn.id === selectedMRN.id
+            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, lineItems: selectedMRN.lineItems.map((li) => ({ ...li, quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity) })) }
+            : mrn
+        )
+      );
+      showToast('Changes saved.');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to save changes', 'error');
+    }
   };
 
-  const handleCompleteTransfer = (mrnId: string) => {
+  const handleSavePick = async () => {
+    if (!selectedMRN) return;
+    persistPanelState(selectedMRN.id);
+    try {
+      await updateMRN(selectedMRN.id, {
+        status: UI_TO_API_STATUS['In Pick'],
+        assignedPicker: assignedPicker || undefined,
+        transferTeam: assignedTransferBy || undefined,
+        lineItems: buildLineItemsForSave(),
+      });
+      setMrnData((prev) =>
+        prev.map((mrn) =>
+          mrn.id === selectedMRN.id ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Pick' as const } : mrn
+        )
+      );
+      showToast(`Pick saved for ${selectedMRN.mrnNo}. Status updated to In Pick.`);
+      closePickPanel();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to save pick', 'error');
+    }
+  };
+
+  const handleInitiateTransfer = async () => {
+    if (!selectedMRN) return;
+    persistPanelState(selectedMRN.id);
+    try {
+      await updateMRN(selectedMRN.id, {
+        status: UI_TO_API_STATUS['In Transfer'],
+        assignedPicker: assignedPicker || undefined,
+        transferTeam: assignedTransferBy || undefined,
+        lineItems: buildLineItemsForSave(),
+      });
+      setMrnData((prev) =>
+        prev.map((mrn) =>
+          mrn.id === selectedMRN.id
+            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Transfer' as const }
+            : mrn
+        )
+      );
+      showToast(`Transfer initiated for ${selectedMRN.mrnNo}. Status updated to In Transfer.`);
+      closePickPanel();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to initiate transfer', 'error');
+    }
+  };
+
+  const handleCompleteTransfer = async (mrnId: string) => {
     const doneMrn = mrnData.find((mrn) => mrn.id === mrnId);
-    setMrnData((prev) =>
-      prev.map((mrn) =>
-        mrn.id === mrnId
-          ? {
-              ...mrn,
-              status: 'Completed',
-            }
-          : mrn
-      )
-    );
-    showToast(`Cycle completed for ${doneMrn?.mrnNo ?? 'MRN'}. Status updated to Completed.`);
+    try {
+      await updateMRN(mrnId, { status: UI_TO_API_STATUS['Completed'] });
+      setMrnData((prev) =>
+        prev.map((mrn) => (mrn.id === mrnId ? { ...mrn, status: 'Completed' as const } : mrn))
+      );
+      showToast(`Cycle completed for ${doneMrn?.mrnNo ?? 'MRN'}. Status updated to Completed.`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to complete transfer', 'error');
+    }
   };
 
   const getStatusCounts = () => {
@@ -265,13 +271,11 @@ const OutboundDashboard = () => {
   const counts = getStatusCounts();
 
   const filteredMRNs = mrnData.filter(mrn => {
-    const matchesSearch = 
+    const matchesSearch =
       mrn.mrnNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mrn.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mrn.productCode.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      mrn.requestedBy.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (mrn.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || mrn.status === statusFilter;
-    
     return matchesSearch && matchesStatus;
   });
 
@@ -290,46 +294,16 @@ const OutboundDashboard = () => {
     }
   };
 
-  const getActionButton = (mrn: MRN) => {
-    switch (mrn.status) {
-      case 'Pending Pick':
-        return (
-          <button
-            onClick={() => handleOpenPanel(mrn, 'pick')}
-            className="px-4 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded transition-colors"
-          >
-            Assign & Pick
-          </button>
-        );
-      case 'In Pick':
-        return (
-          <button
-            onClick={() => handleOpenPanel(mrn, 'pick')}
-            className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded transition-colors"
-          >
-            Continue Pick
-          </button>
-        );
-      case 'In Transfer':
-        return (
-          <button
-            onClick={() => handleCompleteTransfer(mrn.id)}
-            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded transition-colors"
-          >
-            Complete Transfer
-          </button>
-        );
-      case 'Completed':
-        return (
-          <button
-            onClick={() => handleOpenPanel(mrn, 'view')}
-            className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded transition-colors border border-slate-200"
-          >
-            View
-          </button>
-        );
-      default:
-        return null;
+  const handleStatusChange = async (mrnId: string, newStatus: StatusFilter) => {
+    if (newStatus === 'All') return;
+    try {
+      await updateMRN(mrnId, { status: UI_TO_API_STATUS[newStatus] });
+      setMrnData((prev) =>
+        prev.map((m) => (m.id === mrnId ? { ...m, status: newStatus } : m))
+      );
+      showToast(`Status updated to ${newStatus}.`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Failed to update status', 'error');
     }
   };
 
@@ -413,52 +387,59 @@ const OutboundDashboard = () => {
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">MRN NO.</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Requested By</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">For Product / Batch</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Batch Size</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Required Date</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Picker</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredMRNs.map(mrn => (
-                  <tr key={mrn.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="text-amber-700 font-medium text-sm">{mrn.mrnNo}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-slate-900 text-sm">{mrn.requestedBy} — {mrn.requestedByType}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-slate-900 text-sm font-medium">{mrn.productName}</div>
-                      <div className="text-slate-500 text-xs mt-0.5">{mrn.productCode}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-slate-900 text-sm">{mrn.batchSize}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-slate-900 text-sm">{mrn.itemsCount} items</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-rose-600 text-sm">{mrn.requiredDate}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className={`text-sm ${mrn.picker ? 'text-slate-900' : 'text-slate-400'}`}>
-                        {mrn.picker || 'Unassigned'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusBadgeColor(mrn.status)}`}>
-                        {mrn.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {getActionButton(mrn)}
-                    </td>
-                  </tr>
-                ))}
+                {loading ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading MRNs…</td></tr>
+                ) : filteredMRNs.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No MRNs found.</td></tr>
+                ) : (
+                  filteredMRNs.map(mrn => (
+                    <tr
+                      key={mrn.id}
+                      className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => handleOpenPanel(mrn, 'view')}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenPanel(mrn, 'view'); } }}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="text-amber-700 font-medium text-sm">{mrn.mrnNo}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-slate-900 text-sm">{mrn.requestedBy}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-slate-600 text-sm max-w-[200px] truncate" title={mrn.notes}>{mrn.notes || '—'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-slate-900 text-sm">{mrn.itemsCount} items</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`text-sm ${mrn.assignedPicker ? 'text-slate-900' : 'text-slate-400'}`}>
+                          {mrn.assignedPicker || 'Unassigned'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={mrn.status}
+                          onChange={(e) => handleStatusChange(mrn.id, e.target.value as StatusFilter)}
+                          className={`text-xs rounded border px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${getStatusBadgeColor(mrn.status)}`}
+                        >
+                          <option value="Pending Pick">Pending Pick</option>
+                          <option value="In Pick">In Pick</option>
+                          <option value="In Transfer">In Transfer</option>
+                          <option value="Completed">Completed</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -492,19 +473,11 @@ const OutboundDashboard = () => {
                   </div>
                   <div className="rounded border border-slate-200 bg-slate-50 p-2">
                     <p className="text-[9px] text-slate-500 uppercase">Requested By</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.requestedBy} — {selectedMRN.requestedByType}</p>
-                  </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <p className="text-[9px] text-slate-500 uppercase">For Product</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.productName}</p>
-                  </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <p className="text-[9px] text-slate-500 uppercase">Batch / Size</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.productCode} · {selectedMRN.batchSize}</p>
+                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.requestedBy}</p>
                   </div>
                   <div className="rounded border border-slate-200 bg-slate-50 p-2 col-span-2">
-                    <p className="text-[9px] text-slate-500 uppercase">Required Date</p>
-                    <p className="text-[11px] font-semibold text-rose-600">{selectedMRN.requiredDate}</p>
+                    <p className="text-[9px] text-slate-500 uppercase">Notes</p>
+                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.notes || '—'}</p>
                   </div>
                 </div>
               </section>
@@ -515,31 +488,25 @@ const OutboundDashboard = () => {
                   <div>
                     <label className="block text-[9px] text-slate-500 uppercase mb-1">Picker</label>
                     <select
-                      disabled={panelMode === 'view'}
                       value={assignedPicker}
                       onChange={(e) => setAssignedPicker(e.target.value)}
                       className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
                     >
                       <option value="">— Assign Picker —</option>
-                      <option value="Santosh Kumar">Santosh Kumar</option>
-                      <option value="Ravi Kumar">Ravi Kumar</option>
-                      <option value="Karan Nair">Karan Nair</option>
-                      <option value="Priya Sharma">Priya Sharma</option>
+                      {assignablePickers.map((p) => (
+                        <option key={p.id} value={p.displayName}>{p.displayName}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer By</label>
-                    <select
-                      disabled={panelMode === 'view'}
+                    <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer Team</label>
+                    <input
+                      type="text"
                       value={assignedTransferBy}
                       onChange={(e) => setAssignedTransferBy(e.target.value)}
+                      placeholder="Transfer team / person"
                       className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
-                    >
-                      <option value="">— Assign Transfer Person —</option>
-                      <option value="Logistics Team A">Logistics Team A</option>
-                      <option value="Logistics Team B">Logistics Team B</option>
-                      <option value="Dispatch Team">Dispatch Team</option>
-                    </select>
+                    />
                   </div>
                 </div>
               </section>
@@ -556,7 +523,6 @@ const OutboundDashboard = () => {
                       <div key={item.id} className="px-2.5 py-2 border-b border-slate-100 last:border-b-0 bg-white">
                         <div className="flex items-start gap-2">
                           <input
-                            disabled={panelMode === 'view'}
                             type="checkbox"
                             checked={!!pickedItems[item.id]}
                             onChange={(e) => setPickedItems((prev) => ({ ...prev, [item.id]: e.target.checked }))}
@@ -564,12 +530,11 @@ const OutboundDashboard = () => {
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-semibold text-slate-900">{item.name}</p>
-                            <p className="text-[10px] text-slate-500">At {item.location} · Available: <span className={item.available < item.required ? 'text-rose-600 font-semibold' : 'text-emerald-700 font-semibold'}>{item.available} {item.uom}</span></p>
+                            <p className="text-[10px] text-slate-500">Required: {item.required} {item.uom}{item.location !== '—' ? ` · At ${item.location}` : ''}</p>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] text-slate-500">Required:</span>
                             <input
-                              disabled={panelMode === 'view'}
                               value={shortQty}
                               onChange={(e) => setPickedQty((prev) => ({ ...prev, [item.id]: e.target.value }))}
                               className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900"
@@ -586,33 +551,37 @@ const OutboundDashboard = () => {
                 </div>
               </section>
 
-              <div className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
-                ⚠ Urgent — batch scheduled 20 Nov
-              </div>
+              {selectedMRN.notes && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
+                  📋 {selectedMRN.notes}
+                </div>
+              )}
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 flex justify-end gap-2">
-              {panelMode !== 'view' && (
-                <>
-                  <button
-                    onClick={handleSavePick}
-                    className="px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
-                  >
-                    Save Pick
-                  </button>
-                  <button
-                    onClick={handleInitiateTransfer}
-                    className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
-                  >
-                    Initiate Transfer
-                  </button>
-                </>
-              )}
+              <button
+                onClick={handleSaveChanges}
+                className="px-3 py-1.5 rounded bg-slate-600 hover:bg-slate-700 text-white text-[11px] font-semibold"
+              >
+                Save changes
+              </button>
+              <button
+                onClick={handleSavePick}
+                className="px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
+              >
+                Save Pick
+              </button>
+              <button
+                onClick={handleInitiateTransfer}
+                className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
+              >
+                Initiate Transfer
+              </button>
               <button
                 onClick={closePickPanel}
                 className="px-3 py-1.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"
               >
-                {panelMode === 'view' ? 'Close View' : 'Close'}
+                Close
               </button>
             </div>
           </div>

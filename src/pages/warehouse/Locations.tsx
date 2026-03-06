@@ -1,111 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { InventoryItem, mockInventoryData } from './Inventory';
-
-interface Rack {
-  id: string;
-  name: string;
-  subtitle: string;
-  utilization: number;
-  levels: number;
-  slots: number;
-  itemsStored: number;
-  tags: string[];
-}
-
-interface Store {
-  id: string;
-  name: string;
-  zone: string;
-  icon: string;
-  meta: string;
-  utilization: number;
-  racks: Rack[];
-}
-
-const storesData: Store[] = [
-  {
-    id: '1',
-    name: 'RM Store',
-    zone: 'Zone A',
-    icon: '🧪',
-    meta: '380 sqm · Ambient + Cool + Cold zones · 15 items · 7 racks',
-    utilization: 68,
-    racks: [
-      { id: 'a1', name: 'A1', subtitle: 'Ambient Row 1', utilization: 87, levels: 4, slots: 16, itemsStored: 2, tags: ['001', '001'] },
-      { id: 'a2', name: 'A2', subtitle: 'Ambient Row 2', utilization: 62, levels: 4, slots: 16, itemsStored: 5, tags: ['001', '002', '001', '002', '+1'] },
-      { id: 'a3', name: 'A3', subtitle: 'Ambient Row 3', utilization: 45, levels: 4, slots: 16, itemsStored: 2, tags: ['001', '002'] },
-      { id: 'a4', name: 'A4', subtitle: 'Ambient Row 4', utilization: 30, levels: 4, slots: 16, itemsStored: 0, tags: [] },
-      { id: 'b1', name: 'B1', subtitle: 'Cool Store <25°C', utilization: 75, levels: 3, slots: 12, itemsStored: 2, tags: ['001', '002'] },
-      { id: 'b2', name: 'B2', subtitle: 'Cool Store <25°C', utilization: 50, levels: 3, slots: 12, itemsStored: 3, tags: ['001', '001', '002'] },
-      { id: 'c1', name: 'C1', subtitle: 'Cold Store 2–8°C', utilization: 100, levels: 2, slots: 8, itemsStored: 1, tags: ['006'] },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Actives Store',
-    zone: 'Zone B',
-    icon: '⚗️',
-    meta: '120 sqm · Cool <25°C / Climate controlled · 8 items · 2 racks',
-    utilization: 78,
-    racks: [
-      { id: 'b3', name: 'B1', subtitle: 'Actives UV Filters', utilization: 89, levels: 3, slots: 9, itemsStored: 4, tags: ['001', '002', '003', '004'] },
-      { id: 'b4', name: 'B2', subtitle: 'Actives Vitamins/C', utilization: 67, levels: 3, slots: 9, itemsStored: 4, tags: ['002', '003', '004', '005'] },
-    ],
-  },
-  {
-    id: '3',
-    name: 'Primary Pack Store',
-    zone: 'Zone C',
-    icon: '📦',
-    meta: '220 sqm · Ambient · 4 items · 4 racks',
-    utilization: 53,
-    racks: [
-      { id: 'c1', name: 'C1', subtitle: 'Pack Bottles', utilization: 95, levels: 4, slots: 18, itemsStored: 1, tags: ['004'] },
-      { id: 'c2', name: 'C2', subtitle: 'Pack Tubes/Caps', utilization: 76, levels: 4, slots: 16, itemsStored: 2, tags: ['001', '004'] },
-      { id: 'c3', name: 'C3', subtitle: 'Pack Pumps/Closures', utilization: 44, levels: 4, slots: 16, itemsStored: 1, tags: ['024'] },
-      { id: 'c4', name: 'C4', subtitle: 'Pack Reserve/Overflow', utilization: 15, levels: 4, slots: 18, itemsStored: 0, tags: [] },
-    ],
-  },
-  {
-    id: '4',
-    name: 'Labels Store',
-    zone: 'Zone D',
-    icon: '🏷️',
-    meta: '80 sqm · Ambient humidity-controlled · 1 items · 2 racks',
-    utilization: 48,
-    racks: [
-      { id: 'd1', name: 'D1', subtitle: 'Labels Self-Adhesive', utilization: 89, levels: 3, slots: 12, itemsStored: 1, tags: ['001'] },
-      { id: 'd2', name: 'D2', subtitle: 'Labels Printed Leaflets', utilization: 47, levels: 3, slots: 12, itemsStored: 0, tags: [] },
-    ],
-  },
-  {
-    id: '5',
-    name: 'Secondary Pack Store',
-    zone: 'Zone E',
-    icon: '📮',
-    meta: '260 sqm · Ambient · 2 items · 3 racks',
-    utilization: 47,
-    racks: [
-      { id: 'e1', name: 'E1', subtitle: 'SPM Sunscreen Cartons', utilization: 64, levels: 5, slots: 10, itemsStored: 1, tags: ['001'] },
-      { id: 'e2', name: 'E2', subtitle: 'SPM Facewash Cartons', utilization: 45, levels: 4, slots: 16, itemsStored: 1, tags: ['002'] },
-      { id: 'e3', name: 'E3', subtitle: 'SPM Shippers/Master', utilization: 22, levels: 3, slots: 12, itemsStored: 0, tags: [] },
-    ],
-  },
-  {
-    id: '6',
-    name: 'Finished Goods Store',
-    zone: 'Zone F',
-    icon: '✅',
-    meta: '300 sqm · Cold dry <25°C · 2 items · 3 racks',
-    utilization: 29,
-    racks: [
-      { id: 'f1', name: 'F1', subtitle: 'FG Quarantine (Under QC)', utilization: 56, levels: 3, slots: 12, itemsStored: 0, tags: [] },
-      { id: 'f2', name: 'F2', subtitle: 'FG QC Released / Approved', utilization: 56, levels: 4, slots: 16, itemsStored: 2, tags: ['0005', '0002'] },
-      { id: 'f3', name: 'F3', subtitle: 'FG Dispatch Ready', utilization: 48, levels: 4, slots: 16, itemsStored: 0, tags: [] },
-    ],
-  },
-];
+import { InventoryItem } from './Inventory';
+import { fetchWarehouseLocations, type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
+import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 
 const getUtilizationBarColor = (value: number) => {
   if (value >= 90) return 'bg-rose-500';
@@ -120,14 +17,37 @@ const getUtilizationBadge = (value: number) => {
 };
 
 const WarehouseLocations = () => {
-  const [selectedRack, setSelectedRack] = useState<{ store: Store; rack: Rack } | null>(null);
+  const [locations, setLocations] = useState<WarehouseLocationDTO[]>([]);
+  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
+  const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isAdjustMode, setIsAdjustMode] = useState(false);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>(mockInventoryData);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const [locRes, invRes] = await Promise.all([
+        fetchWarehouseLocations(),
+        fetchWarehouseInventory(),
+      ]);
+      if (cancelled) return;
+      if (locRes.success && locRes.data) setLocations(locRes.data);
+      if (invRes.success && invRes.data?.rows) setInventoryData(invRes.data.rows);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const openInventoryForStoredItem = (stored: StoredItemSummary) => {
+    const row = inventoryData.find((r) => r.warehouseInventoryId === stored.warehouseInventoryId);
+    if (row) setSelectedItem(row);
+  };
 
   const updateInventoryItem = (itemId: string, field: keyof InventoryItem, value: number) => {
-    setInventoryData(prev => {
-      const updated = prev.map(item => {
+    setInventoryData((prev) => {
+      const updated = prev.map((item) => {
         if (item.id === itemId) {
           const updatedItem = { ...item, [field]: value };
           if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
@@ -144,102 +64,121 @@ const WarehouseLocations = () => {
     });
   };
 
-  const getRackCondition = (subtitle: string) => {
-    if (subtitle.toLowerCase().includes('cold')) return 'Cold';
-    if (subtitle.toLowerCase().includes('cool')) return 'Cool';
+  const getRackCondition = (description: string) => {
+    const d = (description || '').toLowerCase();
+    if (d.includes('cold')) return 'Cold';
+    if (d.includes('cool')) return 'Cool';
     return 'Ambient';
   };
 
-  const getRackItems = (rack: Rack) => {
-    if (rack.itemsStored === 0) return [];
-
-    return Array.from({ length: rack.itemsStored }).map((_, index) => ({
-      code: `EI-RM-EXCIP-${String(index + 1).padStart(3, '0')}`,
-      name: `${rack.name} Material ${index + 1}`,
-      qty: `${Math.max(8, 35 - index * 6)} KG`,
-    }));
-  };
-
-  const getRackSlotMap = (rack: Rack) => {
-    const totalPositions = rack.levels * Math.max(1, Math.floor(rack.slots / rack.levels));
+  const getRackSlotMap = (rack: WarehouseRackDTO) => {
+    const levels = rack.levels || 4;
+    const slots = rack.slotsTotal || 16;
+    const totalPositions = levels * Math.max(1, Math.floor(slots / levels));
+    const itemsStored = rack.itemsStoredCount ?? rack.storedItems?.length ?? 0;
     return Array.from({ length: totalPositions }).map((_, index) => {
-      const level = Math.floor(index / Math.max(1, Math.floor(rack.slots / rack.levels))) + 1;
-      const slot = (index % Math.max(1, Math.floor(rack.slots / rack.levels))) + 1;
-      const isFilled = index < rack.itemsStored;
-      const code = rack.tags[index] || `L${level}-S${slot}`;
-
+      const slotsPerLevel = Math.max(1, Math.floor(slots / levels));
+      const level = Math.floor(index / slotsPerLevel) + 1;
+      const slot = (index % slotsPerLevel) + 1;
+      const isFilled = index < itemsStored;
+      const stored = rack.storedItems?.[index];
+      const code = stored?.code ?? `L${level}-S${slot}`;
       return { code, label: `L${level}-S${slot}`, isFilled };
     });
   };
+
+  if (loading) {
+    return (
+      <div className="flex-1 overflow-auto p-6 bg-slate-50 flex items-center justify-center">
+        <p className="text-slate-600">Loading warehouse locations…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto p-6 bg-slate-50">
       <div className="w-full space-y-5">
         <h1 className="text-3xl font-bold text-slate-900">Warehouse Locations & Rack Management</h1>
 
-        {storesData.map(store => (
-          <section key={store.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{store.icon}</span>
-                  <h2 className="text-2xl font-bold text-slate-900 leading-none">{store.name}</h2>
-                  <span className="text-sm font-semibold text-emerald-700">{store.zone}</span>
+        {locations.map((location) => {
+          const itemCount = location.racks.reduce((s, r) => s + (r.itemsStoredCount ?? 0), 0);
+          const meta = [
+            location.areaSqm != null ? `${location.areaSqm} sqm` : null,
+            location.description,
+            `${itemCount} items · ${location.racks.length} racks`,
+          ].filter(Boolean).join(' · ');
+          return (
+            <section key={location.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{location.icon ?? '📦'}</span>
+                    <h2 className="text-2xl font-bold text-slate-900 leading-none">{location.name}</h2>
+                    {location.zoneLabel && (
+                      <span className="text-sm font-semibold text-emerald-700">{location.zoneLabel}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{meta}</p>
                 </div>
-                <p className="mt-1 text-sm text-slate-600">{store.meta}</p>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Utilisation</p>
+                  <p className="text-2xl font-bold text-cyan-700 leading-none">{location.utilisationPct ?? 0}%</p>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Utilisation</p>
-                <p className="text-2xl font-bold text-cyan-700 leading-none">{store.utilization}%</p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
-              {store.racks.map(rack => (
-                <button
-                  key={rack.id}
-                  type="button"
-                  onClick={() => setSelectedRack({ store, rack })}
-                  className="px-4 py-3 border-r border-b border-slate-200 last:border-r-0 text-left hover:bg-cyan-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xl font-bold text-cyan-700 leading-none">{rack.name}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${getUtilizationBadge(rack.utilization)}`}>
-                      {rack.utilization}%
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-sm text-slate-600">{rack.subtitle}</p>
-
-                  <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${getUtilizationBarColor(rack.utilization)}`}
-                      style={{ width: `${rack.utilization}%` }}
-                    />
-                  </div>
-
-                  <p className="mt-2 text-xs text-slate-600">
-                    {rack.levels} levels · {rack.slots} slots · {rack.itemsStored} items stored
-                  </p>
-
-                  {rack.tags.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {rack.tags.map(tag => (
-                        <span
-                          key={`${rack.id}-${tag}`}
-                          className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-200"
-                        >
-                          {tag}
-                        </span>
-                      ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
+                {location.racks.map((rack) => (
+                  <button
+                    key={rack.id}
+                    type="button"
+                    onClick={() => setSelectedRack({ location, rack })}
+                    className="px-4 py-3 border-r border-b border-slate-200 last:border-r-0 text-left hover:bg-cyan-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xl font-bold text-cyan-700 leading-none">{rack.code}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${getUtilizationBadge(rack.utilisationPct ?? 0)}`}>
+                        {rack.utilisationPct ?? 0}%
+                      </span>
                     </div>
-                  ) : (
-                    <div className="mt-2 h-5" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
+                    <p className="mt-0.5 text-sm text-slate-600">{rack.description ?? rack.name}</p>
+
+                    <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getUtilizationBarColor(rack.utilisationPct ?? 0)}`}
+                        style={{ width: `${rack.utilisationPct ?? 0}%` }}
+                      />
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-600">
+                      {rack.levels} levels · {rack.slotsTotal} slots · {rack.itemsStoredCount ?? 0} items stored
+                    </p>
+
+                    {(rack.storedItems?.length ?? 0) > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                        {rack.storedItems.map((stored, i) => (
+                          <button
+                            key={`${rack.id}-${stored.warehouseInventoryId}-${i}`}
+                            type="button"
+                            onClick={(ev) => {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              openInventoryForStoredItem(stored);
+                            }}
+                            className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-200 hover:bg-cyan-200"
+                          >
+                            {stored.code}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 h-5" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {selectedRack && (
@@ -247,7 +186,7 @@ const WarehouseLocations = () => {
           <div className="h-full w-full max-w-3xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto">
             <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
               <h2 className="text-3xl font-bold text-slate-900">
-                Rack - Bay {selectedRack.rack.name} - {selectedRack.rack.subtitle}
+                Rack - Bay {selectedRack.rack.code} - {selectedRack.rack.description ?? selectedRack.rack.name}
               </h2>
               <button
                 type="button"
@@ -262,25 +201,25 @@ const WarehouseLocations = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bay</p>
-                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.name}</p>
+                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.code}</p>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Zone</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{selectedRack.store.name}</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">{selectedRack.location.name}</p>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Levels × Slots</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1">
-                    {selectedRack.rack.levels} × {selectedRack.rack.slots} = {selectedRack.rack.levels * selectedRack.rack.slots} positions
+                    {selectedRack.rack.levels} × {selectedRack.rack.slotsTotal} = {selectedRack.rack.levels * selectedRack.rack.slotsTotal} positions
                   </p>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Condition</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{getRackCondition(selectedRack.rack.subtitle)}</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1">{getRackCondition(selectedRack.rack.description ?? '')}</p>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Utilisation</p>
-                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.utilization}%</p>
+                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.utilisationPct ?? 0}%</p>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
@@ -293,9 +232,9 @@ const WarehouseLocations = () => {
               <div>
                 <h3 className="text-lg font-bold text-cyan-700 border-b border-slate-200 pb-2">Rack Slot Map</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 mt-3">
-                  {getRackSlotMap(selectedRack.rack).map(slot => (
+                  {getRackSlotMap(selectedRack.rack).map((slot, idx) => (
                     <div
-                      key={`${selectedRack.rack.id}-${slot.code}-${slot.label}`}
+                      key={`${selectedRack.rack.id}-${slot.code}-${slot.label}-${idx}`}
                       className={`rounded-lg border p-2 text-center min-h-14 flex flex-col items-center justify-center ${
                         slot.isFilled
                           ? 'bg-cyan-100 border-cyan-300 text-cyan-800'
@@ -311,28 +250,30 @@ const WarehouseLocations = () => {
 
               <div>
                 <h3 className="text-lg font-bold text-cyan-700 border-b border-slate-200 pb-2">
-                  Items Stored ({selectedRack.rack.itemsStored})
+                  Items Stored ({selectedRack.rack.itemsStoredCount ?? selectedRack.rack.storedItems?.length ?? 0})
                 </h3>
                 <div className="mt-2 space-y-2">
-                  {getRackItems(selectedRack.rack).length === 0 ? (
+                  {(selectedRack.rack.storedItems?.length ?? 0) === 0 ? (
                     <p className="text-sm text-slate-500">No items currently stored in this rack.</p>
                   ) : (
-                    getRackItems(selectedRack.rack).map(item => {
-                      const inventoryItem = inventoryData.find(inv => inv.code === item.code);
+                    (selectedRack.rack.storedItems ?? []).map((stored, i) => {
+                      const inventoryItem = inventoryData.find((inv) => inv.warehouseInventoryId === stored.warehouseInventoryId);
                       return (
                         <button
-                          key={item.code}
+                          key={`${stored.warehouseInventoryId}-${i}`}
                           type="button"
-                          onClick={() => inventoryItem && setSelectedItem(inventoryItem)}
+                          onClick={() => openInventoryForStoredItem(stored)}
                           className="w-full flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors text-left"
                         >
                           <div>
-                            <p className="text-xs font-semibold text-cyan-700">{item.code}</p>
-                            <p className="text-lg font-semibold text-slate-900">{item.name}</p>
+                            <p className="text-xs font-semibold text-cyan-700">{stored.code}</p>
+                            <p className="text-lg font-semibold text-slate-900">{stored.name}</p>
                           </div>
-                          <span className="px-3 py-1 rounded-lg border border-cyan-300 bg-cyan-100 text-cyan-800 text-sm font-bold">
-                            {item.qty}
-                          </span>
+                          {inventoryItem && (
+                            <span className="px-3 py-1 rounded-lg border border-cyan-300 bg-cyan-100 text-cyan-800 text-sm font-bold">
+                              {inventoryItem.stockInHand} {inventoryItem.whUnit}
+                            </span>
+                          )}
                         </button>
                       );
                     })

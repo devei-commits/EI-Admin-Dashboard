@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { WarehouseLocationDTO, WarehouseRackDTO, StoredItemSummary } from '../../services/warehouseLocations.service';
 
 interface Bay {
   id: string;
@@ -62,6 +63,8 @@ interface Zone {
 
 interface ZoneDetailsSidebarProps {
   zone: Zone | null;
+  /** When provided, bays and inventory are derived from API (location.racks + storedItems) instead of mock. */
+  location?: WarehouseLocationDTO | null;
   selectedItemId?: string | null;
   onSelectItem?: (itemId: string) => void;
   onClearSelectedItem?: () => void;
@@ -70,6 +73,7 @@ interface ZoneDetailsSidebarProps {
 
 const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
   zone,
+  location,
   selectedItemId,
   onSelectItem,
   onClearSelectedItem,
@@ -96,6 +100,23 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
   });
 
   if (!zone) return null;
+
+  const baysFromLocation = useMemo((): Bay[] => {
+    if (!location?.racks?.length) return [];
+    return location.racks.map((r: WarehouseRackDTO) => ({
+      id: String(r.id),
+      name: `${r.code} — ${r.description ?? r.name}`,
+      levels: r.levels ?? 4,
+      slotsPerLevel: Math.max(1, Math.floor((r.slotsTotal ?? 16) / (r.levels ?? 4))),
+      condition: (r.description ?? '').toLowerCase().includes('cold') ? 'Cold' : (r.description ?? '').toLowerCase().includes('cool') ? 'Cool' : 'Ambient',
+      utilization: r.utilisationPct ?? 0,
+      items: (r.storedItems ?? []).map((s: StoredItemSummary, i: number) => ({
+        id: `wi-${r.id}-${s.warehouseInventoryId}-${i}`,
+        code: s.code,
+        status: 'available' as const,
+      })),
+    }));
+  }, [location]);
 
   const getInitialBays = (zoneId: string): Bay[] =>
     zoneId === '1'
@@ -185,12 +206,46 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
         ];
 
   useEffect(() => {
-    setBays(getInitialBays(zone.id));
-  }, [zone.id]);
+    if (location?.racks?.length) {
+      setBays(baysFromLocation);
+    } else {
+      setBays(getInitialBays(zone.id));
+    }
+  }, [zone.id, location, baysFromLocation]);
+
+  const zoneItemsFromLocation = useMemo((): ZoneItem[] => {
+    if (!location?.racks) return [];
+    const out: ZoneItem[] = [];
+    location.racks.forEach((r) => {
+      (r.storedItems ?? []).forEach((s: StoredItemSummary, i) => {
+        out.push({
+          id: `wi-${r.id}-${s.warehouseInventoryId}-${i}`,
+          code: s.code,
+          name: s.name,
+          quantity: 0,
+          unit: '',
+          status: 'available',
+          lastUpdated: '',
+          category: s.type,
+          uom: '',
+          zone: location.name,
+          rackSlot: r.code,
+          batchNo: '',
+          mfgExp: '',
+          stockBreakdown: { wh: 0, ml1: 0, ml2: 0, sih: 0, reserved: 0, inStock: '—' },
+        });
+      });
+    });
+    return out;
+  }, [location]);
 
   const [zoneItems, setZoneItems] = useState<ZoneItem[]>([]);
 
   useEffect(() => {
+    if (location?.racks?.length && zoneItemsFromLocation.length > 0) {
+      setZoneItems(zoneItemsFromLocation);
+      return;
+    }
     setZoneItems([
       {
         id: '1',
@@ -377,7 +432,7 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
         },
       },
     ]);
-  }, [zone.id]);
+  }, [zone.id, location, zoneItemsFromLocation]);
 
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
