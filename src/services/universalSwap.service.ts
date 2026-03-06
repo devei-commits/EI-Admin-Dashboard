@@ -16,9 +16,29 @@ export interface SwapHistoryRecord {
   reason: string;
   approvedBy: string;
   date: string;
-  affectedItemIds: number[];
-  affectedItemCodes?: string[];
+  affectedGroupIds?: number[];
   createdAt?: string;
+}
+
+export interface AffectedItemGroup {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  member_ids: number[];
+}
+
+export interface AffectedBom {
+  id: string;
+  bom_code: string;
+  name: string;
+  product_id: number | null;
+  product_name: string;
+}
+
+export interface AffectedResponse {
+  itemGroups: AffectedItemGroup[];
+  boms: AffectedBom[];
 }
 
 export interface ApplySwapPayload {
@@ -28,11 +48,13 @@ export interface ApplySwapPayload {
   reason: string;
   approvedBy: string;
   approvedByUserId?: number | null;
-  selectedItemIds: (string | number)[];
+  selectedGroupIds?: (string | number)[];
+  selectedBomIds?: (string | number)[];
 }
 
 export interface ApplySwapResponse extends SwapHistoryRecord {
-  updatedItemsCount?: number;
+  updatedGroupsCount?: number;
+  updatedBomsCount?: number;
 }
 
 export async function fetchSwapHistory(): Promise<ServiceResult<SwapHistoryRecord[]>> {
@@ -45,6 +67,29 @@ export async function fetchSwapHistory(): Promise<ServiceResult<SwapHistoryRecor
   }
 }
 
+export async function fetchAffected(
+  fromRawMaterialId: number | string
+): Promise<ServiceResult<AffectedResponse>> {
+  try {
+    const id = typeof fromRawMaterialId === 'string' ? fromRawMaterialId : String(fromRawMaterialId);
+    const res = await api.get<AffectedResponse>(
+      `/api/v1/universal-swap/affected?fromRawMaterialId=${encodeURIComponent(id)}`
+    );
+    return {
+      data: res ?? { itemGroups: [], boms: [] },
+      error: null,
+      success: true,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load affected item groups and PR BOMs';
+    return {
+      data: { itemGroups: [], boms: [] },
+      error: message,
+      success: false,
+    };
+  }
+}
+
 export async function applySwap(payload: ApplySwapPayload): Promise<ServiceResult<ApplySwapResponse>> {
   try {
     const body = {
@@ -54,7 +99,8 @@ export async function applySwap(payload: ApplySwapPayload): Promise<ServiceResul
       reason: payload.reason,
       approvedBy: payload.approvedBy,
       approvedByUserId: payload.approvedByUserId ?? null,
-      selectedItemIds: payload.selectedItemIds.map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)),
+      selectedGroupIds: (payload.selectedGroupIds ?? []).map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)),
+      selectedBomIds: (payload.selectedBomIds ?? []).map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)),
     };
     const row = await api.post<ApplySwapResponse>('/api/v1/universal-swap/apply', body);
     return { data: row ?? null, error: null, success: true };

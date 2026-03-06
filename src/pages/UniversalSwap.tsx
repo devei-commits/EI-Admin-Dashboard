@@ -2,19 +2,19 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
-import { fetchItemsMaster } from '../services/itemsMaster.service';
-import type { ItemMasterRecord } from '../services/itemsMaster.service';
-import { fetchSwapHistory, applySwap } from '../services/universalSwap.service';
-import type { SwapHistoryRecord } from '../services/universalSwap.service';
+import { fetchSwapHistory, fetchAffected, applySwap } from '../services/universalSwap.service';
+import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom } from '../services/universalSwap.service';
 import { searchUsers } from '../services/user.service';
 import type { UserSearchHit } from '../services/user.service';
 
-type ProductSelection = ItemMasterRecord & { selected: boolean };
+type GroupSelection = AffectedItemGroup & { selected: boolean };
+type BomSelection = AffectedBom & { selected: boolean };
 
 const UniversalSwap: React.FC = () => {
   const { addToast } = useToast();
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
-  const [products, setProducts] = useState<ProductSelection[]>([]);
+  const [itemGroups, setItemGroups] = useState<GroupSelection[]>([]);
+  const [boms, setBoms] = useState<BomSelection[]>([]);
   const [swapHistory, setSwapHistory] = useState<SwapHistoryRecord[]>([]);
   const [loadingRms, setLoadingRms] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -121,19 +121,25 @@ const UniversalSwap: React.FC = () => {
 
   useEffect(() => {
     if (!fromRawMaterialId) {
-      setProducts([]);
+      setItemGroups([]);
+      setBoms([]);
       return;
     }
     setLoadingItems(true);
-    fetchItemsMaster(undefined, undefined, fromRawMaterialId)
+    fetchAffected(fromRawMaterialId)
       .then((res) => {
         if (res.success && res.data) {
-          setProducts(res.data.map((item) => ({ ...item, selected: true })));
+          setItemGroups((res.data.itemGroups ?? []).map((g) => ({ ...g, selected: true })));
+          setBoms((res.data.boms ?? []).map((b) => ({ ...b, selected: true })));
         } else {
-          setProducts([]);
+          setItemGroups([]);
+          setBoms([]);
         }
       })
-      .catch(() => setProducts([]))
+      .catch(() => {
+        setItemGroups([]);
+        setBoms([]);
+      })
       .finally(() => setLoadingItems(false));
   }, [fromRawMaterialId]);
 
@@ -145,8 +151,11 @@ const UniversalSwap: React.FC = () => {
     }));
   };
 
-  const toggleProduct = (id: string) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)));
+  const toggleGroup = (id: string) => {
+    setItemGroups((prev) => prev.map((g) => (g.id === id ? { ...g, selected: !g.selected } : g)));
+  };
+  const toggleBom = (id: string) => {
+    setBoms((prev) => prev.map((b) => (b.id === id ? { ...b, selected: !b.selected } : b)));
   };
 
   const handlePreview = () => {
@@ -157,8 +166,9 @@ const UniversalSwap: React.FC = () => {
     setShowPreview(true);
   };
 
-  const selectedProducts = products.filter((p) => p.selected);
-  const affectedProductsCount = selectedProducts.length;
+  const selectedGroups = itemGroups.filter((g) => g.selected);
+  const selectedBoms = boms.filter((b) => b.selected);
+  const affectedCount = selectedGroups.length + selectedBoms.length;
 
   const handleApplySwap = async () => {
     if (!formData.reason.trim()) {
@@ -173,8 +183,8 @@ const UniversalSwap: React.FC = () => {
       addToast('error', 'Please select both FROM and TO raw materials');
       return;
     }
-    if (affectedProductsCount === 0) {
-      addToast('error', 'Select at least one product to apply the swap');
+    if (affectedCount === 0) {
+      addToast('error', 'Select at least one item group or PR formula to apply the swap');
       return;
     }
 
@@ -187,10 +197,15 @@ const UniversalSwap: React.FC = () => {
         reason: formData.reason.trim(),
         approvedBy: formData.approvedBy.trim(),
         approvedByUserId: formData.approvedByUserId ?? undefined,
-        selectedItemIds: selectedProducts.map((p) => p.id),
+        selectedGroupIds: selectedGroups.map((g) => g.id),
+        selectedBomIds: selectedBoms.map((b) => b.id),
       });
       if (res.success) {
-        addToast('success', `Swap applied. ${res.data?.updatedItemsCount ?? 0} product(s) updated.`);
+        const d = res.data;
+        const parts = [];
+        if ((d?.updatedGroupsCount ?? 0) > 0) parts.push(`${d!.updatedGroupsCount} group(s)`);
+        if ((d?.updatedBomsCount ?? 0) > 0) parts.push(`${d!.updatedBomsCount} BOM(s)`);
+        addToast('success', `Swap applied globally. ${parts.length ? parts.join(', ') + ' updated.' : 'Done.'}`);
         await loadSwapHistory();
         setFormData({
           fromRawMaterialId: '',
@@ -204,13 +219,15 @@ const UniversalSwap: React.FC = () => {
         setApproverResults([]);
         setShowPreview(false);
         if (fromRawMaterialId) {
-          const itemRes = await fetchItemsMaster(undefined, undefined, fromRawMaterialId);
-          if (itemRes.success && itemRes.data) {
-            setProducts(itemRes.data.map((item) => ({ ...item, selected: true })));
+          const affRes = await fetchAffected(fromRawMaterialId);
+          if (affRes.success && affRes.data) {
+            setItemGroups((affRes.data.itemGroups ?? []).map((g) => ({ ...g, selected: true })));
+            setBoms((affRes.data.boms ?? []).map((b) => ({ ...b, selected: true })));
           }
         }
       } else {
-        addToast('error', res.error || 'Failed to apply swap');
+        const errMsg = typeof res.error === 'string' ? res.error : (res.error as { message?: string })?.message;
+        addToast('error', errMsg || 'Failed to apply swap');
       }
     } catch (_e) {
       addToast('error', 'Failed to apply swap');
@@ -243,7 +260,7 @@ const UniversalSwap: React.FC = () => {
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Ingredient Operations</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Universal Ingredient Swap</h1>
-            <p className="text-sm text-gray-600">Swap a raw material across selected products (items). Lists and apply-to/exempt read from the raw materials table.</p>
+            <p className="text-sm text-gray-600">Swap a raw material across selected item groups and PR BOMs. Apply-to lists item groups that contain the ingredient.</p>
           </div>
         </div>
 
@@ -320,7 +337,7 @@ const UniversalSwap: React.FC = () => {
                   max="2.0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-                <p className="text-[10px] text-gray-400 mt-1">1.0 = same %; 0.9 = 90% of original; 1.1 = 110%</p>
+                <p className="text-[10px] text-gray-400 mt-1">e.g. 0.9 = 90% of original usage becomes replacement (in a product with 60% → 54% new, 6% original)</p>
               </div>
             </div>
 
@@ -410,7 +427,7 @@ const UniversalSwap: React.FC = () => {
               </div>
               {fromRawMaterialId && (
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                  {loadingItems ? 'Loading…' : `${affectedProductsCount} product(s) selected`}
+                  {loadingItems ? 'Loading…' : `${selectedGroups.length} group(s), ${selectedBoms.length} PR(s) selected`}
                 </span>
               )}
             </div>
@@ -418,50 +435,104 @@ const UniversalSwap: React.FC = () => {
 
           <div className="p-6">
             <p className="text-xs text-gray-500 mb-3">
-              Products that contain the selected &quot;From&quot; raw material. Check to apply swap, uncheck to exempt.
+              Item groups and PR formulas (BOMs) that contain the &quot;From&quot; ingredient. Swap applies globally: selected groups + all listed PR formulas (ratio applied in each formula).
             </p>
 
             {loadingItems ? (
-              <p className="text-sm text-gray-500 py-4">Loading products…</p>
-            ) : products.length === 0 && fromRawMaterialId ? (
-              <p className="text-sm text-gray-500 py-4">No products use this raw material.</p>
+              <p className="text-sm text-gray-500 py-4">Loading…</p>
+            ) : itemGroups.length === 0 && boms.length === 0 && fromRawMaterialId ? (
+              <p className="text-sm text-gray-500 py-4">No item groups or PR formulas use this raw material.</p>
             ) : !fromRawMaterialId ? (
-              <p className="text-sm text-gray-500 py-4">Select a &quot;From&quot; raw material to see affected products.</p>
+              <p className="text-sm text-gray-500 py-4">Select a &quot;From&quot; raw material to see affected item groups and PR formulas.</p>
             ) : (
-              <div className="space-y-2">
-                {products.map((pr) => {
-                  const willBeAffected = pr.selected;
-                  return (
-                    <div
-                      key={pr.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                        willBeAffected ? 'border-indigo-300 bg-indigo-50/50' : 'border-gray-200 bg-gray-50/50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={pr.selected}
-                        onChange={() => toggleProduct(pr.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-400"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-800 text-sm">{pr.name || pr.code}</span>
-                          {willBeAffected && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                              WILL SWAP
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-500 font-mono">{pr.code}</span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs text-gray-500">{pr.rawMaterialIds?.length ?? 0} RMs</span>
-                        </div>
-                      </div>
+              <div className="space-y-4">
+                {itemGroups.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">Item Groups</p>
+                    <div className="space-y-2">
+                      {itemGroups.map((g) => {
+                        const willBeAffected = g.selected;
+                        return (
+                          <div
+                            key={g.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                              willBeAffected ? 'border-violet-300 bg-violet-50/50' : 'border-gray-200 bg-gray-50/50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={g.selected}
+                              onChange={() => toggleGroup(g.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-2 focus:ring-violet-400"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-800 text-sm">{g.name || g.code}</span>
+                                {willBeAffected && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                                    WILL SWAP
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-xs text-gray-500 font-mono">{g.code}</span>
+                                <span className="text-xs text-gray-400">·</span>
+                                <span className="text-xs text-gray-500">{g.member_ids?.length ?? 0} members</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                )}
+                {boms.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">PR formulas (BOMs)</p>
+                    <div className="space-y-2">
+                      {boms.map((bom) => {
+                        const willBeAffected = bom.selected;
+                        return (
+                          <div
+                            key={bom.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                              willBeAffected ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={bom.selected}
+                              onChange={() => toggleBom(bom.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-400"
+                            />
+                            <span className="text-amber-600 shrink-0" aria-hidden>📄</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-800 text-sm">
+                                  {bom.product_name || bom.name || bom.bom_code}
+                                </span>
+                                {willBeAffected && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    WILL SWAP
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-xs text-gray-500 font-mono">{bom.bom_code}</span>
+                                {bom.product_name && bom.name && bom.name !== bom.bom_code && (
+                                  <>
+                                    <span className="text-xs text-gray-400">·</span>
+                                    <span className="text-xs text-gray-500">{bom.name}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -475,14 +546,14 @@ const UniversalSwap: React.FC = () => {
               </button>
               <button
                 onClick={handleApplySwap}
-                disabled={!showPreview || affectedProductsCount === 0 || applying}
+                disabled={!showPreview || affectedCount === 0 || applying}
                 className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
                 {applying ? 'Applying…' : '✓ Apply Swap'}
               </button>
               {showPreview && (
                 <span className="text-xs text-emerald-600 font-medium ml-2">
-                  ✓ Preview ready — {affectedProductsCount} product(s) selected
+                  ✓ Preview ready — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) (ratio applied in formulas)
                 </span>
               )}
             </div>
@@ -508,7 +579,7 @@ const UniversalSwap: React.FC = () => {
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Products</th>
+                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Groups</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -525,17 +596,10 @@ const UniversalSwap: React.FC = () => {
                       <td className="px-4 py-3 text-gray-700 font-mono">{Number(swap.swapRatio).toFixed(2)}</td>
                       <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={swap.reason}>{swap.reason}</td>
                       <td className="px-4 py-3 text-gray-600">{swap.approvedBy}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {(swap.affectedItemCodes && swap.affectedItemCodes.length > 0
-                            ? swap.affectedItemCodes
-                            : swap.affectedItemIds?.map(String) ?? []
-                          ).map((code) => (
-                            <span key={code} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                              {code}
-                            </span>
-                          ))}
-                        </div>
+                      <td className="px-4 py-3 text-gray-600">
+                        {(swap.affectedGroupIds?.length ?? 0) > 0
+                          ? `${swap.affectedGroupIds!.length} group(s)`
+                          : '—'}
                       </td>
                     </tr>
                   ))}
