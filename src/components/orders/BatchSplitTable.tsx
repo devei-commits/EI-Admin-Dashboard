@@ -109,7 +109,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                     {formatDate(so.dueDate)}
                   </p>
                   <p className={`text-xs ${daysLeftFormatted.color} truncate`}>
-                    {daysLeftFormatted.label}
+                    {daysLeftFormatted.text}
                   </p>
                 </td>
                 <td className="w-24 px-4 py-3 border-r border-gray-200">
@@ -120,7 +120,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                     {split.ffStatus === 'fg_ready' && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => onPick(split.bprNo)}
                         className="flex items-center gap-1 whitespace-nowrap"
                       >
@@ -131,7 +131,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                     {split.ffStatus === 'picked' && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => onInvoice(split.bprNo)}
                         className="flex items-center gap-1 whitespace-nowrap"
                       >
@@ -142,7 +142,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                     {split.ffStatus === 'invoiced' && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => onShip(split.bprNo)}
                         className="flex items-center gap-1 whitespace-nowrap"
                       >
@@ -153,7 +153,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                     {(split.ffStatus === 'shipped' || split.ffStatus === 'delivered' || split.ffStatus === 'closed') && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => onTrack(split.bprNo)}
                         className="flex items-center gap-1 whitespace-nowrap"
                       >

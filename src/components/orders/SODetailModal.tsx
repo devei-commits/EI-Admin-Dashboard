@@ -96,7 +96,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={`SO Details: ${saleOrder.soNo}`}
-      size="4xl"
+      size="xl"
     >
       <div className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -248,7 +248,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               </div>
             )}
 
-            <div className="space-y-3 p-4 bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-lg">
+            <div className="space-y-3 p-4 bg-linear-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-lg">
               <h3 className="font-bold text-gray-900">Actions</h3>
               <div className="grid grid-cols-1 gap-2">
                 {actionButtons
@@ -256,7 +256,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
                   .map((btn) => (
                     <Button
                       key={btn.label}
-                      variant="default"
+                      variant="primary"
                       onClick={btn.onClick}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
                     >

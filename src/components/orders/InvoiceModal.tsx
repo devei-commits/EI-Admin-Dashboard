@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Check,
+  DollarSign,
 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { InvoiceModalProps } from '../../types/orderFulfillment';
@@ -51,16 +52,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     const invoiceData = {
       invoiceNo,
       invoiceDate,
-      dueDate,
-      transporter,
-      lrNo,
-      preparedBy,
-      remarks,
-      totalValue: pickedSplits.reduce(
+      courier: transporter,
+      paymentRef: lrNo,
+      gstPercent: 18,
+      invoiceValue: pickedSplits.reduce(
         (acc, { item, split }) =>
           acc + (split.pickedQty ?? 0) * item.rate,
         0
       ),
+      remarks,
     };
 
     onGenerateInvoice(invoiceData);
