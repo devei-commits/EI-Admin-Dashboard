@@ -27,6 +27,8 @@ export interface Order {
   vendorName?: string;
   orderDate: string;
   expectedShipmentDate?: string;
+  reference?: string;
+  paymentTerms?: string;
   status: string;
   items: OrderItem[];
   formData: OrderFormData;

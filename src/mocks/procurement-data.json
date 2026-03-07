@@ -7,7 +7,11 @@
       "type": "RM",
       "priority": "High",
       "status": "Quoted",
-      "items": ["Homosalate", "Octinoxate", "Octocrylene"],
+      "items": [
+        "Homosalate",
+        "Octinoxate",
+        "Octocrylene"
+      ],
       "dueDate": "2026-03-15",
       "createdDate": "2026-02-10",
       "requestedBy": "Planning Team",
@@ -62,7 +66,10 @@
       "type": "RM",
       "priority": "High",
       "status": "PO Draft",
-      "items": ["Carbomer 980", "Carbopol 940"],
+      "items": [
+        "Carbomer 980",
+        "Carbopol 940"
+      ],
       "dueDate": "2026-02-28",
       "createdDate": "2026-02-05",
       "requestedBy": "Manufacturing",
@@ -106,7 +113,10 @@
       "type": "RM",
       "priority": "Medium",
       "status": "New",
-      "items": ["SLES 70%", "CAPB 35%"],
+      "items": [
+        "SLES 70%",
+        "CAPB 35%"
+      ],
       "dueDate": "2026-03-20",
       "createdDate": "2026-02-21",
       "requestedBy": "R&D Team",
@@ -150,7 +160,10 @@
       "type": "PM",
       "priority": "Medium",
       "status": "PO Released",
-      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "items": [
+        "50g Aluminium Laminated Tube",
+        "Oval Flip-Top Cap 25mm"
+      ],
       "dueDate": "2026-03-10",
       "createdDate": "2026-02-08",
       "requestedBy": "Packaging Team",
@@ -194,7 +207,9 @@
       "type": "RM",
       "priority": "Low",
       "status": "New",
-      "items": ["Niacinamide"],
+      "items": [
+        "Niacinamide"
+      ],
       "dueDate": "2026-03-25",
       "createdDate": "2026-02-20",
       "requestedBy": "Planning Team",
@@ -227,7 +242,10 @@
       "type": "PM",
       "priority": "Low",
       "status": "New",
-      "items": ["150ml Clear PET Pump Bottle", "Facewash 150ml Monocarton"],
+      "items": [
+        "150ml Clear PET Pump Bottle",
+        "Facewash 150ml Monocarton"
+      ],
       "dueDate": "2026-04-01",
       "createdDate": "2026-02-22",
       "requestedBy": "Packaging Team",
@@ -502,17 +520,62 @@
       "date": "2026-02-15",
       "status": "Shipped",
       "etaDays": 9,
-      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "items": [
+        "50g Aluminium Laminated Tube",
+        "Oval Flip-Top Cap 25mm"
+      ],
       "requestCode": "PR-REQ-004",
       "contactPerson": "Anita Sharma",
       "timeline": [
-        { "stage": "PO Released", "done": true, "timestamp": "2026-02-15 10:30", "actor": "Procurement — Ramesh", "note": "PO sent to PackNova via email + portal" },
-        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-16 14:00", "actor": "Finance — Kiran", "note": "30% advance ₹40,068 transferred via NEFT" },
-        { "stage": "Vendor Confirmed", "done": true, "timestamp": "2026-02-17 14:15", "actor": "Anita Sharma (PackNova)", "note": "Order acknowledged. Production slot: Feb 24–Mar 2" },
-        { "stage": "Shipped", "done": true, "timestamp": "2026-03-03 09:00", "actor": "PackNova Dispatch", "note": "LR No: TL2026030301 via Gati Logistics" },
-        { "stage": "Delivered", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+        {
+          "stage": "PO Released",
+          "done": true,
+          "timestamp": "2026-02-15 10:30",
+          "actor": "Procurement — Ramesh",
+          "note": "PO sent to PackNova via email + portal"
+        },
+        {
+          "stage": "Advance Paid",
+          "done": true,
+          "timestamp": "2026-02-16 14:00",
+          "actor": "Finance — Kiran",
+          "note": "30% advance ₹40,068 transferred via NEFT"
+        },
+        {
+          "stage": "Vendor Confirmed",
+          "done": true,
+          "timestamp": "2026-02-17 14:15",
+          "actor": "Anita Sharma (PackNova)",
+          "note": "Order acknowledged. Production slot: Feb 24–Mar 2"
+        },
+        {
+          "stage": "Shipped",
+          "done": true,
+          "timestamp": "2026-03-03 09:00",
+          "actor": "PackNova Dispatch",
+          "note": "LR No: TL2026030301 via Gati Logistics"
+        },
+        {
+          "stage": "Delivered",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "Under GRN",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "GRN Complete",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        }
       ]
     },
     {
@@ -525,17 +588,62 @@
       "date": "2026-02-01",
       "status": "Advance Paid",
       "etaDays": 2,
-      "items": ["Carbomer 980", "Carbopol 940"],
+      "items": [
+        "Carbomer 980",
+        "Carbopol 940"
+      ],
       "requestCode": "PR-REQ-002",
       "contactPerson": "Rajesh Mehta",
       "timeline": [
-        { "stage": "PO Released", "done": true, "timestamp": "2026-02-01 11:00", "actor": "Procurement — Ramesh", "note": "PO emailed to Chemspec. Ref: PR-REQ-002" },
-        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-03 15:45", "actor": "Finance — Kiran", "note": "40% advance ₹18,597 transferred via RTGS" },
-        { "stage": "Vendor Confirmed", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "Shipped", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "Delivered", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+        {
+          "stage": "PO Released",
+          "done": true,
+          "timestamp": "2026-02-01 11:00",
+          "actor": "Procurement — Ramesh",
+          "note": "PO emailed to Chemspec. Ref: PR-REQ-002"
+        },
+        {
+          "stage": "Advance Paid",
+          "done": true,
+          "timestamp": "2026-02-03 15:45",
+          "actor": "Finance — Kiran",
+          "note": "40% advance ₹18,597 transferred via RTGS"
+        },
+        {
+          "stage": "Vendor Confirmed",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "Shipped",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "Delivered",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "Under GRN",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "GRN Complete",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        }
       ]
     },
     {
@@ -548,17 +656,62 @@
       "date": "2026-02-10",
       "status": "Delivered",
       "etaDays": 4,
-      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "items": [
+        "50g Aluminium Laminated Tube",
+        "Oval Flip-Top Cap 25mm"
+      ],
       "requestCode": "PR-REQ-004",
       "contactPerson": "Anita Sharma",
       "timeline": [
-        { "stage": "PO Released", "done": true, "timestamp": "2026-02-10 09:00", "actor": "Procurement — Ramesh", "note": "PO released to PackNova for second batch" },
-        { "stage": "Advance Paid", "done": true, "timestamp": "2026-02-11 16:30", "actor": "Finance — Kiran", "note": "30% advance ₹13,944 transferred" },
-        { "stage": "Vendor Confirmed", "done": true, "timestamp": "2026-02-12 10:00", "actor": "Anita Sharma (PackNova)", "note": "Confirmed. Dispatch in 10 working days" },
-        { "stage": "Shipped", "done": true, "timestamp": "2026-02-22 08:00", "actor": "PackNova Dispatch", "note": "LR No: TL2026022201 via Delhivery" },
-        { "stage": "Delivered", "done": true, "timestamp": "2026-02-26 11:30", "actor": "Store — Deepak", "note": "35 cartons received. Physical count matched." },
-        { "stage": "Under GRN", "done": false, "timestamp": null, "actor": null, "note": null },
-        { "stage": "GRN Complete", "done": false, "timestamp": null, "actor": null, "note": null }
+        {
+          "stage": "PO Released",
+          "done": true,
+          "timestamp": "2026-02-10 09:00",
+          "actor": "Procurement — Ramesh",
+          "note": "PO released to PackNova for second batch"
+        },
+        {
+          "stage": "Advance Paid",
+          "done": true,
+          "timestamp": "2026-02-11 16:30",
+          "actor": "Finance — Kiran",
+          "note": "30% advance ₹13,944 transferred"
+        },
+        {
+          "stage": "Vendor Confirmed",
+          "done": true,
+          "timestamp": "2026-02-12 10:00",
+          "actor": "Anita Sharma (PackNova)",
+          "note": "Confirmed. Dispatch in 10 working days"
+        },
+        {
+          "stage": "Shipped",
+          "done": true,
+          "timestamp": "2026-02-22 08:00",
+          "actor": "PackNova Dispatch",
+          "note": "LR No: TL2026022201 via Delhivery"
+        },
+        {
+          "stage": "Delivered",
+          "done": true,
+          "timestamp": "2026-02-26 11:30",
+          "actor": "Store — Deepak",
+          "note": "35 cartons received. Physical count matched."
+        },
+        {
+          "stage": "Under GRN",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        },
+        {
+          "stage": "GRN Complete",
+          "done": false,
+          "timestamp": null,
+          "actor": null,
+          "note": null
+        }
       ]
     }
   ],
@@ -666,7 +819,10 @@
       "poId": "PO-PR-REQ-004",
       "requestCode": "PR-REQ-004",
       "vendor": "PackNova Industries",
-      "items": ["50g Aluminium Laminated Tube", "Oval Flip-Top Cap 25mm"],
+      "items": [
+        "50g Aluminium Laminated Tube",
+        "Oval Flip-Top Cap 25mm"
+      ],
       "status": "Delivery Pending",
       "expectedDate": "2026-03-10",
       "quantity": "25,000 units"

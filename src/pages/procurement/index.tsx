@@ -1,10 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
+import { useGlobalState } from '../../context/GlobalStateContext';
 import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
-import { fetchProcurementRequests as fetchProcurementRequestsApi } from '../../services/procurement.service';
+import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
+import type { ProcurementRequestItem as BackendPRItem } from '../../services/procurement.service';
+import { fetchProcurementQuotations } from '../../services/procurementQuotations.service';
+import { fetchVendorClients } from '../../services/vendorClient.service';
+import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
+import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
+import type { PoTrackingRecord } from '../../services/poTracking.service';
+import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
+import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
+import {
+  mapBackendPrToRequest,
+  mapBackendQuotationToQuote,
+  mapVendorClientToVendor,
+  mapOrderToPurchaseOrder,
+  mapPurchaseOrderToDraftPO,
+} from './procurementDataMappers';
 import type {
   RequestType,
   RequestPriority,
@@ -29,8 +45,6 @@ import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
 
-const REQUESTS_SEED: ProcurementRequest[] = procurementData.requests as ProcurementRequest[];
-const QUOTES_SEED: VendorQuote[] = procurementData.quotes as VendorQuote[];
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
 
@@ -54,15 +68,14 @@ const deriveStockCheckStatusForRequest = (request: ProcurementRequest): StockChe
 };
 
 const getInitialLiveState = (): LiveProcurementState => {
-  if (typeof window === 'undefined') {
-    const initialStockStatuses: Record<string, StockCheckStatus> = {};
-    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
-      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
-    });
+  const emptyRequests: ProcurementRequest[] = [];
+  const emptyQuotes: VendorQuote[] = [];
+  const initialStockStatuses: Record<string, StockCheckStatus> = {};
 
+  if (typeof window === 'undefined') {
     return {
-      requests: REQUESTS_SEED,
-      quotes: QUOTES_SEED,
+      requests: emptyRequests,
+      quotes: emptyQuotes,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
       stockCheckStatuses: initialStockStatuses,
@@ -73,14 +86,9 @@ const getInitialLiveState = (): LiveProcurementState => {
 
   const raw = window.localStorage.getItem(PROCUREMENT_LIVE_KEY);
   if (!raw) {
-    const initialStockStatuses: Record<string, StockCheckStatus> = {};
-    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
-      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
-    });
-
     return {
-      requests: REQUESTS_SEED,
-      quotes: QUOTES_SEED,
+      requests: emptyRequests,
+      quotes: emptyQuotes,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
       stockCheckStatuses: initialStockStatuses,
@@ -91,37 +99,27 @@ const getInitialLiveState = (): LiveProcurementState => {
 
   try {
     const parsed = JSON.parse(raw) as LiveProcurementState;
-    if (!parsed?.requests || !parsed?.quotes || !parsed?.draftPOs) {
-      throw new Error('Invalid procurement state payload');
-    }
-
-    const derivedStockStatuses: Record<string, StockCheckStatus> = { ...parsed.stockCheckStatuses };
-    parsed.requests
-      .filter((request) => request.priority !== 'Low')
-      .forEach((request) => {
-        if (!derivedStockStatuses[request.id]) {
-          derivedStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
-        }
-      });
+    const draftPOs = Array.isArray(parsed?.draftPOs) ? parsed.draftPOs : DRAFT_POS_SEED;
+    const completedGrns = Array.isArray(parsed?.completedGrns) ? parsed.completedGrns : [];
+    const stockCheckStatuses = parsed?.stockCheckStatuses && typeof parsed.stockCheckStatuses === 'object' ? parsed.stockCheckStatuses : {};
+    const stockCheckUpdates = parsed?.stockCheckUpdates && typeof parsed.stockCheckUpdates === 'object' ? parsed.stockCheckUpdates : {};
 
     return {
-      ...parsed,
-      completedGrns: parsed.completedGrns ?? [],
-      stockCheckStatuses: derivedStockStatuses,
-      stockCheckUpdates: parsed.stockCheckUpdates ?? {},
+      requests: emptyRequests,
+      quotes: emptyQuotes,
+      draftPOs,
+      completedGrns,
+      stockCheckStatuses,
+      stockCheckUpdates,
+      updatedAt: parsed?.updatedAt ?? new Date().toISOString(),
     };
   } catch {
-    const initialStockStatuses: Record<string, StockCheckStatus> = {};
-    REQUESTS_SEED.filter((request) => request.priority !== 'Low').forEach((request) => {
-      initialStockStatuses[request.id] = deriveStockCheckStatusForRequest(request);
-    });
-
     return {
-      requests: REQUESTS_SEED,
-      quotes: QUOTES_SEED,
+      requests: emptyRequests,
+      quotes: emptyQuotes,
       draftPOs: DRAFT_POS_SEED,
       completedGrns: [],
-      stockCheckStatuses: initialStockStatuses,
+      stockCheckStatuses: {},
       stockCheckUpdates: {},
       updatedAt: new Date().toISOString(),
     };
@@ -145,6 +143,7 @@ const statusBg: Record<RequestStatus, string> = {
   'PO Draft': 'bg-orange-50 text-orange-700 border-orange-200',
   'PO Released': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Delivery Pending': 'bg-rose-50 text-rose-700 border-rose-200',
+  'Under GRN': 'bg-slate-50 text-slate-700 border-slate-200',
 };
 
 const priorityClass: Record<RequestPriority, string> = {
@@ -175,6 +174,7 @@ const Procurement: React.FC = () => {
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
   const [requestStatusFilter, setRequestStatusFilter] = useState<'All Statuses' | RequestStatus>('All Statuses');
+  const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
@@ -198,6 +198,11 @@ const Procurement: React.FC = () => {
     requireStockCheck: 'No'
   });
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
+  const [editRequestTarget, setEditRequestTarget] = useState<ProcurementRequest | null>(null);
+  const [editRequestForm, setEditRequestForm] = useState({ priority: '' as RequestPriority, requiredByDate: '', notes: '', status: '' as RequestStatus });
+  const [editDraftPOTarget, setEditDraftPOTarget] = useState<DraftPO | null>(null);
+  const [editDraftPOForm, setEditDraftPOForm] = useState<Pick<DraftPO, 'vendor' | 'paymentTerms' | 'expectedDelivery' | 'deliveryAddress' | 'lineItems'>>({ vendor: '', paymentTerms: '', expectedDelivery: '', deliveryAddress: '', lineItems: [] });
+  const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
   const [updateStockCheckRequest, setUpdateStockCheckRequest] = useState<ProcurementRequest | null>(null);
@@ -233,24 +238,168 @@ const Procurement: React.FC = () => {
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
   const [stockCategoryFilter, setStockCategoryFilter] = useState<'All' | RequestType>('All');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed'>('All Statuses');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed' | 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock'>('All Statuses');
   const [stockSearch, setStockSearch] = useState('');
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
   const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
   const [itemTrackerSearch, setItemTrackerSearch] = useState('');
 
-  const vendors: Vendor[] = procurementData.vendors as Vendor[];
-  const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
+  const queryClient = useQueryClient();
+  const { dispatch: globalDispatch } = useGlobalState();
 
   const { data: backendPrResult } = useQuery({
-    queryKey: ['procurement-requests-backend'],
+    queryKey: ['procurement-requests'],
     queryFn: async () => {
       const res = await fetchProcurementRequestsApi();
       return res.success ? (res.data ?? []) : [];
     },
-    enabled: sideSection === 'Requests',
   });
+
+  const { data: quotationsResult } = useQuery({
+    queryKey: ['procurement-quotations'],
+    queryFn: async () => {
+      const res = await fetchProcurementQuotations();
+      return res.success ? (res.data ?? []) : [];
+    },
+  });
+
+  const { data: vendorClientList } = useQuery({
+    queryKey: ['vendor-client', 'vendor'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('vendor');
+      return res.success ? (res.data ?? []) : [];
+    },
+  });
+
+  const { data: purchaseOrdersRaw } = useQuery({
+    queryKey: ['purchase-orders'],
+    queryFn: async () => {
+      const res = await fetchPurchaseOrders();
+      return res.success ? (res.data ?? []) : [];
+    },
+  });
+
+  const { data: grnListFromApi, isLoading: grnListLoading } = useQuery({
+    queryKey: ['grn-list'],
+    queryFn: fetchGRNList,
+    enabled: sideSection === 'GRN Monitor',
+  });
+
+  const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading } = useQuery({
+    queryKey: ['warehouse-inventory'],
+    queryFn: async () => {
+      const res = await fetchWarehouseInventory();
+      return res.success ? res.data : null;
+    },
+    enabled: sideSection === 'Stock Check' || sideSection === 'Item Tracker',
+  });
+
+  const requestsFromApi = useMemo(
+    () => (backendPrResult ?? []).map(mapBackendPrToRequest),
+    [backendPrResult]
+  );
+
+  const quotesFromApi = useMemo(() => {
+    const list = quotationsResult ?? [];
+    return list.map((q) => {
+      const req = requestsFromApi.find((r) => r.id === String(q.procurementRequestId));
+      return mapBackendQuotationToQuote(q, req?.code, req?.type);
+    });
+  }, [quotationsResult, requestsFromApi]);
+
+  const vendors: Vendor[] = useMemo(
+    () => (vendorClientList ?? []).map(mapVendorClientToVendor),
+    [vendorClientList]
+  );
+
+  const purchaseOrders: PurchaseOrder[] = useMemo(
+    () => (purchaseOrdersRaw ?? []).map((row: any) => mapOrderToPurchaseOrder(row)),
+    [purchaseOrdersRaw]
+  );
+
+  const draftPOsFromApi = useMemo(() => {
+    const reqs = requestsFromApi;
+    return purchaseOrders
+      .filter((p) => p.status === 'Draft')
+      .map((po) => mapPurchaseOrderToDraftPO(po, reqs));
+  }, [purchaseOrders, requestsFromApi]);
+
+  const { data: poTrackingData } = useQuery({
+    queryKey: ['po-tracking', selectedPO?.backendPoId],
+    queryFn: async () => {
+      if (!selectedPO?.backendPoId) return null;
+      const res = await fetchPoTracking(selectedPO.backendPoId);
+      return res.success ? res.data : null;
+    },
+    enabled: !!selectedPO?.backendPoId,
+  });
+
+  const isProcurementDataLoading =
+    backendPrResult === undefined ||
+    quotationsResult === undefined ||
+    vendorClientList === undefined ||
+    purchaseOrdersRaw === undefined;
+
+  useEffect(() => {
+    if (backendPrResult !== undefined) setRequests(requestsFromApi);
+  }, [backendPrResult, requestsFromApi]);
+
+  useEffect(() => {
+    if (quotationsResult !== undefined) setQuotes(quotesFromApi);
+  }, [quotationsResult, quotesFromApi]);
+
+  useEffect(() => {
+    if (isProcurementDataLoading) return;
+    setDraftPOs(draftPOsFromApi);
+  }, [isProcurementDataLoading, draftPOsFromApi]);
+
+  useEffect(() => {
+    if (!editRequestTarget) return;
+    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id);
+    setEditRequestForm({
+      priority: editRequestTarget.priority,
+      requiredByDate: editRequestTarget.dueDate?.slice(0, 10) ?? '',
+      notes: (backendPr as { notes?: string } | undefined)?.notes ?? '',
+      status: editRequestTarget.status,
+    });
+  }, [editRequestTarget, backendPrResult]);
+
+  useEffect(() => {
+    if (!poTrackingData) {
+      setPoTrackingForm({});
+      return;
+    }
+    setPoTrackingForm({
+      poReleasedAt: poTrackingData.poReleasedAt ?? undefined,
+      poReleasedNote: poTrackingData.poReleasedNote ?? undefined,
+      advancePaidAt: poTrackingData.advancePaidAt ?? undefined,
+      advancePaidNote: poTrackingData.advancePaidNote ?? undefined,
+      vendorConfirmedAt: poTrackingData.vendorConfirmedAt ?? undefined,
+      vendorConfirmedNote: poTrackingData.vendorConfirmedNote ?? undefined,
+      shippedAt: poTrackingData.shippedAt ?? undefined,
+      shippedNote: poTrackingData.shippedNote ?? undefined,
+      orderTrackingRef: poTrackingData.orderTrackingRef ?? undefined,
+      deliveredAt: poTrackingData.deliveredAt ?? undefined,
+      deliveredNote: poTrackingData.deliveredNote ?? undefined,
+      underGrnAt: poTrackingData.underGrnAt ?? undefined,
+      underGrnNote: poTrackingData.underGrnNote ?? undefined,
+      grnCompleteAt: poTrackingData.grnCompleteAt ?? undefined,
+      grnCompleteNote: poTrackingData.grnCompleteNote ?? undefined,
+    });
+  }, [poTrackingData]);
+
+  useEffect(() => {
+    if (!editDraftPOTarget) return;
+    setEditDraftPOForm({
+      vendor: editDraftPOTarget.vendor,
+      paymentTerms: editDraftPOTarget.paymentTerms,
+      expectedDelivery: editDraftPOTarget.expectedDelivery,
+      deliveryAddress: editDraftPOTarget.deliveryAddress,
+      lineItems: editDraftPOTarget.lineItems.map((l) => ({ ...l })),
+    });
+  }, [editDraftPOTarget]);
+
   const backendPrs = backendPrResult ?? [];
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
@@ -340,8 +489,6 @@ const Procurement: React.FC = () => {
 
       try {
         const incoming = JSON.parse(event.newValue) as LiveProcurementState;
-        setRequests(incoming.requests ?? REQUESTS_SEED);
-        setQuotes(incoming.quotes ?? QUOTES_SEED);
         setDraftPOs(incoming.draftPOs ?? DRAFT_POS_SEED);
         setCompletedGrns(incoming.completedGrns ?? []);
         if (incoming.stockCheckStatuses) {
@@ -363,8 +510,8 @@ const Procurement: React.FC = () => {
   const sideCounts = useMemo(() => {
     const requestCount = requests.length;
     const quotationsCount = quotes.length;
-    const draftPos = requests.filter((request) => request.status === 'PO Draft').length;
-    const issuedPos = requests.filter((request) => request.status === 'PO Released').length;
+    const draftPosCount = draftPOs.length;
+    const issuedPos = requests.filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending').length;
     const grnCount = Math.max(issuedPos, 1);
     const stockCheck = requests.filter((request) => request.priority !== 'Low').length;
     const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
@@ -373,13 +520,13 @@ const Procurement: React.FC = () => {
       Overview: requestCount,
       Requests: requestCount,
       Quotations: quotationsCount,
-      'Draft POs': draftPos,
+      'Draft POs': draftPosCount,
       'Issued POs': issuedPos,
       'GRN Monitor': grnCount,
       'Stock Check': stockCheck,
       'Item Tracker': itemTracker,
     };
-  }, [quotes, requests]);
+  }, [draftPOs, quotes, requests]);
 
   const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
     const poByRequestCode = new Map<string, PurchaseOrder>();
@@ -591,6 +738,15 @@ const Procurement: React.FC = () => {
     });
   }, [categoryFilter, vendorFilter, statusFilter, searchQuery, quotes, sideSection, requests]);
 
+  const filteredDraftPOs = useMemo(() => {
+    return draftPOs.filter((dpo) => {
+      if (categoryFilter !== 'All' && dpo.type !== categoryFilter) return false;
+      if (vendorFilter !== 'All Vendors' && dpo.vendor !== vendorFilter) return false;
+      if (draftPOStatusFilter !== 'All Statuses' && dpo.status !== draftPOStatusFilter) return false;
+      return true;
+    });
+  }, [draftPOs, categoryFilter, vendorFilter, draftPOStatusFilter]);
+
   const quoteStats = useMemo(() => {
     const totalQuotes = filteredQuotes.length;
     const confirmed = filteredQuotes.filter((quote) => quote.status === 'Confirmed').length;
@@ -613,12 +769,18 @@ const Procurement: React.FC = () => {
   }, [filteredQuotes, requests]);
 
   const issuedPORecords = useMemo(() => {
-    const today = new Date('2026-02-28');
+    const today = new Date();
 
     return requests
       .filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending')
       .map((request) => {
         const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
+        const linkedPO = purchaseOrders.find(
+          (p) =>
+            p.status === 'Released' &&
+            (String(p.formData?.requestId) === String(request.id) ||
+              String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase())
+        );
         const linkedQuote = quotes.find((quote) => quote.requestId === request.id && quote.status === 'Confirmed') ??
           quotes.find((quote) => quote.requestId === request.id);
 
@@ -630,34 +792,51 @@ const Procurement: React.FC = () => {
             ? 'At Risk'
             : 'Released';
 
-        const lineItems = linkedDraftPO?.lineItems ??
-          request.items.map((item, index) => ({
-            item,
-            itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
-            type: request.type,
-            qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
-            pricePerUnit: request.itemDetails?.[index]?.plannedPrice ?? 0,
-            gstPercent: 18,
-            gstAmount: 0,
-            lineTotal: request.itemDetails?.[index]?.estValue ?? 0,
-          }));
+        const fallbackLineItems = request.items.map((item, index) => ({
+          item,
+          itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
+          type: request.type,
+          qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
+          pricePerUnit: request.itemDetails?.[index]?.plannedPrice ?? 0,
+          gstPercent: 18,
+          gstAmount: 0,
+          lineTotal: request.itemDetails?.[index]?.estValue ?? 0,
+        }));
 
-        const grandTotal = linkedDraftPO?.grandTotal ?? lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+        const lineItems =
+          linkedDraftPO?.lineItems ??
+          (linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
+            ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => ({
+                item: i.itemName ?? i.name ?? request.items[idx] ?? '',
+                itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+                type: request.type,
+                qty: String(i.quantity ?? ''),
+                pricePerUnit: Number(i.rate ?? i.price ?? 0),
+                gstPercent: 18,
+                gstAmount: 0,
+                lineTotal: Number(i.quantity ?? 0) * Number(i.rate ?? i.price ?? 0),
+              }))
+            : fallbackLineItems);
+
+        const grandTotal =
+          linkedDraftPO?.grandTotal ??
+          linkedPO?.value ??
+          lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
 
         return {
           request,
-          poNumber: (linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO'),
-          vendor: linkedDraftPO?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
+          poNumber: (linkedDraftPO?.dpoNumber ?? linkedPO?.poNumber ?? request.code).replace('DPO', 'PO'),
+          vendor: linkedDraftPO?.vendor ?? linkedPO?.vendorName ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
           status: computedStatus,
           etaDays,
           lineItems,
           grandTotal,
           requestCode: request.code,
-          createdDate: linkedDraftPO?.createdDate ?? request.createdDate ?? '2026-02-28',
-          paymentTerms: linkedDraftPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+          createdDate: linkedDraftPO?.createdDate ?? linkedPO?.date ?? request.createdDate ?? '',
+          paymentTerms: linkedDraftPO?.paymentTerms ?? linkedPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
         };
       });
-  }, [draftPOs, quotes, requests]);
+  }, [draftPOs, purchaseOrders, quotes, requests]);
 
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
@@ -685,6 +864,10 @@ const Procurement: React.FC = () => {
   }, [issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
+    const backendPo = purchaseOrders.find(
+      (p) => p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO')
+    );
+    const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
     setSelectedPO({
       id: record.poNumber,
       vendorId: record.vendor,
@@ -697,12 +880,16 @@ const Procurement: React.FC = () => {
       etaDays: record.etaDays,
       items: record.lineItems.map((line) => line.item),
       requestCode: record.requestCode,
+      requestId: record.request.id,
       contactPerson: 'Procurement Desk',
+      backendPoId: backendPoId ?? undefined,
       timeline: [
         { stage: 'PO Released', done: true, timestamp: record.createdDate, actor: 'Procurement', note: 'PO shared with vendor' },
-        { stage: 'Vendor Confirmed', done: true, timestamp: record.createdDate, actor: record.vendor, note: 'Acknowledged by vendor' },
-        { stage: 'In Transit', done: record.status === 'In Transit', timestamp: record.status === 'In Transit' ? '2026-02-28' : null, actor: 'Logistics', note: null },
+        { stage: 'Vendor Confirmed', done: false, timestamp: null, actor: null, note: null },
+        { stage: 'Shipped', done: false, timestamp: null, actor: null, note: null },
         { stage: 'Delivered', done: false, timestamp: null, actor: null, note: null },
+        { stage: 'Under GRN', done: false, timestamp: null, actor: null, note: null },
+        { stage: 'GRN Complete', done: false, timestamp: null, actor: null, note: null },
       ],
     });
   };
@@ -712,11 +899,89 @@ const Procurement: React.FC = () => {
     addToast('success', `${requestCode} moved to In Transit`);
   };
 
-  const receiveIssuedPOGRN = (requestId: string, requestCode: string) => {
+  const receiveIssuedPOGRN = async (requestId: string, requestCode: string) => {
+    const record = issuedPORecords.find((r) => r.request.id === requestId && r.requestCode === requestCode);
+    if (!record) {
+      addToast('error', 'PO record not found');
+      return;
+    }
+    let linkedPO = purchaseOrders.find(
+      (p) =>
+        p.status === 'Released' &&
+        (String(p.formData?.requestId) === String(requestId) ||
+          String(p.formData?.requestCode).toUpperCase() === String(requestCode).toUpperCase())
+    );
+    if (!linkedPO) {
+      linkedPO = purchaseOrders.find(
+        (p) =>
+          p.status === 'Released' &&
+          (p.poNumber === record.poNumber ||
+            p.poNumber === record.poNumber.replace(/^PO/, 'DPO') ||
+            (p as { orderId?: string }).orderId === record.poNumber ||
+            (p as { orderId?: string }).orderId === record.poNumber.replace(/^PO/, 'DPO'))
+      );
+    }
+    const backendPoId = linkedPO ? String(linkedPO.id).replace(/^PO-/, '') : null;
+    if (!backendPoId) {
+      addToast('error', 'Linked purchase order not found. Cannot mark delivered.');
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === requestId);
+    const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
+
+    const trackingRes = await updatePoTracking(backendPoId, {
+      deliveredAt: today,
+      deliveredNote: 'Marked delivered at WH from Procurement',
+      underGrnAt: today,
+      underGrnNote: 'GRN created from Procurement',
+    });
+    if (!trackingRes.success) {
+      addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
+      return;
+    }
+
+    try {
+      await createGRN({
+        grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+        purchase_order_id: parseInt(backendPoId, 10),
+        poNo: record.poNumber,
+        vendor: record.vendor,
+        type: record.request.type as 'RM' | 'PM',
+        items: record.lineItems.length,
+        poValue: record.grandTotal ?? 0,
+        status: 'Under GRN',
+        receivedDate: today,
+        lineItems: record.lineItems.map((line, idx) => ({
+          id: `line-${idx}`,
+          item: String(line.item ?? ''),
+          itemCode: line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
+          poQty: Number(line.qty) || 0,
+          rcvdQty: 0,
+          invoiceQty: 0,
+          unitPrice: Number(line.pricePerUnit) || 0,
+          diff: 0,
+          qcStatus: 'Pending',
+          qcBy: '',
+        })),
+      });
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
+      return;
+    }
+
+    const statusRes = await updateProcurementRequestApi(requestId, { status: 'Under GRN' as RequestStatus, items });
+    if (!statusRes.success) {
+      addToast('error', typeof statusRes.error === 'string' ? statusRes.error : (statusRes.error?.message ?? 'Failed to update request status'));
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+    queryClient.invalidateQueries({ queryKey: ['grn-list'] });
     updateProcurementState((current) => ({
-      requests: current.requests.filter((request) => request.id !== requestId),
+      requests: current.requests.map((req) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
     }));
-    addToast('success', `GRN received for ${requestCode}`);
+    addToast('success', `${requestCode} marked delivered at WH. GRN created — see Warehouse → Inbound.`);
   };
 
   const updateQuoteStatus = (quoteId: string, status: QuoteStatus) => {
@@ -726,7 +991,7 @@ const Procurement: React.FC = () => {
     addToast('success', `Quote ${quoteId} moved to ${status}`);
   };
 
-  const createDraftPO = (quoteId: string) => {
+  const createDraftPO = async (quoteId: string) => {
     const selectedQuote = quotes.find((quote) => quote.id === quoteId);
     if (!selectedQuote) {
       addToast('error', 'Quote not found');
@@ -768,9 +1033,11 @@ const Procurement: React.FC = () => {
     const gstTotal = parseFloat(lineItems.reduce((sum, item) => sum + item.gstAmount, 0).toFixed(2));
     const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2));
 
-    // Calculate expected delivery date (add lead time to today)
-    const expectedDelivery = new Date('2026-02-28');
+    const today = new Date();
+    const expectedDelivery = new Date(today);
     expectedDelivery.setDate(expectedDelivery.getDate() + selectedQuote.leadTimeDays);
+    const createdDateStr = today.toISOString().split('T')[0];
+    const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
     const newDraftPO: DraftPO = {
       id: newDpoId,
@@ -781,10 +1048,10 @@ const Procurement: React.FC = () => {
       vendor: selectedQuote.vendor,
       vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
       status: 'Pending Approval',
-      createdDate: '2026-02-28',
+      createdDate: createdDateStr,
       createdBy: 'Procurement — Admin',
       paymentTerms: selectedQuote.terms,
-      expectedDelivery: expectedDelivery.toISOString().split('T')[0],
+      expectedDelivery: expectedDeliveryStr,
       deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
       vendorRating: selectedQuote.rating,
       alertMessage: `Draft PO created from quote ${selectedQuote.id}. Awaiting approval to proceed.`,
@@ -795,16 +1062,40 @@ const Procurement: React.FC = () => {
       grandTotal,
     };
 
+    // Persist to PO table (backend) with request link for reload
+    const poPayload = {
+      orderId: newDraftPO.dpoNumber,
+      vendorName: newDraftPO.vendor,
+      orderDate: createdDateStr,
+      expectedShipmentDate: expectedDeliveryStr,
+      reference: newDraftPO.requestCode,
+      paymentTerms: newDraftPO.paymentTerms || undefined,
+      status: 'Draft',
+      formData: { requestId: selectedQuote.requestId, requestCode: selectedQuote.requestCode },
+      items: newDraftPO.lineItems.map((l) => ({
+        itemName: l.item,
+        quantity: l.qty,
+        rate: String(l.pricePerUnit),
+        tax: String(l.gstPercent || 18),
+      })),
+    };
+    const createResult = await createPurchaseOrder(poPayload);
+    if (!createResult.success || !createResult.data) {
+      addToast('error', typeof createResult.error === 'string' ? createResult.error : (createResult.error?.message ?? 'Failed to create purchase order'));
+      return;
+    }
+    const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
+    const draftWithBackend: DraftPO = { ...newDraftPO, backendPoId: backendId };
+
+    await updateRequestStatus(selectedQuote.requestId, 'PO Draft');
+
     updateProcurementState((current) => ({
-      requests: current.requests.map((request) =>
-        request.id === selectedQuote.requestId ? { ...request, status: 'PO Draft' } : request,
-      ),
-      draftPOs: [newDraftPO, ...current.draftPOs],
+      draftPOs: [draftWithBackend, ...current.draftPOs],
     }));
 
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
     addToast('success', `Draft PO ${newDpoId} created for ${selectedQuote.requestCode}`);
     
-    // Navigate to Draft POs section to show the created PO
     setTimeout(() => {
       applyRouteState('Procurement', 'Draft POs');
     }, 500);
@@ -852,7 +1143,7 @@ const Procurement: React.FC = () => {
     addToast('success', `${target.dpoNumber} approved`);
   };
 
-  const releaseDraftPOToVendor = (draftPoId: string) => {
+  const releaseDraftPOToVendor = async (draftPoId: string) => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
@@ -865,8 +1156,7 @@ const Procurement: React.FC = () => {
       return;
     }
 
-    updateRequestStatus(target.requestId, 'PO Released');
-    addToast('success', `${target.dpoNumber} released to vendor`);
+    await updateRequestStatus(target.requestId, 'PO Released');
     applyRouteState('Procurement', 'Issued POs');
   };
 
@@ -894,25 +1184,62 @@ const Procurement: React.FC = () => {
     setReleaseNotes('');
   };
 
-  const submitReleasePO = () => {
+  const submitReleasePO = async () => {
     if (!releasePOTarget) {
       return;
     }
 
-    releaseDraftPOToVendor(releasePOTarget.id);
+    const draft = releasePOTarget;
+
+    // Update PO table: set status to Released and ensure request link is stored
+    if (draft.backendPoId) {
+      const updateResult = await updatePurchaseOrder(draft.backendPoId, {
+        status: 'Released',
+        formData: { requestId: draft.requestId, requestCode: draft.requestCode },
+      });
+      if (!updateResult.success) {
+        const err = updateResult.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update purchase order'));
+        return;
+      }
+    }
+
+    // If payment terms are set, route to Treasury for advance approval
+    if (draft.paymentTerms?.trim()) {
+      globalDispatch({
+        type: 'ADD_PO',
+        payload: {
+          stage: 'treasury',
+          po: {
+            id: draft.dpoNumber,
+            vendor: draft.vendor,
+            paymentTerms: draft.paymentTerms,
+            grandTotal: draft.grandTotal,
+            lines: draft.lineItems.map((l) => ({
+              itemId: l.itemCode,
+              itemName: l.item,
+              qty: parseFloat(l.qty) || 0,
+              unit: l.pricePerUnit,
+              uom: 'PCS',
+            })),
+          },
+        },
+      });
+    }
+
+    await releaseDraftPOToVendor(draft.id);
     updateProcurementState((current) => ({
-      draftPOs: current.draftPOs.map((draftPo) =>
-        draftPo.id === releasePOTarget.id
-          ? {
-              ...draftPo,
-              alertType: 'ok',
-              alertMessage: `Released via ${releaseMethod}${releaseNotes.trim() ? ` · Note: ${releaseNotes.trim()}` : ''}`,
-            }
-          : draftPo,
-      ),
+      draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
     }));
 
-    if (selectedDraftPO?.id === releasePOTarget.id) {
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    if (draft.paymentTerms?.trim()) {
+      addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
+    } else {
+      addToast('success', `${draft.dpoNumber} released to vendor.`);
+    }
+
+    if (selectedDraftPO?.id === draft.id) {
       setSelectedDraftPO(null);
     }
 
@@ -1115,7 +1442,15 @@ const Procurement: React.FC = () => {
     addToast('info', `Quote ${quoteId} removed`);
   };
 
-  const updateRequestStatus = (requestId: string, status: RequestStatus) => {
+  const updateRequestStatus = async (requestId: string, status: RequestStatus) => {
+    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === requestId);
+    const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
+    const res = await updateProcurementRequestApi(requestId, { status, items });
+    if (!res.success) {
+      addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
     updateProcurementState((current) => ({
       requests: current.requests.map((req) => (req.id === requestId ? { ...req, status } : req)),
     }));
@@ -1318,18 +1653,25 @@ const Procurement: React.FC = () => {
 
             <div className="space-y-4">
               {sideSection === 'Overview' && (() => {
-                const TODAY = new Date('2026-02-28');
+                const TODAY = new Date();
                 const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
                 const activeRequests = requests.filter(r => r.status !== 'PO Released');
                 const rmRequests = requests.filter(r => r.type === 'RM');
                 const pmRequests = requests.filter(r => r.type === 'PM');
-                const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + p.value, 0);
+                const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
                 const poStatusColor: Record<string, string> = {
                   Shipped: 'bg-blue-100 text-blue-700',
                   'Advance Paid': 'bg-orange-100 text-orange-700',
                   Delivered: 'bg-emerald-100 text-emerald-700',
                   '80% Complete': 'bg-yellow-100 text-yellow-700',
                 };
+                if (isProcurementDataLoading) {
+                  return (
+                    <div className="flex items-center justify-center py-16 text-slate-500">
+                      <span className="animate-pulse">Loading procurement data…</span>
+                    </div>
+                  );
+                }
                 return (
                   <>
                     {/* KPI strip */}
@@ -1507,7 +1849,9 @@ const Procurement: React.FC = () => {
                       <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning → Raise Procurement Request. Data from API.</p>
                     </div>
                     <div className="p-4 overflow-x-auto">
-                      {backendPrs.length === 0 ? (
+                      {isProcurementDataLoading ? (
+                        <p className="text-sm text-slate-500 py-4">Loading procurement data…</p>
+                      ) : backendPrs.length === 0 ? (
                         <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning → PRs Extracted to see them here.</p>
                       ) : (
                         <table className="w-full text-sm border-collapse">
@@ -1810,7 +2154,7 @@ const Procurement: React.FC = () => {
                                     👁 View
                                   </button>
                                   <button
-                                    onClick={() => addToast('info', `Editing ${req.code}`)}
+                                    onClick={() => setEditRequestTarget(req)}
                                     className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-all"
                                   >
                                     ✏️ Edit
@@ -1840,15 +2184,23 @@ const Procurement: React.FC = () => {
                                   >
                                     💰 View Quotes
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      updateRequestStatus(req.id, 'PO Released');
-                                      addToast('success', `${req.code} marked as PO Released`);
-                                    }}
-                                    className="px-4 py-1.5 rounded-lg bg-amber-400 text-slate-900 text-xs font-bold hover:bg-amber-500 shadow-md transition-all"
-                                  >
-                                    ✅ Release PO
-                                  </button>
+                                  {req.status === 'PO Draft' && (() => {
+                                    const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          if (linkedDraft?.backendPoId) {
+                                            openReleasePOModal(linkedDraft.id);
+                                          } else {
+                                            addToast('warning', 'Create a Draft PO from Quotations first, then release from Draft POs.');
+                                          }
+                                        }}
+                                        className="px-4 py-1.5 rounded-lg bg-amber-400 text-slate-900 text-xs font-bold hover:bg-amber-500 shadow-md transition-all"
+                                      >
+                                        ✅ Release PO
+                                      </button>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -1862,7 +2214,11 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'Quotations' && (
                 <div className="space-y-3">
-                  {filteredQuotes.length === 0 ? (
+                  {isProcurementDataLoading ? (
+                    <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
+                      Loading procurement data…
+                    </div>
+                  ) : filteredQuotes.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       No quotes match current filters.
                     </div>
@@ -2077,7 +2433,11 @@ const Procurement: React.FC = () => {
                       </select>
 
                       <span className="text-slate-500 ml-2">STATUS:</span>
-                      <select className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700">
+                      <select
+                        value={draftPOStatusFilter}
+                        onChange={(e) => setDraftPOStatusFilter(e.target.value as 'All Statuses' | 'Pending Approval' | 'Approved')}
+                        className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
+                      >
                         <option value="All Statuses">All Statuses</option>
                         <option value="Pending Approval">Pending Approval</option>
                         <option value="Approved">Approved</option>
@@ -2092,12 +2452,12 @@ const Procurement: React.FC = () => {
 
                   {/* Draft PO Cards */}
                   <div className="space-y-3">
-                    {draftPOs.length === 0 ? (
+                    {filteredDraftPOs.length === 0 ? (
                       <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                        No draft purchase orders.
+                        {draftPOs.length === 0 ? 'No draft purchase orders.' : 'No draft POs match the current filters.'}
                       </div>
                     ) : (
-                      draftPOs.map((dpo) => (
+                      filteredDraftPOs.map((dpo) => (
                         <article key={dpo.id} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           {/* Header */}
                           <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
@@ -2187,9 +2547,7 @@ const Procurement: React.FC = () => {
                               ➤ View PO
                             </button>
                             <button
-                              onClick={() => {
-                                addToast('info', `Editing ${dpo.dpoNumber}`);
-                              }}
+                              onClick={() => setEditDraftPOTarget(dpo)}
                               className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                             >
                               — Edit
@@ -2232,9 +2590,9 @@ const Procurement: React.FC = () => {
                 const totalPos = issuedPORecords.length;
                 const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
                 const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
-                const advancePending = 1; // sample metric to mirror design
+                const advancePending = issuedPORecords.filter(record => record.status === 'Released').length;
                 const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
-                const grnComplete = 1; // sample metric to mirror design
+                const grnComplete = completedGrns.length;
 
                 const itemisedRows = filteredIssuedPORecords.flatMap(record =>
                   record.lineItems.map((line, index) => ({
@@ -2392,7 +2750,11 @@ const Procurement: React.FC = () => {
                           </thead>
                           <tbody>
                             {itemisedRows.map(({ key, record, line }) => (
-                              <tr key={key} className="border-b border-slate-100 hover:bg-blue-50">
+                              <tr
+                                key={key}
+                                className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
+                                onClick={() => openIssuedPODetail(record)}
+                              >
                                 <td className="px-4 py-2 align-top">
                                   <div className="flex flex-col">
                                     <span className="text-[12px] font-semibold text-slate-900">{line.item}</span>
@@ -2584,7 +2946,8 @@ const Procurement: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => markIssuedPOInTransit(record.request.id, record.requestCode)}
-                                className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
+                                disabled={record.status === 'In Transit'}
+                                className={`px-3 py-1.5 rounded border text-[11px] font-semibold ${record.status === 'In Transit' ? 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed' : 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
                               >
                                 Mark In Transit
                               </button>
@@ -2610,138 +2973,35 @@ const Procurement: React.FC = () => {
               })()}
 
               {sideSection === 'GRN Monitor' && (() => {
-                const pendingRequests = requests.filter(
-                  (request) => request.status === 'PO Released' || request.status === 'Delivery Pending',
-                );
-
-                const grnLines = pendingRequests.flatMap((request) => {
-                  const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
-                  const vendor = linkedDraftPO?.vendor ?? 'Unassigned Vendor';
-                  const poRef = (linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO');
-                  const grnRef = `GRN-${request.code}`;
-
-                  const baseLines = linkedDraftPO?.lineItems ??
-                    request.items.map((item, index) => ({
-                      item,
-                      itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
-                      qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
-                      lineTotal: request.itemDetails?.[index]?.estValue ?? 0,
-                    }));
-
-                  return baseLines.map((line, index) => ({
-                    key: `${request.id}-${index}`,
-                    request,
-                    vendor,
-                    poRef,
-                    grnRef,
-                    itemName: line.item,
-                    itemCode: line.itemCode,
-                    orderedQty: line.qty,
-                    receivedQty: line.qty,
-                    lineValue: line.lineTotal,
-                    status: (request.status === 'Delivery Pending' ? 'Under GRN' : 'Pending GRN') as
-                      | 'Pending GRN'
-                      | 'Under GRN',
-                    qcPass: '-',
-                    qcFail: '-',
-                    receivedDate: request.dueDate,
-                  }));
-                });
-
-                const filteredGrnLines = grnLines.filter((line) => {
-                  if (grnCategoryFilter !== 'All' && line.request.type !== grnCategoryFilter) {
-                    return false;
-                  }
-
-                  if (grnVendorFilter !== 'All Vendors' && line.vendor !== grnVendorFilter) {
-                    return false;
-                  }
-
-                  if (grnStatusFilter !== 'All' && line.status !== grnStatusFilter) {
-                    return false;
-                  }
-
-                  if (!grnSearch.trim()) {
-                    return true;
-                  }
-
-                  const query = grnSearch.toLowerCase();
+                const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
+                const filteredGrnLines = grnList.filter((grn) => {
+                  if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
+                  if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
+                  const statusNorm = (grn.status || '') === 'GRN Complete' ? 'Completed' : (grn.status || '') === 'Under GRN' ? 'Under GRN' : 'Pending GRN';
+                  if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
+                  if (!grnSearch.trim()) return true;
+                  const q = grnSearch.toLowerCase();
                   return (
-                    line.itemName.toLowerCase().includes(query) ||
-                    line.itemCode.toLowerCase().includes(query) ||
-                    line.poRef.toLowerCase().includes(query) ||
-                    line.grnRef.toLowerCase().includes(query) ||
-                    line.vendor.toLowerCase().includes(query)
+                    (grn.grnNo ?? '').toLowerCase().includes(q) ||
+                    (grn.poNo ?? '').toLowerCase().includes(q) ||
+                    (grn.vendor ?? '').toLowerCase().includes(q) ||
+                    (grn.lineItems ?? []).some((l) => (l.item ?? '').toLowerCase().includes(q) || (l.itemCode ?? '').toLowerCase().includes(q))
                   );
                 });
+                const totalGrns = grnList.length;
+                const rmGrns = grnList.filter((g) => g.type === 'RM').length;
+                const pmGrns = grnList.filter((g) => g.type === 'PM').length;
+                const pendingGrn = grnList.filter((g) => (g.status || '') !== 'Under GRN' && (g.status || '') !== 'GRN Complete').length;
+                const underGrn = grnList.filter((g) => (g.status || '') === 'Under GRN').length;
+                const grnComplete = grnList.filter((g) => (g.status || '') === 'GRN Complete').length;
 
-                const grnSummary = Object.values(
-                  filteredGrnLines.reduce<Record<string, {
-                    request: ProcurementRequest;
-                    vendor: string;
-                    poRef: string;
-                    grnRef: string;
-                    items: string[];
-                  }>>((acc, line) => {
-                    const key = line.request.id;
-                    if (!acc[key]) {
-                      acc[key] = {
-                        request: line.request,
-                        vendor: line.vendor,
-                        poRef: line.poRef,
-                        grnRef: line.grnRef,
-                        items: [],
-                      };
-                    }
-                    if (!acc[key].items.includes(line.itemName)) {
-                      acc[key].items.push(line.itemName);
-                    }
-                    return acc;
-                  }, {}),
-                );
-
-                const totalGrns = grnLines.length;
-                const rmGrns = grnLines.filter((line) => line.request.type === 'RM').length;
-                const pmGrns = grnLines.filter((line) => line.request.type === 'PM').length;
-                const pendingGrn = grnLines.filter((line) => line.status === 'Pending GRN').length;
-                const underGrn = grnLines.filter((line) => line.status === 'Under GRN').length;
-                const grnComplete = completedGrns.length;
-
-                const completeGrnForRequest = (requestId: string, requestCode: string) => {
-                  const linesForRequest = grnLines.filter((line) => line.request.id === requestId);
-
-                  if (linesForRequest.length === 0) {
-                    updateProcurementState((current) => ({
-                      requests: current.requests.filter((request) => request.id !== requestId),
-                      completedGrns: current.completedGrns,
-                    }));
-                    addToast('success', `GRN completed for ${requestCode}`);
-                    return;
-                  }
-
-                  const completedEntry: CompletedGrn = {
-                    request: linesForRequest[0].request,
-                    vendor: linesForRequest[0].vendor,
-                    poRef: linesForRequest[0].poRef,
-                    grnRef: linesForRequest[0].grnRef,
-                    lines: linesForRequest.map((line) => ({
-                      itemName: line.itemName,
-                      itemCode: line.itemCode,
-                      orderedQty: String(line.orderedQty),
-                      receivedQty: String(line.receivedQty),
-                      qcPass: line.qcPass === '-' ? '—' : line.qcPass,
-                      qcFail: line.qcFail === '-' ? '—' : line.qcFail,
-                      receivedDate: line.receivedDate,
-                      status: 'Completed',
-                    })),
-                  };
-
-                  updateProcurementState((current) => ({
-                    requests: current.requests.filter((request) => request.id !== requestId),
-                    completedGrns: [...current.completedGrns, completedEntry],
-                  }));
-                  addToast('success', `GRN completed for ${requestCode}`);
-                };
+                if (grnListLoading) {
+                  return (
+                    <div className="rounded-xl border border-blue-200 bg-white p-8 text-center text-slate-500 text-sm">
+                      Loading GRN data…
+                    </div>
+                  );
+                }
 
                 return (
                   <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
@@ -2808,8 +3068,8 @@ const Procurement: React.FC = () => {
                           className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
                         >
                           <option value="All Vendors">All Vendors</option>
-                          {Array.from(new Set(grnLines.map((line) => line.vendor))).map((vendor) => (
-                            <option key={vendor} value={vendor}>{vendor}</option>
+                          {Array.from(new Set(filteredGrnLines.map((g) => g.vendor).filter(Boolean))).map((vendor) => (
+                            <option key={String(vendor)} value={String(vendor)}>{String(vendor)}</option>
                           ))}
                         </select>
 
@@ -2838,14 +3098,15 @@ const Procurement: React.FC = () => {
                       />
                     </div>
 
-                    {/* Itemised GRN Lines */}
+                    {/* GRN list from warehouse (read-only) */}
+                    <p className="text-[11px] text-slate-500 mb-2">Data from warehouse GRN table. Read-only.</p>
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                       <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                         <div className="flex items-center gap-2">
                           <span className="text-emerald-500 text-lg">◆</span>
                           <div>
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Itemised GRN Lines</p>
-                            <p className="text-[11px] text-slate-500">Warehouse receipts by line item</p>
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN list (warehouse)</p>
+                            <p className="text-[11px] text-slate-500">Read-only progress from backend</p>
                           </div>
                         </div>
                       </div>
@@ -2854,84 +3115,45 @@ const Procurement: React.FC = () => {
                         <table className="w-full min-w-full text-[11px] text-slate-900">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Item</th>
-                              <th className="px-4 py-2 text-center">Type</th>
-                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
+                              <th className="px-4 py-2 text-left">GRN No.</th>
+                              <th className="px-4 py-2 text-left">PO No.</th>
                               <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-center">Ordered</th>
-                              <th className="px-4 py-2 text-center">Received</th>
-                              <th className="px-4 py-2 text-center">QC Pass</th>
-                              <th className="px-4 py-2 text-center">QC Fail</th>
-                              <th className="px-4 py-2 text-center">Received Date</th>
-                              <th className="px-4 py-2 text-center">QC By</th>
+                              <th className="px-4 py-2 text-center">Type</th>
+                              <th className="px-4 py-2 text-center">Items</th>
+                              <th className="px-4 py-2 text-center">PO Value</th>
+                              <th className="px-4 py-2 text-left">Received Date</th>
+                              <th className="px-4 py-2 text-left">Assigned To</th>
+                              <th className="px-4 py-2 text-center">QC Status</th>
                               <th className="px-4 py-2 text-center">Status</th>
-                              <th className="px-4 py-2 text-center">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredGrnLines.map((line) => (
-                              <tr key={line.key} className="border-b border-slate-100 hover:bg-blue-50/60">
-                                <td className="px-4 py-2 align-middle">
-                                  <div className="flex flex-col">
-                                    <span className="text-[12px] font-semibold text-slate-900">{line.itemName}</span>
-                                    <span className="text-[10px] text-slate-500">{line.itemCode}</span>
-                                  </div>
-                                </td>
+                            {filteredGrnLines.map((grn) => (
+                              <tr key={grn.id} className="border-b border-slate-100 hover:bg-blue-50/60">
+                                <td className="px-4 py-2 align-middle font-mono text-emerald-700">{grn.grnNo}</td>
+                                <td className="px-4 py-2 align-middle font-mono text-slate-700">{grn.poNo}</td>
+                                <td className="px-4 py-2 align-middle text-[11px]">{grn.vendor}</td>
                                 <td className="px-4 py-2 align-middle text-center">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                    line.request.type === 'RM'
-                                      ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-                                      : 'bg-violet-50 text-violet-700 border border-violet-200'
-                                  }`}>
-                                    {line.request.type}
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${grn.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-violet-50 text-violet-700 border border-violet-200'}`}>
+                                    {grn.type}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2 align-middle">
-                                  <div className="flex flex-col gap-1">
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
-                                      {line.grnRef}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
-                                      {line.poRef}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-[11px]">{line.vendor}</td>
-                                <td className="px-4 py-2 align-middle text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-700">
-                                    {line.orderedQty}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                                    {line.receivedQty}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center text-[11px] text-emerald-600">{line.qcPass}</td>
-                                <td className="px-4 py-2 align-middle text-center text-[11px] text-rose-500">{line.qcFail}</td>
-                                <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-700">
-                                  {new Date(line.receivedDate).toLocaleDateString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-600">Meera QC</td>
+                                <td className="px-4 py-2 align-middle text-center">{grn.items ?? 0}</td>
+                                <td className="px-4 py-2 align-middle text-center">₹{(grn.poValue ?? 0).toLocaleString('en-IN')}</td>
+                                <td className="px-4 py-2 align-middle text-[11px]">{(grn.receivedDate && grn.receivedDate !== '') ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
+                                <td className="px-4 py-2 align-middle text-[11px]">{grn.assignedTo || '—'}</td>
+                                <td className="px-4 py-2 align-middle text-center text-[11px]">{grn.qcStatus ?? '—'}</td>
                                 <td className="px-4 py-2 align-middle text-center">
                                   <span className="inline-flex items-center justify-center px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold min-w-24">
-                                    {line.status}
+                                    {grn.status ?? 'Pending'}
                                   </span>
-                                </td>
-                                <td className="px-4 py-2 align-middle text-center">
-                                  <button
-                                    onClick={() => completeGrnForRequest(line.request.id, line.request.code)}
-                                    className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-emerald-400 text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold"
-                                  >
-                                    Complete GRN
-                                  </button>
                                 </td>
                               </tr>
                             ))}
                             {filteredGrnLines.length === 0 && (
                               <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={12}>
-                                  No GRN lines match current filters.
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={10}>
+                                  {grnList.length === 0 ? 'No GRNs in warehouse. Data from /api/v1/grn.' : 'No GRNs match current filters.'}
                                 </td>
                               </tr>
                             )}
@@ -2940,97 +3162,37 @@ const Procurement: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* GRN Summary Cards */}
-                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN Summary Cards</p>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-left">Items</th>
-                              <th className="px-4 py-2 text-left">Received Date</th>
-                              <th className="px-4 py-2 text-left">Received By</th>
-                              <th className="px-4 py-2 text-left">QC By</th>
-                              <th className="px-4 py-2 text-left">Status</th>
-                              <th className="px-4 py-2 text-left">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {grnSummary.map((entry) => (
-                              <tr key={entry.request.id} className="border-b border-slate-100 hover:bg-blue-50/60">
-                                <td className="px-4 py-2 align-top">
-                                  <div className="flex flex-col gap-1">
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
-                                      {entry.grnRef}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
-                                      {entry.poRef}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px]">{entry.request.type}</td>
-                                <td className="px-4 py-2 align-top text-[11px]">{entry.vendor}</td>
-                                <td className="px-4 py-2 align-top text-[11px]">
-                                  {entry.items.join(', ')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">
-                                  {new Date(entry.request.dueDate).toLocaleDateString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">Anand Store</td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-700">Meera QC</td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] text-amber-700 font-semibold">
-                                    Under GRN
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      onClick={() => {
-                                        const linesForEntry = grnLines
-                                          .filter((line) => line.request.id === entry.request.id)
-                                          .map((line) => ({
-                                            itemName: line.itemName,
-                                            itemCode: line.itemCode,
-                                            orderedQty: line.orderedQty,
-                                            receivedQty: line.receivedQty,
-                                            qcPass: line.qcPass,
-                                            qcFail: line.qcFail,
-                                            receivedDate: line.receivedDate,
-                                            status: line.status,
-                                          }));
-
-                                        setSelectedGrn({
-                                          request: entry.request,
-                                          vendor: entry.vendor,
-                                          poRef: entry.poRef,
-                                          grnRef: entry.grnRef,
-                                          lines: linesForEntry,
-                                        });
-                                      }}
-                                      className="px-3 py-1.5 rounded-full border border-slate-300 text-[11px] text-slate-800 bg-white hover:bg-slate-50"
-                                    >
-                                      View
-                                    </button>
-                                    <button
-                                      onClick={() => completeGrnForRequest(entry.request.id, entry.request.code)}
-                                      className="px-3 py-1.5 rounded-full border border-emerald-400 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-                                    >
-                                      Complete GRN
-                                    </button>
-                                  </div>
-                                </td>
+                    {/* Line items by GRN (read-only) */}
+                    {filteredGrnLines.some((g) => (g.lineItems?.length ?? 0) > 0) && (
+                      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                          <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN line items (read-only)</p>
+                        </div>
+                        <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                          <table className="w-full min-w-full text-[11px] text-slate-900">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                                <th className="px-4 py-2 text-left">GRN No.</th>
+                                <th className="px-4 py-2 text-left">Item</th>
+                                <th className="px-4 py-2 text-center">PO Qty</th>
+                                <th className="px-4 py-2 text-center">Rcvd</th>
+                                <th className="px-4 py-2 text-center">QC</th>
                               </tr>
-                            ))}
-                            {grnSummary.length === 0 && (
+                            </thead>
+                            <tbody>
+                              {filteredGrnLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
+                                <tr key={`${grn.id}-${idx}`} className="border-b border-slate-100">
+                                  <td className="px-4 py-1.5 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
+                                  <td className="px-4 py-1.5">{li.item ?? li.itemCode ?? '—'}</td>
+                                  <td className="px-4 py-1.5 text-center">{li.poQty ?? '—'}</td>
+                                  <td className="px-4 py-1.5 text-center">{li.rcvdQty ?? '—'}</td>
+                                  <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
+                                </tr>
+                              )))}
+                            {filteredGrnLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
                               <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={9}>
-                                  No GRN summary records.
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
+                                  No GRN line items.
                                 </td>
                               </tr>
                             )}
@@ -3038,82 +3200,185 @@ const Procurement: React.FC = () => {
                         </table>
                       </div>
                     </div>
+                    )}
 
-                    {/* Completed GRNs */}
+                    {/* Completed GRNs (read-only from warehouse API) */}
+                    {(() => {
+                      const completedFromApi = filteredGrnLines.filter((g) => (g.status || '') === 'GRN Complete');
+                      return (
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
                       <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                         <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
-                        <p className="text-[11px] text-slate-500">Showing {completedGrns.length} completed GRN{completedGrns.length === 1 ? '' : 's'}</p>
+                        <p className="text-[11px] text-slate-500">Showing {completedFromApi.length} completed GRN{completedFromApi.length === 1 ? '' : 's'} (read-only)</p>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-full text-[11px] text-slate-900">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">GRN / PO Ref</th>
+                              <th className="px-4 py-2 text-left">GRN No.</th>
+                              <th className="px-4 py-2 text-left">PO No.</th>
                               <th className="px-4 py-2 text-left">Type</th>
                               <th className="px-4 py-2 text-left">Vendor</th>
                               <th className="px-4 py-2 text-left">Items</th>
                               <th className="px-4 py-2 text-left">Received Date</th>
-                              <th className="px-4 py-2 text-left">Received By</th>
-                              <th className="px-4 py-2 text-left">QC By</th>
+                              <th className="px-4 py-2 text-left">Assigned To</th>
                               <th className="px-4 py-2 text-left">Status</th>
-                              <th className="px-4 py-2 text-left">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {completedGrns.map((entry, index) => {
-                              const uniqueItems = Array.from(new Set(entry.lines.map((line) => line.itemName)));
-                              const receivedDate = entry.lines[0]?.receivedDate ?? entry.request.dueDate;
-
-                              return (
-                                <tr key={`${entry.request.id}-completed-${index}`} className="border-b border-slate-100 hover:bg-emerald-50/40">
-                                  <td className="px-4 py-2 align-top">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 text-[10px] font-mono">
-                                        {entry.grnRef}
-                                      </span>
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 text-sky-700 border border-sky-300 px-2 py-0.5 text-[10px] font-mono">
-                                        {entry.poRef}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-2 align-top text-[11px]">{entry.request.type}</td>
-                                  <td className="px-4 py-2 align-top text-[11px]">{entry.vendor}</td>
-                                  <td className="px-4 py-2 align-top text-[11px]">{uniqueItems.join(', ')}</td>
-                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">
-                                    {new Date(receivedDate).toLocaleDateString('en-IN')}
-                                  </td>
-                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">Anand Store</td>
-                                  <td className="px-4 py-2 align-top text-[11px] text-slate-700">Meera QC</td>
-                                  <td className="px-4 py-2 align-top">
-                                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
-                                      Completed
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-2 align-top">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedGrn({
-                                          request: entry.request,
-                                          vendor: entry.vendor,
-                                          poRef: entry.poRef,
-                                          grnRef: entry.grnRef,
-                                          lines: entry.lines,
-                                        });
-                                      }}
-                                      className="px-3 py-1.5 rounded-full border border-slate-300 text-[11px] text-slate-800 bg-white hover:bg-slate-50"
-                                    >
-                                      View
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {completedGrns.length === 0 && (
+                            {completedFromApi.map((grn) => (
+                              <tr key={grn.id} className="border-b border-slate-100 hover:bg-emerald-50/40">
+                                <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
+                                <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
+                                <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
+                                <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
+                                <td className="px-4 py-2 text-[11px]">{(grn.lineItems ?? []).map((li) => li.item ?? li.itemCode ?? '—').filter(Boolean).join(', ') || '—'}</td>
+                                <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
+                                <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
+                                <td className="px-4 py-2">
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">Completed</span>
+                                </td>
+                              </tr>
+                            ))}
+                            {completedFromApi.length === 0 && (
                               <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={9}>
+                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={8}>
                                   No completed GRNs yet.
                                 </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+
+              {sideSection === 'Stock Check' && (() => {
+                const rows: WarehouseInventoryRow[] = warehouseInventoryData?.rows ?? [];
+                const filteredRows = rows.filter((row) => {
+                  if (stockCategoryFilter !== 'All' && row.type !== stockCategoryFilter) return false;
+                  if (stockStatusFilter !== 'All Statuses' && row.status !== stockStatusFilter) return false;
+                  if (!stockSearch.trim()) return true;
+                  const q = stockSearch.toLowerCase();
+                  return (row.code ?? '').toLowerCase().includes(q) || (row.name ?? '').toLowerCase().includes(q);
+                });
+                const total = rows.length;
+                const rmCount = rows.filter((r) => r.type === 'RM').length;
+                const pmCount = rows.filter((r) => r.type === 'PM').length;
+                const fgCount = rows.filter((r) => r.type === 'FG/PR').length;
+                const inStock = rows.filter((r) => r.status === 'In Stock').length;
+                const lowStock = rows.filter((r) => r.status === 'Low Stock').length;
+                const critical = rows.filter((r) => r.status === 'Critical').length;
+                const outOfStock = rows.filter((r) => r.status === 'Out of Stock').length;
+
+                if (warehouseInventoryLoading) {
+                  return (
+                    <div className="rounded-xl border border-blue-200 bg-white p-8 text-center text-slate-500 text-sm">
+                      Loading warehouse inventory…
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+                    <p className="text-[11px] text-slate-600">Data from warehouse inventory. Read-only.</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 text-xs">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">Total</p>
+                        <p className="mt-1 text-xl font-bold text-slate-900">{total}</p>
+                      </div>
+                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">RM</p>
+                        <p className="mt-1 text-xl font-bold text-cyan-800">{rmCount}</p>
+                      </div>
+                      <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM</p>
+                        <p className="mt-1 text-xl font-bold text-violet-800">{pmCount}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-100 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">FG/PR</p>
+                        <p className="mt-1 text-xl font-bold text-slate-800">{fgCount}</p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">In Stock</p>
+                        <p className="mt-1 text-xl font-bold text-emerald-800">{inStock}</p>
+                      </div>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-amber-700 uppercase">Low Stock</p>
+                        <p className="mt-1 text-xl font-bold text-amber-800">{lowStock}</p>
+                      </div>
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-orange-700 uppercase">Critical</p>
+                        <p className="mt-1 text-xl font-bold text-orange-800">{critical}</p>
+                      </div>
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-[10px] tracking-[0.18em] text-red-700 uppercase">Out of Stock</p>
+                        <p className="mt-1 text-xl font-bold text-red-800">{outOfStock}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
+                      <span className="text-slate-500">Category:</span>
+                      <button onClick={() => setStockCategoryFilter('All')} className={`px-2 py-1 rounded-full border ${stockCategoryFilter === 'All' ? 'border-amber-400 text-amber-800 bg-amber-50' : 'border-slate-300 text-slate-600 bg-white'}`}>All</button>
+                      {(['RM', 'PM'] as const).map((t) => (
+                        <button key={t} onClick={() => setStockCategoryFilter(t)} className={`px-2 py-1 rounded-full border ${stockCategoryFilter === t ? 'border-emerald-400 text-emerald-800 bg-emerald-50' : 'border-slate-300 text-slate-600 bg-white'}`}>{t}</button>
+                      ))}
+                      <span className="text-slate-500 ml-2">Status:</span>
+                      <select value={stockStatusFilter} onChange={(e) => setStockStatusFilter(e.target.value as typeof stockStatusFilter)} className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs">
+                        <option value="All Statuses">All</option>
+                        <option value="In Stock">In Stock</option>
+                        <option value="Low Stock">Low Stock</option>
+                        <option value="Critical">Critical</option>
+                        <option value="Out of Stock">Out of Stock</option>
+                      </select>
+                      <input value={stockSearch} onChange={(e) => setStockSearch(e.target.value)} placeholder="Search code, name…" className="w-48 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400" />
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Warehouse inventory</p>
+                      </div>
+                      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">Code</th>
+                              <th className="px-4 py-2 text-left">Name</th>
+                              <th className="px-4 py-2 text-left">Type</th>
+                              <th className="px-4 py-2 text-left">Zone</th>
+                              <th className="px-4 py-2 text-left">Rack</th>
+                              <th className="px-4 py-2 text-right">Stock in hand</th>
+                              <th className="px-4 py-2 text-right">In transit</th>
+                              <th className="px-4 py-2 text-left">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredRows.map((row) => (
+                              <tr key={row.id} className="border-b border-slate-100">
+                                <td className="px-4 py-2 font-mono text-[10px] text-slate-800">{row.code}</td>
+                                <td className="px-4 py-2">{row.name}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : row.type === 'PM' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{row.type}</span>
+                                </td>
+                                <td className="px-4 py-2 text-slate-700">{row.zone ?? '—'}</td>
+                                <td className="px-4 py-2 text-slate-700">{row.rack ?? '—'}</td>
+                                <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
+                                <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                    row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    'bg-red-50 text-red-700 border-red-200'
+                                  }`}>{row.status}</span>
+                                </td>
+                              </tr>
+                            ))}
+                            {filteredRows.length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>No warehouse inventory rows match filters.</td>
                               </tr>
                             )}
                           </tbody>
@@ -3123,381 +3388,6 @@ const Procurement: React.FC = () => {
                   </div>
                 );
               })()}
-
-              {sideSection === 'Stock Check' && (
-                (() => {
-                  const rawStockChecks = requests
-                    .filter((request) => request.priority !== 'Low')
-                    .map((request, index) => {
-                      const scId = `SC-${String(index + 1).padStart(3, '0')}`;
-                      const baseStatus: StockCheckStatus = deriveStockCheckStatusForRequest(request);
-                      const effectiveStatus: StockCheckStatus = stockCheckStatuses[request.id] ?? baseStatus;
-
-                      const updatesForRequest = stockCheckUpdates[request.id] ?? {};
-
-                      const assignedTo =
-                        request.requestedBy ||
-                        (request.type === 'RM'
-                          ? 'Anand Store'
-                          : 'Ravi Kumar');
-
-                      const createdDate =
-                        request.createdDate ||
-                        '2026-02-10';
-
-                      const lineItems =
-                        (request.itemDetails && request.itemDetails.length > 0
-                          ? request.itemDetails.map((item, idx) => {
-                              const systemQty = item.reqQty;
-                              const itemCode = item.itemCode;
-                              const override = itemCode ? updatesForRequest[itemCode] : undefined;
-                              const defaultZone = request.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
-                              const defaultRack = `A1-L1-S${idx + 1}`;
-
-                              return {
-                                name: item.itemName,
-                                itemCode,
-                                systemQty,
-                                zone: override?.zone ?? defaultZone,
-                                rack: override?.rack ?? defaultRack,
-                                physicalQty: override?.physicalQty ?? systemQty,
-                                batchNo: override?.batchNo ?? `ETH-UV08-00${idx + 1}`,
-                                packagingCondition: override?.packagingCondition ?? 'Good',
-                              };
-                            })
-                          : request.items.map((itemName, idx) => {
-                              const systemQty = request.quantities?.[idx] ?? 0;
-                              const generatedCodeBase =
-                                itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
-                                String(idx + 1).padStart(3, '0');
-                              const itemCode = `EI-${request.type}-${generatedCodeBase}`;
-                              const override = updatesForRequest[itemCode];
-                              const defaultZone = request.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
-                              const defaultRack = `A1-L1-S${idx + 1}`;
-
-                              return {
-                                name: itemName,
-                                itemCode,
-                                systemQty,
-                                zone: override?.zone ?? defaultZone,
-                                rack: override?.rack ?? defaultRack,
-                                physicalQty: override?.physicalQty ?? systemQty,
-                                batchNo: override?.batchNo ?? `ETH-UV08-00${idx + 1}`,
-                                packagingCondition: override?.packagingCondition ?? 'Good',
-                              };
-                            })) || [];
-
-                      return {
-                        id: scId,
-                        request,
-                        type: request.type,
-                        status: effectiveStatus,
-                        assignedTo,
-                        createdDate,
-                        lineItems,
-                      };
-                    });
-
-                  const filteredStockChecks = rawStockChecks.filter((entry) => {
-                    if (stockCategoryFilter !== 'All' && entry.type !== stockCategoryFilter) {
-                      return false;
-                    }
-
-                    if (stockStatusFilter !== 'All Statuses' && entry.status !== stockStatusFilter) {
-                      return false;
-                    }
-
-                    if (!stockSearch.trim()) {
-                      return true;
-                    }
-
-                    const query = stockSearch.toLowerCase();
-                    return (
-                      entry.id.toLowerCase().includes(query) ||
-                      entry.request.code.toLowerCase().includes(query) ||
-                      entry.assignedTo.toLowerCase().includes(query) ||
-                      entry.lineItems.some((line) => line.name.toLowerCase().includes(query))
-                    );
-                  });
-
-                  const totalStockChecks = rawStockChecks.length;
-                  const rmStockChecks = rawStockChecks.filter((entry) => entry.type === 'RM').length;
-                  const pmStockChecks = rawStockChecks.filter((entry) => entry.type === 'PM').length;
-                  const assignedCount = rawStockChecks.filter((entry) => entry.status === 'Assigned').length;
-                  const inProgressCount = rawStockChecks.filter((entry) => entry.status === 'In Progress').length;
-                  const completedCount = rawStockChecks.filter((entry) => entry.status === 'Completed').length;
-
-                  return (
-                    <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                      {/* KPI strip */}
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                          <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">Total Stock Checks</p>
-                          <p className="mt-1 text-2xl font-bold text-slate-900">{totalStockChecks}</p>
-                        </div>
-                        <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3">
-                          <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">RM Checks</p>
-                          <p className="mt-1 text-2xl font-bold text-cyan-900">{rmStockChecks}</p>
-                        </div>
-                        <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
-                          <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM Checks</p>
-                          <p className="mt-1 text-2xl font-bold text-violet-900">{pmStockChecks}</p>
-                        </div>
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                          <p className="text-[10px] tracking-[0.18em] text-amber-700 uppercase">Assigned</p>
-                          <p className="mt-1 text-2xl font-bold text-amber-900">{assignedCount}</p>
-                        </div>
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-                          <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">In Progress / Completed</p>
-                          <p className="mt-1 text-2xl font-bold text-emerald-900">{inProgressCount + completedCount}</p>
-                        </div>
-                      </div>
-
-                      {/* Filters */}
-                      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-slate-500">Category:</span>
-                          <button
-                            onClick={() => setStockCategoryFilter('All')}
-                            className={`px-2 py-1 rounded-full border text-xs ${
-                              stockCategoryFilter === 'All'
-                                ? 'border-amber-400 text-amber-800 bg-amber-50'
-                                : 'border-slate-300 text-slate-600 bg-white'
-                            }`}
-                          >
-                            All
-                          </button>
-                          {(['RM', 'PM'] as RequestType[]).map((type) => (
-                            <button
-                              key={type}
-                              onClick={() => setStockCategoryFilter(type)}
-                              className={`px-2 py-1 rounded-full border text-xs ${
-                                stockCategoryFilter === type
-                                  ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
-                                  : 'border-slate-300 text-slate-600 bg-white'
-                              }`}
-                            >
-                              {type}
-                            </button>
-                          ))}
-
-                          <span className="ml-3 text-slate-500">Status:</span>
-                          <select
-                            value={stockStatusFilter}
-                            onChange={(event) =>
-                              setStockStatusFilter(
-                                event.target.value as 'All Statuses' | 'Assigned' | 'In Progress' | 'Completed',
-                              )
-                            }
-                            className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                          >
-                            <option value="All Statuses">All Statuses</option>
-                            <option value="Assigned">Assigned</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                          </select>
-                        </div>
-
-                        <input
-                          value={stockSearch}
-                          onChange={(event) => setStockSearch(event.target.value)}
-                          placeholder="Search SC ID, assignee, item..."
-                          className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
-                        />
-                      </div>
-
-                      {/* Stock check cards */}
-                      <div className="space-y-4">
-                        {filteredStockChecks.map((entry) => (
-                          <article
-                            key={entry.id}
-                            className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm"
-                          >
-                            {/* Card header */}
-                            <div className="px-4 py-3 border-b border-slate-200 bg-linear-to-r from-slate-50 via-blue-50 to-slate-50 flex items-start justify-between gap-4">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[10px] text-slate-700">
-                                    {entry.id}
-                                  </span>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                      entry.type === 'RM'
-                                        ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
-                                        : 'bg-violet-50 text-violet-700 border-violet-200'
-                                    }`}
-                                  >
-                                    {entry.type === 'RM' ? 'Raw Material' : 'Packaging Material'}
-                                  </span>
-                                </div>
-                                <h3 className="text-sm font-semibold text-slate-900">Stock Check — {entry.type === 'RM' ? 'Raw Material' : 'Packaging'}</h3>
-                                <p className="text-[11px] text-slate-600">
-                                  Assigned to <span className="font-semibold">{entry.assignedTo}</span> · Created{' '}
-                                  {new Date(entry.createdDate).toLocaleDateString('en-IN')} · For:{' '}
-                                  <span className="font-mono text-slate-700">{entry.request.code}</span>
-                                </p>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 text-[11px]">
-                                <span
-                                  className={`inline-flex items-center px-3 py-0.5 rounded-full border text-[10px] font-semibold ${
-                                    entry.status === 'Completed'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                                      : entry.status === 'In Progress'
-                                      ? 'bg-sky-50 text-sky-700 border-sky-300'
-                                      : 'bg-amber-50 text-amber-700 border-amber-300'
-                                  }`}
-                                >
-                                  {entry.status}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Items table */}
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-[11px] text-slate-900">
-                                <thead>
-                                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                                    <th className="px-4 py-2 text-left">Item</th>
-                                    <th className="px-4 py-2 text-left">Zone / Rack</th>
-                                    <th className="px-4 py-2 text-center">System Qty</th>
-                                    <th className="px-4 py-2 text-center">Physical Qty</th>
-                                    <th className="px-4 py-2 text-center">Variance</th>
-                                    <th className="px-4 py-2 text-left">Batches Found</th>
-                                    <th className="px-4 py-2 text-center">Pkg Condition</th>
-                                    <th className="px-4 py-2 text-center">Status</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {entry.lineItems.map((line, idx) => {
-                                    const systemQty = line.systemQty || 0;
-                                    const physicalQty = line.physicalQty ?? systemQty;
-                                    const variance = physicalQty - systemQty;
-                                    return (
-                                      <tr
-                                        key={`${entry.id}-line-${idx}`}
-                                        className="border-b border-slate-100 hover:bg-blue-50/40"
-                                      >
-                                        <td className="px-4 py-2 align-middle">
-                                          <p className="text-[12px] font-semibold text-slate-900">{line.name}</p>
-                                          <p className="text-[10px] text-slate-500">{line.itemCode ?? entry.request.code}</p>
-                                        </td>
-                                        <td className="px-4 py-2 align-middle text-[11px] text-slate-700">{line.zone} · {line.rack}</td>
-                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{systemQty}</td>
-                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">{physicalQty}</td>
-                                        <td className="px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                          {variance}
-                                        </td>
-                                        <td className="px-4 py-2 align-middle text-[11px] text-emerald-700">{line.batchNo}</td>
-                                        <td className="px-4 py-2 align-middle text-center text-[11px]">
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
-                                            {line.packagingCondition}
-                                          </span>
-                                        </td>
-                                        <td className="px-4 py-2 align-middle text-center text-[11px]">
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
-                                            OK
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                  {entry.lineItems.length === 0 && (
-                                    <tr>
-                                      <td
-                                        className="px-4 py-4 text-center text-[11px] text-slate-500"
-                                        colSpan={8}
-                                      >
-                                        No items to show for this stock check.
-                                      </td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-
-                            {/* Footer actions */}
-                            <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
-                              <p className="text-[11px] text-slate-600">
-                                All filters verified. Batch details confirmed with COA on file.
-                              </p>
-                              <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                                <button
-                                  onClick={() => {
-                                    setSelectedStockCheckRequest(entry.request);
-                                    setSelectedStockCheckItemName(null);
-                                  }}
-                                  className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-                                >
-                                  View Details
-                                </button>
-                                {/* Primary stock check action: Start -> Mark Complete */}
-                                {entry.status !== 'Completed' && (
-                                  <button
-                                    onClick={() => {
-                                      if (entry.status === 'Assigned') {
-                                        // Start the stock check and open the physical quantity update modal
-                                        updateProcurementState((current) => ({
-                                          stockCheckStatuses: {
-                                            ...current.stockCheckStatuses,
-                                            [entry.request.id]: 'In Progress',
-                                          },
-                                        }));
-                                        setUpdateStockCheckRequest(entry.request);
-                                        addToast('success', `${entry.id} started. You can now update physical quantities.`);
-                                      } else {
-                                        // In Progress -> Completed
-                                        updateProcurementState((current) => ({
-                                          stockCheckStatuses: {
-                                            ...current.stockCheckStatuses,
-                                            [entry.request.id]: 'Completed',
-                                          },
-                                        }));
-                                        addToast('success', `${entry.id} marked as Completed.`);
-                                      }
-                                    }}
-                                    className={`px-3 py-1.5 rounded-full border text-emerald-800 hover:bg-emerald-100 text-[11px] ${
-                                      entry.status === 'Assigned'
-                                        ? 'border-sky-400 bg-sky-50 text-sky-800 hover:bg-sky-100'
-                                        : 'border-emerald-400 bg-emerald-50'
-                                    }`}
-                                  >
-                                    {entry.status === 'Assigned' ? 'Start Check' : 'Mark Complete'}
-                                  </button>
-                                )}
-                                {/* Keep Update Physical Qty available for manual adjustments once check is in progress/completed */}
-                                {(entry.status === 'In Progress' || entry.status === 'Completed') && (
-                                  <button
-                                    onClick={() => {
-                                      if (entry.status === 'Assigned') {
-                                        updateProcurementState((current) => ({
-                                          stockCheckStatuses: {
-                                            ...current.stockCheckStatuses,
-                                            [entry.request.id]: 'In Progress',
-                                          },
-                                        }));
-                                      }
-                                      setUpdateStockCheckRequest(entry.request);
-                                      addToast('info', `${entry.id} opened for physical quantity update.`);
-                                    }}
-                                    className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-                                  >
-                                    Update Physical Qty
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </article>
-                        ))}
-                        {filteredStockChecks.length === 0 && (
-                          <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm text-[11px]">
-                            No stock checks match current filters.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()
-              )}
 
               {sideSection === 'Item Tracker' && (
                 <div className="rounded-xl border border-blue-200 bg-white p-4 md:p-5 shadow-sm space-y-4">
@@ -3779,6 +3669,62 @@ const Procurement: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Warehouse item progress (read-only from warehouse API) */}
+                  <div className="mt-6 rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Warehouse item progress</p>
+                      <span className="text-[11px] text-slate-500">Read-only · from warehouse inventory</span>
+                    </div>
+                    {warehouseInventoryLoading ? (
+                      <div className="px-4 py-8 text-center text-slate-500 text-sm">Loading…</div>
+                    ) : (
+                      <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
+                        <table className="w-full min-w-full text-[11px] text-slate-900">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                              <th className="px-4 py-2 text-left">Code</th>
+                              <th className="px-4 py-2 text-left">Name</th>
+                              <th className="px-4 py-2 text-left">Type</th>
+                              <th className="px-4 py-2 text-left">Zone</th>
+                              <th className="px-4 py-2 text-left">Rack</th>
+                              <th className="px-4 py-2 text-right">Stock in hand</th>
+                              <th className="px-4 py-2 text-right">In transit</th>
+                              <th className="px-4 py-2 text-left">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(warehouseInventoryData?.rows ?? []).map((row) => (
+                              <tr key={row.id} className="border-b border-slate-100">
+                                <td className="px-4 py-2 font-mono text-[10px] text-slate-800">{row.code}</td>
+                                <td className="px-4 py-2">{row.name}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : row.type === 'PM' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{row.type}</span>
+                                </td>
+                                <td className="px-4 py-2 text-slate-700">{row.zone ?? '—'}</td>
+                                <td className="px-4 py-2 text-slate-700">{row.rack ?? '—'}</td>
+                                <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
+                                <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                    row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                    'bg-red-50 text-red-700 border-red-200'
+                                  }`}>{row.status}</span>
+                                </td>
+                              </tr>
+                            ))}
+                            {(warehouseInventoryData?.rows ?? []).length === 0 && (
+                              <tr>
+                                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>No warehouse inventory data.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -3797,6 +3743,68 @@ const Procurement: React.FC = () => {
           'Vendor Confirmed': 'bg-cyan-100 text-cyan-700 border-cyan-200',
           'Under GRN': 'bg-violet-100 text-violet-700 border-violet-200',
           'GRN Complete': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        };
+
+        const TRACKING_STAGES: { label: string; atKey: keyof PoTrackingRecord; noteKey: keyof PoTrackingRecord; useRef?: boolean }[] = [
+          { label: 'PO Released', atKey: 'poReleasedAt', noteKey: 'poReleasedNote' },
+          { label: 'Advance Paid', atKey: 'advancePaidAt', noteKey: 'advancePaidNote' },
+          { label: 'Vendor Confirmed', atKey: 'vendorConfirmedAt', noteKey: 'vendorConfirmedNote' },
+          { label: 'Shipped', atKey: 'shippedAt', noteKey: 'shippedNote' },
+          { label: 'Order Tracking', atKey: 'poReleasedAt', noteKey: 'poReleasedNote', useRef: true },
+          { label: 'Delivered', atKey: 'deliveredAt', noteKey: 'deliveredNote' },
+          { label: 'Under GRN', atKey: 'underGrnAt', noteKey: 'underGrnNote' },
+          { label: 'GRN Complete', atKey: 'grnCompleteAt', noteKey: 'grnCompleteNote' },
+        ];
+        const data = poTrackingData ?? poTrackingForm;
+        const timelineFromApi = po.backendPoId && data
+          ? TRACKING_STAGES.map((s) => {
+              const atVal = s.useRef ? data.orderTrackingRef : data[s.atKey];
+              const noteVal = data[s.noteKey];
+              const done = !!atVal;
+              return { stage: s.label, done, timestamp: typeof atVal === 'string' ? atVal : null, note: !s.useRef ? (noteVal ?? null) : null };
+            })
+          : null;
+        const timelineSteps = timelineFromApi ?? (po.timeline ?? []);
+
+        const handleSaveTracking = async () => {
+          if (!po.backendPoId) return;
+          const res = await updatePoTracking(po.backendPoId, {
+            poReleasedAt: poTrackingForm.poReleasedAt ?? null,
+            poReleasedNote: poTrackingForm.poReleasedNote ?? null,
+            advancePaidAt: poTrackingForm.advancePaidAt ?? null,
+            advancePaidNote: poTrackingForm.advancePaidNote ?? null,
+            vendorConfirmedAt: poTrackingForm.vendorConfirmedAt ?? null,
+            vendorConfirmedNote: poTrackingForm.vendorConfirmedNote ?? null,
+            shippedAt: poTrackingForm.shippedAt ?? null,
+            shippedNote: poTrackingForm.shippedNote ?? null,
+            orderTrackingRef: poTrackingForm.orderTrackingRef ?? null,
+            deliveredAt: poTrackingForm.deliveredAt ?? null,
+            deliveredNote: poTrackingForm.deliveredNote ?? null,
+            underGrnAt: poTrackingForm.underGrnAt ?? null,
+            underGrnNote: poTrackingForm.underGrnNote ?? null,
+            grnCompleteAt: poTrackingForm.grnCompleteAt ?? null,
+            grnCompleteNote: poTrackingForm.grnCompleteNote ?? null,
+          });
+          if (!res.success) {
+            addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save tracking'));
+            return;
+          }
+          await queryClient.invalidateQueries({ queryKey: ['po-tracking', po.backendPoId] });
+          await queryClient.refetchQueries({ queryKey: ['po-tracking', po.backendPoId] });
+          addToast('success', 'Tracking updated');
+        };
+
+        const handleSaveRequestLink = async () => {
+          if (!po.backendPoId || !po.requestId || !po.requestCode) return;
+          const res = await updatePurchaseOrder(po.backendPoId, {
+            formData: { requestId: po.requestId, requestCode: po.requestCode },
+          });
+          if (!res.success) {
+            addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save request link'));
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+          addToast('success', 'Request link saved. Mark Delivered at WH and timeline will use this PO.');
         };
 
         return (
@@ -3863,74 +3871,109 @@ const Procurement: React.FC = () => {
                   </div>
                 )}
 
-                {/* Status Timeline */}
-                {po.timeline && po.timeline.length > 0 && (
+                {/* Status Timeline (from API when PO is linked to backend) */}
+                {!po.backendPoId && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    PO not linked to backend — create and release the PO from Draft POs to see and update the status timeline.
+                  </p>
+                )}
+                {/* Save request link (for existing POs released before form_data was stored) */}
+                {po.backendPoId && po.requestId && po.requestCode && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Existing PO?</p>
+                    <p className="text-xs text-slate-600 mb-2">
+                      If this PO was released before the link was saved, save the request link so &quot;Mark Delivered at WH&quot; and the timeline stay correct.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSaveRequestLink}
+                      className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                    >
+                      Save request link
+                    </button>
+                  </div>
+                )}
+                {po.backendPoId && timelineSteps.length > 0 && (
                   <div>
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-3">Status Timeline</p>
+                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-3">Status Timeline (PO Released → Advance Paid → Vendor Confirmed → Shipped → Delivered → Under GRN → GRN Complete)</p>
                     <div className="relative pl-12 space-y-6">
-                      {/* vertical line */}
                       <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
-                      {po.timeline.map((step, idx) => {
-                        const isActive = po.status === step.stage;
-                        return (
-                          <div key={idx} className="relative">
-                            {/* Circle - positioned absolutely on the line */}
-                            <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${
-                              step.done
-                                ? 'bg-emerald-500 border-emerald-500 text-white'
-                                : isActive
-                                ? 'bg-orange-400 border-orange-400 text-white'
-                                : 'bg-white border-slate-300 text-slate-300'
-                            }`}>
-                              {step.done ? '✓' : isActive ? '●' : ''}
-                            </div>
-                            {/* Content */}
-                            <div className="pb-1">
-                              <p className={`text-sm font-bold ${
-                                step.done ? 'text-slate-900' : isActive ? 'text-orange-600' : 'text-slate-400'
-                              }`}>{step.stage}</p>
-                              {step.timestamp && (
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  {step.timestamp}
-                                  {step.actor && (
-                                    <span className="text-slate-600 font-medium"> · {step.actor}</span>
-                                  )}
-                                </p>
-                              )}
-                              {step.note && (
-                                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{step.note}</p>
-                              )}
-                            </div>
+                      {timelineSteps.map((step, idx) => (
+                        <div key={idx} className="relative">
+                          <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${
+                            step.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-300'
+                          }`}>
+                            {step.done ? '✓' : ''}
                           </div>
-                        );
-                      })}
+                          <div className="pb-1">
+                            <p className={`text-sm font-bold ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>{step.stage}</p>
+                            {step.timestamp && <p className="text-[11px] text-slate-500 mt-0.5">{step.timestamp}</p>}
+                            {step.note && <p className="text-xs text-slate-600 mt-1 leading-relaxed">{step.note}</p>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Update tracking form (when PO is linked to backend) */}
+                {po.backendPoId && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                    <p className="text-[10px] tracking-[0.14em] text-slate-600 uppercase font-semibold mb-2">Update status</p>
+                    {[
+                      { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
+                      { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },
+                      { label: 'Vendor Confirmed', at: 'vendorConfirmedAt', note: 'vendorConfirmedNote' },
+                      { label: 'Shipped', at: 'shippedAt', note: 'shippedNote' },
+                      { label: 'Delivered', at: 'deliveredAt', note: 'deliveredNote' },
+                      { label: 'Under GRN', at: 'underGrnAt', note: 'underGrnNote' },
+                      { label: 'GRN Complete', at: 'grnCompleteAt', note: 'grnCompleteNote' },
+                    ].map(({ label, at, note }) => (
+                      <div key={at} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center text-sm">
+                        <span className="text-slate-700 font-medium">{label}</span>
+                        <input
+                          type="date"
+                          value={(poTrackingForm[at as keyof PoTrackingRecord] as string) ?? ''}
+                          onChange={(e) => setPoTrackingForm((f) => ({ ...f, [at]: e.target.value || undefined }))}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Note"
+                          value={(poTrackingForm[note as keyof PoTrackingRecord] as string) ?? ''}
+                          onChange={(e) => setPoTrackingForm((f) => ({ ...f, [note]: e.target.value || undefined }))}
+                          className="rounded border border-slate-300 px-2 py-1 text-xs min-w-0"
+                        />
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 pt-2">
+                      <span className="text-slate-600 text-sm">LR / Tracking ref</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. LR123456"
+                        value={poTrackingForm.orderTrackingRef ?? ''}
+                        onChange={(e) => setPoTrackingForm((f) => ({ ...f, orderTrackingRef: e.target.value || undefined }))}
+                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveTracking}
+                      className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                    >
+                      Save tracking
+                    </button>
                   </div>
                 )}
               </div>
 
               {/* Footer */}
               <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
-                {po.status === 'Delivered' && (
+                {po.backendPoId && (
                   <button
-                    onClick={() => {
-                      addToast('success', `GRN process started for ${po.poNumber}`);
-                      setSelectedPO(null);
-                      applyRouteState('Procurement', 'GRN Monitor');
-                    }}
+                    onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Monitor'); }}
                     className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 transition"
                   >
-                    Start GRN →
-                  </button>
-                )}
-                {(po.status === 'Shipped' || po.status === 'Advance Paid') && (
-                  <button
-                    onClick={() => {
-                      addToast('info', `Tracking ${po.poNumber} — ETA ${po.etaDays} days`);
-                    }}
-                    className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
-                  >
-                    Track Shipment
+                    Open GRN Monitor
                   </button>
                 )}
                 <button
@@ -4167,6 +4210,12 @@ const Procurement: React.FC = () => {
 
               {/* Footer */}
               <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setEditDraftPOTarget(dpo)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
+                >
+                  — Edit
+                </button>
                 {dpo.status === 'Pending Approval' && (
                   <button
                     onClick={() => {
@@ -4641,9 +4690,7 @@ const Procurement: React.FC = () => {
               <div className="sticky bottom-0 bg-slate-50 border-t border-blue-200 px-6 py-4 flex items-center justify-between gap-3">
                 <button
                   onClick={() => {
-                    setSelectedRequest(null);
-                    applyRouteState('Procurement', 'Requests');
-                    addToast('info', `Editing ${req.code}`);
+                    setEditRequestTarget(req);
                   }}
                   className="px-4 py-2 rounded-lg border border-blue-300 text-slate-700 text-sm font-semibold hover:bg-blue-50 transition"
                 >
@@ -4663,18 +4710,24 @@ const Procurement: React.FC = () => {
                     </button>
                   )}
 
-                  {canReleasePO && (
-                    <button
-                      onClick={() => {
-                        updateRequestStatus(req.id, 'PO Released');
-                        addToast('success', `PO released for ${req.code}`);
-                        setSelectedRequest(null);
-                      }}
-                      className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-lg"
-                    >
-                      Release PO ↗
-                    </button>
-                  )}
+                  {canReleasePO && (() => {
+                    const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
+                    return (
+                      <button
+                        onClick={() => {
+                          if (linkedDraft?.backendPoId) {
+                            openReleasePOModal(linkedDraft.id);
+                            setSelectedRequest(null);
+                          } else {
+                            addToast('warning', 'Create a Draft PO from Quotations first, then release from Draft POs.');
+                          }
+                        }}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-lg"
+                      >
+                        Release PO ↗
+                      </button>
+                    );
+                  })()}
 
                   <button
                     onClick={() => setSelectedRequest(null)}
@@ -4688,6 +4741,245 @@ const Procurement: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ── Edit Procurement Request Modal ── */}
+      {editRequestTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setEditRequestTarget(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
+                <select
+                  value={editRequestForm.priority}
+                  onChange={(e) => setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Required by date</label>
+                <input
+                  type="date"
+                  value={editRequestForm.requiredByDate}
+                  onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
+                <textarea
+                  value={editRequestForm.notes}
+                  onChange={(e) => setEditRequestForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                <select
+                  value={editRequestForm.status}
+                  onChange={(e) => setEditRequestForm((f) => ({ ...f, status: e.target.value as RequestStatus }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="New">New</option>
+                  <option value="Quoted">Quoted</option>
+                  <option value="PO Draft">PO Draft</option>
+                  <option value="PO Released">PO Released</option>
+                  <option value="Delivery Pending">Delivery Pending</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setEditRequestTarget(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editRequestTarget) return;
+                  const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id);
+                  const res = await updateProcurementRequestApi(editRequestTarget.id, {
+                    priority: editRequestForm.priority,
+                    requiredByDate: editRequestForm.requiredByDate || null,
+                    notes: editRequestForm.notes || null,
+                    status: editRequestForm.status,
+                    items: (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]),
+                  });
+                  if (!res.success) {
+                    addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request'));
+                    return;
+                  }
+                  queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  setEditRequestTarget(null);
+                  addToast('success', `Request ${editRequestTarget.code} updated`);
+                }}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Draft PO Modal ── */}
+      {editDraftPOTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setEditDraftPOTarget(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-lg rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-900">Edit Draft PO — {editDraftPOTarget.dpoNumber}</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Vendor</label>
+                <input
+                  type="text"
+                  value={editDraftPOForm.vendor}
+                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, vendor: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Payment terms</label>
+                <input
+                  type="text"
+                  value={editDraftPOForm.paymentTerms}
+                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Expected delivery</label>
+                <input
+                  type="date"
+                  value={editDraftPOForm.expectedDelivery}
+                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, expectedDelivery: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Delivery address</label>
+                <textarea
+                  value={editDraftPOForm.deliveryAddress}
+                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, deliveryAddress: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items</span>
+                <div className="space-y-2">
+                  {editDraftPOForm.lineItems.map((line, idx) => (
+                    <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2 text-sm">
+                      <span className="font-medium text-slate-800 min-w-[120px] truncate">{line.item}</span>
+                      <input
+                        type="text"
+                        placeholder="Qty"
+                        value={line.qty}
+                        onChange={(e) => {
+                          const qtyStr = e.target.value;
+                          const qty = parseFloat(String(qtyStr).replace(/[^\d.]/g, '')) || 0;
+                          const price = editDraftPOForm.lineItems[idx].pricePerUnit ?? 0;
+                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
+                          const subtotal = qty * price;
+                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                          const next = editDraftPOForm.lineItems.map((l, i) =>
+                            i === idx ? { ...l, qty: qtyStr, gstAmount, lineTotal } : l
+                          ) as DraftPOLineItem[];
+                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                        }}
+                        className="w-20 rounded border border-slate-300 px-2 py-1"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        value={line.pricePerUnit}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          const qty = parseFloat(String(editDraftPOForm.lineItems[idx].qty).replace(/[^\d.]/g, '')) || 0;
+                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
+                          const subtotal = qty * v;
+                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                          const next = editDraftPOForm.lineItems.map((l, i) =>
+                            i === idx ? { ...l, pricePerUnit: v, gstAmount, lineTotal } : l
+                          ) as DraftPOLineItem[];
+                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                        }}
+                        className="w-24 rounded border border-slate-300 px-2 py-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setEditDraftPOTarget(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editDraftPOTarget) return;
+                  const d = editDraftPOTarget;
+                  const form = editDraftPOForm;
+                  if (d.backendPoId) {
+                    const payload = {
+                      vendorName: form.vendor,
+                      paymentTerms: form.paymentTerms || undefined,
+                      expectedShipmentDate: form.expectedDelivery || undefined,
+                      items: form.lineItems.map((l) => ({ itemName: l.item, quantity: l.qty, rate: String(l.pricePerUnit), tax: String(l.gstPercent ?? 18) })),
+                    };
+                    const res = await updatePurchaseOrder(d.backendPoId, payload);
+                    if (!res.success) {
+                      addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update draft PO'));
+                      return;
+                    }
+                  }
+                  setDraftPOs((prev) =>
+                    prev.map((po) =>
+                      po.id === d.id
+                        ? {
+                            ...po,
+                            vendor: form.vendor,
+                            paymentTerms: form.paymentTerms,
+                            expectedDelivery: form.expectedDelivery,
+                            deliveryAddress: form.deliveryAddress,
+                            lineItems: form.lineItems,
+                            subtotal: form.lineItems.reduce((s, l) => s + (l.lineTotal - (l.gstAmount ?? 0)), 0),
+                            gstTotal: form.lineItems.reduce((s, l) => s + (l.gstAmount ?? 0), 0),
+                            grandTotal: form.lineItems.reduce((s, l) => s + l.lineTotal, 0),
+                          }
+                        : po
+                    )
+                  );
+                  queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                  setEditDraftPOTarget(null);
+                  addToast('success', `Draft PO ${d.dpoNumber} updated`);
+                }}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Stock Check Side Panel ── */}
       {selectedStockCheckRequest && (() => {

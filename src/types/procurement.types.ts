@@ -1,6 +1,6 @@
 export type RequestType = 'RM' | 'PM';
 export type RequestPriority = 'High' | 'Medium' | 'Low';
-export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending';
+export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending' | 'Under GRN';
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
 export type MainTab = 'Procurement' | 'Vendors' | 'Reports';
 export type SideSection = 'Overview' | 'Requests' | 'Quotations' | 'Draft POs' | 'Issued POs' | 'GRN Monitor' | 'Stock Check' | 'Item Tracker';
@@ -118,6 +118,8 @@ export type DraftPO = {
   subtotal: number;
   gstTotal: number;
   grandTotal: number;
+  /** Backend purchase_orders id (numeric string) when draft is persisted to PO table */
+  backendPoId?: string;
 };
 
 export type POTimelineStep = {
@@ -140,8 +142,18 @@ export type PurchaseOrder = {
   etaDays: number;
   items?: string[];
   requestCode?: string;
+  /** Procurement request id — for linking backend PO to request (Save request link) */
+  requestId?: string;
   contactPerson?: string;
   timeline?: POTimelineStep[];
+  /** Backend purchase_orders id for API (e.g. po-tracking) */
+  backendPoId?: string | null;
+  /** From backend form_data; used to link PO to procurement request (requestId, requestCode) */
+  formData?: Record<string, unknown>;
+  paymentTerms?: string;
+  /** Raw line items from API (itemName, quantity, rate, tax) for DraftPO mapping */
+  rawItems?: unknown[];
+  expectedShipmentDate?: string;
 };
 
 export type CompletedGrnLine = {

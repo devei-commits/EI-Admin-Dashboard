@@ -16,6 +16,8 @@ function toOrder(row: any, type: 'SO' | 'PO'): Order {
     vendorName: row.vendorName ?? '',
     orderDate: row.orderDate ?? '',
     expectedShipmentDate: row.expectedShipmentDate ?? (row.formData && row.formData.expectedShipmentDate) ?? '',
+    reference: row.reference ?? '',
+    paymentTerms: row.paymentTerms ?? '',
     status: row.status ?? 'Draft',
     items: Array.isArray(row.items) ? row.items : [],
     formData: row.formData && typeof row.formData === 'object' ? row.formData : {},

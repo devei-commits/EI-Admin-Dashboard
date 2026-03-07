@@ -58,3 +58,24 @@ export async function createProcurementRequest(
     return { data: null, error: err, success: false };
   }
 }
+
+export interface UpdateProcurementPayload {
+  priority?: string;
+  requiredByDate?: string | null;
+  notes?: string | null;
+  items?: ProcurementRequestItem[];
+  status?: string;
+}
+
+export async function updateProcurementRequest(
+  id: string,
+  payload: UpdateProcurementPayload
+): Promise<ServiceResult<ProcurementRequest>> {
+  try {
+    const data = await api.patch<ProcurementRequest>(`/api/v1/procurement/${id}`, payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (error) {
+    const err = error instanceof Error ? error.message : 'Failed to update procurement request';
+    return { data: null, error: err, success: false };
+  }
+}
