@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
+import { fetchProcurementRequests as fetchProcurementRequestsApi } from '../../services/procurement.service';
 import type {
   RequestType,
   RequestPriority,
@@ -240,6 +242,16 @@ const Procurement: React.FC = () => {
 
   const vendors: Vendor[] = procurementData.vendors as Vendor[];
   const purchaseOrders: PurchaseOrder[] = procurementData.purchaseOrders as PurchaseOrder[];
+
+  const { data: backendPrResult } = useQuery({
+    queryKey: ['procurement-requests-backend'],
+    queryFn: async () => {
+      const res = await fetchProcurementRequestsApi();
+      return res.success ? (res.data ?? []) : [];
+    },
+    enabled: sideSection === 'Requests',
+  });
+  const backendPrs = backendPrResult ?? [];
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
     const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
@@ -1488,6 +1500,46 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'Requests' && (
                 <div className="space-y-4">
+                  {/* Requests from Planning (backend) — PRs raised from Planning page */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
+                      <h3 className="text-base font-bold text-slate-900">Requests from Planning (backend)</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning → Raise Procurement Request. Data from API.</p>
+                    </div>
+                    <div className="p-4 overflow-x-auto">
+                      {backendPrs.length === 0 ? (
+                        <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning → PRs Extracted to see them here.</p>
+                      ) : (
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-left">
+                              <th className="py-2 pr-4 font-semibold text-slate-700">ID</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Planning line</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Priority</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Status</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Required by</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Items</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Requested by</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {backendPrs.map((pr) => (
+                              <tr key={pr.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="py-2 pr-4 text-slate-900 font-medium">{pr.id}</td>
+                                <td className="py-2 pr-4 text-slate-600">PI #{pr.planningExtractedId}</td>
+                                <td className="py-2 pr-4">{pr.priority}</td>
+                                <td className="py-2 pr-4">{pr.status}</td>
+                                <td className="py-2 pr-4 text-slate-600">{pr.requiredByDate ?? '—'}</td>
+                                <td className="py-2 pr-4 text-slate-600">{(pr.items?.length ?? 0)} line(s)</td>
+                                <td className="py-2 pr-4 text-slate-500 text-xs">{pr.requestedBy ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Stats KPI Bar */}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">

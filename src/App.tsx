@@ -167,7 +167,18 @@ const AppLayout = () => {
                      <Suspense fallback={<PageLoader />}>
                             <ErrorBoundary>
                                    <Routes>
-                                          <Route path="/planning" element={
+                                          <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
+                                          <Route path="/planning/pis-extracted" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Planning />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                          <Route path="/planning/items-involved" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Planning />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                          <Route path="/planning/availability-summary" element={
                                                  <ProtectedModuleRoute moduleId="order-management">
                                                         <Planning />
                                                  </ProtectedModuleRoute>

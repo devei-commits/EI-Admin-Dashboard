@@ -1,37 +1,60 @@
 import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
 
-export interface ProcurementRequest {
-  id: string;
-  itemName: string;
-  quantity: number;
+export interface ProcurementRequestItem {
+  type: 'RM' | 'PM';
+  code: string;
+  name: string;
+  required: number;
+  sih: number;
+  shortage: number;
+  quantity_requested: number;
   unit: string;
-  status: string;
-  requestedBy: string;
-  requestDate: string;
-  vendor?: string;
-  estimatedCost?: number;
+  line_notes?: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
 }
 
-// Fetch all procurement requests
-export async function fetchProcurementRequests(): Promise<ServiceResult<ProcurementRequest[]>> {
+export interface ProcurementRequest {
+  id: string;
+  planningExtractedId: number;
+  priority: string;
+  requiredByDate: string | null;
+  notes: string | null;
+  items: ProcurementRequestItem[];
+  status: string;
+  requestedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProcurementPayload {
+  planningExtractedId: number;
+  priority: string;
+  requiredByDate: string;
+  notes: string;
+  items: ProcurementRequestItem[];
+}
+
+export async function fetchProcurementRequests(planningExtractedId?: number): Promise<ServiceResult<ProcurementRequest[]>> {
   try {
-    const data = await api.get<ProcurementRequest[]>('/api/v1/procurement');
-    return { data, error: null, success: true };
+    const qs = planningExtractedId != null ? `?planning_extracted_id=${planningExtractedId}` : '';
+    const data = await api.get<ProcurementRequest[]>(`/api/v1/procurement${qs}`);
+    return { data: data ?? [], error: null, success: true };
   } catch (error) {
     const err = error instanceof Error ? error.message : 'Failed to fetch procurement requests';
-    return { data: null, error: err, success: false };
+    return { data: [], error: err, success: false };
   }
 }
 
-// Create a new procurement request
 export async function createProcurementRequest(
-  payload: Record<string, unknown>
+  payload: CreateProcurementPayload
 ): Promise<ServiceResult<ProcurementRequest>> {
   try {
     const data = await api.post<ProcurementRequest>('/api/v1/procurement', payload);
-    return { data, error: null, success: true };
+    return { data: data ?? null, error: null, success: true };
   } catch (error) {
     const err = error instanceof Error ? error.message : 'Failed to create procurement request';
     return { data: null, error: err, success: false };
   }
+}

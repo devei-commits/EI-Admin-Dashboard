@@ -1,65 +1,81 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import {
+  fetchPlanningExtractedList,
+  fetchItemsInvolvedByPlanningId,
+  type PlanningExtractedRow,
+  type ItemsInvolvedForPiRow,
+} from '../services/planningExtracted.service';
+import { fetchRawMaterialsList } from '../services/rawMaterials.service';
+import { fetchPackMaterialsList } from '../services/packMaterials.service';
 
-const mockOrderedProducts = [
-  {
-    id: 'SO-02996',
-    mo: 'SO-02996',
-    batches: 1,
-    qty: '5000',
-    productName: 'Sunscreen Gel SPF50 50g',
-    pack: '50g Tube',
-    status: 'Planning',
-  },
-  {
-    id: 'SO-03074',
-    mo: 'SO-03074',
-    batches: 2,
-    qty: '14000',
-    productName: 'Anti-Acne Facewash 100g',
-    pack: '100g Tube',
-    status: 'Planning',
-  },
-];
+/** Ordered product row for left panel (from planning extracted). */
+type OrderedProductRow = {
+  id: string;
+  mo: string;
+  batches: number;
+  qty: string;
+  productName: string;
+  pack: string;
+  status: string;
+};
 
-const mockAllItems = [
-    { id: '1', name: 'POLYESTER 40x45', category: 'RM', code: 'RM-P001' },
-    { id: '2', name: 'ALPHA ARBUTIN', category: 'RM', code: 'RM-A002' },
-    { id: '3', name: 'NIACINAMIDE', category: 'RM', code: 'RM-N003' },
-    { id: '4', name: 'ALLANTOIN (BASF ENTERPRISES)', category: 'RM', code: 'RM-A004' },
-    { id: '5', name: 'CUCUMBER DRY PVT.', category: 'RM', code: 'RM-C005' },
-    { id: '6', name: 'ETHYL PO2- AB', category: 'RM', code: 'RM-E006' },
-    { id: '7', name: 'D3 CERAMIX V', category: 'RM', code: 'RM-D007' },
-    { id: '8', name: 'ALOE VERA (VE)', category: 'RM', code: 'RM-A008' },
-    { id: '9', name: 'VEGAMOL 1838', category: 'RM', code: 'RM-V009' },
-    { id: '10', name: 'GLYCERINB GSTA', category: 'RM', code: 'RM-G010' },
-    { id: '11', name: '50g Tube', category: 'PM', code: 'PM-T001' },
-    { id: '12', name: '100g Tube', category: 'PM', code: 'PM-T002' },
-];
+/** Table row for items involved (from API). */
+type ItemsInvolvedTableRow = {
+  id: string;
+  item: string;
+  category: string;
+  reqQty: number;
+  unit: string;
+  groupQty: string;
+  stockOnHand: number;
+  reservedQty: number;
+  netStock: number;
+  status: string;
+};
 
-const mockItemsInvolved = [
-    { id: '1', item: 'POLYESTER 40x45', category: 'RM', reqQty: 7.50, unit: 'kg', groupQty: '', stockOnHand: 50.25, reservedQty: 20.00, netStock: 30.25, status: 'ok' },
-    { id: '2', item: 'ALPHA ARBUTIN', category: 'RM', reqQty: 0.28, unit: 'kg', groupQty: '', stockOnHand: 2.60, reservedQty: 0.58, netStock: 2.02, status: 'ok' },
-    { id: '3', item: 'NIACINAMIDE', category: 'RM', reqQty: 0.02, unit: 'kg', groupQty: '', stockOnHand: 240.05, reservedQty: 0.03, netStock: 240.02, status: 'ok' },
-    { id: '4', item: 'ALLANTOIN (BASF ENTERPRISES)', category: 'RM', reqQty: 1.88, unit: 'kg', groupQty: '', stockOnHand: 3.29, reservedQty: 0.00, netStock: 3.29, status: 'ok' },
-    { id: '5', item: 'CUCUMBER DRY PVT.', category: 'RM', reqQty: 7.50, unit: 'kg', groupQty: '', stockOnHand: 56.73, reservedQty: 0.00, netStock: 56.73, status: 'ok' },
-    { id: '6', item: 'ETHYL PO2- AB', category: 'RM', reqQty: 1.88, unit: 'kg', groupQty: '', stockOnHand: 73.75, reservedQty: 0.00, netStock: 73.75, status: 'ok' },
-    { id: '7', item: 'D3 CERAMIX V', category: 'RM', reqQty: 0.38, unit: 'kg', groupQty: '', stockOnHand: 4.46, reservedQty: 0.00, netStock: 4.46, status: 'ok' },
-    { id: '8', item: 'ALOE VERA (VE)', category: 'RM', reqQty: 3.75, unit: 'kg', groupQty: '', stockOnHand: 28.50, reservedQty: 0.00, netStock: 28.50, status: 'ok' },
-    { id: '9', item: 'VEGAMOL 1838', category: 'RM', reqQty: 7.50, unit: 'kg', groupQty: '', stockOnHand: 215.05, reservedQty: 0.03, netStock: 215.02, status: 'ok' },
-    { id: '10', item: 'GLYCERINB GSTA', category: 'RM', reqQty: 0.75, unit: 'kg', groupQty: '', stockOnHand: 136.71, reservedQty: 0.00, netStock: 136.71, status: 'ok' },
-    { id: '11', item: '50g Tube', category: 'PM', reqQty: 1, unit: 'pcs', groupQty: '', stockOnHand: 5000, reservedQty: 2000, netStock: 3000, status: 'ok' },
-];
+function mapPlanningToOrderedProduct(row: PlanningExtractedRow): OrderedProductRow {
+  return {
+    id: row.id,
+    mo: row.soNumber || row.id,
+    batches: row.batchesRequired ?? 0,
+    qty: row.orderQty || '',
+    productName: row.productName || row.productCode || '',
+    pack: row.batchSize || '',
+    status: row.bomStatus || 'Planning',
+  };
+}
+
+function mapApiToTableRow(r: ItemsInvolvedForPiRow): ItemsInvolvedTableRow {
+  const reqQty = Number(r.totalRequired) || 0;
+  const stockOnHand = r.sih ?? 0;
+  const reservedQty = r.reserved ?? 0;
+  const netStock = r.netStock ?? stockOnHand - reservedQty;
+  const status = (reqQty > 0 && netStock >= reqQty) ? 'ok' : (netStock < reqQty ? 'short' : 'ok');
+  return {
+    id: r.id ?? String(r.raw_material_id ?? r.pack_material_id),
+    item: r.item ?? r.name ?? r.code ?? '',
+    category: r.category ?? r.type ?? 'RM',
+    reqQty,
+    unit: (r.unit || 'kg').toLowerCase(),
+    groupQty: '',
+    stockOnHand,
+    reservedQty,
+    netStock,
+    status,
+  };
+}
 
 const UniversalSwapPage = () => {
-  const [selectedProduct, setSelectedProduct] = useState(mockOrderedProducts[0]);
-  const [selectedOrders, setSelectedOrders] = useState<string[]>([selectedProduct.id]);
+  const [selectedProduct, setSelectedProduct] = useState<OrderedProductRow | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState('All');
   const [showRMPlan, setShowRMPlan] = useState(true);
-  const [planQty, setPlanQty] = useState(selectedProduct.qty);
+  const [planQty, setPlanQty] = useState('');
   const [shortfallOnly, setShortfallOnly] = useState(false);
-  const [selectedTableItem, setSelectedTableItem] = useState<typeof mockItemsInvolved[0] | null>(null);
+  const [selectedTableItem, setSelectedTableItem] = useState<ItemsInvolvedTableRow | null>(null);
   const [swapFromItem, setSwapFromItem] = useState('');
   const [swapToItem, setSwapToItem] = useState('');
   const [addItemName, setAddItemName] = useState('');
@@ -68,19 +84,59 @@ const UniversalSwapPage = () => {
   const [globalFilterSKU, setGlobalFilterSKU] = useState('');
   const [applyToSelectedOnly, setApplyToSelectedOnly] = useState(true);
 
+  const { data: planningList = [], isLoading: planningLoading } = useQuery({
+    queryKey: ['planning-extracted-list'],
+    queryFn: fetchPlanningExtractedList,
+  });
+  const orderedProducts: OrderedProductRow[] = planningList.map(mapPlanningToOrderedProduct);
+
+  const effectiveSelected = selectedProduct ?? orderedProducts[0] ?? null;
+  const effectiveSelectedId = effectiveSelected?.id;
+
+  const { data: itemsInvolvedRaw = [], isLoading: itemsLoading } = useQuery({
+    queryKey: ['planning-extracted-items-involved', effectiveSelectedId],
+    queryFn: () => (effectiveSelectedId ? fetchItemsInvolvedByPlanningId(effectiveSelectedId) : Promise.resolve([])),
+    enabled: Boolean(effectiveSelectedId),
+  });
+  const itemsInvolved: ItemsInvolvedTableRow[] = itemsInvolvedRaw.map(mapApiToTableRow);
+
+  const { data: rawList = [] } = useQuery({
+    queryKey: ['raw-materials-list'],
+    queryFn: () => fetchRawMaterialsList(),
+  });
+  const { data: packList = [] } = useQuery({
+    queryKey: ['pack-materials-list'],
+    queryFn: () => fetchPackMaterialsList(),
+  });
+  const allItems = [
+    ...rawList.map((r) => ({ id: r.id, name: r.name || r.code, category: 'RM' as const, code: r.code })),
+    ...packList.map((p) => ({ id: p.id, name: p.description || p.code, category: 'PM' as const, code: p.code })),
+  ];
+
+  const displayPlanQty = planQty !== '' ? planQty : (effectiveSelected?.qty ?? '');
+
   const handleOrderSelect = (orderId: string) => {
-    setSelectedOrders(prev => 
+    setSelectedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
     );
   };
 
-  const handleViewRMPlan = (product: typeof mockOrderedProducts[0]) => {
+  const handleViewRMPlan = (product: OrderedProductRow) => {
     setSelectedProduct(product);
     setPlanQty(product.qty);
     setShowRMPlan(true);
+    setSelectedTableItem(null);
   };
 
-  const handleTableItemClick = (item: typeof mockItemsInvolved[0]) => {
+  const handleProductClick = (product: OrderedProductRow) => {
+    setSelectedProduct(product);
+    setPlanQty(product.qty);
+    if (!selectedOrders.includes(product.id)) {
+      setSelectedOrders((prev) => [...prev, product.id]);
+    }
+  };
+
+  const handleTableItemClick = (item: ItemsInvolvedTableRow) => {
     setSelectedTableItem(item);
     setSwapFromItem(item.item);
     setAddItemName(item.item);
@@ -88,38 +144,49 @@ const UniversalSwapPage = () => {
 
   const handleSwapItem = () => {
     if (!swapFromItem || !swapToItem) return;
-    alert(`Swapping ${swapFromItem} → ${swapToItem} for ${selectedProduct.mo}`);
-    // Here you would implement the actual swap logic
+    alert(`Swapping ${swapFromItem} → ${swapToItem} for ${effectiveSelected?.mo}`);
   };
 
   const handleAddItem = () => {
     if (!addItemName || !addItemQty) return;
-    alert(`Adding ${addItemName} (${addItemCategory}) - Qty: ${addItemQty} to ${selectedProduct.mo}`);
-    // Here you would implement the actual add logic
+    alert(`Adding ${addItemName} (${addItemCategory}) - Qty: ${addItemQty} to ${effectiveSelected?.mo}`);
   };
 
-  const filteredItems = mockItemsInvolved.filter(item => {
+  const filteredItems = itemsInvolved.filter(item => {
     if (activeFilter === 'RM Only') return item.category === 'RM';
     if (activeFilter === 'PM Only') return item.category === 'PM';
     if (shortfallOnly) return item.netStock < item.reqQty;
     return true;
   });
 
-  const possibleProduction = Math.min(
-    ...filteredItems.filter(i => i.category === 'RM').map(i => Math.floor(i.netStock / i.reqQty)),
-    ...filteredItems.filter(i => i.category === 'PM').map(i => Math.floor(i.netStock / i.reqQty))
-  );
+  const rmFiltered = filteredItems.filter(i => i.category === 'RM');
+  const pmFiltered = filteredItems.filter(i => i.category === 'PM');
+  const rmLimits = rmFiltered.map(i => (i.reqQty > 0 ? Math.floor(i.netStock / i.reqQty) : 0));
+  const pmLimits = pmFiltered.map(i => (i.reqQty > 0 ? Math.floor(i.netStock / i.reqQty) : 0));
+  const rmLimit = rmLimits.length ? Math.min(...rmLimits) : 0;
+  const pmLimit = pmLimits.length ? Math.min(...pmLimits) : 0;
+  const possibleProduction = Math.min(rmLimit, pmLimit);
 
-  const rmLimit = Math.min(...filteredItems.filter(i => i.category === 'RM').map(i => Math.floor(i.netStock / i.reqQty)));
-  const pmLimit = Math.min(...filteredItems.filter(i => i.category === 'PM').map(i => Math.floor(i.netStock / i.reqQty)));
+  if (planningLoading || orderedProducts.length === 0) {
+    return (
+      <div className="p-8">
+        <div className="text-center">
+          <p className="text-gray-500">{planningLoading ? 'Loading orders…' : 'No planning orders found.'}</p>
+          <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
+            ← Back to Planning
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
-  if (!selectedProduct || !showRMPlan) {
+  if (!effectiveSelected || !showRMPlan) {
     return (
       <div className="p-8">
         <div className="text-center">
           <p className="text-gray-500">Please select a product and view RM Plan to see details.</p>
-          <Link to="/procurement" className="mt-4 inline-block text-blue-600 hover:underline">
-            ← Back to Procurement
+          <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
+            ← Back to Planning
           </Link>
         </div>
       </div>
@@ -133,7 +200,7 @@ const UniversalSwapPage = () => {
         <div className="p-4 border-b border-gray-200 bg-slate-800 text-white">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold">Order Management System</h2>
-            <Link to="/procurement" className="text-gray-300 hover:text-white">
+            <Link to="/planning" className="text-gray-300 hover:text-white">
               <ArrowLeft size={18} />
             </Link>
           </div>
@@ -146,19 +213,19 @@ const UniversalSwapPage = () => {
         </div>
 
         <div className="grow overflow-y-auto">
-          {mockOrderedProducts.map((product) => (
+          {orderedProducts.map((product) => (
             <div
               key={product.id}
               className={`p-4 border-b border-gray-200 cursor-pointer transition ${
-                selectedProduct.id === product.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'
+                effectiveSelected?.id === product.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'
               }`}
-              onClick={() => setSelectedProduct(product)}
+              onClick={() => handleProductClick(product)}
             >
               <div className="flex items-start">
                 <input 
                   type="checkbox" 
                   className="mt-1.5 mr-3 h-4 w-4 rounded border-gray-300"
-                  checked={selectedOrders.includes(product.id)}
+                  checked={selectedOrders.includes(product.id) || (selectedOrders.length === 0 && effectiveSelected?.id === product.id)}
                   onChange={(e) => {
                     e.stopPropagation();
                     handleOrderSelect(product.id);
@@ -211,8 +278,8 @@ const UniversalSwapPage = () => {
             <h1 className="text-2xl font-bold text-gray-900">Selected Product → Items Involved</h1>
             <p className="text-sm text-gray-500 mt-1">Stage-specific BOM (without touching masters)</p>
           </div>
-          <Link to="/procurement" className="text-blue-600 hover:underline text-sm font-medium">
-            Back to Orders
+          <Link to="/planning" className="text-blue-600 hover:underline text-sm font-medium">
+            Back to Planning
           </Link>
         </div>
 
@@ -222,7 +289,7 @@ const UniversalSwapPage = () => {
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
               <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
-                <option>{selectedProduct.productName}</option>
+                <option>{effectiveSelected.productName}</option>
               </select>
             </div>
             <div>
@@ -235,7 +302,7 @@ const UniversalSwapPage = () => {
               <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
               <input 
                 type="text" 
-                value={planQty}
+                value={displayPlanQty}
                 onChange={(e) => setPlanQty(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
@@ -257,7 +324,7 @@ const UniversalSwapPage = () => {
                 <input 
                   type="text" 
                   placeholder="PLAN Qty"
-                  value={planQty}
+                  value={displayPlanQty}
                   onChange={(e) => setPlanQty(e.target.value)}
                   className="w-32 px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
@@ -328,7 +395,11 @@ const UniversalSwapPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {filteredItems.map(item => (
+                {itemsLoading ? (
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">Loading items…</td></tr>
+                ) : filteredItems.length === 0 ? (
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">No items for this product.</td></tr>
+                ) : filteredItems.map(item => (
                   <tr 
                     key={item.id}
                     onClick={() => handleTableItemClick(item)}
@@ -344,13 +415,15 @@ const UniversalSwapPage = () => {
                         {item.category}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.reqQty} {item.unit}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.unit === 'pcs' ? Math.round(item.reqQty) : item.reqQty.toFixed(2)} {item.unit}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-500">{item.groupQty || '—'}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.stockOnHand.toFixed(2)}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.reservedQty.toFixed(2)}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums font-medium text-gray-900">{item.netStock.toFixed(2)}</td>
                     <td className="px-3 py-3 text-center text-sm">
-                      <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20">
+                      <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                        item.status === 'short' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20' : 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20'
+                      }`}>
                         {item.status}
                       </span>
                     </td>
@@ -380,7 +453,7 @@ const UniversalSwapPage = () => {
                   onChange={(e) => setSwapFromItem(e.target.value)}
                 >
                     <option value="">Select Item</option>
-                    {mockItemsInvolved.map(item => (
+                    {itemsInvolved.map(item => (
                       <option key={item.id} value={item.item}>{item.item}</option>
                     ))}
                 </select>
@@ -389,9 +462,9 @@ const UniversalSwapPage = () => {
                   value={swapToItem}
                   onChange={(e) => setSwapToItem(e.target.value)}
                 >
-                    <option value="">Niacinamide (RM/Active)</option>
-                    {mockAllItems.map(item => (
-                      <option key={item.id} value={item.name}>{item.name}</option>
+                    <option value="">Select replacement</option>
+                    {allItems.map(item => (
+                      <option key={item.id} value={item.name}>{item.name} ({item.category})</option>
                     ))}
                 </select>
                 <button 
@@ -412,8 +485,8 @@ const UniversalSwapPage = () => {
                     onChange={(e) => setAddItemName(e.target.value)}
                   >
                       <option value="">Select Item to Add</option>
-                      {mockAllItems.map(item => (
-                        <option key={item.id} value={item.name}>{item.name}</option>
+                      {allItems.map(item => (
+                        <option key={item.id} value={item.name}>{item.name} ({item.category})</option>
                       ))}
                   </select>
                   <select 
@@ -453,7 +526,7 @@ const UniversalSwapPage = () => {
                   onChange={(e) => setApplyToSelectedOnly(e.target.checked)}
                 />
                 <label htmlFor="apply-selected" className="ml-2 block text-sm text-gray-900">
-                  Apply to Selected Orders only {selectedOrders.length > 0 && `(${selectedOrders.length} selected)`}
+                  Apply to Selected Orders only {(selectedOrders.length > 0 || effectiveSelected) && `(${selectedOrders.length || (effectiveSelected ? 1 : 0)} selected)`}
                 </label>
             </div>
             <div className="flex items-center gap-4">
@@ -475,7 +548,7 @@ const UniversalSwapPage = () => {
 
         {/* Action Buttons */}
         <div className="mt-6 flex justify-end gap-3 pb-6">
-          <Link to="/procurement">
+          <Link to="/planning">
             <button className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition">
               Cancel
             </button>
