@@ -754,7 +754,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
         <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
         PIS by Stage
        </h3>
-       <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
+       <ResponsiveContainer width="100%" height={250} className="sm:h-75">
         <BarChart data={stageData}>
          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
          <XAxis
@@ -783,7 +783,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
 
       <Card className="p-4 sm:p-6 shadow-md">
        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">Status Distribution</h3>
-       <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
+       <ResponsiveContainer width="100%" height={250} className="sm:h-75">
         <PieChart>
          <Pie
           data={statusData}
@@ -806,8 +806,8 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
 
       <Card className="p-4 sm:p-6 shadow-md lg:col-span-2">
        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4">7-Day Activity Trend</h3>
-       <ResponsiveContainer width="100%" height={220} className="sm:h-[300px]">
-        <LineChart data={timelineData}>
+       <ResponsiveContainer width="100%" height={220} className="sm:h-75">
+        <LineChart data={timelineData}>vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
          <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
          <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} />

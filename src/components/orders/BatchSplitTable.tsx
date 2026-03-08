@@ -1,0 +1,181 @@
+import React from 'react';
+import { Package, FileText, Truck, Radar, MapPin, Eye } from 'lucide-react';
+import type { SaleOrder, BatchSplit, OrderItem } from '../../types/orderFulfillment';
+import { StatusBadge } from './StatusBadge';
+import {
+  formatDate,
+  formatNumber,
+  getDaysLeft,
+  formatDaysLeft,
+} from '../../utils/orderFulfillmentUtils';
+import { UnifiedButton as Button } from '../ui/UnifiedComponents';
+
+interface BatchSplitTableProps {
+  rows: Array<{ so: SaleOrder; item: OrderItem; split: BatchSplit }>;
+  onPick: (bprNo: string) => void;
+  onInvoice: (bprNo: string) => void;
+  onShip: (bprNo: string) => void;
+  onTrack: (bprNo: string) => void;
+  onViewSO: (soNo: string) => void;
+}
+
+export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
+  rows,
+  onPick,
+  onInvoice,
+  onShip,
+  onTrack,
+  onViewSO,
+}) => {
+  if (rows.length === 0) {
+    return (
+      <div className="py-12 text-center text-gray-500">
+        <Package size={32} className="mx-auto mb-2" />
+        <p className="font-semibold">No batch splits found.</p>
+        <p className="text-sm">
+          No records match the current filter criteria.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+      <table className="w-full text-sm border-collapse">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="w-24 px-4 py-3 text-left font-semibold text-gray-700 border-r border-gray-200">
+              Sale Order
+            </th>
+            <th className="w-32 px-4 py-3 text-left font-semibold text-gray-700 border-r border-gray-200">
+              Customer
+            </th>
+            <th className="w-24 px-4 py-3 text-left font-semibold text-gray-700 border-r border-gray-200">
+              BPR No
+            </th>
+            <th className="w-20 px-4 py-3 text-right font-semibold text-gray-700 border-r border-gray-200">
+              Qty
+            </th>
+            <th className="w-28 px-4 py-3 text-left font-semibold text-gray-700 border-r border-gray-200">
+              Due Date
+            </th>
+            <th className="w-24 px-4 py-3 text-left font-semibold text-gray-700 border-r border-gray-200">
+              Status
+            </th>
+            <th className="w-40 px-4 py-3 text-center font-semibold text-gray-700">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {rows.map(({ so, item, split }) => {
+            const daysLeft = getDaysLeft(so.dueDate);
+            const daysLeftFormatted = formatDaysLeft(daysLeft);
+
+            return (
+              <tr key={split.bprNo} className="hover:bg-blue-50 transition-colors">
+                <td className="w-24 px-4 py-3 border-r border-gray-200">
+                  <p
+                    className="font-semibold text-blue-600 cursor-pointer hover:underline truncate"
+                    onClick={() => onViewSO(so.soNo)}
+                  >
+                    {so.soNo}
+                  </p>
+                  {so.priority === 'high' && (
+                    <span className="text-xs font-bold text-red-600 block">
+                      High Priority
+                    </span>
+                  )}
+                </td>
+                <td className="w-32 px-4 py-3 border-r border-gray-200">
+                  <p className="font-medium text-gray-800 truncate">{so.customer}</p>
+                  <p className="text-xs text-gray-500 truncate">{so.customerCity}</p>
+                </td>
+                <td className="w-24 px-4 py-3 font-mono text-purple-600 border-r border-gray-200 truncate">
+                  {split.bprNo}
+                </td>
+                <td className="w-20 px-4 py-3 text-right border-r border-gray-200">
+                  <p className="font-semibold text-gray-800">
+                    {formatNumber(split.plannedQty)}
+                  </p>
+                  {split.fgQty > 0 && (
+                    <p className="text-xs text-green-600">
+                      FG: {formatNumber(split.fgQty)}
+                    </p>
+                  )}
+                </td>
+                <td className="w-28 px-4 py-3 border-r border-gray-200">
+                  <p className={`font-medium ${daysLeftFormatted.color} truncate`}>
+                    {formatDate(so.dueDate)}
+                  </p>
+                  <p className={`text-xs ${daysLeftFormatted.color} truncate`}>
+                    {daysLeftFormatted.text}
+                  </p>
+                </td>
+                <td className="w-24 px-4 py-3 border-r border-gray-200">
+                  <StatusBadge status={split.ffStatus} type="ff" />
+                </td>
+                <td className="w-40 px-4 py-3">
+                  <div className="flex items-center justify-center gap-2">
+                    {split.ffStatus === 'fg_ready' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => onPick(split.bprNo)}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <Package className="h-4 w-4" />
+                        <span className="hidden sm:inline">Pick</span>
+                      </Button>
+                    )}
+                    {split.ffStatus === 'picked' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => onInvoice(split.bprNo)}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span className="hidden sm:inline">Invoice</span>
+                      </Button>
+                    )}
+                    {split.ffStatus === 'invoiced' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => onShip(split.bprNo)}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <Truck className="h-4 w-4" />
+                        <span className="hidden sm:inline">Ship</span>
+                      </Button>
+                    )}
+                    {(split.ffStatus === 'shipped' || split.ffStatus === 'delivered' || split.ffStatus === 'closed') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => onTrack(split.bprNo)}
+                        className="flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <Radar className="h-4 w-4" />
+                        <span className="hidden sm:inline">Track</span>
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onViewSO(so.soNo)}
+                      title="View Sale Order Details"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};

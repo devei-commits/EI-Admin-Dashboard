@@ -747,6 +747,14 @@ const Procurement: React.FC = () => {
     });
   }, [draftPOs, categoryFilter, vendorFilter, draftPOStatusFilter]);
 
+  /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from Quotations) */
+  const requestsPODraftNoDraftPO = useMemo(() => {
+    const linkedRequestIds = new Set(draftPOs.map((d) => d.requestId));
+    return requests.filter(
+      (r) => r.status === 'PO Draft' && !linkedRequestIds.has(r.id)
+    );
+  }, [requests, draftPOs]);
+
   const quoteStats = useMemo(() => {
     const totalQuotes = filteredQuotes.length;
     const confirmed = filteredQuotes.filter((quote) => quote.status === 'Confirmed').length;
@@ -2450,11 +2458,38 @@ const Procurement: React.FC = () => {
                     />
                   </div>
 
+                  {/* Requests marked PO Draft but no Draft PO yet — create from Quotations */}
+                  {requestsPODraftNoDraftPO.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — create draft PO from Quotations</p>
+                      {requestsPODraftNoDraftPO.map((req) => (
+                        <article key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{req.code}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${requestTypeClass[req.type]}`}>{req.type}</span>
+                            <span className="text-sm text-slate-700">No draft PO yet</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setMainTab('Procurement'); setSideSection('Quotations'); setSelectedRequest(req); }}
+                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
+                          >
+                            Create Draft PO from Quotations →
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Draft PO Cards */}
                   <div className="space-y-3">
                     {filteredDraftPOs.length === 0 ? (
                       <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                        {draftPOs.length === 0 ? 'No draft purchase orders.' : 'No draft POs match the current filters.'}
+                        {draftPOs.length === 0 && requestsPODraftNoDraftPO.length === 0
+                          ? 'No draft purchase orders.'
+                          : draftPOs.length === 0
+                            ? 'No draft POs yet. Create one from the Quotations tab (or use the cards above).'
+                            : 'No draft POs match the current filters.'}
                       </div>
                     ) : (
                       filteredDraftPOs.map((dpo) => (
@@ -4822,6 +4857,9 @@ const Procurement: React.FC = () => {
                   queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
                   setEditRequestTarget(null);
                   addToast('success', `Request ${editRequestTarget.code} updated`);
+                  if (editRequestForm.status === 'PO Draft') {
+                    addToast('info', 'To see a draft PO here, create one from the Quotations tab for that request.');
+                  }
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
               >
