@@ -24,6 +24,7 @@ import {
 } from '../services/bom.service';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
+import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
 
@@ -218,6 +219,15 @@ const Planning = () => {
     queryKey: ['pack-materials-list'],
     queryFn: () => fetchPackMaterialsList(),
     enabled: planBatchesModalOpen || prModalOpen,
+  });
+
+  const { data: productsList = [] } = useQuery({
+    queryKey: ['products-list'],
+    queryFn: async () => {
+      const r = await fetchPRProducts();
+      return r.success && r.data ? r.data : [];
+    },
+    enabled: prModalOpen,
   });
 
   const { data: itemGroupsRmResult } = useQuery({
@@ -738,6 +748,11 @@ const Planning = () => {
 
   const handleSendToProcurement = async () => {
     if (!selectedSO) return;
+    const validItems = prItems.filter((i) => i.raw_material_id != null || i.pack_material_id != null || i.product_id != null);
+    if (validItems.length === 0) {
+      addToast('error', 'Select at least one item (RM/PM/FG) per line. Use the item dropdown to link to master data.');
+      return;
+    }
     setPrSending(true);
     try {
       const res = await createProcurementRequest({
@@ -745,7 +760,7 @@ const Planning = () => {
         priority: prPriority,
         requiredByDate: prRequiredByDate || selectedSO.dueDate || new Date().toISOString().slice(0, 10),
         notes: prNotes,
-        items: prItems,
+        items: validItems,
       });
       if (res.success && res.data) {
         addToast('success', `PR for SO #${selectedSO.soNumber} saved. Reflected in Planning tab stats and in Procurement → Requests.`);
@@ -776,6 +791,29 @@ const Planning = () => {
       if (next[index]) next[index] = { ...next[index], ...updates };
       return next;
     });
+  };
+
+  const addPrLine = () => {
+    setPrItems((prev) => [
+      ...prev,
+      {
+        type: 'RM',
+        code: '',
+        name: '',
+        required: 0,
+        sih: 0,
+        shortage: 0,
+        quantity_requested: 0,
+        unit: 'KG',
+        raw_material_id: undefined,
+        pack_material_id: undefined,
+        product_id: undefined,
+      },
+    ]);
+  };
+
+  const removePrLine = (index: number) => {
+    setPrItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSaveBatchPlan = async () => {
@@ -2355,14 +2393,10 @@ const Planning = () => {
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm flex items-start gap-3">
                 <span className="text-yellow-500 mt-0.5">ℹ️</span>
                 <span>
-                  {prShowPMOnly ? (
-                    <>Raising PR for {selectedSO.packagingMaterials.length} PM items with shortages for <strong>{selectedSO.productName}</strong>. Only items that exist in the Pack Materials master are listed.</>
-                  ) : (
-                    <>Raising PR for {selectedSO.rawMaterials.length} RM and {selectedSO.packagingMaterials.length} PM items with shortages for <strong>{selectedSO.productName}</strong>. Only items that exist in the Raw Materials and Pack Materials masters are listed.</>
-                  )}
+                  Items are linked to Raw Materials, Pack Materials, or Products (FG). You can change type, pick another item from the dropdowns, edit unit and quantity, add lines, or remove lines. Only lines with an item selected are sent.
                   {prOmittedCount > 0 && (
                     <span className="block mt-2 text-amber-700 font-medium">
-                      {prOmittedCount} item{prOmittedCount !== 1 ? 's' : ''} from the BOM are not in the RM/PM master tables and were omitted. Add them to Raw Materials or Pack Materials first to include in PRs.
+                      {prOmittedCount} BOM item{prOmittedCount !== 1 ? 's' : ''} were omitted (not in RM/PM masters). You can add them manually via “Add line” and select from masters.
                     </span>
                   )}
                   <span className="block mt-2 text-gray-600 text-xs">On submit, the request is saved to the backend (procurement_requests). You’ll see it in Planning tab stats and in Procurement → Requests.</span>
@@ -2386,49 +2420,138 @@ const Planning = () => {
                 <label className="block text-xs font-bold text-gray-700 mb-2">NOTES TO PROCUREMENT</label>
                 <textarea value={prNotes} onChange={(e) => setPrNotes(e.target.value)} placeholder="Any special instructions..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" rows={3} />
               </div>
-              {prItems.length === 0 && prModalOpen && selectedSO && (
-                <p className="text-sm text-gray-500">No RM/PM items for this order. Add materials in BOM or check planning data.</p>
-              )}
-              {prItems.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
-                    Items — from DB (editable quantity to request)
-                  </h3>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
+                  Items — linked to RM/PM/FG masters (editable)
+                </h3>
+                {prItems.length === 0 && (
+                  <p className="text-sm text-gray-500 mb-2">No lines. Add a line and select an item from Raw Materials, Pack Materials, or Products.</p>
+                )}
+                {prItems.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="px-4 py-2 text-left font-semibold text-gray-700">TYPE</th>
-                          <th className="px-4 py-2 text-left font-semibold text-gray-700">ITEM</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">REQUIRED</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">SIH</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">SHORTAGE</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">QTY TO REQUEST</th>
-                          <th className="px-4 py-2 text-left font-semibold text-gray-700">NOTES</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">TYPE</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">ITEM (RM/PM/FG)</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">UNIT</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-700">REQ</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-700">SIH</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-700">SHORT</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-700">QTY REQUEST</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">NOTES</th>
+                          <th className="px-2 py-2 w-16"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {prItems.map((item, idx) => (
                           <tr key={`${item.type}-${item.code}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="px-4 py-3 text-gray-700 font-medium">{item.type}</td>
-                            <td className="px-4 py-3 text-gray-900"><div>{item.name}</div><div className="text-xs text-gray-500">{item.code}</div></td>
-                            <td className="px-4 py-3 text-right text-gray-900 font-medium">{item.required.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right text-orange-600 font-medium">{item.sih.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right text-red-600 font-semibold">{item.shortage > 0 ? `+${item.shortage.toLocaleString()}` : '0'}</td>
-                            <td className="px-4 py-2 text-right">
-                              <input type="number" min={0} value={item.quantity_requested} onChange={(e) => updatePrItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })} className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-blue-500" />
+                            <td className="px-3 py-2">
+                              <select
+                                value={item.type}
+                                onChange={(e) => {
+                                  const t = e.target.value as 'RM' | 'PM' | 'FG';
+                                  updatePrItem(idx, {
+                                    type: t,
+                                    raw_material_id: undefined,
+                                    pack_material_id: undefined,
+                                    product_id: undefined,
+                                    code: '',
+                                    name: '',
+                                    unit: t === 'PM' || t === 'FG' ? 'PCS' : 'KG',
+                                  });
+                                }}
+                                className="w-full min-w-[4rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="RM">RM</option>
+                                <option value="PM">PM</option>
+                                <option value="FG">FG</option>
+                              </select>
                             </td>
-                            <td className="px-4 py-2">
-                              <input type="text" value={item.line_notes ?? ''} onChange={(e) => updatePrItem(idx, { line_notes: e.target.value })} placeholder="Notes" className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500" />
+                            <td className="px-3 py-2">
+                              {item.type === 'RM' && (
+                                <select
+                                  value={item.raw_material_id ?? ''}
+                                  onChange={(e) => {
+                                    const id = e.target.value;
+                                    const master = rawMaterialsList.find((r) => String(r.id) === id);
+                                    if (master) updatePrItem(idx, { raw_material_id: parseInt(String(master.id), 10), pack_material_id: undefined, product_id: undefined, code: master.code, name: master.name, unit: master.uom || 'KG' });
+                                  }}
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select RM…</option>
+                                  {rawMaterialsList.map((r) => (
+                                    <option key={r.id} value={r.id}>{r.code} — {r.name}</option>
+                                  ))}
+                                </select>
+                              )}
+                              {item.type === 'PM' && (
+                                <select
+                                  value={item.pack_material_id ?? ''}
+                                  onChange={(e) => {
+                                    const id = e.target.value;
+                                    const master = packMaterialsList.find((p) => String(p.id) === id);
+                                    if (master) updatePrItem(idx, { pack_material_id: parseInt(String(master.id), 10), raw_material_id: undefined, product_id: undefined, code: master.code, name: master.description, unit: 'PCS' });
+                                  }}
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select PM…</option>
+                                  {packMaterialsList.map((p) => (
+                                    <option key={p.id} value={p.id}>{p.code} — {p.description}</option>
+                                  ))}
+                                </select>
+                              )}
+                              {item.type === 'FG' && (
+                                <select
+                                  value={item.product_id ?? ''}
+                                  onChange={(e) => {
+                                    const id = e.target.value;
+                                    const master = productsList.find((p) => p.product_id === parseInt(id, 10));
+                                    if (master) updatePrItem(idx, { product_id: master.product_id, raw_material_id: undefined, pack_material_id: undefined, code: master.product_code, name: master.product_name, unit: 'PCS' });
+                                  }}
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select product…</option>
+                                  {productsList.map((p) => (
+                                    <option key={p.product_id} value={p.product_id}>{p.product_code} — {p.product_name}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={item.unit}
+                                onChange={(e) => updatePrItem(idx, { unit: e.target.value })}
+                                className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                              >
+                                {['KG', 'PCS', 'L', 'ML', 'G', 'BOX', 'CTN'].map((u) => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-700">{item.required.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-orange-600">{item.sih.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-red-600 font-medium">{item.shortage > 0 ? `+${item.shortage.toLocaleString()}` : '0'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <input type="number" min={0} value={item.quantity_requested} onChange={(e) => updatePrItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })} className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-blue-500" />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input type="text" value={item.line_notes ?? ''} onChange={(e) => updatePrItem(idx, { line_notes: e.target.value })} placeholder="Line notes" className="w-full min-w-[6rem] px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500" />
+                            </td>
+                            <td className="px-2 py-2">
+                              <button type="button" onClick={() => removePrLine(idx)} className="text-red-600 hover:text-red-800 text-xs font-medium" title="Remove line">✕</button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
+                )}
+                <button type="button" onClick={addPrLine} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50">
+                  + Add line (RM/PM/FG)
+                </button>
+              </div>
             </div>
             <div className="border-t border-gray-200 p-6 flex gap-3 justify-end">
               <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-transparent hover:bg-gray-100 transition-colors disabled:opacity-50" disabled={prSending}>Cancel</button>

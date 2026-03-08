@@ -25,7 +25,7 @@ const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
 };
 
 /** Backend procurement request (from /api/v1/procurement) → ProcurementRequest */
-export function mapBackendPrToRequest(pr: BackendPR): ProcurementRequest {
+export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string | null }): ProcurementRequest {
   const items = Array.isArray(pr.items) ? pr.items : [];
   const type: RequestType = (items[0]?.type === 'PM' ? 'PM' : 'RM');
   const code = `PR-REQ-${String(pr.id).padStart(3, '0')}`;
@@ -39,6 +39,7 @@ export function mapBackendPrToRequest(pr: BackendPR): ProcurementRequest {
     dueDate: pr.requiredByDate ?? '',
     createdDate: pr.createdAt ?? '',
     requestedBy: pr.requestedBy ?? undefined,
+    preferredVendor: pr.preferredVendor ?? undefined,
     itemDetails: items.map((i: { code?: string; name?: string; quantity_requested?: number; unit?: string }) => ({
       itemCode: i?.code ?? '',
       itemName: i?.name ?? '',

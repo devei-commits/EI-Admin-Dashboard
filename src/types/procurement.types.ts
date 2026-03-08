@@ -40,6 +40,7 @@ export type ProcurementRequest = {
   createdDate?: string;
   requestedBy?: string;
   source?: string;
+  preferredVendor?: string;
   itemDetails?: ItemDetail[];
   stockSummary?: StockSummary;
 };

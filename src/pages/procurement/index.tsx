@@ -199,7 +199,14 @@ const Procurement: React.FC = () => {
   });
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
   const [editRequestTarget, setEditRequestTarget] = useState<ProcurementRequest | null>(null);
-  const [editRequestForm, setEditRequestForm] = useState({ priority: '' as RequestPriority, requiredByDate: '', notes: '', status: '' as RequestStatus });
+  const [editRequestForm, setEditRequestForm] = useState<{
+    priority: RequestPriority;
+    requiredByDate: string;
+    notes: string;
+    status: RequestStatus;
+    preferredVendor: string;
+    items: BackendPRItem[];
+  }>({ priority: 'Medium', requiredByDate: '', notes: '', status: 'New', preferredVendor: '', items: [] });
   const [editDraftPOTarget, setEditDraftPOTarget] = useState<DraftPO | null>(null);
   const [editDraftPOForm, setEditDraftPOForm] = useState<Pick<DraftPO, 'vendor' | 'paymentTerms' | 'expectedDelivery' | 'deliveryAddress' | 'lineItems'>>({ vendor: '', paymentTerms: '', expectedDelivery: '', deliveryAddress: '', lineItems: [] });
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
@@ -356,12 +363,15 @@ const Procurement: React.FC = () => {
 
   useEffect(() => {
     if (!editRequestTarget) return;
-    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id);
+    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id) as { items?: BackendPRItem[]; preferredVendor?: string } | undefined;
+    const items = Array.isArray(backendPr?.items) ? backendPr.items.map((i) => ({ ...i })) : [];
     setEditRequestForm({
       priority: editRequestTarget.priority,
       requiredByDate: editRequestTarget.dueDate?.slice(0, 10) ?? '',
       notes: (backendPr as { notes?: string } | undefined)?.notes ?? '',
       status: editRequestTarget.status,
+      preferredVendor: backendPr?.preferredVendor ?? '',
+      items,
     });
   }, [editRequestTarget, backendPrResult]);
 
@@ -399,6 +409,14 @@ const Procurement: React.FC = () => {
       lineItems: editDraftPOTarget.lineItems.map((l) => ({ ...l })),
     });
   }, [editDraftPOTarget]);
+
+  const updateEditRequestItem = (index: number, updates: Partial<BackendPRItem>) => {
+    setEditRequestForm((prev) => {
+      const next = [...prev.items];
+      if (next[index]) next[index] = { ...next[index], ...updates };
+      return { ...prev, items: next };
+    });
+  };
 
   const backendPrs = backendPrResult ?? [];
 
@@ -1047,13 +1065,14 @@ const Procurement: React.FC = () => {
     const createdDateStr = today.toISOString().split('T')[0];
     const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
+    const vendor = relatedRequest.preferredVendor?.trim() || selectedQuote.vendor;
     const newDraftPO: DraftPO = {
       id: newDpoId,
       dpoNumber: newDpoId,
       requestId: selectedQuote.requestId,
       requestCode: selectedQuote.requestCode,
       type: selectedQuote.requestType,
-      vendor: selectedQuote.vendor,
+      vendor,
       vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
       status: 'Pending Approval',
       createdDate: createdDateStr,
@@ -1073,7 +1092,7 @@ const Procurement: React.FC = () => {
     // Persist to PO table (backend) with request link for reload
     const poPayload = {
       orderId: newDraftPO.dpoNumber,
-      vendorName: newDraftPO.vendor,
+      vendorName: vendor,
       orderDate: createdDateStr,
       expectedShipmentDate: expectedDeliveryStr,
       reference: newDraftPO.requestCode,
@@ -1095,7 +1114,7 @@ const Procurement: React.FC = () => {
     const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
     const draftWithBackend: DraftPO = { ...newDraftPO, backendPoId: backendId };
 
-    await updateRequestStatus(selectedQuote.requestId, 'PO Draft');
+    await updateRequestStatus(selectedQuote.requestId, 'PO Draft', { skipItems: true });
 
     updateProcurementState((current) => ({
       draftPOs: [draftWithBackend, ...current.draftPOs],
@@ -1107,6 +1126,102 @@ const Procurement: React.FC = () => {
     setTimeout(() => {
       applyRouteState('Procurement', 'Draft POs');
     }, 500);
+  };
+
+  /** Create a draft PO from request data only (no quote). Used after Edit Request save. */
+  const createDraftPOFromRequest = async (
+    requestId: string,
+    requestCode: string,
+    items: BackendPRItem[],
+    preferredVendor: string,
+    requestType: RequestType
+  ): Promise<boolean> => {
+    if (!items.length) {
+      addToast('warning', 'Add at least one line item to the request to create a draft PO.');
+      return false;
+    }
+    const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+    const lineItems: DraftPOLineItem[] = items.map((it, idx) => {
+      const qty = Number(it.quantity_requested) || 0;
+      const pricePerUnit = 0;
+      const gstPercent = 18;
+      const subtotal = qty * pricePerUnit;
+      const gstAmount = subtotal * (gstPercent / 100);
+      const lineTotal = subtotal + gstAmount;
+      return {
+        item: it.name ?? it.code ?? 'Item',
+        itemCode: requestType === 'PM' ? `EI-PM-${String(idx + 1).padStart(3, '0')}` : `EI-RM-${String(idx + 1).padStart(3, '0')}`,
+        type: requestType,
+        qty: String(it.quantity_requested ?? 0),
+        pricePerUnit,
+        gstPercent,
+        gstAmount: parseFloat(gstAmount.toFixed(2)),
+        lineTotal: parseFloat(lineTotal.toFixed(2)),
+      };
+    });
+    const subtotal = parseFloat(lineItems.reduce((s, l) => s + (l.lineTotal - l.gstAmount), 0).toFixed(2));
+    const gstTotal = parseFloat(lineItems.reduce((s, l) => s + l.gstAmount, 0).toFixed(2));
+    const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2));
+    const today = new Date();
+    const createdDateStr = today.toISOString().split('T')[0];
+    const expectedDeliveryStr = createdDateStr;
+    const vendor = preferredVendor?.trim() || 'Unassigned';
+    const poPayload = {
+      orderId: newDpoId,
+      vendorName: vendor,
+      orderDate: createdDateStr,
+      expectedShipmentDate: expectedDeliveryStr,
+      reference: requestCode,
+      paymentTerms: 'As per contract',
+      status: 'Draft',
+      formData: { requestId, requestCode },
+      items: lineItems.map((l) => ({
+        itemName: l.item,
+        quantity: l.qty,
+        rate: String(l.pricePerUnit),
+        tax: String(l.gstPercent || 18),
+      })),
+    };
+    const createResult = await createPurchaseOrder(poPayload);
+    if (!createResult.success || !createResult.data) {
+      addToast('error', typeof createResult.error === 'string' ? createResult.error : (createResult.error?.message ?? 'Failed to create draft PO'));
+      return false;
+    }
+    const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
+    const newDraftPO: DraftPO = {
+      id: newDpoId,
+      dpoNumber: newDpoId,
+      requestId,
+      requestCode,
+      type: requestType,
+      vendor,
+      vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+      status: 'Pending Approval',
+      createdDate: createdDateStr,
+      createdBy: 'Procurement — Admin',
+      paymentTerms: 'As per contract',
+      expectedDelivery: expectedDeliveryStr,
+      deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
+      vendorRating: 0,
+      alertMessage: 'Draft PO created from request. Add rates in Edit if needed.',
+      alertType: 'warning',
+      lineItems,
+      subtotal,
+      gstTotal,
+      grandTotal,
+      backendPoId: backendId,
+    };
+    updateProcurementState((current) => ({
+      draftPOs: [newDraftPO, ...current.draftPOs],
+    }));
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await updateProcurementRequestApi(requestId, { status: 'PO Draft' });
+    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    updateProcurementState((current) => ({
+      requests: current.requests.map((r) => (r.id === requestId ? { ...r, status: 'PO Draft' as RequestStatus } : r)),
+    }));
+    addToast('success', `Draft PO ${newDpoId} created for ${requestCode}`);
+    return true;
   };
 
   const approveDraftPO = (draftPoId: string) => {
@@ -1450,10 +1565,11 @@ const Procurement: React.FC = () => {
     addToast('info', `Quote ${quoteId} removed`);
   };
 
-  const updateRequestStatus = async (requestId: string, status: RequestStatus) => {
-    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === requestId);
-    const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
-    const res = await updateProcurementRequestApi(requestId, { status, items });
+  const updateRequestStatus = async (requestId: string, status: RequestStatus, opts?: { skipItems?: boolean }) => {
+    const payload = opts?.skipItems
+      ? { status }
+      : { status, items: (backendPrResult?.find((p: { id: string }) => String(p.id) === requestId) as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]) };
+    const res = await updateProcurementRequestApi(requestId, payload);
     if (!res.success) {
       addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
       return;
@@ -2160,12 +2276,6 @@ const Procurement: React.FC = () => {
                                     className="px-3 py-1.5 rounded-lg border border-blue-400 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all"
                                   >
                                     👁 View
-                                  </button>
-                                  <button
-                                    onClick={() => setEditRequestTarget(req)}
-                                    className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-all"
-                                  >
-                                    ✏️ Edit
                                   </button>
                                   <button
                                     onClick={() => {
@@ -4530,6 +4640,12 @@ const Procurement: React.FC = () => {
                     <span className="text-slate-600">Source</span>
                     <span className="text-slate-900 font-medium">{req.source ?? 'Planning Team'}</span>
                   </div>
+                  {req.preferredVendor && (
+                    <div className="flex items-center justify-between py-2 border-b border-slate-200">
+                      <span className="text-slate-600">Preferred vendor</span>
+                      <span className="text-slate-900 font-medium">{req.preferredVendor}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Items Requested - Detailed */}
@@ -4782,38 +4898,53 @@ const Procurement: React.FC = () => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setEditRequestTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4"
+            className="relative w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
-                <select
-                  value={editRequestForm.priority}
-                  onChange={(e) => setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
+                  <select
+                    value={editRequestForm.priority}
+                    onChange={(e) => setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Required by date</label>
+                  <input
+                    type="date"
+                    value={editRequestForm.requiredByDate}
+                    onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Required by date</label>
-                <input
-                  type="date"
-                  value={editRequestForm.requiredByDate}
-                  onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor</label>
+                <select
+                  value={editRequestForm.preferredVendor}
+                  onChange={(e) => setEditRequestForm((f) => ({ ...f, preferredVendor: e.target.value }))}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
+                >
+                  <option value="">— Select vendor —</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
                 <textarea
                   value={editRequestForm.notes}
                   onChange={(e) => setEditRequestForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={3}
+                  rows={2}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -4831,8 +4962,57 @@ const Procurement: React.FC = () => {
                   <option value="Delivery Pending">Delivery Pending</option>
                 </select>
               </div>
+              {/* Line items: editable quantities and unit */}
+              {editRequestForm.items.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — quantities & unit</label>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Type</th>
+                          <th className="px-3 py-2 text-right font-semibold text-slate-700">Qty to request</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Unit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editRequestForm.items.map((item, idx) => (
+                          <tr key={idx} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-2">
+                              <span className="font-medium text-slate-900">{item.name ?? item.code ?? '—'}</span>
+                              {item.code && <span className="text-xs text-slate-500 block">{item.code}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">{item.type ?? 'RM'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.quantity_requested ?? 0}
+                                onChange={(e) => updateEditRequestItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })}
+                                className="w-24 px-2 py-1.5 rounded border border-slate-300 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={item.unit ?? 'KG'}
+                                onChange={(e) => updateEditRequestItem(idx, { unit: e.target.value })}
+                                className="w-20 px-2 py-1.5 rounded border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500"
+                              >
+                                {['KG', 'PCS', 'L', 'ML', 'G', 'BOX', 'CTN'].map((u) => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
               <button
                 onClick={() => setEditRequestTarget(null)}
                 className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
@@ -4842,14 +5022,15 @@ const Procurement: React.FC = () => {
               <button
                 onClick={async () => {
                   if (!editRequestTarget) return;
-                  const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id);
-                  const res = await updateProcurementRequestApi(editRequestTarget.id, {
+                  const payload: Parameters<typeof updateProcurementRequestApi>[1] = {
                     priority: editRequestForm.priority,
                     requiredByDate: editRequestForm.requiredByDate || null,
-                    notes: editRequestForm.notes || null,
+                    notes: editRequestForm.notes ?? null,
                     status: editRequestForm.status,
-                    items: (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]),
-                  });
+                  };
+                  if (editRequestForm.preferredVendor?.trim()) payload.preferredVendor = editRequestForm.preferredVendor.trim();
+                  if (Array.isArray(editRequestForm.items) && editRequestForm.items.length > 0) payload.items = editRequestForm.items;
+                  const res = await updateProcurementRequestApi(editRequestTarget.id, payload);
                   if (!res.success) {
                     addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request'));
                     return;
@@ -4857,8 +5038,25 @@ const Procurement: React.FC = () => {
                   queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
                   setEditRequestTarget(null);
                   addToast('success', `Request ${editRequestTarget.code} updated`);
-                  if (editRequestForm.status === 'PO Draft') {
-                    addToast('info', 'To see a draft PO here, create one from the Quotations tab for that request.');
+                  const reqId = editRequestTarget.id;
+                  const reqCode = editRequestTarget.code;
+                  const reqType = editRequestTarget.type;
+                  const confirmedQuote = quotes.find((q) => q.requestId === reqId && q.status === 'Confirmed');
+                  if (confirmedQuote) {
+                    await createDraftPO(confirmedQuote.id);
+                    setSelectedRequest(null);
+                  } else {
+                    const raised = await createDraftPOFromRequest(
+                      reqId,
+                      reqCode,
+                      editRequestForm.items,
+                      editRequestForm.preferredVendor ?? '',
+                      reqType
+                    );
+                    if (raised) {
+                      applyRouteState('Procurement', 'Draft POs');
+                      setSelectedRequest(null);
+                    }
                   }
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"

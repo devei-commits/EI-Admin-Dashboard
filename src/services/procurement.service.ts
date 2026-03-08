@@ -2,7 +2,7 @@ import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
 
 export interface ProcurementRequestItem {
-  type: 'RM' | 'PM';
+  type: 'RM' | 'PM' | 'FG';
   code: string;
   name: string;
   required: number;
@@ -13,6 +13,7 @@ export interface ProcurementRequestItem {
   line_notes?: string;
   raw_material_id?: number;
   pack_material_id?: number;
+  product_id?: number;
 }
 
 export interface ProcurementRequest {
@@ -23,6 +24,7 @@ export interface ProcurementRequest {
   notes: string | null;
   items: ProcurementRequestItem[];
   status: string;
+  preferredVendor?: string | null;
   requestedBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +67,7 @@ export interface UpdateProcurementPayload {
   notes?: string | null;
   items?: ProcurementRequestItem[];
   status?: string;
+  preferredVendor?: string;
 }
 
 export async function updateProcurementRequest(
