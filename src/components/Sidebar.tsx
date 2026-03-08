@@ -3,6 +3,24 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import eilogofull from "../assets/logo/eilogofull.svg";
 import { useAuth } from "../context/AuthContext";
 import { usePermissions } from "../hooks/usePermissions";
+import { preloadRoute } from "../lib/preloadRoutes";
+
+/** NavLink that prefetches the route chunk on hover for faster navigation. */
+const PreloadNavLink = ({
+  to,
+  onMouseEnter,
+  ...rest
+}: React.ComponentProps<typeof NavLink>) => (
+  <NavLink
+    to={to}
+    onMouseEnter={(e) => {
+      const path = typeof to === "string" ? to : (to as { pathname?: string }).pathname ?? "";
+      preloadRoute(path);
+      onMouseEnter?.(e);
+    }}
+    {...rest}
+  />
+);
 
 const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -197,12 +215,12 @@ const Sidebar = () => {
           <ul className="space-y-2">
             {showDashboard && (
               <li>
-                <NavLink to="/" className={linkClass} onClick={handleLinkClick}>
+                <PreloadNavLink to="/" className={linkClass} onClick={handleLinkClick}>
                   <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                   </svg>
                   <span className="font-medium">Dashboard</span>
-                </NavLink>
+                </PreloadNavLink>
               </li>
             )}
             {showPIS && (
@@ -229,32 +247,32 @@ const Sidebar = () => {
             )}
             {showRoleManagement && (
               <li>
-                <NavLink to="/role-management" className={linkClass} onClick={handleLinkClick}>
+                <PreloadNavLink to="/role-management" className={linkClass} onClick={handleLinkClick}>
                   <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                   <span className="font-medium">Role Management</span>
-                </NavLink>
+                </PreloadNavLink>
               </li>
             )}
             {showUserManagement && (
               <li>
-                <NavLink to="/user-management" className={linkClass} onClick={handleLinkClick}>
+                <PreloadNavLink to="/user-management" className={linkClass} onClick={handleLinkClick}>
                   <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
                   <span className="font-medium">User Management</span>
-                </NavLink>
+                </PreloadNavLink>
               </li>
             )}
             {showTaskManagement && (
               <li>
-                <NavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
+                <PreloadNavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
                   <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                   </svg>
                   <span className="font-medium">Task Management</span>
-                </NavLink>
+                </PreloadNavLink>
               </li>
             )}
             {showOrderSection && (
@@ -409,7 +427,7 @@ const Sidebar = () => {
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center">
-                    <NavLink
+                    <PreloadNavLink
                       to="/catalogue-management"
                       className="flex-1 flex items-center px-5 py-3.5"
                       onClick={handleLinkClick}
@@ -418,7 +436,7 @@ const Sidebar = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                       </svg>
                       <span className="font-medium">Product Management</span>
-                    </NavLink>
+                    </PreloadNavLink>
                     <button
                       onClick={() => setProductOpen(!productOpen)}
                       className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -442,7 +460,7 @@ const Sidebar = () => {
                   <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showCatalogueManagement && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/catalogue-management"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -454,12 +472,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                           </svg>
                           <span>Catalogue Management</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showPackagingManagement && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/packaging-management"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -471,12 +489,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Packaging Management</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showActiveIngredients && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/active-ingredients"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -488,7 +506,7 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                           </svg>
                           <span>Active Ingredients</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                   </ul>
@@ -536,7 +554,7 @@ const Sidebar = () => {
                   <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/raw-material"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -548,12 +566,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                           </svg>
                           <span>Raw Materials</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/packaging"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -565,12 +583,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Packaging</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/bom"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -582,12 +600,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                           </svg>
                           <span>Products (PR)</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/item-groups"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -599,12 +617,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                           </svg>
                           <span>Item Groups</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/universal-swap"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -616,12 +634,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                           </svg>
                           <span>Universal Swap</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showVendorClient && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/vendor-client"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -633,12 +651,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.697M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <span>Vendors and Client</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showInventory && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/items-list"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -650,7 +668,7 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                           <span>Price List</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                   </ul>
@@ -684,7 +702,7 @@ const Sidebar = () => {
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
                   }`}>
                   <div className="flex items-center">
-                    <NavLink
+                    <PreloadNavLink
                       to="/enquiry-management"
                       className="flex-1 flex items-center px-5 py-3.5"
                       onClick={handleLinkClick}
@@ -693,7 +711,7 @@ const Sidebar = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                       </svg>
                       <span className="font-medium">Enquiry Management</span>
-                    </NavLink>
+                    </PreloadNavLink>
                     <button
                       onClick={() => setEnquiryOpen(!enquiryOpen)}
                       className="p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -717,7 +735,7 @@ const Sidebar = () => {
                   <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     {showDoctorAppointments && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/doctor-appointments"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -729,12 +747,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           <span>Doctor Appointments</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showContactEnquiry && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/contact-enquiry"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -746,12 +764,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                           <span>Contact Enquiry</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showNewDevelopments && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/new-developments"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -763,12 +781,12 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                           <span>New Developments</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                     {showProductSamples && (
                       <li>
-                        <NavLink
+                        <PreloadNavLink
                           to="/product-samples"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
                             ? "text-slate-900 font-medium bg-slate-100/50"
@@ -780,7 +798,7 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Product Samples</span>
-                        </NavLink>
+                        </PreloadNavLink>
                       </li>
                     )}
                   </ul>

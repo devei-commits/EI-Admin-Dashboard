@@ -1,4 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '../../context/ToastContext';
+import { createVendorClient, fetchNextCode } from '../../services/vendorClient.service';
 import type { Vendor, PurchaseOrder, MainTab, SideSection } from '../../types/procurement.types';
 
 export type ProcurementVendorsProps = {
@@ -10,6 +13,17 @@ export type ProcurementVendorsProps = {
   sideSection: SideSection;
 };
 
+const INIT_ADD_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  location: '',
+  country: '',
+  category: 'Raw Material',
+  paymentTerms: '',
+  notes: '',
+};
+
 const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
   vendors,
   purchaseOrders,
@@ -18,6 +32,79 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
   applyRouteState,
   sideSection,
 }) => {
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState(INIT_ADD_FORM);
+  const [nextCode, setNextCode] = useState('');
+  const [loadingCode, setLoadingCode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    setLoadingCode(true);
+    setFormError('');
+    fetchNextCode('vendor')
+      .then((res) => {
+        if (res.success && res.data) setNextCode(res.data);
+        else setNextCode('');
+      })
+      .finally(() => setLoadingCode(false));
+  }, [showAddModal]);
+
+  const handleAddVendorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = nextCode?.trim();
+    if (!code) {
+      setFormError('Vendor code could not be generated. Please try again.');
+      return;
+    }
+    const name = addForm.name.trim();
+    if (!name) {
+      setFormError('Vendor name is required.');
+      return;
+    }
+    setFormError('');
+    setSaving(true);
+    const res = await createVendorClient({
+      type: 'vendor',
+      entityCode: code,
+      name,
+      email: addForm.email.trim() || undefined,
+      phone: addForm.phone.trim() || undefined,
+      location: addForm.location.trim() || undefined,
+      country: addForm.country.trim() || undefined,
+      category: addForm.category || undefined,
+      status: 'pending',
+      paymentTerms: addForm.paymentTerms.trim() || undefined,
+      notes: addForm.notes.trim() || undefined,
+      data: {},
+    });
+    setSaving(false);
+    if (res.success) {
+      await queryClient.invalidateQueries({ queryKey: ['vendor-client', 'vendor'] });
+      addToast('success', 'Vendor created successfully.');
+      setShowAddModal(false);
+      setAddForm(INIT_ADD_FORM);
+      setNextCode('');
+    } else {
+      const msg = typeof res.error === 'object' && res.error && 'message' in res.error
+        ? (res.error as { message?: string }).message
+        : String(res.error ?? 'Failed to create vendor');
+      setFormError(msg);
+      addToast('error', msg);
+    }
+  };
+
+  const closeAddModal = () => {
+    if (!saving) {
+      setShowAddModal(false);
+      setAddForm(INIT_ADD_FORM);
+      setFormError('');
+    }
+  };
+
   return (
     <div className="flex gap-4 h-screen-minus-header">
       <div className="flex-1 pr-4">
@@ -33,7 +120,11 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
             >
               ← Back
             </button>
-            <button className="px-4 py-2 rounded-lg bg-yellow-400 text-yellow-900 font-semibold hover:bg-yellow-500 transition">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 rounded-lg bg-yellow-400 text-yellow-900 font-semibold hover:bg-yellow-500 transition"
+            >
               + Add Vendor
             </button>
           </div>
@@ -192,6 +283,144 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeAddModal}>
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h3 className="text-lg font-bold text-slate-900">Add Vendor</h3>
+              <button
+                type="button"
+                onClick={closeAddModal}
+                disabled={saving}
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleAddVendorSubmit} className="p-6 space-y-4">
+              {formError && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
+                  {formError}
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Vendor code</label>
+                <input
+                  type="text"
+                  value={nextCode}
+                  readOnly
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700 font-mono text-sm"
+                />
+                {loadingCode && <p className="text-xs text-slate-500 mt-1">Generating code…</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addForm.name}
+                  onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="Vendor / trade name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Email</label>
+                <input
+                  type="email"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Phone</label>
+                <input
+                  type="text"
+                  value={addForm.phone}
+                  onChange={(e) => setAddForm((p) => ({ ...p, phone: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="Phone number"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Location / City</label>
+                <input
+                  type="text"
+                  value={addForm.location}
+                  onChange={(e) => setAddForm((p) => ({ ...p, location: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="City or state"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Country</label>
+                <input
+                  type="text"
+                  value={addForm.country}
+                  onChange={(e) => setAddForm((p) => ({ ...p, country: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="Country"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Category</label>
+                <select
+                  value={addForm.category}
+                  onChange={(e) => setAddForm((p) => ({ ...p, category: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                >
+                  <option value="Raw Material">Raw Material (RM)</option>
+                  <option value="Packaging">Packaging (PM)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Payment terms</label>
+                <input
+                  type="text"
+                  value={addForm.paymentTerms}
+                  onChange={(e) => setAddForm((p) => ({ ...p, paymentTerms: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="e.g. Net 30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Notes</label>
+                <textarea
+                  value={addForm.notes}
+                  onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="Optional notes"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeAddModal}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || loadingCode || !nextCode}
+                  className="flex-1 px-4 py-2 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Create Vendor'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

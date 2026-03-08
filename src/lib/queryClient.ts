@@ -34,4 +34,6 @@ export const queryKeys = {
  enquiries: ['enquiries'] as const,
  dashboard: ['dashboard'] as const,
  analytics: ['analytics'] as const,
+ warehouseLocations: ['warehouse-locations'] as const,
+ warehouseInventory: ['warehouse-inventory'] as const,
 };

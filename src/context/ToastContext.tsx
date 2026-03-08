@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+
+const TOAST_DURATION_MS = 2000;
 
 interface Toast {
  id: string;
@@ -16,15 +18,24 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
  const [toasts, setToasts] = useState<Toast[]>([]);
+ const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const addToast = useCallback((type: Toast['type'], message: string) => {
-  const id = Date.now().toString();
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   setToasts((prev) => [...prev, { id, type, message }]);
-  
-  // Auto remove quickly (1 second) for snappy notifications
-  setTimeout(() => {
+
+  const timeoutId = setTimeout(() => {
    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, 1000);
+   timeoutsRef.current = timeoutsRef.current.filter((t) => t !== timeoutId);
+  }, TOAST_DURATION_MS);
+  timeoutsRef.current.push(timeoutId);
+ }, []);
+
+ useEffect(() => {
+  return () => {
+   timeoutsRef.current.forEach(clearTimeout);
+   timeoutsRef.current = [];
+  };
  }, []);
 
  const removeToast = useCallback((id: string) => {

@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { InventoryItem } from './Inventory';
-import { fetchWarehouseLocations, type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
+import { useWarehouseLocations } from '../../hooks/useWarehouseLocations';
+import { type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
 import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryClient';
 
 const getUtilizationBarColor = (value: number) => {
   if (value >= 90) return 'bg-rose-500';
@@ -17,30 +20,26 @@ const getUtilizationBadge = (value: number) => {
 };
 
 const WarehouseLocations = () => {
-  const [locations, setLocations] = useState<WarehouseLocationDTO[]>([]);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
+  const queryClient = useQueryClient();
+  const { data: locations = [], isLoading: locationsLoading, refetch: refetchLocations } = useWarehouseLocations();
+  const { data: inventoryResult, isLoading: inventoryLoading } = useQuery({
+    queryKey: queryKeys.warehouseInventory,
+    queryFn: async () => {
+      const res = await fetchWarehouseInventory();
+      if (!res.success || !res.data) return { rows: [] };
+      return res.data;
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+  const inventoryData: InventoryItem[] = inventoryResult?.rows ?? [];
   const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isAdjustMode, setIsAdjustMode] = useState(false);
   const [savingAdjust, setSavingAdjust] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const [locRes, invRes] = await Promise.all([
-        fetchWarehouseLocations(),
-        fetchWarehouseInventory(),
-      ]);
-      if (cancelled) return;
-      if (locRes.success && locRes.data) setLocations(locRes.data);
-      if (invRes.success && invRes.data?.rows) setInventoryData(invRes.data.rows);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const loading = locationsLoading || inventoryLoading;
 
   const openInventoryForStoredItem = (stored: StoredItemSummary) => {
     const row = inventoryData.find((r) => r.warehouseInventoryId === stored.warehouseInventoryId);
@@ -48,19 +47,6 @@ const WarehouseLocations = () => {
   };
 
   const updateInventoryItem = (itemId: string, field: keyof InventoryItem, value: number) => {
-    setInventoryData((prev) => {
-      const updated = prev.map((item) => {
-        if (item.id === itemId) {
-          const updatedItem = { ...item, [field]: value };
-          if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
-            updatedItem.stockInHand = updatedItem.whStock + updatedItem.ml1Stock + updatedItem.ml2Stock;
-          }
-          return updatedItem;
-        }
-        return item;
-      });
-      return updated;
-    });
     if (selectedItem && selectedItem.id === itemId) {
       const updated = { ...selectedItem, [field]: value };
       if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
@@ -92,20 +78,7 @@ const WarehouseLocations = () => {
     if (res.success && res.data) {
       const d = res.data;
       const stockInHand = (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
-      setInventoryData((prev) =>
-        prev.map((i) =>
-          i.id === item.id
-            ? {
-                ...i,
-                whStock: Number(d.wh_stock) ?? i.whStock,
-                ml1Stock: Number(d.ml1_stock) ?? i.ml1Stock,
-                ml2Stock: Number(d.ml2_stock) ?? i.ml2Stock,
-                stockInHand,
-                reserved: Number(d.reserved) ?? i.reserved,
-              }
-            : i
-        )
-      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       setSelectedItem((prev) =>
         prev?.id === item.id
           ? {

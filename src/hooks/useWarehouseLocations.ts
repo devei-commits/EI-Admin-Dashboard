@@ -17,6 +17,7 @@ export function useWarehouseLocations() {
   return useQuery({
     queryKey: queryKeys.warehouseLocations,
     queryFn,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 30 * 1000, // 30s so rack/slot data feels up to date
+    refetchOnWindowFocus: true, // refetch when user returns to tab (rack map updates)
   });
 }

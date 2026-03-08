@@ -1474,7 +1474,7 @@ const Procurement: React.FC = () => {
       requestId: targetRequest.id,
       requestCode: targetRequest.code,
       requestType: targetRequest.type,
-      vendor: 'New Horizon Supplies',
+      vendor: vendors[0]?.name ?? 'Unassigned',
       status: 'Pending Review',
       quotedOn: '2026-02-27',
       leadTimeDays: 19,
@@ -5080,12 +5080,16 @@ const Procurement: React.FC = () => {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Vendor</label>
-                <input
-                  type="text"
+                <select
                   value={editDraftPOForm.vendor}
                   onChange={(e) => setEditDraftPOForm((f) => ({ ...f, vendor: e.target.value }))}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
+                >
+                  <option value="">— Select vendor —</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Payment terms</label>
