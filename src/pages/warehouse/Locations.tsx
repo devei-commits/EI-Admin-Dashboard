@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { InventoryItem } from './Inventory';
 import { fetchWarehouseLocations, type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
-import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
+import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
 
 const getUtilizationBarColor = (value: number) => {
   if (value >= 90) return 'bg-rose-500';
@@ -22,6 +22,8 @@ const WarehouseLocations = () => {
   const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isAdjustMode, setIsAdjustMode] = useState(false);
+  const [savingAdjust, setSavingAdjust] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,15 +55,73 @@ const WarehouseLocations = () => {
           if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
             updatedItem.stockInHand = updatedItem.whStock + updatedItem.ml1Stock + updatedItem.ml2Stock;
           }
-          if (selectedItem && selectedItem.id === itemId) {
-            setSelectedItem(updatedItem);
-          }
           return updatedItem;
         }
         return item;
       });
       return updated;
     });
+    if (selectedItem && selectedItem.id === itemId) {
+      const updated = { ...selectedItem, [field]: value };
+      if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
+        updated.stockInHand = updated.whStock + updated.ml1Stock + updated.ml2Stock;
+      }
+      setSelectedItem(updated);
+    }
+  };
+
+  const handleDoneAdjustStock = async () => {
+    const item = selectedItem;
+    if (!item) {
+      setIsAdjustMode(false);
+      return;
+    }
+    if (item.warehouseInventoryId == null) {
+      setAdjustError('This item cannot be updated (no warehouse inventory id).');
+      return;
+    }
+    setAdjustError(null);
+    setSavingAdjust(true);
+    const res = await updateWarehouseStock(item.warehouseInventoryId, {
+      wh_stock: item.whStock,
+      ml1_stock: item.ml1Stock,
+      ml2_stock: item.ml2Stock,
+      reserved: item.reserved,
+    });
+    setSavingAdjust(false);
+    if (res.success && res.data) {
+      const d = res.data;
+      const stockInHand = (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
+      setInventoryData((prev) =>
+        prev.map((i) =>
+          i.id === item.id
+            ? {
+                ...i,
+                whStock: Number(d.wh_stock) ?? i.whStock,
+                ml1Stock: Number(d.ml1_stock) ?? i.ml1Stock,
+                ml2Stock: Number(d.ml2_stock) ?? i.ml2Stock,
+                stockInHand,
+                reserved: Number(d.reserved) ?? i.reserved,
+              }
+            : i
+        )
+      );
+      setSelectedItem((prev) =>
+        prev?.id === item.id
+          ? {
+              ...prev,
+              whStock: Number(d.wh_stock) ?? prev.whStock,
+              ml1Stock: Number(d.ml1_stock) ?? prev.ml1Stock,
+              ml2Stock: Number(d.ml2_stock) ?? prev.ml2Stock,
+              stockInHand,
+              reserved: Number(d.reserved) ?? prev.reserved,
+            }
+          : prev
+      );
+    } else {
+      setAdjustError(res.error ?? 'Failed to save stock adjustment.');
+    }
+    setIsAdjustMode(false);
   };
 
   const getRackCondition = (description: string) => {
@@ -304,7 +364,7 @@ const WarehouseLocations = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedItem(null)}
+                onClick={() => { setSelectedItem(null); setAdjustError(null); }}
                 className="p-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50"
               >
                 <X className="w-4 h-4" />
@@ -481,17 +541,33 @@ const WarehouseLocations = () => {
               </div>
             </div>
 
+            {adjustError && (
+              <p className="px-4 py-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md" role="alert">
+                {adjustError}
+              </p>
+            )}
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 sticky bottom-0 bg-white">
+              {isAdjustMode ? (
+                <button
+                  type="button"
+                  onClick={handleDoneAdjustStock}
+                  disabled={savingAdjust}
+                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                >
+                  {savingAdjust ? 'Saving…' : 'Save & done'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setAdjustError(null); setIsAdjustMode(true); }}
+                  className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors"
+                >
+                  Adjust Stock
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setIsAdjustMode(prev => !prev)}
-                className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors"
-              >
-                {isAdjustMode ? 'Done' : 'Adjust Stock'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
+                onClick={() => { setSelectedItem(null); setAdjustError(null); }}
                 className="px-3 py-1.5 bg-slate-600 text-white rounded-md text-xs font-semibold hover:bg-slate-700 transition-colors"
               >
                 Close
