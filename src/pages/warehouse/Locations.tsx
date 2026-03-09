@@ -145,7 +145,7 @@ const WarehouseLocations = () => {
               <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{location.icon ?? '📦'}</span>
+                    <span className="text-lg">{location.icon ?? ''}</span>
                     <h2 className="text-2xl font-bold text-slate-900 leading-none">{location.name}</h2>
                     {location.zoneLabel && (
                       <span className="text-sm font-semibold text-emerald-700">{location.zoneLabel}</span>

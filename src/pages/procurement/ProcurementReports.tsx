@@ -52,7 +52,7 @@ const ProcurementReports: React.FC<ProcurementReportsProps> = ({
           onClick={() => applyRouteState('Procurement', sideSection)}
           className="px-4 py-2 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-300"
         >
-          ← Back to Procurement
+          Back to Procurement
         </button>
       </div>
 

@@ -9,10 +9,10 @@ export const BMR_STAGES = [
   'Material Sourced', 'Dispensed', 'Under Production', 'Under Review', 'Completed',
 ] as const;
 
-export const BMR_STAGE_ICONS = ['📋', '✅', '🔒', '📅', '🏭', '⚗', '🔄', '🔬', '✔'] as const;
+export const BMR_STAGE_ICONS = ['', '', '', '', '', '', '', '', ''] as const;
 
 export const BPR_STAGES = ['Pending', 'Scheduled', 'Packaging', 'QC Review', 'Completed'] as const;
-export const BPR_STAGE_ICONS = ['📋', '📅', '📦', '🔬', '✔'] as const;
+export const BPR_STAGE_ICONS = ['', '', '', '', ''] as const;
 
 export const CPO_STATUS_MAP: Record<string, [string, string]> = {
   draft:                     ['', 'Draft'],

@@ -69,6 +69,10 @@ export async function fetchPlanningExtractedById(id: string): Promise<PlanningEx
   }
 }
 
+export interface CustomBatch {
+  sizeKg: number;
+}
+
 export interface UpdatePlanningExtractedPayload {
   bomStatus?: string;
   approvedBy?: string;
@@ -86,6 +90,7 @@ export interface UpdatePlanningExtractedPayload {
   plannedStartDate?: string;
   productionLine?: string;
   bomConfirmedAt?: string;
+  customBatches?: CustomBatch[];
 }
 
 export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
@@ -94,6 +99,7 @@ export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
   plannedStartDate?: string | null;
   productionLine?: string | null;
   bomConfirmedAt?: string | null;
+  customBatches?: CustomBatch[] | null;
 }
 
 export async function updatePlanningExtracted(

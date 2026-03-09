@@ -12,7 +12,6 @@ export type FFStatus =
   | 'fg_pending'
   | 'bulk_qc'
   | 'fg_ready'
-  | 'picked'
   | 'picking'
   | 'invoiced'
   | 'shipped'
@@ -219,6 +218,15 @@ export interface ShipData {
   remarks: string;
 }
 
+export interface NewSOItemData {
+  sku: string;
+  productName: string;
+  pack: string;
+  orderedQty: number;
+  unitPrice: number;
+  bmrNo: string;
+}
+
 export interface NewSOData {
   soNo: string;
   customer: string;
@@ -229,14 +237,8 @@ export interface NewSOData {
   shipAddress: string;
   paymentTerms: PaymentTerms;
   notes: string;
-  item: {
-    sku: string;
-    productName: string;
-    pack: string;
-    orderedQty: number;
-    unitPrice: number;
-    bmrNo: string;
-  };
+  item?: NewSOItemData;
+  items?: NewSOItemData[];
 }
 
 // Alias types for consistency

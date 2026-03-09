@@ -13,11 +13,11 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
   const [isOpen, setIsOpen] = useState(false);
 
   const navItems = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'locations', label: 'Locations', icon: '📍' },
-    { id: 'inventory', label: 'Inventory', icon: '📦' },
-    { id: 'inbound', label: 'Inbound', icon: '📥' },
-    { id: 'outbound', label: 'Outbound', icon: '📤' },
+    { id: 'overview', label: 'Overview', icon: '' },
+    { id: 'locations', label: 'Locations', icon: '' },
+    { id: 'inventory', label: 'Inventory', icon: '' },
+    { id: 'inbound', label: 'Inbound', icon: '' },
+    { id: 'outbound', label: 'Outbound', icon: '' },
   ];
 
   const handleSectionClick = (sectionId: string) => {

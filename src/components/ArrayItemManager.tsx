@@ -141,7 +141,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
            onClick={() => onRemove(idx)}
            className="text-red-600 hover:text-red-800 font-medium text-xs hover:underline"
           >
-           ✕ Remove
+           Remove
           </button>
          </td>
         </tr>

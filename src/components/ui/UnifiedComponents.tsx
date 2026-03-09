@@ -43,7 +43,7 @@ export const UnifiedButton: React.FC<UnifiedButtonProps> = ({
     ${className}
    `}
   >
-   {isLoading && <span className="inline-block animate-spin">⏳</span>}
+   {isLoading && <span className="inline-block">Loading...</span>}
    {icon && !isLoading && icon}
    {children}
   </button>

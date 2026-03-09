@@ -37,20 +37,20 @@ interface ActivityTimelineProps {
 const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoading }) => {
  const getActivityIcon = (type: TicketActivity['type']) => {
   const iconMap: Record<TicketActivity['type'], { icon: string; color: string }> = {
-   'created': { icon: '✨', color: 'bg-blue-100 text-blue-600' },
-   'assigned': { icon: '👤', color: 'bg-purple-100 text-purple-600' },
-   'reassigned': { icon: '🔄', color: 'bg-purple-100 text-purple-600' },
-   'status-change': { icon: '📊', color: 'bg-gray-100 text-slate-800' },
-   'priority-change': { icon: '⚡', color: 'bg-orange-100 text-slate-800' },
-   'note-added': { icon: '📝', color: 'bg-gray-100 text-gray-600' },
-   'response-sent': { icon: '💬', color: 'bg-emerald-100 text-emerald-600' },
-   'customer-replied': { icon: '📩', color: 'bg-blue-100 text-blue-600' },
-   'escalated': { icon: '🔺', color: 'bg-red-100 text-red-600' },
-   'order-linked': { icon: '🔗', color: 'bg-indigo-100 text-indigo-600' },
-   'attachment-added': { icon: '📎', color: 'bg-gray-100 text-gray-600' },
-   'resolved': { icon: '✅', color: 'bg-emerald-100 text-emerald-600' },
-   'reopened': { icon: '🔄', color: 'bg-gray-100 text-slate-800' },
-   'closed': { icon: '🔒', color: 'bg-gray-100 text-gray-600' },
+   'created': { icon: '', color: 'bg-blue-100 text-blue-600' },
+   'assigned': { icon: '', color: 'bg-purple-100 text-purple-600' },
+   'reassigned': { icon: '', color: 'bg-purple-100 text-purple-600' },
+   'status-change': { icon: '', color: 'bg-gray-100 text-slate-800' },
+   'priority-change': { icon: '', color: 'bg-orange-100 text-slate-800' },
+   'note-added': { icon: '', color: 'bg-gray-100 text-gray-600' },
+   'response-sent': { icon: '', color: 'bg-emerald-100 text-emerald-600' },
+   'customer-replied': { icon: '', color: 'bg-blue-100 text-blue-600' },
+   'escalated': { icon: '', color: 'bg-red-100 text-red-600' },
+   'order-linked': { icon: '', color: 'bg-indigo-100 text-indigo-600' },
+   'attachment-added': { icon: '', color: 'bg-gray-100 text-gray-600' },
+   'resolved': { icon: '', color: 'bg-emerald-100 text-emerald-600' },
+   'reopened': { icon: '', color: 'bg-gray-100 text-slate-800' },
+   'closed': { icon: '', color: 'bg-gray-100 text-gray-600' },
   };
   return iconMap[type] || { icon: '•', color: 'bg-gray-100 text-gray-600' };
  };
@@ -113,7 +113,7 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoadi
          <span className="px-2 py-0.5 bg-gray-100 rounded line-through text-gray-500">
           {activity.previousValue}
          </span>
-         <span className="text-gray-400">→</span>
+         <span className="text-gray-400">{'>'}</span>
          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded">
           {activity.newValue}
          </span>

@@ -1133,10 +1133,10 @@ export function GlobalTaskOverview() {
         <option value="estDelDate-desc">Due Date (Latest)</option>
         <option value="priority-asc">Priority (High First)</option>
         <option value="priority-desc">Priority (Low First)</option>
-        <option value="stage-asc">Stage (1→7)</option>
-        <option value="stage-desc">Stage (7→1)</option>
-        <option value="orderNo-asc">Order No (A→Z)</option>
-        <option value="orderNo-desc">Order No (Z→A)</option>
+        <option value="stage-asc">Stage (1-7)</option>
+        <option value="stage-desc">Stage (7-1)</option>
+        <option value="orderNo-asc">Order No (A-Z)</option>
+        <option value="orderNo-desc">Order No (Z-A)</option>
        </select>
       </div>
      </div>

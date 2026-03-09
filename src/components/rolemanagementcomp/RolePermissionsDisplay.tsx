@@ -129,7 +129,7 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId 
      {Object.entries(globalSettings).map(([key, value]) => (
       <div key={key} className="flex items-center space-x-3">
        <UnifiedBadge variant={getPermissionBadgeColor(!!value)}>
-        {typeof value === 'number' ? value : value ? '✓' : '✗'}
+        {typeof value === 'number' ? value : value ? 'Yes' : 'No'}
        </UnifiedBadge>
        <span className="text-sm text-gray-700 capitalize leading-relaxed tracking-wide">
         {key.replace(/([A-Z])/g, ' $1').toLowerCase()}

@@ -24,7 +24,7 @@ const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
   pending: 'Pending Review',
 };
 
-/** Backend procurement request (from /api/v1/procurement) → ProcurementRequest */
+/** Backend procurement request (from /api/v1/procurement) -> ProcurementRequest */
 export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string | null }): ProcurementRequest {
   const items = Array.isArray(pr.items) ? pr.items : [];
   const type: RequestType = (items[0]?.type === 'PM' ? 'PM' : 'RM');
@@ -60,7 +60,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
   };
 }
 
-/** Backend procurement quotation → VendorQuote */
+/** Backend procurement quotation -> VendorQuote */
 export function mapBackendQuotationToQuote(
   q: ProcurementQuotation,
   requestCode?: string,
@@ -95,7 +95,7 @@ export function mapBackendQuotationToQuote(
   };
 }
 
-/** VendorClientRecord (vendor only) → Vendor (procurement) */
+/** VendorClientRecord (vendor only) -> Vendor (procurement) */
 export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
   const category = (v.category ?? '').toUpperCase();
   const type: RequestType = category.includes('PACKAGING') || category.includes('PM') ? 'PM' : 'RM';
@@ -119,7 +119,7 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
   };
 }
 
-/** Order (PO from sales-purchase API) → PurchaseOrder */
+/** Order (PO from sales-purchase API) -> PurchaseOrder */
 export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
   const items = Array.isArray(po.items) ? po.items : [];
   const totalValue = items.reduce((sum, i: any) => sum + (Number(i.rate ?? i.price ?? 0) * Number(i.quantity ?? 0)), 0);
@@ -144,7 +144,7 @@ export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
   };
 }
 
-/** PurchaseOrder (from API, status Draft) + requests → DraftPO for sidebar/list */
+/** PurchaseOrder (from API, status Draft) + requests -> DraftPO for sidebar/list */
 export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: ProcurementRequest[]): DraftPO {
   const formData = (po.formData || {}) as { requestId?: string; requestCode?: string };
   const request = requests.find(

@@ -58,17 +58,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }`}
      >
       <span className="text-lg">
-       {toast.type === 'success' && '✓'}
-       {toast.type === 'error' && '✕'}
-       {toast.type === 'warning' && '⚠'}
-       {toast.type === 'info' && 'ℹ'}
+       {toast.type === 'success' && 'OK'}
+       {toast.type === 'error' && '!'}
+       {toast.type === 'warning' && '!'}
+       {toast.type === 'info' && 'i'}
       </span>
       <span className="flex-1 text-sm font-medium">{toast.message}</span>
       <button
        onClick={() => removeToast(toast.id)}
        className="text-white/80 hover:text-white"
       >
-       ✕
+       X
       </button>
      </div>
     ))}

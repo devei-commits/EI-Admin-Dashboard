@@ -74,7 +74,7 @@ const GRNModal = ({ grn, onClose }: GRNModalProps) => {
                           : 'bg-gray-200 text-gray-600'
                     }`}
                   >
-                    {index < currentStepIndex ? '✓' : index + 1}
+                    {index < currentStepIndex ? 'Done' : index + 1}
                   </button>
                   <div
                     className={`flex-1 h-1 ml-2 ${
@@ -219,7 +219,7 @@ const GRNModal = ({ grn, onClose }: GRNModalProps) => {
           {/* Action Buttons */}
           <div className="flex gap-4 pt-6 border-t border-gray-200">
             <button className="px-6 py-2 bg-emerald-500 text-white font-medium rounded-lg hover:bg-emerald-600 transition-colors">
-              ✓ Complete GRN & Update Stock
+              Complete GRN & Update Stock
             </button>
             <button
               onClick={onClose}

@@ -55,13 +55,15 @@ export interface GenerateLabelsPayload {
   grnBatchMfg?: string;
   expiry?: string;
   mfgBatch?: string;
+  productName?: string;
+  itemCode?: string;
 }
 
 export async function generateGRNLabels(
   id: string,
   payload?: GenerateLabelsPayload
-): Promise<{ labels: GeneratedLabel[] }> {
-  const res = await api.post<{ labels: GeneratedLabel[] }>(`/api/v1/grn/${id}/generate-labels`, payload ?? {});
+): Promise<{ labels: GeneratedLabel[]; workflowSteps?: string[] }> {
+  const res = await api.post<{ labels: GeneratedLabel[]; workflowSteps?: string[] }>(`/api/v1/grn/${id}/generate-labels`, payload ?? {});
   return res;
 }
 

@@ -61,6 +61,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [labels, setLabels] = useState<GeneratedLabel[] | null>(grn.generatedLabels ?? null);
   const [generatingLabels, setGeneratingLabels] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
+  const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
   const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
   const [unitsPerBox, setUnitsPerBox] = useState(String(grn.unitsPerBox ?? ''));
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
@@ -69,6 +70,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [mfgBatch, setMfgBatch] = useState(grn.mfgBatch ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [currentWorkflowSteps, setCurrentWorkflowSteps] = useState<WorkflowStep[]>(grn.workflowSteps || []);
+
+  const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
 
   const handleLineItemChange = (itemId: string, field: 'rcvdQty' | 'qcStatus', value: string | number) => {
     setEditedLineItems(prev =>
@@ -153,12 +157,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   };
 
   const getWorkflowStepColor = (step: WorkflowStep) => {
-    if (!grn.workflowSteps) return 'bg-slate-100 text-slate-600 border-slate-300';
+    if (!currentWorkflowSteps.length) return 'bg-slate-100 text-slate-600 border-slate-300';
     
     const stepIndex = WORKFLOW_STEPS_REQUIRED.indexOf(step);
-    const completedUpTo = WORKFLOW_STEPS_REQUIRED.findIndex(s => !grn.workflowSteps?.includes(s));
+    const completedUpTo = WORKFLOW_STEPS_REQUIRED.findIndex(s => !currentWorkflowSteps.includes(s));
     
-    if (grn.workflowSteps.includes(step)) {
+    if (currentWorkflowSteps.includes(step)) {
       return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     } else if (completedUpTo === stepIndex) {
       return 'bg-amber-100 text-amber-700 border-amber-300';
@@ -188,7 +192,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Status and type */}
           <div className="flex flex-wrap items-center gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-              grn.workflowSteps?.length === WORKFLOW_STEPS_REQUIRED.length
+              currentWorkflowSteps.length === WORKFLOW_STEPS_REQUIRED.length
                 ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
                 : 'bg-amber-100 text-amber-700 border-amber-300'
             }`}>
@@ -200,22 +204,20 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           </div>
 
           {/* Workflow Steps */}
-          {grn.workflowSteps && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              {WORKFLOW_STEPS_REQUIRED.map((step, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <div
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${getWorkflowStepColor(step)}`}
-                  >
-                    {grn.workflowSteps?.includes(step) ? '✓' : '○'} {step}
-                  </div>
-                  {idx < WORKFLOW_STEPS_REQUIRED.length - 1 && (
-                    <span className="text-slate-400 text-lg">→</span>
-                  )}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2">
+            {WORKFLOW_STEPS_REQUIRED.map((step, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <div
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${getWorkflowStepColor(step)}`}
+                >
+                  {currentWorkflowSteps.includes(step) ? 'Done' : '-'} {step}
                 </div>
-              ))}
-            </div>
-          )}
+                {idx < WORKFLOW_STEPS_REQUIRED.length - 1 && (
+                  <span className="text-slate-400 text-lg">&gt;</span>
+                )}
+              </div>
+            ))}
+          </div>
 
           {/* PO Details Section */}
           <section className="space-y-3">
@@ -377,7 +379,25 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Label data & Generate QR Labels */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
-            <p className="text-xs text-slate-600">Fill below and click Generate Labels. Each box gets a QR containing: GRN id, units/box, location prefix, batch mfg, expiry, mfg batch.</p>
+            <p className="text-xs text-slate-600">Select a product, fill details below and click Generate Labels. Each box gets a QR containing product, GRN, units/box, location, batch, and expiry info.</p>
+
+            {/* Product / Line Item Selection */}
+            {editedLineItems.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Select product / line item <span className="text-red-500">*</span></label>
+                <select
+                  value={selectedLineItemId}
+                  onChange={(e) => setSelectedLineItemId(e.target.value)}
+                  className={`w-full px-2 py-1.5 border rounded text-sm ${!selectedLineItemId ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`}
+                >
+                  <option value="">— Select a product —</option>
+                  {editedLineItems.map((li) => (
+                    <option key={li.id} value={li.id}>{li.item} ({li.itemCode}) — PO Qty: {li.poQty}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">No of boxes</label>
@@ -408,6 +428,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               {!labelsGenerated ? (
                 <button
                   onClick={async () => {
+                    if (editedLineItems.length > 0 && !selectedLineItemId) {
+                      setLabelError('Please select a product / line item before generating labels.');
+                      return;
+                    }
                     setLabelError(null);
                     setGeneratingLabels(true);
                     try {
@@ -419,9 +443,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                         grnBatchMfg: grnBatchMfg || undefined,
                         expiry: expiry || undefined,
                         mfgBatch: mfgBatch || undefined,
+                        productName: selectedLineItem?.item || undefined,
+                        itemCode: selectedLineItem?.itemCode || undefined,
                       });
                       setLabels(res.labels);
                       setLabelsGenerated(true);
+                      if (res.workflowSteps) {
+                        setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
+                      }
                     } catch (e) {
                       setLabelError(e instanceof Error ? e.message : 'Failed to generate labels');
                     } finally {
@@ -431,7 +460,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   disabled={generatingLabels}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  {generatingLabels ? 'Generating…' : '✓ Generate Labels'}
+                  {generatingLabels ? 'Generating…' : 'Generate Labels'}
                 </button>
               ) : (
                 <button
@@ -448,10 +477,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* QR Label Preview — one card per box with scan payload */}
           {labelsGenerated && labels && labels.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Label preview (scan shows: GRN id, units/box, location prefix, batch mfg, expiry, mfg batch)</h3>
+              <h3 className="text-sm font-semibold text-slate-700">Label preview</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {labels.map((label) => {
-                  let payload: { grn_id?: number; units_per_box?: number; location_prefix?: string; grn_batch_mfg?: string; expiry?: string; mfg_batch?: string; box_index?: number } = {};
+                  let payload: { grn_id?: number; grn_no?: string; product_name?: string; item_code?: string; units_per_box?: number; location_prefix?: string; grn_batch_mfg?: string; expiry?: string; mfg_batch?: string; box_index?: number } = {};
                   try {
                     payload = JSON.parse(label.qrPayload);
                   } catch {
@@ -466,7 +495,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                         <img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-32 h-32 object-contain" />
                       </div>
                       <div className="space-y-1 text-xs text-slate-600">
-                        <p><span className="font-semibold">GRN id:</span> {payload.grn_id}</p>
+                        {payload.product_name && <p><span className="font-semibold">Product:</span> {payload.product_name}</p>}
+                        {payload.item_code && <p><span className="font-semibold">Item code:</span> {payload.item_code}</p>}
+                        <p><span className="font-semibold">GRN:</span> {payload.grn_no || payload.grn_id}</p>
                         <p><span className="font-semibold">Units/box:</span> {payload.units_per_box}</p>
                         <p><span className="font-semibold">Location:</span> {payload.location_prefix || '—'}</p>
                         <p><span className="font-semibold">Batch mfg:</span> {payload.grn_batch_mfg || '—'}</p>
@@ -514,7 +545,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              {grn.status === 'In Transit' ? '✓ Complete GRN & Initiate Stock' : 'Mark complete'}
+              {grn.status === 'In Transit' ? 'Complete GRN & Initiate Stock' : 'Mark complete'}
             </button>
           </div>
         </div>

@@ -247,7 +247,7 @@ const Warehouse: React.FC = () => {
                 onClick={() => handleTopNavClick('inventory')}
                 className="text-[11px] font-medium text-slate-500 hover:text-slate-900"
               >
-                View All →
+                View All
               </button>
             </div>
             <div className="px-4 py-3 text-xs text-slate-400">All items currently within safe inventory range.</div>
@@ -262,7 +262,7 @@ const Warehouse: React.FC = () => {
                 onClick={() => handleTopNavClick('grn')}
                 className="text-[11px] font-medium text-slate-500 hover:text-slate-900"
               >
-                View All →
+                View All
               </button>
             </div>
             <div className="divide-y divide-slate-100 text-xs">

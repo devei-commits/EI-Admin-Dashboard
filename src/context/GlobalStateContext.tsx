@@ -460,7 +460,7 @@ const globalReducer = (state: GlobalState, action: GlobalAction): GlobalState =>
             };
         case 'ISSUE_PO_FROM_TREASURY': {
             const { poId: issuePOId, itemUpdates } = action.payload;
-            // Move PO from treasury → issued
+            // Move PO from treasury -> issued
             const poToIssue = (state.po.treasury || []).find((p: any) => p.id === issuePOId);
             if (!poToIssue) return state;
             const issuedPO = { ...poToIssue, status: 'ISSUED', issuedAt: new Date().toISOString().slice(0, 10) };

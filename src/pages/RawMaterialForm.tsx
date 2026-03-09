@@ -970,7 +970,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
      <div className="absolute inset-0 bg-linear-to-r from-teal-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
      <div className="relative">
       <div className="inline-flex items-center gap-2 mb-3">
-       <span className="text-3xl">🧪</span>
+       <span className="text-3xl"></span>
        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">RM Masters</span>
       </div>
       <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Raw Materials</h1>
@@ -1057,7 +1057,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
           onClick={() => setSortAsc(p => !p)}
          >
-          CODE <span className="text-teal-500">{sortAsc ? '↑' : '↓'}</span>
+          CODE <span className="text-teal-500">{sortAsc ? 'Asc' : 'Desc'}</span>
          </th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>

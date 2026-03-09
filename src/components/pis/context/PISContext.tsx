@@ -816,7 +816,7 @@ export function PISProvider({ children }: { children: ReactNode }) {
 
    // If USE_MOCK_DATA is true, skip API calls and use mock data directly
    if (USE_MOCK_DATA) {
-    // console.log('📦 Using mock data mode (API calls disabled)');
+    // console.log('Using mock data mode (API calls disabled)');
     setPisRecords(mockPISData);
     setCustomers(mockCustomersData);
     setProducts(mockProductsData);

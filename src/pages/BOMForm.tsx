@@ -273,7 +273,7 @@ const BOMForm: React.FC = () => {
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-                ✓
+                PR
               </div>
               <div>
                 <h1 className="text-lg font-bold text-slate-900">New Product Registration (PR Master)</h1>
@@ -286,7 +286,7 @@ const BOMForm: React.FC = () => {
               onClick={fillMockData}
               className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
             >
-              📝 Add Mock Data
+              Add Mock Data
             </button>
             <button onClick={() => navigate('/bom')} className="text-slate-600 hover:text-slate-900">
               <X className="w-5 h-5" />
@@ -317,7 +317,7 @@ const BOMForm: React.FC = () => {
                       ? 'bg-green-500 text-white'
                       : 'bg-slate-200 text-slate-600'
                     }`}>
-                    {isCompleted ? '✓' : tab.icon}
+                    {isCompleted ? 'Done' : tab.icon}
                   </span>
                   <span className="text-sm font-medium">{tab.label}</span>
                 </button>
@@ -683,7 +683,7 @@ const BOMForm: React.FC = () => {
         {/* Footer Navigation */}
         <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex justify-between">
           <button onClick={() => activeTab > 0 && setActiveTab(activeTab - 1)} className="px-4 py-2 text-slate-600 hover:text-slate-900">
-            ← Prev
+            Prev
           </button>
           <button onClick={() => navigate('/bom')} className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium">
             Cancel

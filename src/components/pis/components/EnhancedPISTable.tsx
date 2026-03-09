@@ -383,7 +383,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.m1 ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.m1 && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.m1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-center">
@@ -391,7 +391,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.v1 ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.v1 && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.v1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-center">
@@ -399,7 +399,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.rdO1 ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.rdO1 && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.rdO1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-center">
@@ -407,7 +407,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.regulatory ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.regulatory && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.regulatory && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-center">
@@ -415,7 +415,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.inventory ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.inventory && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.inventory && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-sm">{pis.formLabel}</TableCell>
@@ -424,7 +424,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
              "inline-flex items-center justify-center w-10 h-8 rounded",
              pis.sop ? "bg-green-500" : "bg-gray-100"
             )}>
-             {pis.sop && <span className="text-white text-sm font-bold">✓</span>}
+             {pis.sop && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
            </TableCell>
            <TableCell className="text-center">
@@ -432,7 +432,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.ac ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.ac && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.ac && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -440,7 +440,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.oc ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.oc && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.oc && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -448,7 +448,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.mop ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.mop && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.mop && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -456,7 +456,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.coa ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.coa && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.coa && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -464,7 +464,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.pre ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.pre && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.pre && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -472,7 +472,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.stabilityMatch ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.stabilityMatch && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.stabilityMatch && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -480,7 +480,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.prs ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.prs && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.prs && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-center">
@@ -488,7 +488,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
             "inline-flex items-center justify-center w-10 h-8 rounded",
             pis.sensory ? "bg-green-500" : "bg-gray-100"
            )}>
-            {pis.sensory && <span className="text-white text-sm font-bold">✓</span>}
+            {pis.sensory && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
           </TableCell>
           <TableCell className="text-sm">{pis.bdTeam}</TableCell>

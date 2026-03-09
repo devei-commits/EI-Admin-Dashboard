@@ -128,7 +128,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                         <span className="hidden sm:inline">Pick</span>
                       </Button>
                     )}
-                    {split.ffStatus === 'picked' && (
+                    {split.ffStatus === 'picking' && (
                       <Button
                         size="sm"
                         variant="secondary"

@@ -42,10 +42,10 @@ interface PriorityBadgeProps {
 }
 
 const priorityConfig: Record<TicketPriority, { label: string; color: string; bgColor: string; icon: string }> = {
- 'low': { label: 'Low', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: '↓' },
- 'medium': { label: 'Medium', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: '−' },
- 'high': { label: 'High', color: 'text-slate-800', bgColor: 'bg-orange-100', icon: '↑' },
- 'urgent': { label: 'Urgent', color: 'text-red-600', bgColor: 'bg-red-100', icon: '⚡' },
+ 'low': { label: 'Low', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: '' },
+ 'medium': { label: 'Medium', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: '' },
+ 'high': { label: 'High', color: 'text-slate-800', bgColor: 'bg-orange-100', icon: '' },
+ 'urgent': { label: 'Urgent', color: 'text-red-600', bgColor: 'bg-red-100', icon: '' },
 };
 
 export const PriorityBadge: React.FC<PriorityBadgeProps> = ({ priority, size = 'md' }) => {

@@ -172,6 +172,8 @@ const Planning = () => {
   const [bomPackaging, setBomPackaging] = useState<PackagingMaterial[]>([]);
   const [isReadyForProduction, setIsReadyForProduction] = useState(false);
   const [productionSentOrderIds, setProductionSentOrderIds] = useState<string[]>([]);
+  const [customBatches, setCustomBatches] = useState<{sizeKg: number}[]>([]);
+  const [expandedBatchIndex, setExpandedBatchIndex] = useState<number | null>(null);
   const location = useLocation();
   const pathTab = location.pathname.split('/planning/')[1]?.split('/')[0] || '';
   const activeMainTab: 'pis-extracted' | 'items-involved' | 'availability-summary' =
@@ -264,11 +266,16 @@ const Planning = () => {
 
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch || !planningRowForBatch) return;
-    const row = planningRowForBatch as { batchCount?: number; batchSizeKg?: number; plannedStartDate?: string; productionLine?: string };
+    const row = planningRowForBatch as { batchCount?: number; batchSizeKg?: number; plannedStartDate?: string; productionLine?: string; customBatches?: {sizeKg: number}[] | null };
     if (row.batchCount != null) setNumBatches(String(row.batchCount));
     if (row.batchSizeKg != null) setBatchSizeKg(String(row.batchSizeKg));
     if (row.plannedStartDate) setPlannedStartDate(row.plannedStartDate);
     if (row.productionLine) setProductionLine(row.productionLine);
+    if (Array.isArray(row.customBatches) && row.customBatches.length > 0) {
+      setCustomBatches(row.customBatches);
+    } else if (row.batchCount != null && row.batchSizeKg != null) {
+      setCustomBatches(Array.from({ length: row.batchCount }, () => ({ sizeKg: Number(row.batchSizeKg) })));
+    }
   }, [planBatchesModalOpen, selectedSOForBatch?.id, planningRowForBatch]);
 
   const lastSyncedBomIdRef = useRef<string | null>(null);
@@ -412,7 +419,8 @@ const Planning = () => {
         pack_material_id,
       });
     }
-    setPrItems(items);
+    const shortageItems = items.filter((i) => i.shortage > 0);
+    setPrItems(shortageItems);
     setPrOmittedCount(omitted);
   }, [prModalOpen, selectedSO?.id, selectedSO?.rawMaterials, selectedSO?.packagingMaterials, prShowPMOnly, warehouseRows, rawMaterialsList, packMaterialsList]);
 
@@ -603,10 +611,10 @@ const Planning = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const colorMap: Record<string, { icon: string; iconBg: string; iconColor: string }> = {
-      pink: { icon: '🌸', iconBg: 'bg-pink-100', iconColor: 'text-pink-600' },
-      orange: { icon: '☀️', iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
-      blue: { icon: '💧', iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
-      purple: { icon: '🧴', iconBg: 'bg-purple-100', iconColor: 'text-purple-600' },
+      pink: { icon: '', iconBg: 'bg-pink-100', iconColor: 'text-pink-600' },
+      orange: { icon: '', iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
+      blue: { icon: '', iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
+      purple: { icon: '', iconBg: 'bg-purple-100', iconColor: 'text-purple-600' },
     };
     return planningExtractedList.map((row) => {
       const color = (row as { color?: string }).color ?? 'purple';
@@ -732,6 +740,14 @@ const Planning = () => {
     setBomFormula(order.rawMaterials);
     setBomPackaging(order.packagingMaterials);
     setIsReadyForProduction(false);
+    setActiveBatchTab('feasibility');
+    setSwapSourceIndex(null);
+    setNumBatches(String(order.batchesRequired || 1));
+    setBatchSizeKg(order.batchSize?.replace(/\D/g, '') || '500');
+    setPlannedStartDate(new Date().toISOString().split('T')[0]);
+    setProductionLine('Line 1 — Primary Mixer');
+    setCustomBatches([]);
+    setExpandedBatchIndex(null);
     setPlanBatchesModalOpen(true);
   };
 
@@ -763,7 +779,7 @@ const Planning = () => {
         items: validItems,
       });
       if (res.success && res.data) {
-        addToast('success', `PR for SO #${selectedSO.soNumber} saved. Reflected in Planning tab stats and in Procurement → Requests.`);
+        addToast('success', `PR for SO #${selectedSO.soNumber} saved. Reflected in Planning tab stats and in Procurement - Requests.`);
         queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
         queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
         setPrModalOpen(false);
@@ -820,10 +836,11 @@ const Planning = () => {
     if (!selectedSOForBatch) return;
     try {
       await updatePlanningExtracted(selectedSOForBatch.id, {
-        batchCount: parseInt(numBatches, 10) || 0,
-        batchSizeKg: parseFloat(batchSizeKg) || 500,
+        batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
+        batchSizeKg: customBatches.length > 0 ? customBatches[0].sizeKg : (parseFloat(batchSizeKg) || 500),
         plannedStartDate: plannedStartDate || undefined,
         productionLine: productionLine || undefined,
+        customBatches: customBatches.length > 0 ? customBatches : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       addToast('success', 'Batch plan saved.');
@@ -877,11 +894,12 @@ const Planning = () => {
     if (!selectedSOForBatch || !canSendToProduction) return;
     try {
       await updatePlanningExtracted(selectedSOForBatch.id, {
-        batchCount: parseInt(numBatches, 10) || 0,
-        batchSizeKg: parseFloat(batchSizeKg) || 500,
+        batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
+        batchSizeKg: customBatches.length > 0 ? customBatches[0].sizeKg : (parseFloat(batchSizeKg) || 500),
         plannedStartDate: plannedStartDate || undefined,
         productionLine: productionLine || undefined,
         bomStatus: 'Production Released',
+        customBatches: customBatches.length > 0 ? customBatches : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       addToast('success', `Plan for ${selectedSOForBatch.productName} sent to Production successfully`);
@@ -893,20 +911,21 @@ const Planning = () => {
     setBomFormula([]);
     setBomPackaging([]);
     setActiveBatchTab('feasibility');
-    setNumBatches('15');
+    setNumBatches('1');
     setBatchSizeKg('500');
-    setPlannedStartDate('2026-03-04');
+    setPlannedStartDate(new Date().toISOString().split('T')[0]);
     setProductionLine('Line 1 — Primary Mixer');
     setIsReadyForProduction(false);
+    setCustomBatches([]);
+    setExpandedBatchIndex(null);
   };
 
   const handleRaisePRFromBatch = () => {
     if (selectedSOForBatch) {
-      // Close Plan Batches modal first, then open PR modal with PM items only
       setPlanBatchesModalOpen(false);
       setPrModalOpen(true);
       setSelectedSO(selectedSOForBatch);
-      setPrShowPMOnly(true);
+      setPrShowPMOnly(false);
       setPrPriority('High');
       setPrRequiredByDate(selectedSOForBatch.dueDate);
       setPrNotes('');
@@ -1170,7 +1189,7 @@ const Planning = () => {
               }`
             }
           >
-            📋 PIs Extracted
+            PIs Extracted
           </NavLink>
           <NavLink
             to="/planning/items-involved"
@@ -1180,7 +1199,7 @@ const Planning = () => {
               }`
             }
           >
-            ✎ Items Involved
+            Items Involved
           </NavLink>
           <NavLink
             to="/planning/availability-summary"
@@ -1190,7 +1209,7 @@ const Planning = () => {
               }`
             }
           >
-            📊 Availability Summary
+            Availability Summary
           </NavLink>
         </div>
 
@@ -1566,7 +1585,7 @@ const Planning = () => {
                             PR
                           </button>
                         ) : (
-                          <span className="text-green-600 font-semibold text-xs">✓ OK</span>
+                          <span className="text-green-600 font-semibold text-xs">OK</span>
                         )}
                       </td>
                       </tr>
@@ -1600,7 +1619,6 @@ const Planning = () => {
               <div className="p-6 space-y-5">
                 {/* Item Info Banner */}
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm flex items-center gap-3">
-                  <span>📦</span>
                   <span>Single item PR — <strong>{selectedItem.name}</strong></span>
                 </div>
 
@@ -1756,7 +1774,7 @@ const Planning = () => {
                       Sending...
                     </>
                   ) : (
-                    '✓ Send to Procurement'
+                    'Send to Procurement'
                   )}
                 </button>
               </div>
@@ -1836,7 +1854,7 @@ const Planning = () => {
                     }}
                     className="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-xs font-semibold transition-colors"
                   >
-                    ⚙ Plan Batches
+                    Plan Batches
                   </button>
                 </div>
               ))}
@@ -1847,7 +1865,7 @@ const Planning = () => {
               {/* All RM vs Whole Order Table */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-900">🧪 All RM vs Whole Order</span>
+                  <span className="text-sm font-bold text-gray-900">All RM vs Whole Order</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -1903,7 +1921,7 @@ const Planning = () => {
               {/* All PM vs Whole Order Table */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-900">📦 All PM vs Whole Order</span>
+                  <span className="text-sm font-bold text-gray-900">All PM vs Whole Order</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -1979,6 +1997,8 @@ const Planning = () => {
                       setSelectedSOForBatch(null);
                       setIsReadyForProduction(false);
                       setSwapSourceIndex(null);
+                      setCustomBatches([]);
+                      setExpandedBatchIndex(null);
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -1999,7 +2019,7 @@ const Planning = () => {
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      📊 Feasibility
+                      Feasibility
                     </button>
                     <button 
                       onClick={() => setActiveBatchTab('bom-editor')}
@@ -2009,7 +2029,7 @@ const Planning = () => {
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      ✎ BOM Editor
+                      BOM Editor
                     </button>
                     <button 
                       onClick={() => setActiveBatchTab('swap-add')}
@@ -2019,7 +2039,7 @@ const Planning = () => {
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      ↔ Swap / Add
+                      Swap / Add
                     </button>
                     <button 
                       onClick={() => canSendToProduction && setActiveBatchTab('batch-plan')}
@@ -2032,7 +2052,7 @@ const Planning = () => {
                       }`}
                       title={canSendToProduction ? 'Set number of batches and schedule' : 'Confirm BOM first, then set batches here'}
                     >
-                      📋 Batch Plan
+                      Batch Plan
                     </button>
                   </div>
 
@@ -2042,7 +2062,7 @@ const Planning = () => {
                       {/* Order Summary */}
                       <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
                         <p className="text-xs font-semibold text-cyan-900">
-                          📦 Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
+                          Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
                         </p>
                       </div>
 
@@ -2161,23 +2181,63 @@ const Planning = () => {
                     </div>
                   )}
 
-                  {/* Batch Plan Tab — shown after BOM is confirmed; here they set how many batches, size, schedule */}
-                  {activeBatchTab === 'batch-plan' && (
+                  {/* Batch Plan Tab — custom batch sizes + per-batch material requirements */}
+                  {activeBatchTab === 'batch-plan' && (() => {
+                    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+                    const batchTotal = customBatches.reduce((sum, b) => sum + (b.sizeKg || 0), 0);
+                    const remaining = orderTotalKg - batchTotal;
+                    const addBatch = (size?: number) => setCustomBatches([...customBatches, { sizeKg: size ?? (remaining > 0 ? remaining : 500) }]);
+                    const removeBatch = (idx: number) => {
+                      setCustomBatches(customBatches.filter((_, i) => i !== idx));
+                      if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
+                      else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
+                    };
+                    const updateBatchSize = (idx: number, val: number) => {
+                      setCustomBatches(customBatches.map((b, i) => i === idx ? { ...b, sizeKg: val } : b));
+                    };
+
+                    const getBatchRmRequirements = (batchSizeForCalc: number) => {
+                      if (activeBom?.rmLines?.length) {
+                        return activeBom.rmLines.map((line) => {
+                          const pct = line.pct_w_w ?? line.pct ?? 0;
+                          const required = (batchSizeForCalc * pct) / 100;
+                          return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, uom: line.uom ?? 'KG' };
+                        });
+                      }
+                      return bomFormula.map((item) => {
+                        const pct = item.percentage || 0;
+                        const required = (batchSizeForCalc * pct) / 100;
+                        return { name: item.name, code: item.code ?? item.id, pct, required, uom: item.unit || 'KG' };
+                      });
+                    };
+                    const getBatchPmRequirements = (batchSizeForCalc: number) => {
+                      const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+                      const unitsFraction = orderTotalKg > 0 ? batchSizeForCalc / orderTotalKg : 0;
+                      const unitsForBatch = Math.ceil(orderQtyNum * unitsFraction);
+                      if (activeBom?.pmLines?.length) {
+                        return activeBom.pmLines.map((line) => {
+                          const qtyPerUnit = (line as { qty_per_unit?: number }).qty_per_unit ?? 1;
+                          const required = unitsForBatch * qtyPerUnit;
+                          return { name: line.description ?? (line as { pm_code?: string }).pm_code ?? '—', code: (line as { pm_code?: string }).pm_code ?? '', qtyPerUnit, required, uom: 'PCS' };
+                        });
+                      }
+                      return bomPackaging.map((item) => {
+                        const qtyPerUnit = item.value ?? 1;
+                        const required = unitsForBatch * qtyPerUnit;
+                        return { name: item.name, code: item.code ?? item.id, qtyPerUnit, required, uom: 'PCS' };
+                      });
+                    };
+
+                    return (
                     <div className="space-y-6">
                       {canSendToProduction && (
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
-                          <span className="font-semibold">BOM confirmed.</span> Set number of batches, batch size, and schedule below. Then send to Production when ready.
+                          <span className="font-semibold">BOM confirmed.</span> Split the SO quantity into custom batches. Click a batch to view its required materials.
                         </div>
                       )}
+
+                      {/* Schedule & production line */}
                       <div className="grid grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-2">NUMBER OF BATCHES</label>
-                          <input type="number" value={numBatches} onChange={(e) => setNumBatches(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-2">BATCH SIZE (KG)</label>
-                          <input type="number" value={batchSizeKg} onChange={(e) => setBatchSizeKg(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                        </div>
                         <div>
                           <label className="block text-xs font-bold text-gray-700 mb-2">PLANNED START DATE</label>
                           <input type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
@@ -2191,43 +2251,167 @@ const Planning = () => {
                           </select>
                         </div>
                       </div>
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                        <p className="text-sm font-semibold text-emerald-900 flex items-center gap-2">
-                          <span>✓</span>
-                          {numBatches} batches × {batchSizeKg} KG = {(parseInt(numBatches) * parseInt(batchSizeKg)).toLocaleString()} KG → ~{(parseInt(numBatches) * 3333).toLocaleString()} units
+
+                      {/* Summary banner */}
+                      <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                        <p className="text-sm font-semibold flex items-center gap-2">
+                          <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-red-900'}>
+                            {customBatches.length} batch{customBatches.length !== 1 ? 'es' : ''} — {batchTotal.toLocaleString()} KG allocated
+                            {orderTotalKg > 0 && <> of {orderTotalKg.toLocaleString()} KG total</>}
+                          </span>
                         </p>
-                        <p className="text-xs text-emerald-700 mt-1">Exactly meets order requirement.</p>
+                        {Math.abs(remaining) >= 0.01 && (
+                          <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                            {remaining > 0 ? `${remaining.toLocaleString()} KG remaining to allocate` : `${Math.abs(remaining).toLocaleString()} KG over-allocated`}
+                          </p>
+                        )}
+                        {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated.</p>}
                       </div>
+
+                      {/* Custom batch list */}
                       <div>
-                        <h3 className="text-sm font-bold text-gray-900 mb-4">BATCH SCHEDULE</h3>
-                        <div className="grid grid-cols-10 gap-2">
-                          {Array.from({ length: parseInt(numBatches) || 0 }).map((_, idx) => (
-                            <div key={idx} className="border-2 border-emerald-200 rounded-lg p-3 text-center bg-emerald-50 hover:bg-emerald-100 cursor-pointer transition-colors">
-                              <p className="text-xs font-bold text-emerald-700">B-{String(idx + 1).padStart(2, '0')}</p>
-                              <p className="text-xs text-emerald-600 mt-1">{batchSizeKg} KG</p>
-                              <p className="text-xs text-emerald-600 font-semibold mt-1">Planned</p>
-                            </div>
-                          ))}
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
+                          <button
+                            type="button"
+                            onClick={() => addBatch()}
+                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors"
+                          >
+                            + Add Batch
+                          </button>
+                        </div>
+
+                        {customBatches.length === 0 && (
+                          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
+                            <p className="text-sm text-gray-500">No batches defined. Click "+ Add Batch" to split the SO quantity.</p>
+                            {orderTotalKg > 0 && (
+                              <button type="button" onClick={() => addBatch(orderTotalKg)} className="mt-3 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700">
+                                Create single batch ({orderTotalKg.toLocaleString()} KG)
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="space-y-3">
+                          {customBatches.map((batch, idx) => {
+                            const isExpanded = expandedBatchIndex === idx;
+                            const rmReqs = isExpanded ? getBatchRmRequirements(batch.sizeKg) : [];
+                            const pmReqs = isExpanded ? getBatchPmRequirements(batch.sizeKg) : [];
+                            return (
+                              <div key={idx} className={`border-2 rounded-lg overflow-hidden transition-colors ${isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                                <div className="flex items-center gap-3 p-4">
+                                  <div
+                                    className="flex-1 flex items-center gap-4 cursor-pointer"
+                                    onClick={() => setExpandedBatchIndex(isExpanded ? null : idx)}
+                                  >
+                                    <span className="text-sm font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-md">
+                                      B-{String(idx + 1).padStart(2, '0')}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      {isExpanded ? '▼' : '▶'} {isExpanded ? 'Hide materials' : 'View required materials'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      value={batch.sizeKg}
+                                      onChange={(e) => updateBatchSize(idx, parseFloat(e.target.value) || 0)}
+                                      className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                      min={0}
+                                    />
+                                    <span className="text-xs font-semibold text-gray-600">KG</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeBatch(idx)}
+                                      className="ml-2 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Per-batch material requirements */}
+                                {isExpanded && (
+                                  <div className="border-t border-gray-200 p-4 bg-white space-y-4">
+                                    {rmReqs.length > 0 && (
+                                      <div>
+                                        <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(idx + 1).padStart(2, '0')} ({batch.sizeKg.toLocaleString()} KG)</h4>
+                                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                          <table className="w-full text-xs">
+                                            <thead><tr className="bg-gray-50 border-b border-gray-200">
+                                              <th className="px-3 py-1.5 text-left font-semibold text-gray-600">RM ITEM</th>
+                                              <th className="px-3 py-1.5 text-right font-semibold text-gray-600">% W/W</th>
+                                              <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                            </tr></thead>
+                                            <tbody>
+                                              {rmReqs.map((r, ri) => (
+                                                <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-3 py-1.5 text-gray-900 font-medium">{r.name} <span className="text-gray-400 text-xs">({r.code})</span></td>
+                                                  <td className="px-3 py-1.5 text-right text-gray-600">{r.pct.toFixed(2)}%</td>
+                                                  <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{r.required.toFixed(2)} {r.uom}</td>
+                                                </tr>
+                                              ))}
+                                              <tr className="bg-teal-50 border-t border-teal-200">
+                                                <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
+                                                <td className="px-3 py-1.5 text-right font-bold text-teal-800">{rmReqs.reduce((s, r) => s + r.required, 0).toFixed(2)} KG</td>
+                                              </tr>
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {pmReqs.length > 0 && (
+                                      <div>
+                                        <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(idx + 1).padStart(2, '0')}</h4>
+                                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                          <table className="w-full text-xs">
+                                            <thead><tr className="bg-gray-50 border-b border-gray-200">
+                                              <th className="px-3 py-1.5 text-left font-semibold text-gray-600">PM ITEM</th>
+                                              <th className="px-3 py-1.5 text-right font-semibold text-gray-600">QTY/UNIT</th>
+                                              <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                            </tr></thead>
+                                            <tbody>
+                                              {pmReqs.map((p, pi) => (
+                                                <tr key={pi} className={pi % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-3 py-1.5 text-gray-900 font-medium">{p.name} <span className="text-gray-400 text-xs">({p.code})</span></td>
+                                                  <td className="px-3 py-1.5 text-right text-gray-600">{p.qtyPerUnit}</td>
+                                                  <td className="px-3 py-1.5 text-right text-orange-700 font-bold">{p.required.toLocaleString()} {p.uom}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {rmReqs.length === 0 && pmReqs.length === 0 && (
+                                      <p className="text-xs text-gray-500 text-center py-2">No BOM data available to calculate materials.</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                       <button type="button" onClick={handleSaveBatchPlan} className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700">
-                        💾 Save Batch Plan
+                        Save Batch Plan
                       </button>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* BOM Editor Tab */}
                   {activeBatchTab === 'bom-editor' && (
                     <div className="space-y-6">
                       <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 flex items-start gap-3">
-                        <span className="text-yellow-600 text-lg mt-0.5">⚠</span>
+                        <span className="text-yellow-600 text-lg mt-0.5">!</span>
                         <div>
                           <p className="text-sm font-semibold text-yellow-900">Editing BOM for {selectedSOForBatch.productName}. Make all BOM updates here (add/swap materials). When done, click <strong>Confirm BOM</strong> below — then use the <strong>Batch Plan</strong> tab to set how many batches and schedule.</p>
                         </div>
                       </div>
                       <div>
                         <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                          <span className="text-emerald-600">✓</span>FORMULA BOM ({bomFormula.length} RM ITEMS)
+                          FORMULA BOM ({bomFormula.length} RM ITEMS)
                         </h3>
                         <div className="space-y-3 bg-gray-50 rounded-lg p-4">
                           {bomFormula.map((item, idx) => (
@@ -2250,7 +2434,7 @@ const Planning = () => {
                       </div>
                       <div>
                         <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                          <span className="text-orange-500">●</span>PACK BOM ({bomPackaging.length} PM ITEMS)
+                          PACK BOM ({bomPackaging.length} PM ITEMS)
                         </h3>
                         <div className="space-y-3 bg-gray-50 rounded-lg p-4">
                           {bomPackaging.map((item, idx) => (
@@ -2358,21 +2542,21 @@ const Planning = () => {
                 {/* Modal Footer */}
                 <div className="border-t border-gray-200 p-6 flex gap-3 justify-between">
                   <button
-                    onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setIsReadyForProduction(false); setSwapSourceIndex(null); }}
+                    onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
                   >
                     Cancel
                   </button>
                   <div className="flex gap-2">
                     <button onClick={() => handleRaisePRFromBatch()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-yellow-500 hover:bg-yellow-600 transition-colors">
-                      🔴 Raise PR for Shortages
+                      Raise PR for Shortages
                     </button>
                     <button onClick={() => handleConfirmBOM()} disabled={canSendToProduction} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                      {canSendToProduction ? '✓ BOM Confirmed' : '✓ Confirm BOM'}
+                      {canSendToProduction ? 'BOM Confirmed' : 'Confirm BOM'}
                     </button>
                     {canSendToProduction && (
                       <button onClick={() => handleSendToProduction()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                        🚀 Send to Production
+                        Send to Production
                       </button>
                     )}
                   </div>
@@ -2391,7 +2575,7 @@ const Planning = () => {
             </div>
             <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm flex items-start gap-3">
-                <span className="text-yellow-500 mt-0.5">ℹ️</span>
+                <span className="text-yellow-500 mt-0.5">i</span>
                 <span>
                   Items are linked to Raw Materials, Pack Materials, or Products (FG). You can change type, pick another item from the dropdowns, edit unit and quantity, add lines, or remove lines. Only lines with an item selected are sent.
                   {prOmittedCount > 0 && (
@@ -2399,7 +2583,7 @@ const Planning = () => {
                       {prOmittedCount} BOM item{prOmittedCount !== 1 ? 's' : ''} were omitted (not in RM/PM masters). You can add them manually via “Add line” and select from masters.
                     </span>
                   )}
-                  <span className="block mt-2 text-gray-600 text-xs">On submit, the request is saved to the backend (procurement_requests). You’ll see it in Planning tab stats and in Procurement → Requests.</span>
+                  <span className="block mt-2 text-gray-600 text-xs">On submit, the request is saved to the backend (procurement_requests). You’ll see it in Planning tab stats and in Procurement - Requests.</span>
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -2540,7 +2724,7 @@ const Planning = () => {
                               <input type="text" value={item.line_notes ?? ''} onChange={(e) => updatePrItem(idx, { line_notes: e.target.value })} placeholder="Line notes" className="w-full min-w-[6rem] px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500" />
                             </td>
                             <td className="px-2 py-2">
-                              <button type="button" onClick={() => removePrLine(idx)} className="text-red-600 hover:text-red-800 text-xs font-medium" title="Remove line">✕</button>
+                              <button type="button" onClick={() => removePrLine(idx)} className="text-red-600 hover:text-red-800 text-xs font-medium" title="Remove line">X</button>
                             </td>
                           </tr>
                         ))}
@@ -2556,7 +2740,7 @@ const Planning = () => {
             <div className="border-t border-gray-200 p-6 flex gap-3 justify-end">
               <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-transparent hover:bg-gray-100 transition-colors disabled:opacity-50" disabled={prSending}>Cancel</button>
               <button onClick={handleSendToProcurement} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2" disabled={prSending}>
-                {prSending ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Sending...</>) : '✓ Send to Procurement'}
+                {prSending ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Sending...</>) : 'Send to Procurement'}
               </button>
             </div>
           </div>

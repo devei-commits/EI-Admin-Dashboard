@@ -29,6 +29,9 @@ export interface WarehouseLocationDTO {
   id: number;
   code: string;
   name: string;
+  locationType: 'warehouse' | 'production';
+  areaId: number | null;
+  areaName: string | null;
   zoneLabel: string | null;
   icon: string | null;
   areaSqm: number | null;
@@ -37,11 +40,12 @@ export interface WarehouseLocationDTO {
   racks: WarehouseRackDTO[];
 }
 
-export async function fetchWarehouseLocations(): Promise<
+export async function fetchWarehouseLocations(locationType?: 'warehouse' | 'production'): Promise<
   ServiceResult<WarehouseLocationDTO[]>
 > {
   try {
-    const res = await api.get<WarehouseLocationDTO[]>('/api/v1/warehouse-locations');
+    const qs = locationType ? `?location_type=${locationType}` : '';
+    const res = await api.get<WarehouseLocationDTO[]>(`/api/v1/warehouse-locations${qs}`);
     const data = res?.data ?? res;
     const list = Array.isArray(data) ? data : [];
     return { data: list, error: null, success: true };

@@ -553,7 +553,7 @@ const OutboundDashboard = () => {
 
               {selectedMRN.notes && (
                 <div className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
-                  📋 {selectedMRN.notes}
+                  {selectedMRN.notes}
                 </div>
               )}
             </div>

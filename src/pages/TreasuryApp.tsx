@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import logoFull from '../assets/logo/eilogofull.svg';
 import { useGlobalState } from '../context/GlobalStateContext';
 
@@ -275,7 +275,7 @@ const TreasuryApp = () => {
                   {settings.autoRefresh && (
                     <>
                       <span className="text-gray-300 ml-2">•</span>
-                      <span className="text-xs text-green-600 ml-2 font-medium">🔄 Auto-refresh: every 2 min</span>
+                      <span className="text-xs text-green-600 ml-2 font-medium">Auto-refresh: every 2 min</span>
                       <span className="text-xs text-gray-500 ml-1">Last: {lastRefreshTime.toLocaleTimeString()}</span>
                     </>
                   )}
@@ -392,7 +392,7 @@ const TreasuryApp = () => {
                   <div className="mt-4 h-2 bg-red-300 rounded-full overflow-hidden">
                     <div className="h-full bg-red-500 w-3/4"></div>
                   </div>
-                  <p className="text-xs text-red-600 font-medium mt-3">↑ 12% from last month</p>
+                  <p className="text-xs text-red-600 font-medium mt-3">+12% from last month</p>
                 </div>
 
                 <div className="bg-blue-50 rounded-xl shadow-md border border-blue-200 p-6 hover:shadow-lg transition-all duration-300">
@@ -411,7 +411,7 @@ const TreasuryApp = () => {
                   <div className="mt-4 h-2 bg-blue-300 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 w-1/2"></div>
                   </div>
-                  <p className="text-xs text-blue-600 font-medium mt-3">↓ 5% from last month</p>
+                  <p className="text-xs text-blue-600 font-medium mt-3">-5% from last month</p>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl shadow-md border border-gray-200 p-6 hover:shadow-lg transition-all duration-300">
@@ -617,7 +617,7 @@ const TreasuryApp = () => {
                           }}
                           className="flex-1 px-4 py-3 bg-emerald-600 text-white text-sm font-bold rounded-lg transition-all hover:shadow-lg"
                         >
-                          ✓ Approve Payment
+                          Approve Payment
                         </button>
                         <button
                           onClick={() => {
@@ -626,7 +626,7 @@ const TreasuryApp = () => {
                           }}
                           className="flex-1 px-4 py-3 bg-red-100 hover:bg-red-200 text-red-700 text-sm font-bold rounded-lg border border-red-300 transition-colors"
                         >
-                          ✕ Reject
+                          Reject
                         </button>
                       </div>
                     )}
@@ -743,7 +743,7 @@ const TreasuryApp = () => {
                                   onClick={() => issuePO(po)}
                                   className="mt-3 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition"
                                 >
-                                  ✓ Approve & Issue PO
+                                  Approve & Issue PO
                                 </button>
                               </div>
                             </div>
@@ -757,7 +757,7 @@ const TreasuryApp = () => {
                 {/* Planned lines waiting to be converted to Draft POs */}
                 {plannedPOs.length > 0 && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                    <h4 className="font-semibold text-blue-800 mb-2 text-sm">📋 PO Planned Stage — {plannedPOs.length} lines pending Draft conversion</h4>
+                    <h4 className="font-semibold text-blue-800 mb-2 text-sm">PO Planned Stage — {plannedPOs.length} lines pending Draft conversion</h4>
                     <p className="text-xs text-blue-600">These planned lines from Procurement are waiting to be grouped into Draft POs. Visit Procurement tab in Sales & Purchase to manage them.</p>
                   </div>
                 )}

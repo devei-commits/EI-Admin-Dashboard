@@ -1007,7 +1007,7 @@ const Procurement: React.FC = () => {
     updateProcurementState((current) => ({
       requests: current.requests.map((req) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
     }));
-    addToast('success', `${requestCode} marked delivered at WH. GRN created — see Warehouse → Inbound.`);
+    addToast('success', `${requestCode} marked delivered at WH. GRN created — see Warehouse > Inbound.`);
   };
 
   const updateQuoteStatus = (quoteId: string, status: QuoteStatus) => {
@@ -1491,7 +1491,7 @@ const Procurement: React.FC = () => {
           targetRequest.type === 'RM'
             ? (40 + index * 10) * (640 + index * 25)
             : Math.round((20000 + index * 5000) * (1.95 + index * 0.2)),
-        vsPlanned: index % 2 === 0 ? '▼2.1%' : '▲1.2%',
+        vsPlanned: index % 2 === 0 ? '-2.1%' : '+1.2%',
       })),
     };
 
@@ -1801,10 +1801,10 @@ const Procurement: React.FC = () => {
                     {/* KPI strip */}
                     <div className="flex flex-wrap gap-3">
                       {[
-                        { label: 'NEW REQUESTS', value: requests.filter(r => r.status === 'New').length, sub: 'Awaiting action ↑', color: 'text-yellow-600' },
+                        { label: 'NEW REQUESTS', value: requests.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
                         { label: 'RM — RAW MATERIALS', value: rmRequests.length, sub: `${rmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-cyan-600', badge: 'RM' },
                         { label: 'PM — PACKAGING MATERIALS', value: pmRequests.length, sub: `${pmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-violet-600', badge: 'PM' },
-                        { label: 'ACTIVE POS', value: requests.filter(r => r.status === 'PO Draft' || r.status === 'PO Released').length, sub: 'In pipeline ↑', color: 'text-emerald-600' },
+                        { label: 'ACTIVE POS', value: requests.filter(r => r.status === 'PO Draft' || r.status === 'PO Released').length, sub: 'In pipeline', color: 'text-emerald-600' },
                         { label: 'DELIVERY PENDING GRN', value: requests.filter(r => r.status === 'Delivery Pending').length, sub: null, color: 'text-rose-600' },
                         { label: 'STOCK CHECKS ACTIVE', value: requests.filter(r => r.priority !== 'Low').length, sub: null, color: 'text-yellow-600' },
                         { label: 'PO VALUE (ACTIVE)', value: `₹${activePOValue.toLocaleString('en-IN')}`, sub: null, color: 'text-cyan-600' },
@@ -1826,7 +1826,7 @@ const Procurement: React.FC = () => {
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
                       <div className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                         <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-yellow-50 to-white">
-                          <h3 className="font-bold text-slate-900">⚡ Actions Required</h3>
+                          <h3 className="font-bold text-slate-900">Actions Required</h3>
                         </div>
                         <div className="divide-y divide-slate-100">
                           {activeRequests.map(req => {
@@ -1845,7 +1845,7 @@ const Procurement: React.FC = () => {
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
                                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${requestTypeClass[req.type]}`}>{req.type}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${priorityClass[req.priority]}`}>● {req.priority}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${priorityClass[req.priority]}`}>{req.priority}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
@@ -1867,7 +1867,7 @@ const Procurement: React.FC = () => {
 
                       <div className="rounded-xl border border-orange-200 bg-white shadow-sm overflow-hidden">
                         <div className="px-5 py-3 border-b border-orange-200 bg-linear-to-r from-orange-50 to-white">
-                          <h3 className="font-bold text-slate-900">🔥 PO Pipeline</h3>
+                          <h3 className="font-bold text-slate-900">PO Pipeline</h3>
                         </div>
                         <div className="divide-y divide-slate-100">
                           {purchaseOrders.map(po => (
@@ -1970,13 +1970,13 @@ const Procurement: React.FC = () => {
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
                       <h3 className="text-base font-bold text-slate-900">Requests from Planning (backend)</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning → Raise Procurement Request. Data from API.</p>
+                      <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning &gt; Raise Procurement Request. Data from API.</p>
                     </div>
                     <div className="p-4 overflow-x-auto">
                       {isProcurementDataLoading ? (
                         <p className="text-sm text-slate-500 py-4">Loading procurement data…</p>
                       ) : backendPrs.length === 0 ? (
-                        <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning → PRs Extracted to see them here.</p>
+                        <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning &gt; PRs Extracted to see them here.</p>
                       ) : (
                         <table className="w-full text-sm border-collapse">
                           <thead>
@@ -2013,7 +2013,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                          <span className="text-orange-600 text-lg">📋</span>
+                          <span className="text-orange-600 text-lg font-bold">TR</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Requests</p>
@@ -2023,7 +2023,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-cyan-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
-                          <span className="text-cyan-600 text-lg">🧪</span>
+                          <span className="text-cyan-600 text-lg font-bold">RM</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">RM Requests</p>
@@ -2033,7 +2033,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-violet-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
-                          <span className="text-violet-600 text-lg">📦</span>
+                          <span className="text-violet-600 text-lg font-bold">PM</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PM Requests</p>
@@ -2043,7 +2043,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-red-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                          <span className="text-red-600 text-lg">⚠️</span>
+                          <span className="text-red-600 text-lg font-bold">!</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">New / Unactioned</p>
@@ -2053,7 +2053,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-yellow-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
-                          <span className="text-yellow-600 text-lg">📝</span>
+                          <span className="text-yellow-600 text-lg font-bold">PO</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Draft PO Stage</p>
@@ -2063,7 +2063,7 @@ const Procurement: React.FC = () => {
                     <div className="bg-white rounded-xl border border-emerald-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                          <span className="text-emerald-600 text-lg">✅</span>
+                          <span className="text-emerald-600 text-lg font-bold">OK</span>
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PO Released</p>
@@ -2263,7 +2263,7 @@ const Procurement: React.FC = () => {
                                 {/* Notes Section */}
                                 <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                   <p className="text-xs text-slate-600">
-                                    <span className="font-semibold text-slate-700">📝 Notes:</span> {req.priority === 'High' ? 'Currently replenishment target for RM. Batch 1M2 production run from Feb 28.' : 'Q2 faceroll production. Need 100% tubes by batch date. Estimated Nov batch or DTC.'}
+                                    <span className="font-semibold text-slate-700">Notes:</span> {req.priority === 'High' ? 'Currently replenishment target for RM. Batch 1M2 production run from Feb 28.' : 'Q2 faceroll production. Need 100% tubes by batch date. Estimated Nov batch or DTC.'}
                                   </p>
                                 </div>
                               </div>
@@ -2275,7 +2275,7 @@ const Procurement: React.FC = () => {
                                     onClick={() => setSelectedRequest(req)}
                                     className="px-3 py-1.5 rounded-lg border border-blue-400 text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-all"
                                   >
-                                    👁 View
+                                    View
                                   </button>
                                   <button
                                     onClick={() => {
@@ -2284,7 +2284,7 @@ const Procurement: React.FC = () => {
                                     }}
                                     className="px-3 py-1.5 rounded-lg border border-cyan-400 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition-all"
                                   >
-                                    📊 Stock Check
+                                    Stock Check
                                   </button>
                                   <button
                                     onClick={() => {
@@ -2292,7 +2292,7 @@ const Procurement: React.FC = () => {
                                     }}
                                     className="px-3 py-1.5 rounded-lg border border-violet-400 text-violet-700 text-xs font-semibold hover:bg-violet-50 transition-all"
                                   >
-                                    🔄 Priority
+                                    Priority
                                   </button>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -2300,7 +2300,7 @@ const Procurement: React.FC = () => {
                                     onClick={() => applyRouteState('Procurement', 'Quotations')}
                                     className="px-3 py-1.5 rounded-lg border border-emerald-400 text-emerald-700 text-xs font-semibold hover:bg-emerald-50 transition-all"
                                   >
-                                    💰 View Quotes
+                                    View Quotes
                                   </button>
                                   {req.status === 'PO Draft' && (() => {
                                     const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
@@ -2315,7 +2315,7 @@ const Procurement: React.FC = () => {
                                         }}
                                         className="px-4 py-1.5 rounded-lg bg-amber-400 text-slate-900 text-xs font-bold hover:bg-amber-500 shadow-md transition-all"
                                       >
-                                        ✅ Release PO
+                                        Release PO
                                       </button>
                                     );
                                   })()}
@@ -2410,7 +2410,7 @@ const Procurement: React.FC = () => {
                                       ₹{line.totalValue.toLocaleString('en-IN')}
                                     </td>
                                     <td className={`px-4 py-3 text-right font-bold ${
-                                      line.vsPlanned.includes('▼') ? 'text-emerald-600' : 'text-rose-600'
+                                      line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
                                     }`}>
                                       {line.vsPlanned}
                                     </td>
@@ -2425,21 +2425,21 @@ const Procurement: React.FC = () => {
                             <div className="flex items-center justify-between text-xs text-slate-700">
                               <div className="flex items-center gap-6">
                                 <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">📦 Lead time:</span>
+                                  <span className="text-slate-500">Lead time:</span>
                                   <span className="font-semibold">{quote.leadTimeDays} days</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">💳 Terms:</span>
+                                  <span className="text-slate-500">Terms:</span>
                                   <span className="font-semibold">{quote.terms}</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">⏰ Valid till:</span>
+                                  <span className="text-slate-500">Valid till:</span>
                                   <span className="font-semibold">{quote.validTill}</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">⭐ Vendor:</span>
+                                  <span className="text-slate-500">Vendor:</span>
                                   <span className="font-semibold text-amber-600">
-                                    {'★'.repeat(Math.floor(quote.rating))} {quote.rating}
+                                    {quote.rating}
                                   </span>
                                 </span>
                               </div>
@@ -2447,7 +2447,7 @@ const Procurement: React.FC = () => {
                                 onClick={() => setExpandedQuoteId(isExpanded ? null : quote.id)}
                                 className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors"
                               >
-                                {isExpanded ? '▲ Hide Details' : '▼ View Details'}
+                                {isExpanded ? 'Hide Details' : 'View Details'}
                               </button>
                             </div>
                           </div>
@@ -2459,7 +2459,7 @@ const Procurement: React.FC = () => {
                                 {/* Note */}
                                 {quote.note && (
                                   <div className="p-3 rounded-lg bg-white border border-cyan-200">
-                                    <div className="text-xs font-semibold text-slate-600 mb-1">💬 Additional Notes</div>
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Additional Notes</div>
                                     <div className="text-sm text-slate-700">{quote.note}</div>
                                   </div>
                                 )}
@@ -2467,7 +2467,7 @@ const Procurement: React.FC = () => {
                                 {/* File Info */}
                                 <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-500">📄 Attached File:</span>
+                                    <span className="text-xs text-slate-500">Attached File:</span>
                                     <span className="text-sm font-semibold text-slate-700">{quote.fileName}</span>
                                   </div>
                                   <button className="px-3 py-1 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-medium">
@@ -2488,7 +2488,7 @@ const Procurement: React.FC = () => {
                               }}
                               className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-medium transition-colors"
                             >
-                              🗑 Delete
+                              Delete
                             </button>
                             <div className="flex items-center gap-2">
                               <button
@@ -2499,13 +2499,13 @@ const Procurement: React.FC = () => {
                                     : 'border border-emerald-400 text-emerald-700 hover:bg-emerald-50'
                                 }`}
                               >
-                                {quote.status === 'Confirmed' ? '✕ Mark Not Selected' : '✓ Confirm Quote'}
+                                {quote.status === 'Confirmed' ? 'Mark Not Selected' : 'Confirm Quote'}
                               </button>
                               <button
                                 onClick={() => createDraftPO(quote.id)}
                                 className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 font-bold text-sm hover:bg-amber-500 transition-colors"
                               >
-                                Create Draft PO →
+                                Create Draft PO
                               </button>
                             </div>
                           </div>
@@ -2584,7 +2584,7 @@ const Procurement: React.FC = () => {
                             onClick={() => { setMainTab('Procurement'); setSideSection('Quotations'); setSelectedRequest(req); }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
                           >
-                            Create Draft PO from Quotations →
+                            Create Draft PO from Quotations
                           </button>
                         </article>
                       ))}
@@ -2669,7 +2669,7 @@ const Procurement: React.FC = () => {
                               <p><strong>Payment Terms</strong> {dpo.paymentTerms}</p>
                               <p><strong>Expected Delivery</strong> {new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
                               <p><strong>Delivery Address</strong> {dpo.deliveryAddress}</p>
-                              <p><strong>Vendor Rating</strong> {'⭐'.repeat(Math.floor(dpo.vendorRating))} {dpo.vendorRating}</p>
+                              <p><strong>Vendor Rating</strong> {dpo.vendorRating}</p>
                             </div>
                           </div>
 
@@ -2678,7 +2678,7 @@ const Procurement: React.FC = () => {
                             <div className={`px-5 py-2 text-xs flex items-center gap-2 ${
                               dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
                             }`}>
-                              <span>{dpo.alertType === 'warning' ? '⚠️' : '✓'}</span>
+                              <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
                               <span>{dpo.alertMessage}</span>
                             </div>
                           )}
@@ -2689,13 +2689,13 @@ const Procurement: React.FC = () => {
                               onClick={() => setSelectedDraftPO(dpo)}
                               className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
                             >
-                              ➤ View PO
+                              View PO
                             </button>
                             <button
                               onClick={() => setEditDraftPOTarget(dpo)}
                               className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                             >
-                              — Edit
+                              Edit
                             </button>
                             {dpo.status === 'Pending Approval' && (
                               <button
@@ -2704,7 +2704,7 @@ const Procurement: React.FC = () => {
                                 }}
                                 className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
                               >
-                                ✓ Approve
+                                Approve
                               </button>
                             )}
                             {dpo.status === 'Approved' && (
@@ -2713,13 +2713,13 @@ const Procurement: React.FC = () => {
                                   onClick={() => openReleasePOModal(dpo.id)}
                                   className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
                                 >
-                                  🚀 Release PO to Vendor
+                                  Release PO to Vendor
                                 </button>
                                 <button
                                   onClick={() => splitDraftPO(dpo.id)}
                                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50 transition"
                                 >
-                                  ✂ Split PO
+                                  Split PO
                                 </button>
                               </>
                             )}
@@ -2951,7 +2951,7 @@ const Procurement: React.FC = () => {
                                     onClick={() => openIssuedPODetail(record)}
                                     className="px-3 py-1 rounded-full border border-slate-300 bg-white text-[10px] text-slate-800 hover:bg-slate-50"
                                   >
-                                    Track →
+                                    Track
                                   </button>
                                 </td>
                               </tr>
@@ -3248,7 +3248,7 @@ const Procurement: React.FC = () => {
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                       <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                         <div className="flex items-center gap-2">
-                          <span className="text-emerald-500 text-lg">◆</span>
+                          <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
                           <div>
                             <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN list (warehouse)</p>
                             <p className="text-[11px] text-slate-500">Read-only progress from backend</p>
@@ -3672,7 +3672,7 @@ const Procurement: React.FC = () => {
                           if (row.requestStatus === 'New') actionLabel = 'Quote';
                           else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
                           else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
-                          else if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') actionLabel = 'PO →';
+                          else if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') actionLabel = 'PO';
 
                           const handleActionClick = () => {
                             if (!actionLabel) return;
@@ -3964,7 +3964,7 @@ const Procurement: React.FC = () => {
                 <div>
                   <p className="text-xs text-slate-500 font-mono mb-1">{po.requestCode ?? po.id}</p>
                   <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
-                    🔥 {po.poNumber} – {po.vendorName}
+                    {po.poNumber} – {po.vendorName}
                   </h2>
                   <div className="mt-2">
                     <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${poStatusColor2[po.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
@@ -4040,7 +4040,7 @@ const Procurement: React.FC = () => {
                 )}
                 {po.backendPoId && timelineSteps.length > 0 && (
                   <div>
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-3">Status Timeline (PO Released → Advance Paid → Vendor Confirmed → Shipped → Delivered → Under GRN → GRN Complete)</p>
+                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-3">Status Timeline (PO Released &gt; Advance Paid &gt; Vendor Confirmed &gt; Shipped &gt; Delivered &gt; Under GRN &gt; GRN Complete)</p>
                     <div className="relative pl-12 space-y-6">
                       <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
                       {timelineSteps.map((step, idx) => (
@@ -4048,7 +4048,7 @@ const Procurement: React.FC = () => {
                           <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${
                             step.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-300'
                           }`}>
-                            {step.done ? '✓' : ''}
+                            {step.done ? 'Done' : ''}
                           </div>
                           <div className="pb-1">
                             <p className={`text-sm font-bold ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>{step.stage}</p>
@@ -4263,7 +4263,7 @@ const Procurement: React.FC = () => {
                 <div>
                   <p className="text-xs text-slate-500 font-mono mb-1">{dpo.requestCode}</p>
                   <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
-                    📄 {dpo.dpoNumber}
+                    {dpo.dpoNumber}
                   </h2>
                   <div className="mt-2">
                     <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${
@@ -4307,7 +4307,7 @@ const Procurement: React.FC = () => {
                   <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${
                     dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   }`}>
-                    <span>{dpo.alertType === 'warning' ? '⚠️' : '✓'}</span>
+                    <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
                     <span>{dpo.alertMessage}</span>
                   </div>
                 )}
@@ -4359,7 +4359,7 @@ const Procurement: React.FC = () => {
                   onClick={() => setEditDraftPOTarget(dpo)}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                 >
-                  — Edit
+                  Edit
                 </button>
                 {dpo.status === 'Pending Approval' && (
                   <button
@@ -4369,7 +4369,7 @@ const Procurement: React.FC = () => {
                     }}
                     className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
                   >
-                    ✓ Approve
+                    Approve
                   </button>
                 )}
                 {dpo.status === 'Approved' && (
@@ -4380,13 +4380,13 @@ const Procurement: React.FC = () => {
                       }}
                       className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
                     >
-                      🚀 Release PO to Vendor
+                      Release PO to Vendor
                     </button>
                     <button
                       onClick={() => splitDraftPO(dpo.id)}
                       className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                     >
-                      ✂ Split PO
+                      Split PO
                     </button>
                   </>
                 )}
@@ -4463,7 +4463,7 @@ const Procurement: React.FC = () => {
                   onClick={submitSplitPO}
                   className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 text-sm font-bold hover:bg-amber-500 transition"
                 >
-                  ✂ Split PO
+                  Split PO
                 </button>
                 <button
                   onClick={closeSplitPOModal}
@@ -4553,7 +4553,7 @@ const Procurement: React.FC = () => {
                 onClick={submitReleasePO}
                 className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
               >
-                🚀 Release PO
+                Release PO
               </button>
               <button
                 onClick={closeReleasePOModal}
@@ -4827,7 +4827,7 @@ const Procurement: React.FC = () => {
                     {/* Alert Message */}
                     <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
                       <div className="flex items-start gap-2">
-                        <span className="text-amber-600 text-sm">⚠️</span>
+                        <span className="text-amber-600 text-sm font-bold">!</span>
                         <p className="text-amber-800 text-xs leading-relaxed">
                           Quarterly replenishment for Q2 sunscreen batch plan. SOH critically low for UV-001.
                         </p>
@@ -4845,7 +4845,7 @@ const Procurement: React.FC = () => {
                   }}
                   className="px-4 py-2 rounded-lg border border-blue-300 text-slate-700 text-sm font-semibold hover:bg-blue-50 transition"
                 >
-                  ✏️ Edit Request
+                  Edit Request
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -4857,7 +4857,7 @@ const Procurement: React.FC = () => {
                       }}
                       className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
                     >
-                      Draft PO →
+                      Draft PO
                     </button>
                   )}
 
@@ -5407,7 +5407,7 @@ const Procurement: React.FC = () => {
                 ))}
 
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                  💬 All {req.description ?? 'requested'} stocks verified. Batch details confirmed with COA on file.
+                  All {req.description ?? 'requested'} stocks verified. Batch details confirmed with COA on file.
                 </div>
               </div>
 

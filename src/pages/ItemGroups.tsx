@@ -19,7 +19,7 @@ const EMPTY_FORM = {
   type: 'RM' as 'RM' | 'PM',
   primaryItemId: '',
   code: '',
-  icon: '🔗',
+  icon: '',
   description: '',
   rationale: '',
 };
@@ -207,7 +207,7 @@ const ItemGroups: React.FC = () => {
           <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl">🔗</span>
+              <span className="text-3xl"></span>
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">Item Configuration</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Item Groups</h1>
@@ -283,19 +283,19 @@ const ItemGroups: React.FC = () => {
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${ig.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600'}`}>
-                      {ig.status === 'Active' ? '✓ ' : ''}{ig.status}
+                      {ig.status}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
-                        <span className="text-base leading-none">✅</span>
+                        <span className="text-base leading-none"></span>
                         <span className="text-xs font-semibold text-gray-600 uppercase">APPROVED MEMBERS ({ig.approvedMembers.length})</span>
                       </div>
                       <ul className="space-y-1">
                         {ig.approvedMembers.map(member => (
                           <li key={member.id} className="flex items-center gap-2 text-xs">
-                            <span className="text-yellow-500">★</span>
+                            <span className="text-yellow-500"></span>
                             <span className="text-gray-800 font-medium">{member.name}</span>
                           </li>
                         ))}
@@ -303,7 +303,7 @@ const ItemGroups: React.FC = () => {
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
-                        <span className="text-base leading-none">🔄</span>
+                        <span className="text-base leading-none"></span>
                         <span className="text-xs font-semibold text-gray-600 uppercase">PROPOSED ALTERNATES ({ig.proposedAlternates.length})</span>
                       </div>
                       {ig.proposedAlternates.length === 0 ? (
@@ -322,7 +322,7 @@ const ItemGroups: React.FC = () => {
                   </div>
                   {ig.notes && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs text-gray-500"><span className="font-semibold text-gray-600">💡 </span>{ig.notes}</p>
+                      <p className="text-xs text-gray-500"><span className="font-semibold text-gray-600"></span>{ig.notes}</p>
                     </div>
                   )}
                 </div>
@@ -464,7 +464,7 @@ const ItemGroups: React.FC = () => {
                       {selectedGroup.approvedMembers.map((member, idx) => (
                         <div key={member.id} className="border border-gray-200 rounded-xl p-3.5">
                           <div className="flex items-center gap-2 mb-1">
-                            {idx === 0 && <span className="text-[10px] font-bold text-teal-600">★ Primary</span>}
+                            {idx === 0 && <span className="text-[10px] font-bold text-teal-600">Primary</span>}
                             <span className="font-mono text-[10px] font-bold text-teal-600">{member.code}</span>
                           </div>
                           <p className="text-sm font-semibold text-gray-900">{member.name}</p>
@@ -489,7 +489,7 @@ const ItemGroups: React.FC = () => {
                   )}
                   {selectedGroup.notes && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                      <p className="text-sm text-emerald-800"><span className="font-bold">💡 Rationale:</span> {selectedGroup.notes}</p>
+                      <p className="text-sm text-emerald-800"><span className="font-bold">Rationale:</span> {selectedGroup.notes}</p>
                     </div>
                   )}
                 </>
@@ -553,7 +553,7 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Icon (Emoji)</label>
-                  <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="🔗" className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500" />
+                  <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="" className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500" />
                 </div>
               </div>
               <div>

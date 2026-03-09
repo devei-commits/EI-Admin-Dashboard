@@ -41,6 +41,8 @@ const ItemsList: React.FC = () => {
   const [currency, setCurrency] = useState('INR');
   const [priceTiers, setPriceTiers] = useState<PriceTierRow[]>(EMPTY_TIERS);
   const [submittingTiers, setSubmittingTiers] = useState(false);
+  const [addPriceListMode, setAddPriceListMode] = useState(false);
+  const [itemSearchQuery, setItemSearchQuery] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -89,8 +91,36 @@ const ItemsList: React.FC = () => {
     setSelectedVendor(null);
     setCurrency('INR');
     setPriceTiers(EMPTY_TIERS);
+    setAddPriceListMode(false);
+    setItemSearchQuery('');
     setShowAddTierModal(true);
   };
+
+  const openAddPriceList = () => {
+    setTierTarget(null);
+    setResolvedItemsListId(null);
+    setSelectedVendor(null);
+    setCurrency('INR');
+    setPriceTiers(EMPTY_TIERS);
+    setAddPriceListMode(true);
+    setItemSearchQuery('');
+    setShowAddTierModal(true);
+  };
+
+  const selectItemForPriceList = (item: PriceListItemPage) => {
+    setTierTarget(item);
+    setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
+    setItemSearchQuery('');
+  };
+
+  const filteredItemsForSelection = useMemo(() => {
+    if (!addPriceListMode) return [];
+    const q = itemSearchQuery.trim().toLowerCase();
+    return pageItems.filter((item) => {
+      if (q && !item.name.toLowerCase().includes(q) && !item.code.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [addPriceListMode, pageItems, itemSearchQuery]);
 
   const handleSaveTiers = async () => {
     if (!tierTarget || !selectedVendor) {
@@ -136,9 +166,10 @@ const ItemsList: React.FC = () => {
           note: t.note || null,
         });
       }
-      addToast('success', `${valid.length} tier(s) added`);
+      addToast('success', `${valid.length} tier(s) added for ${tierTarget.name}`);
       setShowAddTierModal(false);
       setTierTarget(null);
+      setAddPriceListMode(false);
       if (activeTab === 'rm' || activeTab === 'pm') {
         const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
         if (res.success && res.data) setPageItems(res.data);
@@ -207,8 +238,9 @@ const ItemsList: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => {}}
-            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+            onClick={openAddPriceList}
+            disabled={activeTab === 'pr'}
+            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
           >
             + Add Price List
           </button>
@@ -337,16 +369,79 @@ const ItemsList: React.FC = () => {
         )}
       </div>
 
-      {showAddTierModal && tierTarget && (
+      {showAddTierModal && (tierTarget || addPriceListMode) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4">
             <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-900">Add Price Tier — {tierTarget.name}</span>
-              <button onClick={() => setShowAddTierModal(false)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">
-                ✕
+              <span className="text-sm font-bold text-gray-900">
+                {addPriceListMode && !tierTarget ? 'Add Price List — Select Item' : `Add Price Tier — ${tierTarget?.name ?? ''}`}
+              </span>
+              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">
+                X
               </button>
             </div>
             <div className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
+
+              {/* Item selector — shown when Add Price List mode and no item selected yet */}
+              {addPriceListMode && !tierTarget && (
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                    Select {activeTab === 'pm' ? 'Packaging Material' : 'Raw Material'} *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Search by name or code…"
+                    value={itemSearchQuery}
+                    onChange={(e) => setItemSearchQuery(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm mb-2"
+                    autoFocus
+                  />
+                  <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {filteredItemsForSelection.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-gray-400 text-center">No items found</div>
+                    ) : (
+                      filteredItemsForSelection.slice(0, 50).map((item) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => selectItemForPriceList(item)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-teal-50 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`font-mono text-[10.5px] shrink-0 ${item.type === 'RM' ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                            <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
+                          </div>
+                          {item.vendorRates && item.vendorRates.length > 0 ? (
+                            <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">
+                              {item.vendorRates.length} vendor{item.vendorRates.length > 1 ? 's' : ''}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 shrink-0">No pricing</span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Selected item chip in Add Price List mode */}
+              {addPriceListMode && tierTarget && (
+                <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                  <span className={`font-mono text-[10.5px] ${tierTarget.type === 'RM' ? 'text-teal-600' : 'text-violet-600'}`}>{tierTarget.code}</span>
+                  <span className="text-sm font-bold text-gray-900">{tierTarget.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setTierTarget(null); setResolvedItemsListId(null); }}
+                    className="ml-auto text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+
+              {/* Vendor & tier form — shown when item is selected */}
+              {tierTarget && (<>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Vendor *</label>
@@ -427,18 +522,21 @@ const ItemsList: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              </>)}
             </div>
             <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-end">
-              <button onClick={() => setShowAddTierModal(false)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">
+              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">
                 Cancel
               </button>
-              <button
-                onClick={handleSaveTiers}
-                disabled={submittingTiers || !selectedVendor}
-                className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
-              >
-                {submittingTiers ? 'Saving…' : 'Save Tiers'}
-              </button>
+              {tierTarget && (
+                <button
+                  onClick={handleSaveTiers}
+                  disabled={submittingTiers || !selectedVendor}
+                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  {submittingTiers ? 'Saving…' : 'Save Tiers'}
+                </button>
+              )}
             </div>
           </div>
         </div>

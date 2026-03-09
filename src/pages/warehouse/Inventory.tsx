@@ -409,7 +409,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
     area: '',
     temperature: '',
     maxCapacity: '',
-    icon: '🏭',
+    icon: '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -430,7 +430,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
       area: '',
       temperature: '',
       maxCapacity: '',
-      icon: '🏭',
+      icon: '',
     });
     
     onClose();
@@ -456,7 +456,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 border border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors"
             aria-label="Close"
           >
-            ✕
+            X
           </button>
         </div>
 
@@ -566,7 +566,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
               {/* Icon (Emoji) */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
-                  Icon (Emoji)
+                  Icon
                 </label>
                 <input 
                   type="text"
@@ -574,7 +574,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   value={formData.icon}
                   onChange={handleChange}
                   className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
-                  placeholder="🏭"
+                  placeholder=""
                 />
               </div>
             </div>
@@ -663,7 +663,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 border border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors"
             aria-label="Close"
           >
-            ✕
+            X
           </button>
         </div>
 
@@ -1215,7 +1215,7 @@ const WarehouseInventory = () => {
                     Code
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Item Name ↑
+                    Item Name
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Type
@@ -1329,7 +1329,7 @@ const WarehouseInventory = () => {
           {/* Empty State */}
           {filteredItems.length === 0 && (
             <div className="py-16 text-center">
-              <div className="text-gray-400 text-5xl mb-4">📦</div>
+              <div className="text-gray-400 text-5xl mb-4"></div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
               <p className="text-gray-500 text-sm">
                 {searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}

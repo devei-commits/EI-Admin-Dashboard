@@ -76,7 +76,7 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
     };
 
     onSwapApplied(swapData);
-    addToast('success', `Material swap applied: ${material.itemName} → ${formData.toMaterial}`);
+    addToast('success', `Material swap applied: ${material.itemName} -> ${formData.toMaterial}`);
     onClose();
   };
 

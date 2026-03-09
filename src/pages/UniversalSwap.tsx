@@ -256,7 +256,7 @@ const UniversalSwap: React.FC = () => {
           <div className="absolute inset-0 bg-linear-to-r from-indigo-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl">🔄</span>
+              <span className="text-3xl"></span>
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Ingredient Operations</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Universal Ingredient Swap</h1>
@@ -280,7 +280,7 @@ const UniversalSwap: React.FC = () => {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
           <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-indigo-50/50 to-transparent">
             <div className="flex items-center gap-2">
-              <span className="text-lg">🔄</span>
+              <span className="text-lg"></span>
               <span className="text-sm font-semibold text-gray-800">New Swap</span>
             </div>
           </div>
@@ -337,7 +337,7 @@ const UniversalSwap: React.FC = () => {
                   max="2.0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-                <p className="text-[10px] text-gray-400 mt-1">e.g. 0.9 = 90% of original usage becomes replacement (in a product with 60% → 54% new, 6% original)</p>
+                <p className="text-[10px] text-gray-400 mt-1">e.g. 0.9 = 90% of original usage becomes replacement (in a product with 60% to 54% new, 6% original)</p>
               </div>
             </div>
 
@@ -422,7 +422,7 @@ const UniversalSwap: React.FC = () => {
           <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-blue-50/50 to-transparent">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-lg">📋</span>
+                <span className="text-lg"></span>
                 <span className="text-sm font-semibold text-gray-900">Apply To / Exempt</span>
               </div>
               {fromRawMaterialId && (
@@ -505,7 +505,7 @@ const UniversalSwap: React.FC = () => {
                               onChange={() => toggleBom(bom.id)}
                               className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-400"
                             />
-                            <span className="text-amber-600 shrink-0" aria-hidden>📄</span>
+                            <span className="text-amber-600 shrink-0" aria-hidden></span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-gray-800 text-sm">
@@ -542,18 +542,18 @@ const UniversalSwap: React.FC = () => {
                 disabled={!fromRawMaterialId || !toRawMaterialId}
                 className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                👁 Preview
+                Preview
               </button>
               <button
                 onClick={handleApplySwap}
                 disabled={!showPreview || affectedCount === 0 || applying}
                 className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                {applying ? 'Applying…' : '✓ Apply Swap'}
+                {applying ? 'Applying…' : 'Apply Swap'}
               </button>
               {showPreview && (
                 <span className="text-xs text-emerald-600 font-medium ml-2">
-                  ✓ Preview ready — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) (ratio applied in formulas)
+                  Preview ready — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) (ratio applied in formulas)
                 </span>
               )}
             </div>
@@ -575,7 +575,7 @@ const UniversalSwap: React.FC = () => {
                 <thead>
                   <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From → To</th>
+                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From / To</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
@@ -589,7 +589,7 @@ const UniversalSwap: React.FC = () => {
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-red-600 group-hover:text-red-700">{swap.fromIngredient}</span>
-                          <span className="text-gray-400">→</span>
+                          <span className="text-gray-400">/</span>
                           <span className="font-semibold text-emerald-600 group-hover:text-emerald-700">{swap.toIngredient}</span>
                         </div>
                       </td>

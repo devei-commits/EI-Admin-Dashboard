@@ -1338,7 +1338,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
              <div className="flex items-center gap-2">
               <Badge variant="outline">
                {stageChange
-                ? `${entry.fromStage ? getStageLabel(entry.fromStage) : '—'} → ${entry.toStage ? getStageLabel(entry.toStage) : '—'
+                ? `${entry.fromStage ? getStageLabel(entry.fromStage) : '—'} > ${entry.toStage ? getStageLabel(entry.toStage) : '—'
                 }`
                 : 'Activity'}
               </Badge>

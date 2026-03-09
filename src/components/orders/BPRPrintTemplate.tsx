@@ -70,7 +70,7 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
           </div>
           <div className="flex gap-2">
             <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-              🖨 Print
+              Print
             </button>
             <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
           </div>

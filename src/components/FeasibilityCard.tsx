@@ -49,7 +49,7 @@ export const FeasibilityCard = ({
       )}
        {!isShortfall && type === 'combined' && (
          <p className="text-xs font-semibold text-green-600 flex items-center gap-1 mt-2">
-           ✓ No Shortfall
+           No Shortfall
          </p>
        )}
        {isShortfall && type === 'combined' && (

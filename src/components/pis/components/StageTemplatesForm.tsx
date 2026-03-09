@@ -57,7 +57,7 @@ const STAGES: Array<{ key: TemplateStageKey; title: string; hint: string; track?
  { key: 'S2', title: '2) Agreement & Handover', hint: 'Agreement status + PIS handover', track: 'main' },
  { key: 'S3', title: '3) R&D Lead Review & Assignment', hint: 'Confirm/Update composition, claims, specs + assign', track: 'main' },
  { key: 'S4', title: '4) Development Execution', hint: 'Timelines + sourcing/formulation/stability tracking', track: 'main' },
- { key: 'S5', title: '5) Sample Ready → Push to Quality', hint: 'Formulation details + client share payload + sample distribution', track: 'main' },
+ { key: 'S5', title: '5) Sample Ready - Push to Quality', hint: 'Formulation details + client share payload + sample distribution', track: 'main' },
  { key: 'S6', title: '6) Quality Validation', hint: 'QC checklist vs client sheet + physical sample', track: 'main' },
  { key: 'S7', title: '7) Dispatch Handover', hint: 'Dispatch checklist + tracking IDs', track: 'main' },
  { key: 'P1', title: 'P1) Packaging Lead Review', hint: 'Possibilities/limitations + feedback to BD', track: 'packaging' },
@@ -831,7 +831,7 @@ export function StageTemplatesForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
        {renderInput('S6', 'qc_reviewer', 'QC Reviewer')}
        {renderInput('S6', 'review_date', 'Review Date', undefined, 'date')}
-       {renderSelect('S6', 'outcome', 'Outcome', ['Approved → Dispatch', 'Rejected → Back to R&D'])}
+       {renderSelect('S6', 'outcome', 'Outcome', ['Approved - Dispatch', 'Rejected - Back to R&D'])}
        {renderInput('S6', 'loop_count', 'Rejection Count', '0,1,2...')}
       </div>
 

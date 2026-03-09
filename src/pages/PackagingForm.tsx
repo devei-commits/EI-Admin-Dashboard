@@ -942,7 +942,7 @@ const PackagingRefactored: React.FC = () => {
               onClick={() => setPageTab('bpr')}
               className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
             >
-              ← BPR Dashboard
+              BPR Dashboard
             </button>
             <span className="text-gray-300">|</span>
             <h1 className="text-base font-bold text-gray-800 leading-tight truncate">
@@ -1070,14 +1070,14 @@ const PackagingRefactored: React.FC = () => {
                   disabled={currentSection === 0}
                   className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
-                  ← Prev
+                  Prev
                 </button>
                 <button
                   onClick={() => setCurrentSection(prev => Math.min(SECTIONS.length - 1, prev + 1))}
                   disabled={currentSection === SECTIONS.length - 1}
                   className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
-                  Next →
+                  Next
                 </button>
               </div>
             </div>
@@ -1204,7 +1204,7 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
      <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
      <div className="relative">
       <div className="inline-flex items-center gap-2 mb-3">
-       <span className="text-3xl">📦</span>
+       <span className="text-3xl"></span>
        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
       </div>
       <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
@@ -1300,7 +1300,7 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
           className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
           onClick={() => setSortAsc(p => !p)}
          >
-          CODE <span className="text-violet-500">{sortAsc ? '↑' : '↓'}</span>
+          CODE <span className="text-violet-500">{sortAsc ? 'Asc' : 'Desc'}</span>
          </th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Description</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>

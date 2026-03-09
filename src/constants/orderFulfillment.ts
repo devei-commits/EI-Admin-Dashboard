@@ -93,13 +93,6 @@ export const FF_STATUS_CONFIG: Record<FFStatus, {
     bgColor: 'bg-amber-500/10',
     borderColor: 'border-amber-500/20'
   },
-  picked: {
-    label: 'Picked',
-    icon: CheckCircle,
-    color: 'text-green-600',
-    bgColor: 'bg-green-500/10',
-    borderColor: 'border-green-500/20'
-  },
   invoiced: {
     label: 'Invoiced',
     icon: FileText,

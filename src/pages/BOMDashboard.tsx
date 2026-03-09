@@ -252,7 +252,7 @@ const BOMDashboard: React.FC = () => {
           <div className="absolute inset-0 bg-linear-to-r from-blue-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl">📦</span>
+              <span className="text-3xl"></span>
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">PR Masters</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Products (PR)</h1>
@@ -421,7 +421,7 @@ const BOMDashboard: React.FC = () => {
               <span className="text-sm font-mono text-gray-500">{selectedProduct?.product_code ?? '—'}</span>
               <h2 className="text-lg font-bold text-gray-900">{selectedProduct?.product_name ?? 'Product'}</h2>
             </div>
-            <button onClick={handleClosePanel} className="p-2 rounded-lg hover:bg-gray-200 text-gray-600">✕</button>
+            <button onClick={handleClosePanel} className="p-2 rounded-lg hover:bg-gray-200 text-gray-600">X</button>
           </div>
           {detailLoading ? (
             <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>

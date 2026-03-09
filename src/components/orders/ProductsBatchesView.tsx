@@ -172,7 +172,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
       (b) => b.ffStatus === 'fg_ready'
     ).length;
     const completedCount = allBatches.filter((b) =>
-      ['picked', 'invoiced', 'shipped', 'delivered', 'closed'].includes(b.ffStatus)
+      ['picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(b.ffStatus)
     ).length;
     const completionRate =
       totalBatches > 0

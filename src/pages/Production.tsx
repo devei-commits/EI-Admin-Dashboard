@@ -1,25 +1,42 @@
-﻿/**
+/**
  * Production Page — Manufacturing Management System
  * BMR: draft > batch_confirmed > rm_reserved > scheduled > rm_connected > dispensing > in_production > bulk_qc > cleared
  * BPR: draft > pm_reserved > scheduled > pm_connected > pm_dispensing > filling > fill_qc > packaging > pack_qc > fg_ready
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import eiLogo from '../assets/logo/eilogofull.svg';
 import { useSearchParams } from 'react-router-dom';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, FlaskConical, Package,
   Wrench, Users, Menu, X, Check, AlertTriangle, Printer,
   ClipboardList, Link2, Scale, Microscope, Zap, Info, Factory,
   Settings, Activity, Eye, CheckCircle2, ArrowRight, Send,
-  ShieldCheck, Sparkles, Droplets, CircleDot, Layers, Cylinder,
+  ShieldCheck, Sparkles, Droplets, CircleDot, Layers, Cylinder, Pencil, RotateCcw,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import {
+  fetchEquipment, fetchTeam, fetchBatches,
+  updateBatch as apiBatchUpdate,
+  createEquipment as apiCreateEquipment,
+  updateEquipment as apiUpdateEquipment,
+  deleteEquipment as apiDeleteEquipment,
+  createTeamMember as apiCreateTeamMember,
+  updateTeamMember as apiUpdateTeamMember,
+  deleteTeamMember as apiDeleteTeamMember,
+  searchUsers as apiSearchUsers,
+  type EquipmentData as APIEquipmentData, type BatchRow, type TeamMemberRow,
+  type UserSearchResult,
+} from '../services/production.service';
+import { fetchFacilityAreas, type FacilityAreaDTO } from '../services/facilityAreas.service';
+import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
+import { fetchDepartments } from '../services/department.service';
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
 type Section = 'calendar' | 'bmr' | 'bpr' | 'equipment' | 'team';
-type BMRStatus = 'draft' | 'batch_confirmed' | 'rm_reserved' | 'scheduled' | 'rm_connected' | 'dispensing' | 'in_production' | 'bulk_qc' | 'cleared';
-type BPRStatus = 'draft' | 'pm_reserved' | 'scheduled' | 'pm_connected' | 'pm_dispensing' | 'filling' | 'fill_qc' | 'packaging' | 'pack_qc' | 'fg_ready';
+type BMRStatus = 'draft' | 'batch_confirmed' | 'rm_reserved' | 'scheduled' | 'rm_connected' | 'dispensing' | 'in_production' | 'bulk_qc' | 'qc_failed' | 'cleared';
+type BPRStatus = 'draft' | 'pm_reserved' | 'scheduled' | 'pm_connected' | 'pm_dispensing' | 'filling' | 'fill_qc' | 'packaging' | 'pack_qc' | 'qc_failed' | 'fg_ready';
 type ProcessType = 'hot' | 'cold';
 type FillingType = 'bottle' | 'tube' | 'jar' | 'manual';
 type Department = 'Manufacturing' | 'Filling' | 'Packaging' | 'Quality';
@@ -27,9 +44,9 @@ type Department = 'Manufacturing' | 'Filling' | 'Packaging' | 'Quality';
 interface DispensingItem { code: string; inci?: string; name?: string; required: number; dispensed: number; done: boolean; }
 interface QCSpec { param: string; spec: string; result: string; passed: boolean | null; }
 
-interface MfgEquipment { id: string; name: string; cap: number; type: 'jacketed' | 'simple' | 'support'; homogenizer: boolean; processType: ProcessType[]; status: string; }
-interface FillingEquipment { id: string; name: string; speed: number; type: FillingType; compatible: string[]; status: string; }
-interface PackagingEquipment { id: string; name: string; speed: number; type: string; supports: string[]; status: string; }
+interface MfgEquipment { id: string; name: string; cap: number; type: 'jacketed' | 'simple' | 'support'; homogenizer: boolean; processType: ProcessType[]; status: string; _pk?: number; }
+interface FillingEquipment { id: string; name: string; speed: number; type: FillingType; compatible: string[]; status: string; _pk?: number; }
+interface PackagingEquipment { id: string; name: string; speed: number; type: string; supports: string[]; status: string; _pk?: number; }
 
 interface EquipmentData {
   manufacturing: MfgEquipment[];
@@ -37,7 +54,7 @@ interface EquipmentData {
   packaging: PackagingEquipment[];
 }
 
-interface TeamMember { id: string; name: string; role: string; dept: Department; avail: boolean; }
+interface TeamMember { id: string; userId: number | null; name: string; role: string; dept: Department; avail: boolean; _pk?: number; }
 
 interface Batch {
   bmrNo: string; bprNo: string; productName: string; sku: string; soNo: string; orderQty: number;
@@ -118,29 +135,15 @@ const DEFAULT_EQUIPMENT: EquipmentData = {
   ],
 };
 
-const DEFAULT_TEAM: TeamMember[] = [
-  { id: 'T01', name: 'Rahul Mehta', role: 'Production Lead', dept: 'Manufacturing', avail: true },
-  { id: 'T02', name: 'Priya Sharma', role: 'Prod. Executive', dept: 'Manufacturing', avail: true },
-  { id: 'T03', name: 'Kiran Das', role: 'Prod. Executive', dept: 'Manufacturing', avail: false },
-  { id: 'T04', name: 'Amar Singh', role: 'Weighing Operator', dept: 'Manufacturing', avail: true },
-  { id: 'T05', name: 'Neha Gupta', role: 'QC Officer', dept: 'Quality', avail: true },
-  { id: 'T06', name: 'Ritu Patel', role: 'QC Officer', dept: 'Quality', avail: false },
-  { id: 'T07', name: 'Dev Joshi', role: 'QC Executive', dept: 'Quality', avail: true },
-  { id: 'T08', name: 'Sneha Roy', role: 'Filling Operator', dept: 'Filling', avail: true },
-  { id: 'T09', name: 'Ajay Kumar', role: 'Filling Operator', dept: 'Filling', avail: true },
-  { id: 'T10', name: 'Pooja Nair', role: 'Packing Crew Lead', dept: 'Packaging', avail: true },
-  { id: 'T11', name: 'Suresh Babu', role: 'Packing Crew', dept: 'Packaging', avail: true },
-  { id: 'T12', name: 'Meena Iyer', role: 'Packing Crew', dept: 'Packaging', avail: true },
-];
+const DEFAULT_TEAM: TeamMember[] = [];
 
-const WH_STOCK_RM: Record<string, number> = {
-  'RM-001': 600, 'RM-002': 200, 'RM-003': 80, 'RM-004': 120, 'RM-005': 300,
-  'RM-006': 50, 'RM-007': 150, 'RM-008': 90, 'RM-009': 70, 'RM-010': 400,
-};
-const WH_STOCK_PM: Record<string, number> = {
-  'PM-001': 50000, 'PM-002': 30000, 'PM-003': 20000, 'PM-004': 45000,
-  'PM-005': 10000, 'PM-006': 25000, 'PM-007': 15000, 'PM-008': 5000,
-};
+function buildStockMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const r of inv) {
+    if (r.type === type) map[r.code] = r.stockInHand;
+  }
+  return map;
+}
 
 function makeDefaultBatches(): Batch[] {
   return [
@@ -330,40 +333,76 @@ function isEquipFreeOnDate(batches: Batch[], equipId: string, dateStr: string): 
 }
 
 const batchColorMap: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  teal:   { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', dot: 'bg-teal-500' },
-  amber:  { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
+  teal: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', dot: 'bg-teal-500' },
+  amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
   purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', dot: 'bg-purple-500' },
-  blue:   { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500' },
-  red:    { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', dot: 'bg-red-500' },
-  green:  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500' },
+  red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', dot: 'bg-red-500' },
+  green: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
 };
 
 const bmrStatusLabel: Record<BMRStatus, string> = {
   draft: 'Draft', batch_confirmed: 'Confirmed', rm_reserved: 'RM Reserved', scheduled: 'Scheduled',
-  rm_connected: 'RM Connected', dispensing: 'Dispensing', in_production: 'In Production', bulk_qc: 'Bulk QC', cleared: 'Cleared',
+  rm_connected: 'RM Connected', dispensing: 'Dispensing', in_production: 'In Production', bulk_qc: 'Bulk QC', qc_failed: 'QC Failed', cleared: 'Cleared',
 };
 const bprStatusLabel: Record<BPRStatus, string> = {
   draft: 'Draft', pm_reserved: 'PM Reserved', scheduled: 'Scheduled', pm_connected: 'PM Connected',
-  pm_dispensing: 'PM Dispensing', filling: 'Filling', fill_qc: 'Fill QC', packaging: 'Packaging', pack_qc: 'Pack QC', fg_ready: 'FG Ready',
+  pm_dispensing: 'PM Dispensing', filling: 'Filling', fill_qc: 'Fill QC', packaging: 'Packaging', pack_qc: 'Pack QC', qc_failed: 'QC Failed', fg_ready: 'FG Ready',
 };
 
-/* ──────────────────── LOCALSTORAGE ─────────────────────────── */
+/* ────────────────────── API HELPERS ─────────────────────────── */
 
-const LS_KEY = 'eiadmin.production.state.v3';
-
-function loadState(): ProductionState {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as ProductionState;
-      if (p?.batches && p?.equipment && p?.team) return p;
-    }
-  } catch { /* ignore */ }
-  return { batches: makeDefaultBatches(), equipment: DEFAULT_EQUIPMENT, team: DEFAULT_TEAM, lastUpdated: new Date().toISOString() };
+function apiBatchToBatch(r: BatchRow): Batch {
+  return {
+    bmrNo: r.bmrNo, bprNo: r.bprNo, productName: r.productName, sku: r.sku,
+    soNo: r.soNo, orderQty: r.orderQty, batchSize: r.batchSize, batchNo: r.batchNo,
+    batchIndex: r.batchIndex, totalBatches: r.totalBatches,
+    bmrStatus: r.bmrStatus as BMRStatus, bprStatus: r.bprStatus as BPRStatus,
+    color: r.color, processType: (r.processType || 'cold') as ProcessType,
+    homogenizer: r.homogenizer, mainVessel: r.mainVessel,
+    supportingTanks: r.supportingTanks || [], fillingLine: r.fillingLine,
+    fillingType: (r.fillingType || 'bottle') as FillingType,
+    packagingLine: r.packagingLine, monocarton: r.monocarton, shrink: r.shrink,
+    teamBMR: r.teamBMR || [], teamBPR: r.teamBPR || [],
+    qcOfficerBMR: r.qcOfficerBMR, qcOfficerBPR: r.qcOfficerBPR,
+    mfgDate: r.mfgDate, fillDate: r.fillDate, packDate: r.packDate, fgDate: r.fgDate,
+    rmConnectDate: r.rmConnectDate, pmConnectDate: r.pmConnectDate,
+    rmReserved: r.rmReserved, pmReserved: r.pmReserved,
+    rmConnected: r.rmConnected, pmConnected: r.pmConnected,
+    dispensingRM: r.dispensingRM || [], dispensingPM: r.dispensingPM || [],
+    bulkYield: r.bulkYield, fillYield: r.fillYield, fgYield: r.fgYield,
+    bulkBatchAccepted: r.bulkBatchAccepted, fillBatchAccepted: r.fillBatchAccepted,
+    fgBatchAccepted: r.fgBatchAccepted,
+    qcSpecs: r.qcSpecs || [], remarks: r.remarks, dueDate: r.dueDate,
+    compatibleVessels: r.compatibleVessels, compatibleFillLines: r.compatibleFillLines,
+    compatiblePackLines: r.compatiblePackLines,
+    _pk: r._pk,
+  } as Batch & { _pk: number };
 }
 
-function persistState(s: ProductionState) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ ...s, lastUpdated: new Date().toISOString() })); } catch { /* ignore */ }
+function apiEquipToEquipData(d: APIEquipmentData): EquipmentData {
+  return {
+    manufacturing: d.manufacturing.map(r => ({
+      id: r.id, name: r.name, cap: r.cap, type: r.type as 'jacketed' | 'simple' | 'support',
+      homogenizer: r.homogenizer, processType: (r.processType || []) as ProcessType[], status: r.status, _pk: r._pk,
+    })),
+    filling: d.filling.map(r => ({
+      id: r.id, name: r.name, speed: r.speed, type: r.type as FillingType,
+      compatible: r.compatible || [], status: r.status, _pk: r._pk,
+    })),
+    packaging: d.packaging.map(r => ({
+      id: r.id, name: r.name, speed: r.speed, type: r.type,
+      supports: r.supports || [], status: r.status, _pk: r._pk,
+    })),
+  } as EquipmentData;
+}
+
+function apiTeamToTeam(rows: TeamMemberRow[]): TeamMember[] {
+  return rows.map(r => ({ id: r.id, userId: r.userId, name: r.name, role: r.role, dept: r.dept as Department, avail: r.avail, _pk: r._pk }));
+}
+
+function defaultState(): ProductionState {
+  return { batches: makeDefaultBatches(), equipment: DEFAULT_EQUIPMENT, team: DEFAULT_TEAM, lastUpdated: new Date().toISOString() };
 }
 
 /* ──────────────── SHARED UI COMPONENTS ─────────────────────── */
@@ -424,20 +463,21 @@ function Tip({ color = 'blue', icon, children }: { color?: string; icon?: React.
   );
 }
 
-function PipelineStrip({ pipeline, currentStatus }: { pipeline: PipelineStep[]; currentStatus: string }) {
+function PipelineStrip({ pipeline, currentStatus, failed }: { pipeline: PipelineStep[]; currentStatus: string; failed?: boolean }) {
   const idx = pipelineIndex(currentStatus, pipeline);
   return (
     <div className="flex items-center gap-0.5">
       {pipeline.map((p, i) => {
         const state = i < idx ? 'done' : i === idx ? 'active' : 'pending';
+        const isFailed = failed && state === 'active';
         return (
           <div key={p.key} className="flex items-center gap-0.5">
-            <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center border ${
-              state === 'done' ? 'bg-emerald-100 border-emerald-300 text-emerald-600' :
-              state === 'active' ? 'bg-orange-100 border-orange-300 text-orange-600' :
-              'bg-gray-50 border-gray-200 text-gray-300'
-            }`} title={p.label}>
-              {state === 'done' ? <Check size={10} strokeWidth={3} /> : state === 'active' ? p.icon : <CircleDot size={8} />}
+            <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center border ${isFailed ? 'bg-red-100 border-red-300 text-red-600' :
+                state === 'done' ? 'bg-emerald-100 border-emerald-300 text-emerald-600' :
+                  state === 'active' ? 'bg-orange-100 border-orange-300 text-orange-600' :
+                    'bg-gray-50 border-gray-200 text-gray-300'
+              }`} title={isFailed ? `${p.label} (Failed)` : p.label}>
+              {isFailed ? <X size={10} strokeWidth={3} /> : state === 'done' ? <Check size={10} strokeWidth={3} /> : state === 'active' ? p.icon : <CircleDot size={8} />}
             </div>
             {i < pipeline.length - 1 && <div className={`w-2.5 h-px ${i < idx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
           </div>
@@ -659,11 +699,11 @@ function SectionLabel({ icon, color, children }: { icon: React.ReactNode; color:
 
 /* ──────────── RESERVE MATERIAL MODAL ───────────────────────── */
 
-function ReserveMaterialModal({ batch, type, onClose, onSave }: {
-  batch: Batch; type: 'rm' | 'pm'; onClose: () => void; onSave: (updates: Partial<Batch>) => void;
+function ReserveMaterialModal({ batch, type, stockMap, onClose, onSave }: {
+  batch: Batch; type: 'rm' | 'pm'; stockMap: Record<string, number>; onClose: () => void; onSave: (updates: Partial<Batch>) => void;
 }) {
   const items = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
-  const stock = type === 'rm' ? WH_STOCK_RM : WH_STOCK_PM;
+  const stock = stockMap;
   const unit = type === 'rm' ? 'KG' : 'pcs';
 
   const handleSave = () => {
@@ -712,10 +752,22 @@ function ReserveMaterialModal({ batch, type, onClose, onSave }: {
 
 /* ──────────── SMART SCHEDULE MODAL ─────────────────────────── */
 
-function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
+function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stockPM, onClose, onSave, onBatchChange }: {
   batch: Batch; equipment: EquipmentData; batches: Batch[];
+  stockRM: Record<string, number>; stockPM: Record<string, number>;
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
+  onBatchChange: (bmrNo: string) => void;
 }) {
+  const [batch, setBatch] = useState(initialBatch);
+  const isScheduled = batch.bmrStatus === 'scheduled' || !!batch.mfgDate;
+
+  const schedulable = batches.filter(b => ['batch_confirmed', 'rm_reserved'].includes(b.bmrStatus));
+
+  const handleBatchSwitch = (bmrNo: string) => {
+    const found = batches.find(b => b.bmrNo === bmrNo);
+    if (found) { setBatch(found); onBatchChange(bmrNo); }
+  };
+
   const compatV = batch.compatibleVessels?.length ? batch.compatibleVessels : equipment.manufacturing.filter(e => e.type !== 'support' && e.cap >= batch.batchSize).map(e => e.id);
   const compatF = batch.compatibleFillLines?.length ? batch.compatibleFillLines : equipment.filling.filter(e => e.compatible.includes(batch.fillingType || 'bottle')).map(e => e.id);
   const compatP = batch.compatiblePackLines?.length ? batch.compatiblePackLines : equipment.packaging.map(e => e.id);
@@ -729,6 +781,19 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
   const [vessel, setVessel] = useState(batch.mainVessel || compatV[0] || '');
   const [fillLine, setFillLine] = useState(batch.fillingLine || compatF[0] || '');
   const [packLine, setPackLine] = useState(batch.packagingLine || compatP[0] || '');
+
+  useEffect(() => {
+    setMfgDate(batch.mfgDate || today());
+    setFillDate(batch.fillDate || addDaysStr(batch.mfgDate || today(), 3));
+    setPackDate(batch.packDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), 1));
+    setFgDate(batch.fgDate || addDaysStr(batch.packDate || addDaysStr(today(), 4), 1));
+    setRmDate(batch.rmConnectDate || addDaysStr(batch.mfgDate || today(), -2));
+    setPmDate(batch.pmConnectDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), -2));
+    setVessel(batch.mainVessel || compatV[0] || '');
+    setFillLine(batch.fillingLine || compatF[0] || '');
+    setPackLine(batch.packagingLine || compatP[0] || '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.bmrNo]);
 
   const handleMfgChange = (val: string) => {
     setMfgDate(val);
@@ -747,19 +812,27 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
     onClose();
   };
 
-  const ScheduleRow = ({ icon, label, color, dateVal, setDate, equipList, equipVal, setEquip }: {
-    icon: React.ReactNode; label: string; color: string;
-    dateVal: string; setDate: (v: string) => void; equipList: string[]; equipVal: string; setEquip: (v: string) => void;
-  }) => (
+  const handleUnschedule = () => {
+    if (!confirm(`Clear schedule for ${batch.bmrNo}? Dates and equipment assignments will be removed.`)) return;
+    onSave({
+      mfgDate: '', fillDate: '', packDate: '', fgDate: '', rmConnectDate: '', pmConnectDate: '',
+      mainVessel: '', fillingLine: '', packagingLine: '',
+      bmrStatus: batch.rmReserved ? 'rm_reserved' : 'batch_confirmed',
+    });
+    onClose();
+  };
+
+  const scheduleRow = (icon: React.ReactNode, label: string, color: string, dateVal: string, setDate: (v: string) => void, equipList: string[], equipVal: string, setEquip: (v: string) => void) => (
     <div className={`grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-3 rounded-xl border mb-2 ${color}`}>
       <span className="text-gray-500">{icon}</span>
       <div className="text-[11px] font-bold text-gray-700">{label}</div>
       <div><label className={LBL}>Date</label><input type="date" className={INP} value={dateVal} onChange={e => setDate(e.target.value)} /></div>
       <div><label className={LBL}>Equipment</label>
         <select className={INP} value={equipVal} onChange={e => setEquip(e.target.value)}>
+          <option value="">-- Select --</option>
           {equipList.map(id => {
             const free = isEquipFreeOnDate(batches, id, dateVal);
-            return <option key={id} value={id}>{id} {free ? 'Free' : 'Busy'}</option>;
+            return <option key={id} value={id}>{id} {free ? '(Free)' : '(Busy)'}</option>;
           })}
         </select>
       </div>
@@ -767,42 +840,61 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
   );
 
   return (
-    <Modal onClose={onClose} title={`Schedule - ${batch.bmrNo}`} subtitle={`${batch.productName} - Batch ${batch.batchIndex}/${batch.totalBatches} - ${batch.batchSize} KG`} size="xl">
-      {/* Material Availability */}
+    <Modal onClose={onClose} title="Schedule Batch" subtitle={`${batch.productName} - Batch ${batch.batchIndex}/${batch.totalBatches} - ${batch.batchSize} KG`} size="xl">
+      {/* Batch selector */}
+      <div className="mb-4">
+        <label className={LBL}>Select Batch (BMR / BPR)</label>
+        <select className={INP} value={batch.bmrNo} onChange={e => handleBatchSwitch(e.target.value)}>
+          {schedulable.map(b => (
+            <option key={b.bmrNo} value={b.bmrNo}>
+              {b.bmrNo} / {b.bprNo} — {b.productName} ({b.batchSize} KG) [{bmrStatusLabel[b.bmrStatus]}]
+            </option>
+          ))}
+          {!schedulable.find(b => b.bmrNo === batch.bmrNo) && (
+            <option value={batch.bmrNo}>{batch.bmrNo} / {batch.bprNo} — {batch.productName} ({batch.batchSize} KG) [{bmrStatusLabel[batch.bmrStatus]}]</option>
+          )}
+        </select>
+      </div>
+
+      {/* Material Availability from DB */}
       <div className="mb-5">
-        <SectionLabel icon={<Package size={13} />} color="text-orange-600">Material Availability - Main Warehouse</SectionLabel>
+        <SectionLabel icon={<Package size={13} />} color="text-orange-600">Material Availability - Warehouse Inventory</SectionLabel>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials</SectionLabel>
-            <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-              <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
-                  const sih = WH_STOCK_RM[r.code] || 0; const ok = sih >= r.required;
-                  return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{r.required}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
-                })}</tbody>
-              </table>
-            </div>
+            {batch.dispensingRM.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
+                <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                  <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
+                    const sih = stockRM[r.code] ?? 0; const ok = sih >= r.required;
+                    return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{r.required}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            ) : <p className="text-xs text-gray-400 italic">No RM items on this batch</p>}
           </div>
           <div>
             <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials</SectionLabel>
-            <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-              <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
-                  const sih = WH_STOCK_PM[p.code] || 0; const ok = sih >= p.required;
-                  return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
-                })}</tbody>
-              </table>
-            </div>
+            {batch.dispensingPM.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
+                <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                  <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
+                    const sih = stockPM[p.code] ?? 0; const ok = sih >= p.required;
+                    return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            ) : <p className="text-xs text-gray-400 italic">No PM items on this batch</p>}
           </div>
         </div>
       </div>
 
       {/* Sequential Schedule */}
       <div className="border border-orange-100 rounded-2xl p-5 bg-orange-50/20">
-        <SectionLabel icon={<Calendar size={13} />} color="text-orange-600">Sequential Schedule - Manufacturing ? Filling ? Packaging</SectionLabel>
+        <SectionLabel icon={<Calendar size={13} />} color="text-orange-600">Sequential Schedule - Manufacturing {'>'} Filling {'>'} Packaging</SectionLabel>
         <Tip color="teal" icon={<Sparkles size={14} />}>System auto-suggested dates based on equipment availability. Adjust if needed.</Tip>
 
-        <ScheduleRow icon={<FlaskConical size={16} />} label="STAGE 1 - Manufacturing" color="border-teal-200 bg-teal-50/40" dateVal={mfgDate} setDate={handleMfgChange} equipList={compatV} equipVal={vessel} setEquip={setVessel} />
+        {scheduleRow(<FlaskConical size={16} />, 'STAGE 1 - Manufacturing', 'border-teal-200 bg-teal-50/40', mfgDate, handleMfgChange, compatV, vessel, setVessel)}
 
         <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 mb-2">
           <Package size={14} className="text-gray-400" /><div className="text-[10px] text-gray-500 font-semibold">RM Ready at WH by</div>
@@ -810,7 +902,7 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
           <div className="text-[10px] text-gray-400">Suggest: 2 days before MFG</div>
         </div>
 
-        <ScheduleRow icon={<Droplets size={16} />} label="STAGE 2 - Filling" color="border-purple-200 bg-purple-50/40" dateVal={fillDate} setDate={setFillDate} equipList={compatF} equipVal={fillLine} setEquip={setFillLine} />
+        {scheduleRow(<Droplets size={16} />, 'STAGE 2 - Filling', 'border-purple-200 bg-purple-50/40', fillDate, setFillDate, compatF, fillLine, setFillLine)}
 
         <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 mb-2">
           <Package size={14} className="text-gray-400" /><div className="text-[10px] text-gray-500 font-semibold">PM Ready at WH by</div>
@@ -818,7 +910,7 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
           <div className="text-[10px] text-gray-400">Suggest: 2 days before Fill</div>
         </div>
 
-        <ScheduleRow icon={<Package size={16} />} label="STAGE 3 - Packaging" color="border-emerald-200 bg-emerald-50/40" dateVal={packDate} setDate={setPackDate} equipList={compatP} equipVal={packLine} setEquip={setPackLine} />
+        {scheduleRow(<Package size={16} />, 'STAGE 3 - Packaging', 'border-emerald-200 bg-emerald-50/40', packDate, setPackDate, compatP, packLine, setPackLine)}
 
         <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50/40">
           <CheckCircle2 size={16} className="text-blue-500" /><div className="text-[11px] font-bold text-blue-700">FG Ready</div>
@@ -832,9 +924,16 @@ function ScheduleModal({ batch, equipment, batches, onClose, onSave }: {
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-        <button onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><CheckCircle2 size={13} /> Save Schedule</button>
+      <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+        <div>
+          {isScheduled && (
+            <button onClick={handleUnschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"><X size={12} /> Unschedule</button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><CheckCircle2 size={13} /> {isScheduled ? 'Update Schedule' : 'Save Schedule'}</button>
+        </div>
       </div>
     </Modal>
   );
@@ -948,6 +1047,22 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
   const yieldLabels: Record<string, string> = { bmr: 'Bulk Yield (KG)', fill: 'Units Filled', pack: 'Units Packed' };
   const qcOfficer = team.find(t => t.id === (qcType === 'bmr' ? batch.qcOfficerBMR : batch.qcOfficerBPR));
 
+  const passed = specs.filter(s => s.passed === true).length;
+  const failed = specs.filter(s => s.passed === false).length;
+  const pending = specs.filter(s => s.passed === null).length;
+  const allReviewed = pending === 0 && specs.length > 0;
+  const allPassed = allReviewed && failed === 0;
+  const hasFails = failed > 0;
+
+  const toggleResult = (idx: number) => {
+    setSpecs(prev => prev.map((sp, j) => {
+      if (j !== idx) return sp;
+      if (sp.passed === null) return { ...sp, passed: true };
+      if (sp.passed === true) return { ...sp, passed: false };
+      return { ...sp, passed: null };
+    }));
+  };
+
   const handleApprove = () => {
     const upd: Partial<Batch> = { qcSpecs: specs, remarks };
     if (qcType === 'bmr') {
@@ -962,39 +1077,85 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
   };
 
   const handleReject = () => {
-    onSave({ qcSpecs: specs, remarks: remarks || 'Rejected - deviation raised' }); onClose();
+    const upd: Partial<Batch> = { qcSpecs: specs, remarks: remarks || 'Rejected - deviation raised' };
+    if (qcType === 'bmr') {
+      upd.bulkBatchAccepted = false; upd.bmrStatus = 'qc_failed';
+    } else if (qcType === 'fill') {
+      upd.fillBatchAccepted = false; upd.bprStatus = 'qc_failed';
+    } else {
+      upd.fgBatchAccepted = false; upd.bprStatus = 'qc_failed';
+    }
+    onSave(upd); onClose();
   };
 
   return (
     <Modal onClose={onClose} title={`${titles[qcType]} - ${qcType === 'bmr' ? batch.bmrNo : batch.bprNo}`} size="lg">
-      <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{qcType === 'bmr' ? batch.bmrNo : batch.bprNo}</b></Tip>
-      <div className="rounded-xl border border-gray-100 overflow-hidden mb-4">
-        <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-          <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
+      <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{qcType === 'bmr' ? batch.bmrNo : batch.bprNo}</b>. Click each parameter to cycle: pending {'>'} pass {'>'} fail.</Tip>
+
+      {/* Summary bar */}
+      <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="font-semibold text-gray-500">{specs.length} params:</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]"><Check size={10} /> {passed}</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px]"><X size={10} /> {failed}</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-bold text-[10px]"><CircleDot size={10} /> {pending}</span>
         </div>
-        {specs.map((s, i) => (
-          <div key={i} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2.5 border-b border-gray-50 items-center">
-            <div className="text-xs font-semibold text-gray-800">{s.param}</div>
-            <div className="text-xs text-gray-500 font-mono">{s.spec}</div>
-            <input className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none"
-              value={s.result} placeholder="Enter result..."
-              onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))} />
-            <select className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none"
-              value={s.passed === true ? 'pass' : s.passed === false ? 'fail' : ''}
-              onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, passed: e.target.value === 'pass' ? true : e.target.value === 'fail' ? false : null } : sp))}>
-              <option value="">-</option><option value="pass">Pass</option><option value="fail">Fail</option>
-            </select>
-          </div>
-        ))}
+        {allPassed && <span className="ml-auto text-[10px] font-bold text-emerald-600 flex items-center gap-1"><ShieldCheck size={12} /> All Passed</span>}
+        {hasFails && allReviewed && <span className="ml-auto text-[10px] font-bold text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> {failed} Failed</span>}
+      </div>
+
+      <div className="rounded-xl border border-gray-100 overflow-hidden mb-4">
+        <div className="grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+          <div>Parameter</div><div>Specification</div><div>Result</div><div>Verdict</div>
+        </div>
+        {specs.map((s, i) => {
+          const rowBg = s.passed === true ? 'bg-emerald-50/40' : s.passed === false ? 'bg-red-50/40' : '';
+          return (
+            <div key={i} className={`grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2.5 border-b border-gray-50 items-center ${rowBg} transition-colors`}>
+              <div className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+                {s.passed === true && <Check size={12} className="text-emerald-500 shrink-0" />}
+                {s.passed === false && <X size={12} className="text-red-500 shrink-0" />}
+                {s.passed === null && <CircleDot size={12} className="text-gray-300 shrink-0" />}
+                {s.param}
+              </div>
+              <div className="text-xs text-gray-500 font-mono">{s.spec}</div>
+              <input className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white"
+                value={s.result} placeholder="Enter result..."
+                onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))} />
+              <button
+                onClick={() => toggleResult(i)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${s.passed === true ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' :
+                    s.passed === false ? 'bg-red-100 border-red-300 text-red-700 hover:bg-red-200' :
+                      'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                  }`}
+              >
+                {s.passed === true ? 'Pass' : s.passed === false ? 'Fail' : 'Pending'}
+              </button>
+            </div>
+          );
+        })}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div><label className={LBL}>{yieldLabels[qcType]}</label><input className={INP} type="number" placeholder="Enter actual quantity" value={yieldVal} onChange={e => setYieldVal(e.target.value)} /></div>
         <div><label className={LBL}>QC Remarks</label><input className={INP} placeholder="Overall remarks..." value={remarks} onChange={e => setRemarks(e.target.value)} /></div>
       </div>
-      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-        <button onClick={handleReject} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors"><X size={12} /> Reject</button>
-        <button onClick={handleApprove} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><ShieldCheck size={13} /> Approve</button>
+      <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+        <div className="text-[10px] text-gray-400">
+          {!allReviewed && `${pending} parameter${pending !== 1 ? 's' : ''} still pending review`}
+          {allReviewed && hasFails && `${failed} parameter${failed !== 1 ? 's' : ''} failed — reject to raise deviation`}
+          {allPassed && 'All parameters passed — ready to approve'}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={handleReject} disabled={!allReviewed || !hasFails}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            <X size={12} /> Reject ({failed})
+          </button>
+          <button onClick={handleApprove} disabled={!allPassed}
+            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+            <ShieldCheck size={13} /> Approve
+          </button>
+        </div>
       </div>
     </Modal>
   );
@@ -1009,6 +1170,31 @@ function MTRModal({ batch, type, onClose, onSave }: {
   const unit = type === 'rm' ? 'KG' : 'pcs';
   const [priority, setPriority] = useState('Normal');
   const [reqDate, setReqDate] = useState(type === 'rm' ? (batch.rmConnectDate || today()) : (batch.pmConnectDate || today()));
+  const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
+  const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  const [transferFrom, setTransferFrom] = useState('');
+  const [transferTo, setTransferTo] = useState('');
+
+  useEffect(() => {
+    Promise.all([
+      fetchFacilityAreas('warehouse'),
+      fetchFacilityAreas('production'),
+    ]).then(([whRes, prodRes]) => {
+      const wh = whRes.data || [];
+      const prod = prodRes.data || [];
+      setWarehouseAreas(wh);
+      setProductionAreas(prod);
+      const firstWhZone = wh.flatMap(a => a.zones)[0];
+      if (firstWhZone && !transferFrom) setTransferFrom(firstWhZone.code);
+      const allProdZones = prod.flatMap(a => a.zones);
+      if (allProdZones.length && !transferTo) {
+        const defaultTo = type === 'rm'
+          ? allProdZones.find(z => z.code.startsWith('LOC-MV') || z.code === 'LOC-MFG') || allProdZones[0]
+          : allProdZones.find(z => z.code.startsWith('LOC-FL') || z.code === 'LOC-FIL') || allProdZones[0];
+        setTransferTo(defaultTo.code);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     if (type === 'rm') onSave({ rmConnected: true, bmrStatus: (batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') ? 'rm_connected' : batch.bmrStatus });
@@ -1016,12 +1202,41 @@ function MTRModal({ batch, type, onClose, onSave }: {
     onClose();
   };
 
+  const allWhZones = warehouseAreas.flatMap(a => a.zones);
+  const allProdZones = productionAreas.flatMap(a => a.zones);
+  const fromLabel = allWhZones.find(z => z.code === transferFrom)?.name || transferFrom;
+  const toLabel = allProdZones.find(z => z.code === transferTo)?.name || transferTo;
+
   return (
     <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
-      <Tip color="orange" icon={<Send size={14} />}>Request Warehouse to transfer {type.toUpperCase()} to <b>{type === 'rm' ? batch.mainVessel + ' area' : 'Filling area'}</b></Tip>
+      <Tip color="orange" icon={<Send size={14} />}>Request transfer of {type.toUpperCase()} from <b>{fromLabel}</b> to <b>{toLabel}</b></Tip>
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div><label className={LBL}>Transfer From</label><input className={INP} defaultValue="Main Warehouse - Zone A" readOnly /></div>
-        <div><label className={LBL}>Transfer To</label><input className={INP} defaultValue={type === 'rm' ? `${batch.mainVessel} - Manufacturing Area` : `Filling Area - ${batch.fillingLine}`} readOnly /></div>
+        <div>
+          <label className={LBL}>Transfer From</label>
+          <select className={INP} value={transferFrom} onChange={e => setTransferFrom(e.target.value)}>
+            {warehouseAreas.length === 0 && <option value="">Loading...</option>}
+            {warehouseAreas.map(area => (
+              <optgroup key={area.id} label={`${area.icon || ''} ${area.name}`}>
+                {area.zones.map(z => (
+                  <option key={z.code} value={z.code}>{z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={LBL}>Transfer To</label>
+          <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
+            {productionAreas.length === 0 && <option value="">Loading...</option>}
+            {productionAreas.map(area => (
+              <optgroup key={area.id} label={`${area.icon || ''} ${area.name}`}>
+                {area.zones.map(z => (
+                  <option key={z.code} value={z.code}>{z.name}{z.description ? ` — ${z.description}` : ''}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
         <div><label className={LBL}>Required By Date</label><input type="date" className={INP} value={reqDate} onChange={e => setReqDate(e.target.value)} /></div>
         <div><label className={LBL}>Priority</label><select className={INP} value={priority} onChange={e => setPriority(e.target.value)}><option>Urgent</option><option>Normal</option><option>Low</option></select></div>
       </div>
@@ -1043,8 +1258,9 @@ function MTRModal({ batch, type, onClose, onSave }: {
 
 /* ──────────── BATCH DETAIL MODAL — 6 tabs ──────────────────── */
 
-function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
+function BatchDetailModal({ batch, team, stockRM, stockPM, onClose, onSave, onAction }: {
   batch: Batch; team: TeamMember[];
+  stockRM: Record<string, number>; stockPM: Record<string, number>;
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onAction: (action: string, batch: Batch) => void;
 }) {
@@ -1101,7 +1317,7 @@ function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
             <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
               <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5">Req</th><th className="px-2 py-1.5">SIH</th></tr></thead>
                 <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
-                  const sih = WH_STOCK_RM[r.code] || 0; const ok = sih >= r.required;
+                  const sih = stockRM[r.code] ?? 0; const ok = sih >= r.required;
                   return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{r.required}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td></tr>;
                 })}</tbody>
               </table>
@@ -1115,7 +1331,7 @@ function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
             <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
               <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5">Req</th><th className="px-2 py-1.5">SIH</th></tr></thead>
                 <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
-                  const sih = WH_STOCK_PM[p.code] || 0; const ok = sih >= p.required;
+                  const sih = stockPM[p.code] ?? 0; const ok = sih >= p.required;
                   return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td></tr>;
                 })}</tbody>
               </table>
@@ -1127,8 +1343,8 @@ function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
       {tab === 'schedule' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {([['Mfg Date', batch.mfgDate], ['Fill Date', batch.fillDate], ['Pack Date', batch.packDate],
-            ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
-            ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
+          ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
+          ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
           ] as [string, string][]).map(([k, v]) => (
             <div key={k}><div className="text-[10px] text-gray-400 font-medium">{k}</div><div className="text-sm font-semibold text-gray-800">{v || '-'}</div></div>
           ))}
@@ -1194,11 +1410,10 @@ function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
             return (
               <div key={p.key} className="flex items-start gap-3">
                 <div className="flex flex-col items-center">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${
-                    state === 'done' ? 'bg-emerald-100 border-emerald-400 text-emerald-600' :
-                    state === 'active' ? 'bg-orange-100 border-orange-400 text-orange-600 ring-2 ring-orange-100' :
-                    'bg-gray-50 border-gray-200 text-gray-300'
-                  }`}>{state === 'done' ? <Check size={12} strokeWidth={3} /> : p.icon}</div>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${state === 'done' ? 'bg-emerald-100 border-emerald-400 text-emerald-600' :
+                      state === 'active' ? 'bg-orange-100 border-orange-400 text-orange-600 ring-2 ring-orange-100' :
+                        'bg-gray-50 border-gray-200 text-gray-300'
+                    }`}>{state === 'done' ? <Check size={12} strokeWidth={3} /> : p.icon}</div>
                   {i < pipeline.length - 1 && <div className={`w-0.5 h-6 ${i < pIdx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
                 </div>
                 <div className="pb-4">
@@ -1222,10 +1437,13 @@ function BatchDetailModal({ batch, team, onClose, onSave, onAction }: {
         {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch); }}>RM Transfer</Btn>}
         {batch.rmConnected && batch.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
         {batch.bmrStatus === 'in_production' && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
+        {batch.bmrStatus === 'qc_failed' && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Retry Bulk QC</Btn>}
         {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch); }}>PM Transfer</Btn>}
         {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>}
         {batch.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Fill QC</Btn>}
         {batch.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Pack QC</Btn>}
+        {batch.bprStatus === 'qc_failed' && batch.fillBatchAccepted === false && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Retry Fill QC</Btn>}
+        {batch.bprStatus === 'qc_failed' && batch.fgBatchAccepted === false && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Retry Pack QC</Btn>}
         <button onClick={() => { /* print stub */ }} className="inline-flex items-center gap-1 px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 ml-auto transition-colors"><Printer size={12} />Print</button>
       </div>
     </Modal>
@@ -1256,14 +1474,15 @@ function BMRView({ batches, onAction }: {
 }) {
   const [filter, setFilter] = useState<string>('all');
   const filtered = filter === 'all' ? batches : batches.filter(b => b.bmrStatus === filter);
+  const failedCount = batches.filter(b => b.bmrStatus === 'qc_failed').length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
         <div><h1 className="text-lg font-bold text-gray-900 tracking-tight">BMR - Manufacturing</h1><p className="text-[11px] text-gray-400 mt-0.5">Batch Manufacturing Records - Pipeline Management</p></div>
         <div className="flex gap-1 flex-wrap">
-          {[{ k: 'all', l: 'All' }, ...BMR_PIPELINE.map(p => ({ k: p.key, l: p.label }))].map(s => (
-            <button key={s.k} onClick={() => setFilter(s.k)} className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${filter === s.k ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>{s.l}</button>
+          {[{ k: 'all', l: 'All' }, ...BMR_PIPELINE.map(p => ({ k: p.key, l: p.label })), { k: 'qc_failed', l: `QC Failed${failedCount ? ` (${failedCount})` : ''}` }].map(s => (
+            <button key={s.k} onClick={() => setFilter(s.k)} className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${filter === s.k ? (s.k === 'qc_failed' ? 'bg-red-500 text-white border-red-500' : 'bg-orange-500 text-white border-orange-500') : (s.k === 'qc_failed' && failedCount > 0 ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}`}>{s.l}</button>
           ))}
         </div>
       </div>
@@ -1275,16 +1494,23 @@ function BMRView({ batches, onAction }: {
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.teal;
               return (
-                <div key={b.bmrNo} className={`rounded-xl border p-4 ${colors.bg} ${colors.border} hover:shadow-md transition-all cursor-pointer`}
+                <div key={b.bmrNo} className={`rounded-xl border p-4 ${b.bmrStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
-                  <div className="mb-3"><PipelineStrip pipeline={BMR_PIPELINE} currentStatus={b.bmrStatus} /></div>
+                  <div className="mb-3"><PipelineStrip pipeline={BMR_PIPELINE} currentStatus={b.bmrStatus === 'qc_failed' ? 'bulk_qc' : b.bmrStatus} failed={b.bmrStatus === 'qc_failed'} /></div>
                   <div className="flex items-start justify-between mb-2.5">
                     <div>
                       <div className="text-sm font-bold text-gray-800">{b.bmrNo}</div>
                       <div className="text-xs text-gray-600 font-medium">{b.productName}</div>
                     </div>
-                    <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{bmrStatusLabel[b.bmrStatus]}</Badge>
+                    {b.bmrStatus === 'qc_failed'
+                      ? <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed</Badge>
+                      : <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{bmrStatusLabel[b.bmrStatus]}</Badge>}
                   </div>
+                  {b.bmrStatus === 'qc_failed' && b.remarks && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 mb-2.5 rounded-lg bg-red-100/60 border border-red-200 text-[10px] text-red-700">
+                      <AlertTriangle size={11} className="shrink-0" /> {b.remarks}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 text-[11px] mb-3">
                     <div><span className="text-gray-400">Batch:</span> <b>{b.batchNo} ({b.batchIndex}/{b.totalBatches})</b></div>
                     <div><span className="text-gray-400">Size:</span> <b>{b.batchSize} KG</b></div>
@@ -1304,6 +1530,7 @@ function BMRView({ batches, onAction }: {
                     {b.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
                     {b.bmrStatus === 'in_production' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Bulk QC</Btn>}
                     {b.bmrStatus === 'bulk_qc' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Review QC</Btn>}
+                    {b.bmrStatus === 'qc_failed' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Retry QC</Btn>}
                     <button onClick={() => onAction('detail', b)} className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-gray-500 border border-gray-200 rounded-lg hover:bg-white/80 transition-colors"><Eye size={10} /> Details</button>
                   </div>
                 </div>
@@ -1325,14 +1552,15 @@ function BPRView({ batches, onAction }: {
   const bprBatches = batches.filter(b => b.bprStatus !== 'draft' || b.bmrStatus === 'cleared');
   const [filter, setFilter] = useState<string>('all');
   const filtered = filter === 'all' ? bprBatches : bprBatches.filter(b => b.bprStatus === filter);
+  const failedCount = bprBatches.filter(b => b.bprStatus === 'qc_failed').length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
         <div><h1 className="text-lg font-bold text-gray-900 tracking-tight">BPR - Filling & Packing</h1><p className="text-[11px] text-gray-400 mt-0.5">Batch Packing Records - Filling, QC & Packaging pipeline</p></div>
         <div className="flex gap-1 flex-wrap">
-          {[{ k: 'all', l: 'All' }, ...BPR_PIPELINE.filter(p => p.key !== 'draft').map(p => ({ k: p.key, l: p.label }))].map(s => (
-            <button key={s.k} onClick={() => setFilter(s.k)} className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${filter === s.k ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>{s.l}</button>
+          {[{ k: 'all', l: 'All' }, ...BPR_PIPELINE.filter(p => p.key !== 'draft').map(p => ({ k: p.key, l: p.label })), { k: 'qc_failed', l: `QC Failed${failedCount ? ` (${failedCount})` : ''}` }].map(s => (
+            <button key={s.k} onClick={() => setFilter(s.k)} className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${filter === s.k ? (s.k === 'qc_failed' ? 'bg-red-500 text-white border-red-500' : 'bg-purple-500 text-white border-purple-500') : (s.k === 'qc_failed' && failedCount > 0 ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}`}>{s.l}</button>
           ))}
         </div>
       </div>
@@ -1344,16 +1572,23 @@ function BPRView({ batches, onAction }: {
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.purple;
               return (
-                <div key={b.bprNo} className={`rounded-xl border p-4 ${colors.bg} ${colors.border} hover:shadow-md transition-all cursor-pointer`}
+                <div key={b.bprNo} className={`rounded-xl border p-4 ${b.bprStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
-                  <div className="mb-3"><PipelineStrip pipeline={BPR_PIPELINE} currentStatus={b.bprStatus} /></div>
+                  <div className="mb-3"><PipelineStrip pipeline={BPR_PIPELINE} currentStatus={b.bprStatus === 'qc_failed' ? (b.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : b.bprStatus} failed={b.bprStatus === 'qc_failed'} /></div>
                   <div className="flex items-start justify-between mb-2.5">
                     <div>
                       <div className="text-sm font-bold text-gray-800">{b.bprNo}</div>
                       <div className="text-xs text-gray-600 font-medium">{b.productName}</div>
                     </div>
-                    <Badge className="bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[b.bprStatus]}</Badge>
+                    {b.bprStatus === 'qc_failed'
+                      ? <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed{b.fillBatchAccepted === false ? ' (Fill)' : ' (Pack)'}</Badge>
+                      : <Badge className="bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[b.bprStatus]}</Badge>}
                   </div>
+                  {b.bprStatus === 'qc_failed' && b.remarks && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 mb-2.5 rounded-lg bg-red-100/60 border border-red-200 text-[10px] text-red-700">
+                      <AlertTriangle size={11} className="shrink-0" /> {b.remarks}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 text-[11px] mb-3">
                     <div><span className="text-gray-400">Batch:</span> <b>{b.batchNo}</b></div>
                     <div><span className="text-gray-400">Fill Line:</span> <b>{b.fillingLine || '-'}</b></div>
@@ -1369,6 +1604,8 @@ function BPRView({ batches, onAction }: {
                     {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>}
                     {b.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcFill', b)}>Fill QC</Btn>}
                     {b.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcPack', b)}>Pack QC</Btn>}
+                    {b.bprStatus === 'qc_failed' && b.fillBatchAccepted === false && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcFill', b)}>Retry Fill QC</Btn>}
+                    {b.bprStatus === 'qc_failed' && b.fgBatchAccepted === false && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcPack', b)}>Retry Pack QC</Btn>}
                     {b.bprStatus === 'fg_ready' && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> FG Ready</Badge>}
                     <button onClick={() => onAction('detail', b)} className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-gray-500 border border-gray-200 rounded-lg hover:bg-white/80 transition-colors"><Eye size={10} /> Details</button>
                   </div>
@@ -1395,16 +1632,43 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
   const todayStr = isoDate(new Date());
   const todayIndex = weekDays.findIndex(d => d.iso === todayStr);
 
-  const active = batches.filter(b => b.bmrStatus === 'in_production' || b.bmrStatus === 'dispensing').length;
-  const pending = batches.filter(b => b.bmrStatus === 'draft' || b.bmrStatus === 'batch_confirmed').length;
-  const awaitingQC = batches.filter(b => b.bmrStatus === 'bulk_qc').length;
-  const fgReady = batches.filter(b => b.bprStatus === 'fg_ready').length;
+  const weekIsos = useMemo(() => new Set(weekDays.map(d => d.iso)), [weekDays]);
+  const weekBatches = useMemo(() => batches.filter(b =>
+    (b.mfgDate && weekIsos.has(b.mfgDate)) ||
+    (b.fillDate && weekIsos.has(b.fillDate)) ||
+    (b.packDate && weekIsos.has(b.packDate))
+  ), [batches, weekIsos]);
 
   const allEquip = [
     ...equipment.manufacturing.filter(e => e.type !== 'support').map(e => ({ ...e, _cat: 'mfg' as const })),
     ...equipment.filling.map(e => ({ ...e, _cat: 'fill' as const })),
     ...equipment.packaging.map(e => ({ ...e, _cat: 'pack' as const })),
   ];
+
+  const totalBatches = batches.length;
+  const scheduledThisWeek = weekBatches.length;
+  const active = batches.filter(b => b.bmrStatus === 'in_production' || b.bmrStatus === 'dispensing').length;
+  const awaitingQC = batches.filter(b => b.bmrStatus === 'bulk_qc' || b.bprStatus === 'fill_qc' || b.bprStatus === 'pack_qc').length;
+  const qcFailed = batches.filter(b => b.bmrStatus === 'qc_failed' || b.bprStatus === 'qc_failed').length;
+  const filling = batches.filter(b => b.bprStatus === 'filling' || b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_dispensing').length;
+  const fgReady = batches.filter(b => b.bprStatus === 'fg_ready').length;
+  const _cleared = batches.filter(b => b.bmrStatus === 'cleared').length;
+  /*
+    Total slots = (number of equipment across all categories) x (days in the visible week)
+    Filled = count of batch-to-equipment assignments that fall within the current week (a batch with mfgDate on a day this week using vessel X = 1 filled slot; same batch with fillDate on another day using line Y = another filled slot)
+    Result = filled / totalSlots * 100
+  */
+  const utilisation = useMemo(() => {
+    const totalSlots = allEquip.length * weekDays.length;
+    if (totalSlots === 0) return 0;
+    let filled = 0;
+    for (const b of batches) {
+      if (b.mfgDate && weekIsos.has(b.mfgDate) && b.mainVessel) filled++;
+      if (b.fillDate && weekIsos.has(b.fillDate) && b.fillingLine) filled++;
+      if (b.packDate && weekIsos.has(b.packDate) && b.packagingLine) filled++;
+    }
+    return Math.round((filled / totalSlots) * 100);
+  }, [batches, weekIsos, weekDays.length, allEquip.length]);
 
   function getBatch(equipId: string, dayIso: string, cat: string): Batch | undefined {
     if (cat === 'mfg') return batches.find(b => b.mainVessel === equipId && b.mfgDate === dayIso);
@@ -1433,18 +1697,22 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0">
         {[
+          { label: 'TOTAL', value: totalBatches, color: 'text-gray-700', icon: <Layers size={14} className="text-gray-400" /> },
+          { label: 'THIS WEEK', value: scheduledThisWeek, color: 'text-indigo-600', icon: <Calendar size={14} className="text-indigo-400" /> },
           { label: 'ACTIVE', value: active, color: 'text-orange-600', icon: <FlaskConical size={14} className="text-orange-400" /> },
-          { label: 'PENDING', value: pending, color: 'text-amber-600', icon: <ClipboardList size={14} className="text-amber-400" /> },
+          { label: 'FILLING', value: filling, color: 'text-purple-600', icon: <Droplets size={14} className="text-purple-400" /> },
           { label: 'AWAITING QC', value: awaitingQC, color: 'text-blue-600', icon: <Microscope size={14} className="text-blue-400" /> },
+          { label: 'QC FAILED', value: qcFailed, color: 'text-red-600', icon: <AlertTriangle size={14} className="text-red-400" /> },
           { label: 'FG READY', value: fgReady, color: 'text-emerald-600', icon: <CheckCircle2 size={14} className="text-emerald-400" /> },
+          { label: 'UTILISATION', value: `${utilisation}%`, color: utilisation > 60 ? 'text-emerald-600' : utilisation > 30 ? 'text-amber-600' : 'text-gray-500', icon: <Activity size={14} className={utilisation > 60 ? 'text-emerald-400' : utilisation > 30 ? 'text-amber-400' : 'text-gray-400'} /> },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex items-center gap-3 shadow-xs">
+          <div key={c.label} className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center gap-2.5 shadow-xs">
             {c.icon}
             <div>
-              <div className={`text-xl font-extrabold ${c.color}`}>{c.value}</div>
-              <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">{c.label}</div>
+              <div className={`text-lg font-extrabold ${c.color}`}>{c.value}</div>
+              <div className="text-[8px] text-gray-400 uppercase font-bold tracking-wider leading-none">{c.label}</div>
             </div>
           </div>
         ))}
@@ -1485,11 +1753,10 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
                       <div key={i} className={`flex-1 relative h-12 border-r border-gray-50 ${i === todayIndex ? 'bg-orange-50/30' : ''}`}>
                         {batch && (
                           <div onClick={() => onBatchClick(batch)}
-                            className={`absolute inset-y-1 inset-x-0.5 rounded-lg border text-[10px] font-semibold px-1.5 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all ${
-                              cat === 'mfg' ? 'bg-teal-100 border-teal-300 text-teal-800' :
-                              cat === 'fill' ? 'bg-purple-100 border-purple-300 text-purple-800' :
-                              'bg-emerald-100 border-emerald-300 text-emerald-800'
-                            }`}>
+                            className={`absolute inset-y-1 inset-x-0.5 rounded-lg border text-[10px] font-semibold px-1.5 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all ${cat === 'mfg' ? 'bg-teal-100 border-teal-300 text-teal-800' :
+                                cat === 'fill' ? 'bg-purple-100 border-purple-300 text-purple-800' :
+                                  'bg-emerald-100 border-emerald-300 text-emerald-800'
+                              }`}>
                             <span className="truncate font-bold">{batch.bmrNo.split('-').pop()}</span>
                             <span className="truncate opacity-70">{batch.batchSize}KG</span>
                           </div>
@@ -1509,37 +1776,123 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
 
 /* ──────────── EQUIPMENT VIEW ───────────────────────────────── */
 
-function EquipmentView({ equipment, batches, onUpdate }: {
+function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
   equipment: EquipmentData; batches: Batch[];
   onUpdate: (eq: EquipmentData) => void;
+  onRefresh: () => void;
 }) {
+  const { addToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [addCat, setAddCat] = useState<'manufacturing' | 'filling' | 'packaging'>('manufacturing');
   const [addId, setAddId] = useState('');
   const [addName, setAddName] = useState('');
   const [addCap, setAddCap] = useState('');
   const [addType, setAddType] = useState('jacketed');
+  const [addHomogenizer, setAddHomogenizer] = useState(true);
+  const [addProcessTypes, setAddProcessTypes] = useState<string[]>(['hot', 'cold']);
+  const [addCompatible, setAddCompatible] = useState('');
+  const [addSupports, setAddSupports] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const [editPk, setEditPk] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCap, setEditCap] = useState('');
+  const [editType, setEditType] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [editHomogenizer, setEditHomogenizer] = useState(false);
+  const [editProcessTypes, setEditProcessTypes] = useState<string[]>([]);
+  const [editCompatible, setEditCompatible] = useState('');
+  const [editSupports, setEditSupports] = useState('');
+  const [editCat, setEditCat] = useState<'manufacturing' | 'filling' | 'packaging'>('manufacturing');
 
   const isBusy = (id: string) => batches.some(b => (b.mainVessel === id || b.fillingLine === id || b.packagingLine === id) && !['draft', 'cleared', 'fg_ready'].includes(b.bmrStatus));
 
-  const handleRemove = (cat: keyof EquipmentData, id: string) => {
-    if (!confirm(`Remove ${id}?`)) return;
-    const updated = { ...equipment, [cat]: (equipment[cat] as Array<{ id: string }>).filter((e: { id: string }) => e.id !== id) };
-    onUpdate(updated);
+  const handleRemove = async (cat: keyof EquipmentData, eqId: string) => {
+    if (!confirm(`Remove ${eqId}? This will permanently delete it from the database.`)) return;
+    const item = (equipment[cat] as Array<{ id: string; _pk?: number }>).find(e => e.id === eqId);
+    if (item?._pk) {
+      try {
+        await apiDeleteEquipment(item._pk);
+        addToast('success', `${eqId} removed`);
+        onRefresh();
+      } catch {
+        addToast('error', `Failed to remove ${eqId}`);
+      }
+    } else {
+      const updated = { ...equipment, [cat]: (equipment[cat] as Array<{ id: string }>).filter(e => e.id !== eqId) };
+      onUpdate(updated);
+    }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!addId.trim() || !addName.trim()) return;
-    const updated = { ...equipment };
-    if (addCat === 'manufacturing') {
-      updated.manufacturing = [...updated.manufacturing, { id: addId, name: addName, cap: parseInt(addCap) || 200, type: addType as 'jacketed' | 'simple' | 'support', homogenizer: addType === 'jacketed', processType: addType === 'jacketed' ? ['hot' as ProcessType, 'cold' as ProcessType] : ['cold' as ProcessType], status: 'idle' }];
-    } else if (addCat === 'filling') {
-      updated.filling = [...updated.filling, { id: addId, name: addName, speed: parseInt(addCap) || 1000, type: addType as FillingType, compatible: [addType], status: 'idle' }];
-    } else {
-      updated.packaging = [...updated.packaging, { id: addId, name: addName, speed: parseInt(addCap) || 2000, type: addType, supports: ['carton', 'label'], status: 'idle' }];
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        equipment_id: addId.trim(),
+        name: addName.trim(),
+        category: addCat,
+        type: addType,
+        status: 'idle',
+      };
+      if (addCat === 'manufacturing') {
+        payload.capacity = parseInt(addCap) || 200;
+        payload.homogenizer = addHomogenizer;
+        payload.process_types = addProcessTypes;
+      } else if (addCat === 'filling') {
+        payload.speed = parseInt(addCap) || 1000;
+        payload.compatible = addCompatible.split(',').map(s => s.trim()).filter(Boolean);
+        if (!payload.compatible || (payload.compatible as string[]).length === 0) payload.compatible = [addType];
+      } else {
+        payload.speed = parseInt(addCap) || 2000;
+        payload.supports = addSupports.split(',').map(s => s.trim()).filter(Boolean);
+        if (!payload.supports || (payload.supports as string[]).length === 0) payload.supports = ['carton', 'label'];
+      }
+      await apiCreateEquipment(payload);
+      addToast('success', `${addId} added`);
+      setShowAdd(false); setAddId(''); setAddName(''); setAddCap(''); setAddCompatible(''); setAddSupports('');
+      onRefresh();
+    } catch {
+      addToast('error', 'Failed to create equipment');
+    } finally {
+      setSaving(false);
     }
-    onUpdate(updated);
-    setShowAdd(false); setAddId(''); setAddName(''); setAddCap('');
+  };
+
+  const openEdit = (cat: 'manufacturing' | 'filling' | 'packaging', e: { id: string; name: string; _pk?: number; cap?: number; speed?: number; type?: string; status?: string; homogenizer?: boolean; processType?: string[]; compatible?: string[]; supports?: string[] }) => {
+    if (!e._pk) return;
+    setEditPk(e._pk); setEditCat(cat);
+    setEditName(e.name); setEditStatus(e.status || 'idle'); setEditType(e.type || '');
+    setEditCap(String(e.cap ?? e.speed ?? '')); setEditHomogenizer(!!e.homogenizer);
+    setEditProcessTypes(e.processType || []); setEditCompatible((e.compatible || []).join(', '));
+    setEditSupports((e.supports || []).join(', '));
+  };
+
+  const handleEditSave = async () => {
+    if (!editPk) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = { name: editName, type: editType, status: editStatus };
+      if (editCat === 'manufacturing') {
+        payload.capacity = parseInt(editCap) || 0;
+        payload.homogenizer = editHomogenizer;
+        payload.process_types = editProcessTypes;
+      } else if (editCat === 'filling') {
+        payload.speed = parseInt(editCap) || 0;
+        payload.compatible = editCompatible.split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        payload.speed = parseInt(editCap) || 0;
+        payload.supports = editSupports.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      await apiUpdateEquipment(editPk, payload);
+      addToast('success', 'Equipment updated');
+      setEditPk(null);
+      onRefresh();
+    } catch {
+      addToast('error', 'Failed to update equipment');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const catMeta: { key: 'manufacturing' | 'filling' | 'packaging'; label: string; color: string; icon: React.ReactNode }[] = [
@@ -1548,41 +1901,65 @@ function EquipmentView({ equipment, batches, onUpdate }: {
     { key: 'packaging', label: 'Packaging Lines', color: 'text-emerald-600', icon: <Package size={14} /> },
   ];
 
+  const totalEquip = equipment.manufacturing.length + equipment.filling.length + equipment.packaging.length;
+  const busyCount = [...equipment.manufacturing, ...equipment.filling, ...equipment.packaging].filter(e => isBusy(e.id)).length;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
-        <div><h1 className="text-lg font-bold text-gray-900 tracking-tight">Equipment & Capacity</h1><p className="text-[11px] text-gray-400 mt-0.5">Manage all production equipment</p></div>
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Equipment</button>
+        <div>
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">Equipment & Capacity</h1>
+          <p className="text-[11px] text-gray-400 mt-0.5">{totalEquip} equipment — {busyCount} in use, {totalEquip - busyCount} idle</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"><RotateCcw size={12} /> Refresh</button>
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Equipment</button>
+        </div>
       </div>
       <div className="flex-1 overflow-auto p-6">
         {catMeta.map(cat => (
           <div key={cat.key} className="mb-8">
-            <h3 className={`flex items-center gap-2 text-sm font-bold ${cat.color} uppercase tracking-wide mb-3`}>{cat.icon}{cat.label}</h3>
+            <h3 className={`flex items-center gap-2 text-sm font-bold ${cat.color} uppercase tracking-wide mb-3`}>
+              {cat.icon}{cat.label}
+              <Badge className="bg-gray-100 text-gray-500 ml-1">{(equipment[cat.key] as unknown[]).length}</Badge>
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(equipment[cat.key] as Array<{ id: string; name: string; cap?: number; speed?: number; type?: string; homogenizer?: boolean; processType?: string[]; compatible?: string[] }>).map((e) => {
+              {(equipment[cat.key] as Array<{ id: string; name: string; _pk?: number; cap?: number; speed?: number; type?: string; status?: string; homogenizer?: boolean; processType?: string[]; compatible?: string[]; supports?: string[] }>).map((e) => {
                 const busy = isBusy(e.id);
-                const utilPct = Math.min(100, busy ? 60 : 0);
+                const activeBatches = batches.filter(b => (b.mainVessel === e.id || b.fillingLine === e.id || b.packagingLine === e.id) && !['draft', 'cleared', 'fg_ready'].includes(b.bmrStatus));
+                const utilPct = Math.min(100, activeBatches.length > 0 ? Math.round((activeBatches.length / Math.max(batches.length, 1)) * 100) : 0);
                 return (
-                  <div key={e.id} className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${busy ? 'border-red-200' : 'border-gray-100'}`}>
+                  <div key={e.id} className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${busy ? 'border-orange-200' : 'border-gray-100'}`}>
                     <div className="flex items-start justify-between mb-2.5">
                       <div>
                         <div className={`text-sm font-bold font-mono ${cat.color}`}>{e.id}</div>
                         <div className="text-xs text-gray-600 font-medium">{e.name}</div>
                       </div>
-                      <Badge className={busy ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-700'}>{busy ? 'IN USE' : 'IDLE'}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        {e.status === 'maintenance' && <Badge className="bg-amber-100 text-amber-700">MAINTENANCE</Badge>}
+                        {e.status !== 'maintenance' && <Badge className={busy ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-700'}>{busy ? 'IN USE' : 'IDLE'}</Badge>}
+                      </div>
                     </div>
-                    {e.cap && <div className="text-[11px] text-gray-500">Capacity: <b className="text-gray-800">{e.cap}L</b></div>}
-                    {e.speed && <div className="text-[11px] text-gray-500">Speed: <b className="text-gray-800">{fmt(e.speed)}/hr</b></div>}
+                    {busy && activeBatches.length > 0 && (
+                      <div className="text-[10px] text-orange-600 mb-1.5 flex items-center gap-1"><Activity size={10} /> Running: {activeBatches.map(b => b.bmrNo).join(', ')}</div>
+                    )}
+                    {e.cap != null && <div className="text-[11px] text-gray-500">Capacity: <b className="text-gray-800">{e.cap}L</b></div>}
+                    {e.speed != null && <div className="text-[11px] text-gray-500">Speed: <b className="text-gray-800">{fmt(e.speed)}/hr</b></div>}
                     {e.type && <div className="text-[11px] text-gray-500">Type: <b className="text-gray-800">{(e.type as string).toUpperCase()}</b></div>}
-                    {e.homogenizer !== undefined && <div className="text-[11px] text-gray-500 inline-flex items-center gap-0.5">Homogenizer: <b className={e.homogenizer ? 'text-emerald-600 inline-flex items-center gap-0.5' : 'text-gray-400'}>{e.homogenizer ? <><Check size={11} /> Yes</> : 'No'}</b></div>}
-                    {e.processType && <div className="text-[11px] text-gray-500">Process: <b>{(e.processType as string[]).join(', ').toUpperCase()}</b></div>}
-                    {e.compatible && <div className="text-[11px] text-gray-500">Compatible: <b>{(e.compatible as string[]).join(', ')}</b></div>}
+                    {e.homogenizer !== undefined && cat.key === 'manufacturing' && <div className="text-[11px] text-gray-500 inline-flex items-center gap-0.5">Homogenizer: <b className={e.homogenizer ? 'text-emerald-600 inline-flex items-center gap-0.5' : 'text-gray-400'}>{e.homogenizer ? <><Check size={11} /> Yes</> : 'No'}</b></div>}
+                    {e.processType && e.processType.length > 0 && <div className="text-[11px] text-gray-500">Process: <b>{(e.processType as string[]).join(', ').toUpperCase()}</b></div>}
+                    {e.compatible && e.compatible.length > 0 && <div className="text-[11px] text-gray-500">Compatible: <b>{(e.compatible as string[]).join(', ')}</b></div>}
+                    {e.supports && e.supports.length > 0 && <div className="text-[11px] text-gray-500">Supports: <b>{(e.supports as string[]).join(', ')}</b></div>}
                     <div className="mt-3">
                       <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>Utilization</span><span>{utilPct}%</span></div>
                       <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${utilPct > 50 ? 'bg-orange-400' : 'bg-emerald-400'}`} style={{ width: `${utilPct}%` }} /></div>
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => handleRemove(cat.key, e.id)} className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] text-red-500 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"><X size={10} /> Remove</button>
+                      <button onClick={() => openEdit(cat.key, e)} className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] text-blue-500 border border-blue-100 rounded-lg hover:bg-blue-50 transition-colors"><Pencil size={10} /> Edit</button>
+                      <button onClick={() => handleRemove(cat.key, e.id)} disabled={busy}
+                        className={`inline-flex items-center gap-0.5 px-2 py-1 text-[10px] border rounded-lg transition-colors ${busy ? 'text-gray-300 border-gray-100 cursor-not-allowed' : 'text-red-500 border-red-100 hover:bg-red-50'}`}>
+                        <X size={10} /> Remove
+                      </button>
                     </div>
                   </div>
                 );
@@ -1596,22 +1973,97 @@ function EquipmentView({ equipment, batches, onUpdate }: {
         ))}
       </div>
 
+      {/* Add Equipment Modal */}
       {showAdd && (
         <Modal onClose={() => setShowAdd(false)} title="Add Equipment">
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={LBL}>Category</label><select className={INP} value={addCat} onChange={e => setAddCat(e.target.value as typeof addCat)}><option value="manufacturing">Manufacturing Vessel</option><option value="filling">Filling Line</option><option value="packaging">Packaging Line</option></select></div>
+            <div><label className={LBL}>Category</label><select className={INP} value={addCat} onChange={e => { setAddCat(e.target.value as typeof addCat); setAddType(e.target.value === 'manufacturing' ? 'jacketed' : e.target.value === 'filling' ? 'bottle' : 'auto'); }}><option value="manufacturing">Manufacturing Vessel</option><option value="filling">Filling Line</option><option value="packaging">Packaging Line</option></select></div>
             <div><label className={LBL}>Equipment ID</label><input className={INP} value={addId} onChange={e => setAddId(e.target.value)} placeholder="e.g. MV-04" /></div>
             <div><label className={LBL}>Name</label><input className={INP} value={addName} onChange={e => setAddName(e.target.value)} placeholder="e.g. Manufacturing Vessel 04" /></div>
-            <div><label className={LBL}>Capacity / Speed</label><input className={INP} type="number" value={addCap} onChange={e => setAddCap(e.target.value)} placeholder="e.g. 500" /></div>
+            <div><label className={LBL}>{addCat === 'manufacturing' ? 'Capacity (L)' : 'Speed (units/hr)'}</label><input className={INP} type="number" value={addCap} onChange={e => setAddCap(e.target.value)} placeholder={addCat === 'manufacturing' ? 'e.g. 500' : 'e.g. 3000'} /></div>
             <div><label className={LBL}>Type</label><select className={INP} value={addType} onChange={e => setAddType(e.target.value)}>
-              <option value="jacketed">Jacketed</option><option value="simple">Simple</option><option value="support">Support Tank</option>
-              <option value="bottle">Bottle</option><option value="tube">Tube</option><option value="jar">Jar</option><option value="manual">Manual</option>
-              <option value="auto">Auto Pack</option><option value="semi">Semi-Auto</option><option value="shrink">Shrink Wrap</option>
+              {addCat === 'manufacturing' && <><option value="jacketed">Jacketed</option><option value="simple">Simple</option><option value="support">Support Tank</option></>}
+              {addCat === 'filling' && <><option value="bottle">Bottle</option><option value="tube">Tube</option><option value="jar">Jar</option><option value="manual">Manual</option></>}
+              {addCat === 'packaging' && <><option value="auto">Auto Pack</option><option value="semi">Semi-Auto</option><option value="shrink">Shrink Wrap</option></>}
             </select></div>
+            {addCat === 'manufacturing' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <label className={LBL}>Homogenizer</label>
+                  <input type="checkbox" checked={addHomogenizer} onChange={e => setAddHomogenizer(e.target.checked)} className="rounded border-gray-300" />
+                </div>
+                <div className="col-span-2 flex gap-3 items-center">
+                  <label className={`${LBL} mb-0`}>Process Types:</label>
+                  {['hot', 'cold'].map(pt => (
+                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-gray-600">
+                      <input type="checkbox" checked={addProcessTypes.includes(pt)} onChange={e => setAddProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-gray-300" />
+                      {pt.toUpperCase()}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+            {addCat === 'filling' && (
+              <div className="col-span-2"><label className={LBL}>Compatible (comma-separated)</label><input className={INP} value={addCompatible} onChange={e => setAddCompatible(e.target.value)} placeholder="e.g. bottle, tube" /></div>
+            )}
+            {addCat === 'packaging' && (
+              <div className="col-span-2"><label className={LBL}>Supports (comma-separated)</label><input className={INP} value={addSupports} onChange={e => setAddSupports(e.target.value)} placeholder="e.g. carton, label, shrink" /></div>
+            )}
           </div>
           <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
             <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-            <button onClick={handleAdd} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add</button>
+            <button onClick={handleAdd} disabled={saving || !addId.trim() || !addName.trim()}
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
+              {saving ? 'Saving...' : <><Plus size={13} /> Add</>}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Equipment Modal */}
+      {editPk !== null && (
+        <Modal onClose={() => setEditPk(null)} title="Edit Equipment">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={LBL}>Name</label><input className={INP} value={editName} onChange={e => setEditName(e.target.value)} /></div>
+            <div><label className={LBL}>{editCat === 'manufacturing' ? 'Capacity (L)' : 'Speed (units/hr)'}</label><input className={INP} type="number" value={editCap} onChange={e => setEditCap(e.target.value)} /></div>
+            <div><label className={LBL}>Type</label><select className={INP} value={editType} onChange={e => setEditType(e.target.value)}>
+              {editCat === 'manufacturing' && <><option value="jacketed">Jacketed</option><option value="simple">Simple</option><option value="support">Support Tank</option></>}
+              {editCat === 'filling' && <><option value="bottle">Bottle</option><option value="tube">Tube</option><option value="jar">Jar</option><option value="manual">Manual</option></>}
+              {editCat === 'packaging' && <><option value="auto">Auto Pack</option><option value="semi">Semi-Auto</option><option value="shrink">Shrink Wrap</option></>}
+            </select></div>
+            <div><label className={LBL}>Status</label><select className={INP} value={editStatus} onChange={e => setEditStatus(e.target.value)}>
+              <option value="idle">Idle</option><option value="maintenance">Maintenance</option><option value="offline">Offline</option>
+            </select></div>
+            {editCat === 'manufacturing' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <label className={LBL}>Homogenizer</label>
+                  <input type="checkbox" checked={editHomogenizer} onChange={e => setEditHomogenizer(e.target.checked)} className="rounded border-gray-300" />
+                </div>
+                <div className="col-span-2 flex gap-3 items-center">
+                  <label className={`${LBL} mb-0`}>Process Types:</label>
+                  {['hot', 'cold'].map(pt => (
+                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-gray-600">
+                      <input type="checkbox" checked={editProcessTypes.includes(pt)} onChange={e => setEditProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-gray-300" />
+                      {pt.toUpperCase()}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+            {editCat === 'filling' && (
+              <div className="col-span-2"><label className={LBL}>Compatible (comma-separated)</label><input className={INP} value={editCompatible} onChange={e => setEditCompatible(e.target.value)} /></div>
+            )}
+            {editCat === 'packaging' && (
+              <div className="col-span-2"><label className={LBL}>Supports (comma-separated)</label><input className={INP} value={editSupports} onChange={e => setEditSupports(e.target.value)} /></div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+            <button onClick={() => setEditPk(null)} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+            <button onClick={handleEditSave} disabled={saving}
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
+              {saving ? 'Saving...' : <><Check size={13} /> Save</>}
+            </button>
           </div>
         </Modal>
       )}
@@ -1621,12 +2073,99 @@ function EquipmentView({ equipment, batches, onUpdate }: {
 
 /* ──────────── TEAM VIEW ────────────────────────────────────── */
 
-function TeamView({ team, onUpdate }: { team: TeamMember[]; onUpdate: (t: TeamMember[]) => void }) {
+function TeamView({ team, onUpdate, onRefresh, canEdit, departmentList }: {
+  team: TeamMember[]; onUpdate: (t: TeamMember[]) => void;
+  onRefresh: () => void; canEdit: boolean; departmentList: string[];
+}) {
+  const { addToast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
-  const [addName, setAddName] = useState('');
-  const [addId, setAddId] = useState('');
-  const [addRole, setAddRole] = useState('');
   const [addDept, setAddDept] = useState<Department>('Manufacturing');
+  const [saving, setSaving] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
+  const [addRole, setAddRole] = useState('');
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q);
+    setSelectedUser(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.trim().length < 2) { setSearchResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await apiSearchUsers(q.trim());
+        const existingUserIds = new Set(team.filter(t => t.userId).map(t => t.userId));
+        setSearchResults(results.filter(r => !existingUserIds.has(r.userid)));
+      } catch { setSearchResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+  };
+
+  const handleSelectUser = (user: UserSearchResult) => {
+    setSelectedUser(user);
+    setSearchQuery(user.display_name);
+    setSearchResults([]);
+    setAddRole(user.role_name || '');
+    if (user.department) {
+      const deptMap: Record<string, Department> = {
+        manufacturing: 'Manufacturing', filling: 'Filling', packaging: 'Packaging', quality: 'Quality',
+      };
+      const mapped = deptMap[user.department.toLowerCase()];
+      if (mapped) setAddDept(mapped);
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!selectedUser || !addRole.trim()) return;
+    setSaving(true);
+    try {
+      const memberId = `T${String(team.length + 1).padStart(2, '0')}`;
+      await apiCreateTeamMember({
+        member_id: memberId,
+        user_id: selectedUser.userid,
+        name: selectedUser.display_name,
+        role: addRole.trim(),
+        department: addDept,
+        available: true,
+      });
+      addToast('success', `${selectedUser.display_name} added to team`);
+      setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setAddRole('');
+      onRefresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add team member';
+      addToast('error', msg.includes('already') ? 'This user is already on the production team' : msg);
+    } finally { setSaving(false); }
+  };
+
+  const toggleAvail = async (member: TeamMember) => {
+    if (!canEdit) return;
+    if (member._pk) {
+      try {
+        await apiUpdateTeamMember(member._pk, { available: !member.avail });
+        onRefresh();
+      } catch { addToast('error', 'Failed to update availability'); }
+    } else {
+      onUpdate(team.map(t => t.id === member.id ? { ...t, avail: !t.avail } : t));
+    }
+  };
+
+  const removeMember = async (member: TeamMember) => {
+    if (!canEdit) return;
+    if (!confirm(`Remove ${member.name} from the production team?`)) return;
+    if (member._pk) {
+      try {
+        await apiDeleteTeamMember(member._pk);
+        addToast('success', `${member.name} removed`);
+        onRefresh();
+      } catch { addToast('error', 'Failed to remove team member'); }
+    } else {
+      onUpdate(team.filter(t => t.id !== member.id));
+    }
+  };
 
   const depts: { key: Department; color: string; icon: React.ReactNode }[] = [
     { key: 'Manufacturing', color: 'text-orange-600', icon: <FlaskConical size={14} /> },
@@ -1635,66 +2174,114 @@ function TeamView({ team, onUpdate }: { team: TeamMember[]; onUpdate: (t: TeamMe
     { key: 'Quality', color: 'text-blue-600', icon: <ShieldCheck size={14} /> },
   ];
 
-  const toggleAvail = (id: string) => { onUpdate(team.map(t => t.id === id ? { ...t, avail: !t.avail } : t)); };
-  const removeMember = (id: string) => { if (confirm('Remove this team member?')) onUpdate(team.filter(t => t.id !== id)); };
-
-  const handleAdd = () => {
-    if (!addName.trim() || !addId.trim() || !addRole.trim()) return;
-    if (team.find(t => t.id === addId)) return;
-    onUpdate([...team, { id: addId, name: addName, role: addRole, dept: addDept, avail: true }]);
-    setShowAdd(false); setAddName(''); setAddId(''); setAddRole('');
-  };
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
-        <div><h1 className="text-lg font-bold text-gray-900 tracking-tight">Team Management</h1><p className="text-[11px] text-gray-400 mt-0.5">Manage team across all departments</p></div>
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Member</button>
+        <div>
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">Team Management</h1>
+          <p className="text-[11px] text-gray-400 mt-0.5">{team.length} members across {depts.length} departments{!canEdit && ' (view only)'}</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"><RotateCcw size={12} /> Refresh</button>
+          {canEdit && (
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Member</button>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-auto p-6">
-        {depts.map(dept => (
-          <div key={dept.key} className="mb-8">
-            <h3 className={`flex items-center gap-2 text-sm font-bold ${dept.color} uppercase tracking-wide mb-3`}>{dept.icon}{dept.key}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {team.filter(t => t.dept === dept.key).map(t => (
-                <div key={t.id} className={`bg-white rounded-xl border p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md ${t.avail ? 'border-gray-100' : 'border-red-100'}`}>
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${t.avail ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
-                    {t.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-gray-800">{t.name}</div>
-                    <div className="text-[10px] text-gray-500">{t.role}</div>
-                    <div className="flex gap-1 mt-1.5">
-                      <Badge className={t.avail ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}>{t.avail ? 'Available' : 'Unavailable'}</Badge>
-                      <Badge className="bg-gray-100 text-gray-500">{t.id}</Badge>
+        {depts.map(dept => {
+          const members = team.filter(t => t.dept === dept.key);
+          return (
+            <div key={dept.key} className="mb-8">
+              <h3 className={`flex items-center gap-2 text-sm font-bold ${dept.color} uppercase tracking-wide mb-3`}>
+                {dept.icon}{dept.key}
+                <Badge className="bg-gray-100 text-gray-500 ml-1">{members.length}</Badge>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {members.map(t => (
+                  <div key={t.id} className={`bg-white rounded-xl border p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md ${t.avail ? 'border-gray-100' : 'border-red-100'}`}>
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${t.avail ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
+                      {t.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                     </div>
-                    <div className="flex gap-2 mt-2.5">
-                      <button onClick={() => toggleAvail(t.id)} className="text-[10px] px-2 py-0.5 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">{t.avail ? 'Set Unavail' : 'Set Avail'}</button>
-                      <button onClick={() => removeMember(t.id)} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-red-500 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"><X size={10} /></button>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-gray-800">{t.name}</div>
+                      <div className="text-[10px] text-gray-500">{t.role}</div>
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <Badge className={t.avail ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}>{t.avail ? 'Available' : 'Unavailable'}</Badge>
+                        <Badge className="bg-gray-100 text-gray-500">{t.id}</Badge>
+                        {t.userId && <Badge className="bg-blue-50 text-blue-500">Linked</Badge>}
+                      </div>
+                      {canEdit && (
+                        <div className="flex gap-2 mt-2.5">
+                          <button onClick={() => toggleAvail(t)} className="text-[10px] px-2 py-0.5 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">{t.avail ? 'Set Unavail' : 'Set Avail'}</button>
+                          <button onClick={() => removeMember(t)} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-red-500 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"><X size={10} /></button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
-              <div onClick={() => { setAddDept(dept.key); setShowAdd(true); }} className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-orange-300 hover:bg-orange-50/20 transition-colors min-h-25">
-                <Plus size={20} className="text-gray-300" />
-                <span className="text-xs font-semibold text-gray-400">Add to {dept.key}</span>
+                ))}
+                {canEdit && (
+                  <div onClick={() => { setAddDept(dept.key); setShowAdd(true); }} className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-orange-300 hover:bg-orange-50/20 transition-colors min-h-25">
+                    <Plus size={20} className="text-gray-300" />
+                    <span className="text-xs font-semibold text-gray-400">Add to {dept.key}</span>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {showAdd && (
-        <Modal onClose={() => setShowAdd(false)} title="Add Team Member">
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={LBL}>Full Name</label><input className={INP} value={addName} onChange={e => setAddName(e.target.value)} placeholder="e.g. Rajesh Kumar" /></div>
-            <div><label className={LBL}>Employee ID</label><input className={INP} value={addId} onChange={e => setAddId(e.target.value)} placeholder="e.g. T13" /></div>
-            <div><label className={LBL}>Role</label><input className={INP} value={addRole} onChange={e => setAddRole(e.target.value)} placeholder="e.g. Production Executive" /></div>
-            <div><label className={LBL}>Department</label><select className={INP} value={addDept} onChange={e => setAddDept(e.target.value as Department)}><option>Manufacturing</option><option>Filling</option><option>Packaging</option><option>Quality</option></select></div>
+        <Modal onClose={() => { setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setSearchResults([]); }} title="Add Team Member">
+          <Tip color="blue" icon={<Info size={14} />}>
+            Search for a registered user by name. The person must already exist in <b>User Management</b> before they can be added to the production team.
+          </Tip>
+
+          {/* User search autocomplete */}
+          <div className="relative mb-4">
+            <label className={LBL}>Search User by Name</label>
+            <input className={INP} value={searchQuery} onChange={e => handleSearchChange(e.target.value)}
+              placeholder="Start typing a name..." autoFocus />
+            {searching && <div className="absolute right-3 top-8 text-[10px] text-gray-400">Searching...</div>}
+            {searchResults.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto">
+                {searchResults.map(u => (
+                  <button key={u.userid} onClick={() => handleSelectUser(u)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-orange-50 transition-colors border-b border-gray-50 last:border-0">
+                    <div className="text-xs font-semibold text-gray-800">{u.display_name}</div>
+                    <div className="text-[10px] text-gray-400">{u.email}{u.department ? ` · ${u.department}` : ''}{u.role_name ? ` · ${u.role_name}` : ''}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchQuery.length >= 2 && !searching && searchResults.length === 0 && !selectedUser && (
+              <div className="text-[10px] text-gray-400 mt-1">No matching registered users found. Add them in User Management first.</div>
+            )}
           </div>
+
+          {/* Auto-filled fields (read-only except role/dept) */}
+          {selectedUser && (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Check size={14} className="text-emerald-600" />
+                <span className="text-xs font-bold text-emerald-700">User selected: {selectedUser.display_name}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LBL}>Employee ID</label><input value={`EMP-${selectedUser.userid}`} readOnly className="bg-gray-50 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-2 text-xs w-full" /></div>
+                <div><label className={LBL}>Email</label><input value={selectedUser.email} readOnly className="bg-gray-50 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-2 text-xs w-full" /></div>
+                <div><label className={LBL}>Role / Position</label><input className={INP} value={addRole} onChange={e => setAddRole(e.target.value)} placeholder="e.g. Production Executive" /></div>
+                <div><label className={LBL}>Department</label><select className={INP} value={addDept} onChange={e => setAddDept(e.target.value as Department)}>{departmentList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-            <button onClick={handleAdd} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Member</button>
+            <button onClick={() => { setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setSearchResults([]); }} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+            <button onClick={handleAdd} disabled={saving || !selectedUser || !addRole.trim()}
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
+              {saving ? 'Adding...' : <><Plus size={13} /> Add Member</>}
+            </button>
           </div>
         </Modal>
       )}
@@ -1705,11 +2292,11 @@ function TeamView({ team, onUpdate }: { team: TeamMember[]; onUpdate: (t: TeamMe
 /* ──────────── SIDEBAR & HEADER ─────────────────────────────── */
 
 const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
-  { id: 'calendar',  label: 'Production Calendar',    icon: <Calendar size={15} /> },
-  { id: 'bmr',       label: 'BMR - Manufacturing',    icon: <FlaskConical size={15} /> },
-  { id: 'bpr',       label: 'BPR - Filling & Packing', icon: <Package size={15} /> },
-  { id: 'equipment', label: 'Equipment & Capacity',   icon: <Wrench size={15} /> },
-  { id: 'team',      label: 'Team Management',        icon: <Users size={15} /> },
+  { id: 'calendar', label: 'Production Calendar', icon: <Calendar size={15} /> },
+  { id: 'bmr', label: 'BMR - Manufacturing', icon: <FlaskConical size={15} /> },
+  { id: 'bpr', label: 'BPR - Filling & Packing', icon: <Package size={15} /> },
+  { id: 'equipment', label: 'Equipment & Capacity', icon: <Wrench size={15} /> },
+  { id: 'team', label: 'Team Management', icon: <Users size={15} /> },
 ];
 
 function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose }: {
@@ -1741,7 +2328,9 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
 }) {
   const active = batches.filter(b => b.bmrStatus === 'in_production' || b.bmrStatus === 'dispensing').length;
   const pending = batches.filter(b => b.bmrStatus === 'draft' || b.bmrStatus === 'batch_confirmed').length;
-  const awaitingQC = batches.filter(b => b.bmrStatus === 'bulk_qc').length;
+  const awaitingQC = batches.filter(b => b.bmrStatus === 'bulk_qc' || b.bprStatus === 'fill_qc' || b.bprStatus === 'pack_qc').length;
+  const qcFailed = batches.filter(b => b.bmrStatus === 'qc_failed' || b.bprStatus === 'qc_failed').length;
+  const filling = batches.filter(b => b.bprStatus === 'filling' || b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_dispensing').length;
   const fgReady = batches.filter(b => b.bprStatus === 'fg_ready').length;
   const weekLabel = formatWeekLabel(getWeekStart(new Date()));
 
@@ -1750,11 +2339,14 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
       <button className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" onClick={onMenuClick}><Menu size={18} /></button>
       <div className="hidden md:flex items-center gap-2">
         <span className="text-[11px] text-gray-400 font-medium tracking-wide">Manufacturing Management</span>
+        <Badge className="bg-gray-100 text-gray-500 border border-gray-200">{batches.length} Batches</Badge>
       </div>
       <div className="flex items-center gap-1.5 ml-3 overflow-x-auto">
         {active > 0 && <Badge className="bg-orange-50 text-orange-600 border border-orange-200">{active} Active</Badge>}
+        {filling > 0 && <Badge className="bg-purple-50 text-purple-600 border border-purple-200">{filling} Filling</Badge>}
         {pending > 0 && <Badge className="bg-amber-50 text-amber-600 border border-amber-200">{pending} Pending</Badge>}
-        {awaitingQC > 0 && <Badge className="bg-sky-50 text-sky-600 border border-sky-200">{awaitingQC} Awaiting QC</Badge>}
+        {awaitingQC > 0 && <Badge className="bg-sky-50 text-sky-600 border border-sky-200">{awaitingQC} QC</Badge>}
+        {qcFailed > 0 && <Badge className="bg-red-50 text-red-600 border border-red-200">{qcFailed} Failed</Badge>}
         {fgReady > 0 && <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-200">{fgReady} FG Ready</Badge>}
       </div>
       <div className="ml-auto flex items-center gap-3">
@@ -1772,6 +2364,9 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
 const Production = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
+  const { isAdmin, canPerformAction } = usePermissions();
+  const canEditTeam = isAdmin || canPerformAction('order-management', 'production-team', 'canEdit');
+  const [deptList, setDeptList] = useState<string[]>(['Manufacturing', 'Filling', 'Packaging', 'Quality']);
 
   const rawSection = searchParams.get('section') as Section | null;
   const activeSection: Section = rawSection && NAV_ITEMS.some(n => n.id === rawSection) ? rawSection : 'calendar';
@@ -1784,18 +2379,57 @@ const Production = () => {
     setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('week', String(n)); return p; });
   }, [setSearchParams]);
 
-  const [state, setState] = useState<ProductionState>(loadState);
+  const [state, setState] = useState<ProductionState>(defaultState);
+  const [whInventory, setWhInventory] = useState<WarehouseInventoryRow[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modalBatch, setModalBatch] = useState<Batch | null>(null);
   const [modalType, setModalType] = useState<string | null>(null);
+  const loadedFromApi = useRef(false);
 
-  useEffect(() => { persistState(state); }, [state]);
+  const whStockRM = useMemo(() => buildStockMap(whInventory, 'RM'), [whInventory]);
+  const whStockPM = useMemo(() => buildStockMap(whInventory, 'PM'), [whInventory]);
+
+  useEffect(() => {
+    if (loadedFromApi.current) return;
+    loadedFromApi.current = true;
+    Promise.all([fetchBatches(), fetchEquipment(), fetchTeam(), fetchWarehouseInventory(), fetchDepartments()])
+      .then(([batchRows, equipData, teamRows, invResult, deptRows]) => {
+        const batches = batchRows.length ? batchRows.map(apiBatchToBatch) : makeDefaultBatches();
+        const equipment = apiEquipToEquipData(equipData);
+        const team = teamRows.length ? apiTeamToTeam(teamRows) : DEFAULT_TEAM;
+        setState({ batches, equipment, team, lastUpdated: new Date().toISOString() });
+        if (invResult.success && invResult.data.rows.length) setWhInventory(invResult.data.rows);
+        if (deptRows.length) setDeptList(deptRows.filter(d => d.is_active).map(d => d.name).sort());
+      })
+      .catch(() => {
+        setState(defaultState());
+      });
+  }, []);
+
+  const refreshEquipment = useCallback(() => {
+    fetchEquipment()
+      .then(equipData => {
+        setState(prev => ({ ...prev, equipment: apiEquipToEquipData(equipData), lastUpdated: new Date().toISOString() }));
+      })
+      .catch(() => { });
+  }, []);
+
+  const refreshTeam = useCallback(() => {
+    fetchTeam()
+      .then(teamData => {
+        setState(prev => ({ ...prev, team: apiTeamToTeam(teamData), lastUpdated: new Date().toISOString() }));
+      })
+      .catch(() => { });
+  }, []);
 
   const updateBatch = useCallback((bmrNo: string, updates: Partial<Batch>) => {
-    setState(prev => ({
-      ...prev,
-      batches: prev.batches.map(b => b.bmrNo === bmrNo ? { ...b, ...updates } : b),
-    }));
+    setState(prev => {
+      const batch = prev.batches.find(b => b.bmrNo === bmrNo) as (Batch & { _pk?: number }) | undefined;
+      if (batch?._pk) {
+        apiBatchUpdate(batch._pk, updates).catch(() => { });
+      }
+      return { ...prev, batches: prev.batches.map(b => b.bmrNo === bmrNo ? { ...b, ...updates } : b) };
+    });
   }, []);
 
   const openScheduleWizard = useCallback(() => {
@@ -1813,12 +2447,12 @@ const Production = () => {
     updateBatch(modalBatch.bmrNo, updates);
     const msg = modalType === 'confirm' ? `${modalBatch.bmrNo} confirmed`
       : modalType === 'reserveRM' ? `RM Reserved for ${modalBatch.bmrNo}`
-      : modalType === 'reservePM' ? `PM Reserved for ${modalBatch.bprNo}`
-      : modalType === 'schedule' ? `${modalBatch.bmrNo} scheduled`
-      : modalType === 'dispenseRM' || modalType === 'dispensePM' ? 'Dispensing updated'
-      : modalType === 'qcBMR' || modalType === 'qcFill' || modalType === 'qcPack' ? 'QC review saved'
-      : modalType === 'mtrRM' || modalType === 'mtrPM' ? 'MTR sent'
-      : 'Batch updated';
+        : modalType === 'reservePM' ? `PM Reserved for ${modalBatch.bprNo}`
+          : modalType === 'schedule' ? `${modalBatch.bmrNo} scheduled`
+            : modalType === 'dispenseRM' || modalType === 'dispensePM' ? 'Dispensing updated'
+              : modalType === 'qcBMR' || modalType === 'qcFill' || modalType === 'qcPack' ? 'QC review saved'
+                : modalType === 'mtrRM' || modalType === 'mtrPM' ? 'MTR sent'
+                  : 'Batch updated';
     addToast('success', msg);
   }, [modalBatch, modalType, updateBatch, addToast]);
 
@@ -1833,9 +2467,9 @@ const Production = () => {
       case 'bpr':
         return <BPRView batches={state.batches} onAction={handleAction} />;
       case 'equipment':
-        return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} />;
+        return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
       case 'team':
-        return <TeamView team={state.team} onUpdate={t => setState(prev => ({ ...prev, team: t }))} />;
+        return <TeamView team={state.team} onUpdate={t => setState(prev => ({ ...prev, team: t }))} onRefresh={refreshTeam} canEdit={canEditTeam} departmentList={deptList} />;
     }
   }
 
@@ -1852,13 +2486,16 @@ const Production = () => {
         <ConfirmBatchModal batch={modalBatch} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'reserveRM' && (
-        <ReserveMaterialModal batch={modalBatch} type="rm" onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <ReserveMaterialModal batch={modalBatch} type="rm" stockMap={whStockRM} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'reservePM' && (
-        <ReserveMaterialModal batch={modalBatch} type="pm" onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <ReserveMaterialModal batch={modalBatch} type="pm" stockMap={whStockPM} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'schedule' && (
-        <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches}
+          stockRM={whStockRM} stockPM={whStockPM}
+          onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onBatchChange={bmrNo => { const b = state.batches.find(x => x.bmrNo === bmrNo); if (b) setModalBatch(b); }} />
       )}
       {modalBatch && modalType === 'dispenseRM' && (
         <DispensingModal batch={modalBatch} type="rm" onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
@@ -1879,7 +2516,7 @@ const Production = () => {
         <MTRModal batch={modalBatch} type={modalType === 'mtrRM' ? 'rm' : 'pm'} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'detail' && (
-        <BatchDetailModal batch={modalBatch} team={state.team} onClose={closeModal}
+        <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} onClose={closeModal}
           onSave={updates => { handleModalSave(updates); }}
           onAction={(action, batch) => { closeModal(); setTimeout(() => handleAction(action, batch), 100); }} />
       )}

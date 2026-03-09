@@ -3,213 +3,132 @@
  * Main container for order fulfillment management
  */
 
-import React, { useState } from 'react';
-import { ShoppingCart, Package, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ShoppingCart, Package, Search, Loader2 } from 'lucide-react';
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
 import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
-import { recalculateSOStatus, getTodayISO } from '../utils/orderFulfillmentUtils';
+import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
+import {
+  fetchFulfillmentOrders,
+  createFulfillmentOrder,
+  pickFulfillmentSplits,
+  shipFulfillmentSplits,
+  deliverFulfillmentSplits,
+} from '../services/fulfillment.service';
 
 type ViewMode = 'orders' | 'batches';
 
 export const OrderFulfillment: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('orders');
   const [searchTerm, setSearchTerm] = useState('');
-  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([
-    {
-      soNo: 'EI-SO-2026-001',
-      soDate: '2026-01-10',
-      customer: 'BeautyBox Retail',
-      customerCity: 'Mumbai',
-      orderDate: '2026-01-10',
-      dueDate: '2026-03-15',
-      priority: 'high',
-      soStatus: 'partial',
-      soValue: 750000,
-      shipAddress: '12th Floor, Trade Centre, BKC, Bandra East, Mumbai 400051',
-      paymentTerms: 'Net 30',
-      notes: 'Urgent — retail launch tied to March season. Partial dispatch OK.',
-      items: [{
-        itemNo: '001', sku: 'EI-FG-001', productName: 'EI Gentle Foaming Facewash',
-        pack: '150ml Tube', orderedQty: 50000, rate: 15, unitPrice: 15,
-        batchSplits: [
-          { bmrNo: 'BMR-2026-0101', bprNo: 'BPR-2026-0101', plannedQty: 20000, fgQty: 20000, fgLocation: 'FG-A-12', ffStatus: 'fg_ready', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null },
-          { bmrNo: 'BMR-2026-0102', bprNo: 'BPR-2026-0102', plannedQty: 15000, fgQty: 0, fgLocation: null, ffStatus: 'fg_pending', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null },
-          { bmrNo: 'BMR-2026-0103', bprNo: 'BPR-2026-0103', plannedQty: 15000, fgQty: 0, fgLocation: null, ffStatus: 'fg_pending', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null }
-        ]
-      }]
-    },
-    {
-      soNo: 'EI-SO-2026-002',
-      soDate: '2026-02-01',
-      customer: 'Glow & Go Distribution',
-      customerCity: 'Bengaluru',
-      orderDate: '2026-02-01',
-      dueDate: '2026-04-10',
-      priority: 'normal',
-      soStatus: 'in_production',
-      soValue: 900000,
-      shipAddress: '45, Industrial Layout, Peenya, Bengaluru 560058',
-      paymentTerms: 'Net 45',
-      notes: '',
-      items: [{
-        itemNo: '001', sku: 'EI-FG-002', productName: 'EI Invisible Sunscreen SPF50',
-        pack: '50ml Bottle', orderedQty: 30000, rate: 30, unitPrice: 30,
-        batchSplits: [
-          { bmrNo: 'BMR-2026-0201', bprNo: 'BPR-2026-0201', plannedQty: 15000, fgQty: 14800, fgLocation: 'FG-B-03', ffStatus: 'bulk_qc', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null },
-          { bmrNo: 'BMR-2026-0202', bprNo: 'BPR-2026-0202', plannedQty: 15000, fgQty: 0, fgLocation: null, ffStatus: 'fg_pending', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null }
-        ]
-      }]
-    },
-    {
-      soNo: 'EI-SO-2026-003',
-      soDate: '2026-02-20',
-      customer: 'Shine & Care Salons',
-      customerCity: 'Hyderabad',
-      orderDate: '2026-02-20',
-      dueDate: '2026-05-01',
-      priority: 'normal',
-      soStatus: 'planned',
-      soValue: 1000000,
-      shipAddress: 'Plot 88, HITEC City, Phase 2, Hyderabad 500081',
-      paymentTerms: 'Advance',
-      notes: 'New client — first order. Quality check before dispatch.',
-      items: [{
-        itemNo: '001', sku: 'EI-FG-003', productName: 'EI Hydra-Boost Moisturiser',
-        pack: '100ml Jar', orderedQty: 40000, rate: 25, unitPrice: 25,
-        batchSplits: [
-          { bmrNo: 'BMR-2026-0301', bprNo: 'BPR-2026-0301', plannedQty: 40000, fgQty: 0, fgLocation: null, ffStatus: 'fg_pending', pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null, invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null }
-        ]
-      }]
-    },
-    {
-      soNo: 'EI-SO-2026-004',
-      soDate: '2025-12-15',
-      customer: 'NaturGlow FMCG',
-      customerCity: 'Delhi',
-      orderDate: '2025-12-15',
-      dueDate: '2026-02-28',
-      priority: 'high',
-      soStatus: 'shipped',
-      soValue: 400000,
-      shipAddress: 'A-12, Okhla Industrial Area, Phase 1, New Delhi 110020',
-      paymentTerms: 'COD',
-      notes: '',
-      items: [{
-        itemNo: '001', sku: 'EI-FG-004', productName: 'EI Daily Defence Conditioner',
-        pack: '200ml Bottle', orderedQty: 20000, rate: 20, unitPrice: 20,
-        batchSplits: [
-          { bmrNo: 'BMR-2025-0401', bprNo: 'BPR-2025-0401', plannedQty: 20000, fgQty: 20000, fgLocation: 'FG-C-01', ffStatus: 'shipped', pickedQty: 20000, pickerName: 'Ramesh K', pickDate: '2026-02-10', pickSlipNo: 'PS-40112', remarks: 'Handle with care — glass bottles', invoiceNo: 1001, awbNo: 'BD9876543210', courier: 'BlueDart Express', dispatchDate: '2026-02-18', etaDate: '2026-02-25' }
-        ]
-      }]
+  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const orders = await fetchFulfillmentOrders();
+      setSaleOrders(orders);
+    } catch (err) {
+      console.error('Failed to load fulfillment orders:', err);
+      setError('Failed to load fulfillment orders');
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }, []);
 
-  const handleAddSO = (data: AddSOData) => {
-    const newSO: SaleOrder = {
-      soNo: data.soNo || `EI-SO-2026-${String(saleOrders.length + 1).padStart(3, '0')}`,
-      soDate: getTodayISO(),
-      customer: data.customer,
-      customerCity: data.customerCity,
-      orderDate: data.orderDate,
-      dueDate: data.dueDate,
-      priority: data.priority,
-      soStatus: 'planned',
-      soValue: (data.item?.orderedQty || 0) * (data.item?.unitPrice || 0),
-      shipAddress: data.shipAddress,
-      paymentTerms: data.paymentTerms,
-      notes: data.notes || '',
-      items: data.item ? [{
-        itemNo: '001',
-        sku: data.item.sku || `EI-FG-${String(saleOrders.length + 1).padStart(3, '0')}`,
-        productName: data.item.productName,
-        pack: data.item.pack || '—',
-        orderedQty: data.item.orderedQty,
-        rate: data.item.unitPrice,
-        unitPrice: data.item.unitPrice,
-        batchSplits: [{
-          bmrNo: data.item.bmrNo || `BMR-TBD-${String(saleOrders.length + 1).padStart(3, '0')}`,
-          bprNo: `BPR-TBD-${String(saleOrders.length + 1).padStart(3, '0')}`,
-          plannedQty: data.item.orderedQty, fgQty: 0, fgLocation: null, ffStatus: 'fg_pending' as const,
-          pickedQty: 0, pickerName: null, pickDate: null, pickSlipNo: null, remarks: null,
-          invoiceNo: null, awbNo: null, courier: null, dispatchDate: null, etaDate: null
-        }]
-      }] : []
-    };
-    setSaleOrders(prev => [...prev, newSO]);
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  const handleAddSO = async (data: AddSOData) => {
+    try {
+      const rawItems = data.items ?? (data.item ? [data.item] : []);
+
+      const payload = {
+        soNo: data.soNo,
+        customer: data.customer,
+        customerCity: data.customerCity,
+        orderDate: data.orderDate,
+        dueDate: data.dueDate,
+        priority: data.priority,
+        shipAddress: data.shipAddress,
+        paymentTerms: data.paymentTerms,
+        notes: data.notes || '',
+        items: rawItems.map((item, idx) => ({
+          itemNo: String(idx + 1).padStart(3, '0'),
+          sku: item.sku,
+          productName: item.productName,
+          pack: item.pack || '—',
+          orderedQty: item.orderedQty,
+          unitPrice: item.unitPrice,
+          batchSplits: [{
+            bmrNo: item.bmrNo || null,
+            bprNo: null,
+            plannedQty: item.orderedQty,
+            fgQty: 0,
+            ffStatus: 'fg_pending',
+          }],
+        })),
+      };
+
+      await createFulfillmentOrder(payload);
+      await loadOrders();
+    } catch (err) {
+      console.error('Failed to create sale order:', err);
+    }
   };
 
-  // Pick confirmation — sets status to 'picking'
-  const handlePickConfirm = (soNo: string, data: PickData) => {
-    setSaleOrders(prev => prev.map(so => {
-      if (so.soNo !== soNo) return so;
-      const updatedItems = so.items.map(item => ({
-        ...item,
-        batchSplits: item.batchSplits.map(split => {
-          const pickInfo = data.splits.find(s => s.bprNo === split.bprNo);
-          if (pickInfo && split.ffStatus === 'fg_ready') {
-            return { ...split, ffStatus: 'picking' as const, pickedQty: pickInfo.pickedQty, pickerName: data.pickerName, pickDate: data.pickDate, pickSlipNo: data.pickSlipNo, remarks: data.remarks || null };
-          }
-          return split;
-        })
-      }));
-      const updatedSO = { ...so, items: updatedItems };
-      return { ...updatedSO, soStatus: recalculateSOStatus(updatedSO) };
-    }));
+  const findOrderId = (soNo: string): number | null => {
+    const order = saleOrders.find(so => so.soNo === soNo);
+    return (order as any)?.id ?? null;
   };
 
-  // Invoice generation — transitions 'picking' → 'invoiced'
-  const handleGenerateInvoice = (soNo: string, data: InvoiceData) => {
-    setSaleOrders(prev => prev.map(so => {
-      if (so.soNo !== soNo) return so;
-      const updatedItems = so.items.map(item => ({
-        ...item,
-        batchSplits: item.batchSplits.map(split =>
-          split.ffStatus === 'picking'
-            ? { ...split, ffStatus: 'invoiced' as const, invoiceNo: parseInt(data.invoiceNo.replace(/\D/g, '')) || null }
-            : split
-        )
-      }));
-      const updatedSO = { ...so, items: updatedItems, invoiceNo: data.invoiceNo, invoiceDate: data.invoiceDate, courier: data.courier };
-      return { ...updatedSO, soStatus: recalculateSOStatus(updatedSO) };
-    }));
+  const handlePickConfirm = async (soNo: string, data: PickData) => {
+    const id = findOrderId(soNo);
+    if (!id) return;
+    try {
+      await pickFulfillmentSplits(id, data);
+      await loadOrders();
+    } catch (err) {
+      console.error('Failed to pick:', err);
+    }
   };
 
-  // Dispatch — transitions 'invoiced' → 'shipped'
-  const handleDispatch = (soNo: string, data: ShipData) => {
-    setSaleOrders(prev => prev.map(so => {
-      if (so.soNo !== soNo) return so;
-      const updatedItems = so.items.map(item => ({
-        ...item,
-        batchSplits: item.batchSplits.map(split =>
-          split.ffStatus === 'invoiced'
-            ? { ...split, ffStatus: 'shipped' as const, courier: data.courier, awbNo: data.awbNo, dispatchDate: data.dispatchDate, etaDate: data.eta }
-            : split
-        )
-      }));
-      const updatedSO = { ...so, items: updatedItems, awbNo: data.awbNo, dispatchDate: data.dispatchDate, courier: data.courier };
-      return { ...updatedSO, soStatus: recalculateSOStatus(updatedSO) };
-    }));
+  const handleGenerateInvoice = async (_soNo: string, _data: InvoiceData) => {
+    try {
+      await loadOrders();
+    } catch (err) {
+      console.error('Failed to invoice:', err);
+    }
   };
 
-  // Delivery — transitions 'shipped' → 'delivered', auto-close if all done
-  const handleConfirmDelivery = (soNo: string, _data: DeliveryData) => {
-    setSaleOrders(prev => prev.map(so => {
-      if (so.soNo !== soNo) return so;
-      const updatedItems = so.items.map(item => ({
-        ...item,
-        batchSplits: item.batchSplits.map(split =>
-          split.ffStatus === 'shipped' ? { ...split, ffStatus: 'delivered' as const } : split
-        )
-      }));
-      const allDelivered = updatedItems.flatMap(i => i.batchSplits).filter(sp => sp.fgQty > 0).every(sp => ['delivered', 'closed'].includes(sp.ffStatus));
-      if (allDelivered) {
-        const closedItems = updatedItems.map(item => ({ ...item, batchSplits: item.batchSplits.map(split => split.ffStatus === 'delivered' ? { ...split, ffStatus: 'closed' as const } : split) }));
-        return { ...so, items: closedItems, soStatus: 'closed' as const };
-      }
-      const updatedSO = { ...so, items: updatedItems };
-      return { ...updatedSO, soStatus: recalculateSOStatus(updatedSO) };
-    }));
+  const handleDispatch = async (soNo: string, data: ShipData) => {
+    const id = findOrderId(soNo);
+    if (!id) return;
+    try {
+      await shipFulfillmentSplits(id, {
+        awbNo: data.awbNo,
+        courier: data.courier,
+        dispatchDate: data.dispatchDate,
+        eta: data.eta,
+      });
+      await loadOrders();
+    } catch (err) {
+      console.error('Failed to ship:', err);
+    }
+  };
+
+  const handleConfirmDelivery = async (soNo: string, data: DeliveryData) => {
+    const id = findOrderId(soNo);
+    if (!id) return;
+    try {
+      await deliverFulfillmentSplits(id, data);
+      await loadOrders();
+    } catch (err) {
+      console.error('Failed to confirm delivery:', err);
+    }
   };
 
   const filteredSaleOrders = saleOrders.filter(so => {
@@ -260,7 +179,19 @@ export const OrderFulfillment: React.FC = () => {
             </div>
           </div>
 
-          {viewMode === 'orders' ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="animate-spin text-orange-500 mr-3" size={24} />
+              <span className="text-gray-500">Loading fulfillment orders...</span>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <p className="text-red-500 mb-4">{error}</p>
+              <button onClick={loadOrders} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm">
+                Retry
+              </button>
+            </div>
+          ) : viewMode === 'orders' ? (
             <SaleOrdersView saleOrders={filteredSaleOrders} onAddSO={handleAddSO} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
           ) : (
             <ProductsBatchesView saleOrders={filteredSaleOrders} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />

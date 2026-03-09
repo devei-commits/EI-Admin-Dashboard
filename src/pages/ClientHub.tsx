@@ -4,8 +4,21 @@ import {
   Users, AlertCircle, Clock, Package, FlaskConical, Calendar,
   TrendingUp, Search, X, ChevronDown, Plus, Phone, Mail,
   Filter, ArrowUpRight, CheckCircle2, Activity,
-  BarChart3, FileText, Beaker, ShoppingCart, CalendarDays,
+  BarChart3, FileText, Beaker, ShoppingCart, CalendarDays, Loader2, Save,
 } from 'lucide-react';
+import {
+  fetchClientHubDashboard,
+  createClient as apiCreateClient,
+  addClientQuery,
+  addClientDevelopment,
+  addClientOrder,
+  addClientAppointment,
+  updateClientQuery,
+  updateClientDevelopment,
+  updateClientOrder,
+  type ClientRecord,
+  type DashboardKPIs,
+} from '../services/clientHub.service';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
 interface Query {
@@ -22,8 +35,42 @@ interface Appt {
 }
 interface Client {
   id: string; name: string; initials: string; color: string;
-  seg: string; priority: 'high' | 'medium' | 'low'; am: string; rev: string;
+  seg: string; priority: 'high' | 'medium' | 'low'; am: string; amId: number | null; rev: string;
+  revenueValue: number;
   contacts: string[]; queries: Query[]; devs: Dev[]; orders: Order[]; appts: Appt[];
+}
+
+function formatRevenue(val: number): string {
+  if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
+  if (val >= 100000) return `₹${Math.round(val / 100000)}L`;
+  if (val >= 1000) return `₹${(val / 1000).toFixed(0)}K`;
+  return `₹${val}`;
+}
+
+function formatTotalRevenue(val: number): string {
+  if (val >= 10000000) return `${(val / 10000000).toFixed(1)}Cr+`;
+  if (val >= 100000) return `${Math.round(val / 100000)}L+`;
+  return `₹${val}`;
+}
+
+function apiClientToLocal(c: ClientRecord): Client {
+  return {
+    id: c.id,
+    name: c.name,
+    initials: c.initials,
+    color: c.avatarColor || 'blue',
+    seg: c.segment || '',
+    priority: c.priority,
+    am: c.accountManagerName || '—',
+    amId: c.accountManagerId ?? null,
+    rev: formatRevenue(c.revenueValue || 0),
+    revenueValue: c.revenueValue || 0,
+    contacts: (c.contacts || []).map(ct => `${ct.name} (${ct.role})`),
+    queries: c.queries,
+    devs: c.devs,
+    orders: c.orders,
+    appts: c.appts,
+  };
 }
 
 type ViewMode = 'all' | 'overdue' | 'pending' | 'priority' | 'appts';
@@ -31,160 +78,7 @@ type SortMode = 'name' | 'overdue' | 'priority' | 'revenue';
 type ModalTab = 'overview' | 'queries' | 'devs' | 'orders' | 'appts' | 'timeline';
 interface ToastState { msg: string; type: 'success' | 'error' | 'info' | 'warning'; visible: boolean; }
 
-// ─── DATA ─────────────────────────────────────────────────────────────
-const INITIAL_CLIENTS: Client[] = [
-  {
-    id: 'C001', name: 'Luminos Skincare', initials: 'LS', color: 'orange',
-    seg: 'Skin Care · Luxury — Since 2022', priority: 'high', am: 'Priya Mehta', rev: '₹42L',
-    contacts: ['Rajeev Sharma (BD Head)', 'Nisha Patel (QA Lead)'],
-    queries: [
-      { id: 'Q001', title: 'SPF 50 formulation pricing query — volume breaks', status: 'overdue', due: '2026-02-10', cat: 'Pricing', note: 'Client escalation — BD to respond immediately' },
-      { id: 'Q002', title: 'EU CPNP notification process — sunscreen product', status: 'pending', due: '2026-03-05', cat: 'Regulatory', note: 'RA team input awaited' },
-      { id: 'Q003', title: 'Stability protocol clarification for face cream', status: 'done', due: '2026-02-10', cat: 'Technical', note: 'Resolved — protocol doc shared' },
-    ],
-    devs: [
-      { id: 'D001', pr: 'PR-SUN-0042', name: 'SPF 30 Sunscreen Lotion 50g Tube', stage: 'R&D Closure', status: 'overdue', due: '2026-02-15', phase: 'Formula Lock' },
-      { id: 'D002', pr: 'PR-SKN-0088', name: 'Vitamin C Brightening Serum 15%', stage: 'Scale-up Trial', status: 'inprog', due: '2026-03-10', phase: 'Pilot Batch' },
-      { id: 'D003', pr: 'PR-SKN-0091', name: 'Retinol Night Cream 0.3%', stage: 'R&D Stage', status: 'inprog', due: '2026-04-01', phase: 'Formula Dev' },
-    ],
-    orders: [
-      { id: 'O001', prod: 'SPF 30 Lotion 50g Tube', qty: '50,000 units', status: 'inprog', due: '2026-03-05', batch: 'BT-2026-0301' },
-      { id: 'O002', prod: 'Vitamin C Serum 30mL', qty: '20,000 units', status: 'pending', due: '2026-03-20', batch: 'TBD' },
-      { id: 'O003', prod: 'Moisturiser SPF15 100g', qty: '30,000 units', status: 'done', due: '2026-02-01', batch: 'BT-2026-0188' },
-    ],
-    appts: [
-      { id: 'A001', title: 'Q2 Planning & Roadmap Call', date: '2026-03-03', time: '10:00 AM', type: 'Video Call', with: 'Rajeev Sharma' },
-      { id: 'A002', title: 'SPF 50 Development Review', date: '2026-03-10', time: '3:00 PM', type: 'In-person', with: 'Nisha Patel + R&D' },
-    ],
-  },
-  {
-    id: 'C002', name: 'HairVeda Pro', initials: 'HV', color: 'teal',
-    seg: 'Hair Care · Mass Market — Since 2021', priority: 'high', am: 'Suresh Kumar', rev: '₹78L',
-    contacts: ['Mala Iyer (CEO)', 'Deepak Nair (Technical)'],
-    queries: [
-      { id: 'Q004', title: 'Anti-hairfall shampoo — sulfate-free new brief', status: 'new', due: '2026-03-05', cat: 'New Brief', note: 'Feasibility assessment pending — assign R&D lead' },
-      { id: 'Q005', title: 'Conditioner scale-up — manufacturing slot query', status: 'overdue', due: '2026-02-20', cat: 'Capacity', note: 'Production planning team to respond urgently' },
-      { id: 'Q006', title: 'Updated CoA format requirements from client', status: 'pending', due: '2026-03-08', cat: 'Documentation', note: 'QC team to update format template' },
-    ],
-    devs: [
-      { id: 'D004', pr: 'PR-HAR-0031', name: 'Keratin Smoothing Shampoo 500mL', stage: 'BMR Ready', status: 'done', due: '2026-02-01', phase: 'Production Ready' },
-      { id: 'D005', pr: 'PR-HAR-0055', name: 'Scalp Care Caffeine Serum 100mL', stage: 'R&D Stage', status: 'inprog', due: '2026-04-15', phase: 'Trial 2' },
-      { id: 'D006', pr: 'PR-HAR-0061', name: 'Anti-Hairfall Shampoo SF', stage: 'Brief Review', status: 'new', due: '2026-03-30', phase: 'Concept Stage' },
-    ],
-    orders: [
-      { id: 'O004', prod: 'Keratin Shampoo 500mL', qty: '1,00,000 units', status: 'inprog', due: '2026-03-15', batch: 'BT-2026-0312' },
-      { id: 'O005', prod: 'Conditioner 300mL', qty: '50,000 units', status: 'overdue', due: '2026-02-22', batch: 'BT-2026-0215' },
-    ],
-    appts: [
-      { id: 'A003', title: 'Q1 Review & Q2 Forecast', date: '2026-03-01', time: '11:00 AM', type: 'Video Call', with: 'Mala Iyer' },
-      { id: 'A004', title: 'Shampoo Formula Finalisation', date: '2026-03-12', time: '2:00 PM', type: 'In-person', with: 'Deepak Nair + R&D' },
-    ],
-  },
-  {
-    id: 'C003', name: 'GlowNaturals', initials: 'GN', color: 'violet',
-    seg: 'Organic Skin Care · DTC — Since 2023', priority: 'medium', am: 'Ananya Krishnan', rev: '₹18L',
-    contacts: ['Shruti Jain (Founder)', 'Ravi Kapoor (Operations)'],
-    queries: [
-      { id: 'Q007', title: 'COSMOS certification process for organic face cream', status: 'pending', due: '2026-03-12', cat: 'Regulatory', note: 'RA team assigned — timeline to be shared' },
-      { id: 'Q008', title: 'Fragrance allergen declaration requirements', status: 'done', due: '2026-02-12', cat: 'Labelling', note: 'Resolved — allergen list shared with client' },
-    ],
-    devs: [
-      { id: 'D007', pr: 'PR-ORG-0017', name: 'COSMOS Certified Hydrating Face Cream', stage: 'R&D Closure', status: 'inprog', due: '2026-03-20', phase: 'Stability Initiated' },
-      { id: 'D008', pr: 'PR-ORG-0022', name: 'Natural SPF 20 Tinted Moisturiser', stage: 'R&D Stage', status: 'inprog', due: '2026-04-30', phase: 'Trial 1' },
-    ],
-    orders: [
-      { id: 'O006', prod: 'Aloe Vera Soothing Gel 150g', qty: '15,000 units', status: 'done', due: '2026-01-30', batch: 'BT-2026-0142' },
-      { id: 'O007', prod: 'Rose Water Balancing Toner', qty: '10,000 units', status: 'pending', due: '2026-03-25', batch: 'TBD' },
-    ],
-    appts: [{ id: 'A005', title: 'COSMOS Project Kickoff Call', date: '2026-03-05', time: '4:00 PM', type: 'Video Call', with: 'Shruti Jain' }],
-  },
-  {
-    id: 'C004', name: 'DermaClinix Rx', initials: 'DC', color: 'red',
-    seg: 'Derma · Rx-to-OTC — Since 2020', priority: 'high', am: 'Priya Mehta', rev: '₹1.1Cr',
-    contacts: ['Dr. Anil Bose (Medical Affairs)', 'Shalini Roy (Regulatory)'],
-    queries: [
-      { id: 'Q009', title: 'Sunscreen OTC classification India — regulatory status', status: 'overdue', due: '2026-02-19', cat: 'Regulatory', note: 'Client escalation — CRITICAL — RA director to handle' },
-      { id: 'Q010', title: 'CDSCO notification status update requested', status: 'overdue', due: '2026-02-21', cat: 'Regulatory', note: 'RA team to send update by EOD' },
-      { id: 'Q011', title: 'Annual contract pricing — 5-SKU derma range', status: 'pending', due: '2026-03-08', cat: 'Pricing', note: 'BD approval required before sharing' },
-    ],
-    devs: [
-      { id: 'D009', pr: 'PR-DRM-0009', name: 'Azelaic Acid 15% Gel', stage: 'Scale-up', status: 'inprog', due: '2026-03-12', phase: 'Pilot Batch' },
-      { id: 'D010', pr: 'PR-DRM-0014', name: 'Niacinamide 10% Barrier Cream', stage: 'BMR Ready', status: 'inprog', due: '2026-03-05', phase: 'Production Slot' },
-      { id: 'D011', pr: 'PR-DRM-0018', name: 'Salicylic Acid 2% Face Cleanser', stage: 'R&D Stage', status: 'pending', due: '2026-04-10', phase: 'Formula Dev' },
-    ],
-    orders: [
-      { id: 'O008', prod: 'Niacinamide Cream 50g', qty: '25,000 units', status: 'inprog', due: '2026-03-08', batch: 'BT-2026-0318' },
-      { id: 'O009', prod: 'Moisturiser SPF 30 75g', qty: '20,000 units', status: 'overdue', due: '2026-02-20', batch: 'BT-2026-0201' },
-      { id: 'O010', prod: 'Gentle Cleanser 100mL', qty: '30,000 units', status: 'inprog', due: '2026-03-18', batch: 'BT-2026-0319' },
-    ],
-    appts: [
-      { id: 'A006', title: 'Regulatory Escalation Call', date: '2026-02-29', time: '5:00 PM', type: 'Video Call', with: 'Dr. Anil Bose + Shalini Roy' },
-      { id: 'A007', title: 'Annual Contract Negotiation', date: '2026-03-15', time: '10:30 AM', type: 'In-person', with: 'Dr. Anil Bose' },
-    ],
-  },
-  {
-    id: 'C005', name: 'SunShield India', initials: 'SI', color: 'amber',
-    seg: 'Sun Care · Sports & Outdoor — Since 2023', priority: 'medium', am: 'Suresh Kumar', rev: '₹31L',
-    contacts: ['Vikram Sethi (MD)', 'Pooja Agarwal (Product)'],
-    queries: [
-      { id: 'Q012', title: 'SPF 50+ water resistant formula brief', status: 'new', due: '2026-03-10', cat: 'New Brief', note: 'Brief received — assigning R&D lead' },
-      { id: 'Q013', title: 'Eco-friendly laminate tube options query', status: 'pending', due: '2026-03-05', cat: 'Packaging', note: 'PM team to share eco-tube comparison' },
-    ],
-    devs: [
-      { id: 'D012', pr: 'PR-SUN-0058', name: 'SPF 50+ Water Resistant Sports Spray', stage: 'R&D Stage', status: 'new', due: '2026-05-01', phase: 'Brief Review' },
-      { id: 'D013', pr: 'PR-SUN-0063', name: 'Kids SPF 50 Gentle Lotion', stage: 'R&D Closure', status: 'inprog', due: '2026-03-25', phase: 'PR Preparation' },
-    ],
-    orders: [
-      { id: 'O011', prod: 'SPF 30 Daily Lotion 100g', qty: '40,000 units', status: 'done', due: '2026-02-05', batch: 'BT-2026-0198' },
-      { id: 'O012', prod: 'After-Sun Cooling Gel 150g', qty: '20,000 units', status: 'inprog', due: '2026-03-22', batch: 'BT-2026-0322' },
-    ],
-    appts: [{ id: 'A008', title: 'SPF 50+ Brief Discussion', date: '2026-03-04', time: '2:00 PM', type: 'Video Call', with: 'Vikram Sethi' }],
-  },
-  {
-    id: 'C006', name: 'PureGlow Co.', initials: 'PG', color: 'pink',
-    seg: 'Colour Cosmetics · D2C — Since 2024', priority: 'low', am: 'Ananya Krishnan', rev: '₹9L',
-    contacts: ['Neha Saxena (CEO)', 'Rohit Verma (Creative)'],
-    queries: [{ id: 'Q014', title: 'Vegan certification process for lip gloss range', status: 'pending', due: '2026-03-15', cat: 'Regulatory', note: 'New client onboarding — RA to guide' }],
-    devs: [
-      { id: 'D014', pr: 'PR-CLR-0003', name: 'Vegan Lip Gloss — 8 Shades', stage: 'R&D Stage', status: 'inprog', due: '2026-05-15', phase: 'Shade Development' },
-      { id: 'D015', pr: 'PR-CLR-0007', name: 'Tinted BB Cream SPF 20', stage: 'Brief', status: 'new', due: '2026-06-01', phase: 'Brief Review' },
-    ],
-    orders: [{ id: 'O013', prod: 'Matte Lipstick 6 shades', qty: '8,000 units', status: 'done', due: '2026-01-25', batch: 'BT-2026-0128' }],
-    appts: [{ id: 'A009', title: 'Onboarding & Lip Gloss Brief', date: '2026-03-02', time: '11:30 AM', type: 'Video Call', with: 'Neha Saxena' }],
-  },
-  {
-    id: 'C007', name: 'MensEdge Grooming', initials: 'ME', color: 'blue',
-    seg: "Men's Care · Mass Premium — Since 2022", priority: 'medium', am: 'Suresh Kumar', rev: '₹55L',
-    contacts: ['Arjun Malik (Brand Head)', 'Shweta Das (Technical)'],
-    queries: [
-      { id: 'Q015', title: 'New brief — beard oil 3-variant range', status: 'new', due: '2026-03-12', cat: 'New Brief', note: 'Brief under internal review' },
-      { id: 'Q016', title: 'Anti-ageing face wash INCI list clarification', status: 'overdue', due: '2026-02-22', cat: 'Labelling', note: 'R&D to update INCI and share with client' },
-    ],
-    devs: [
-      { id: 'D016', pr: 'PR-MEN-0024', name: 'Activated Charcoal Face Wash', stage: 'BMR Ready', status: 'done', due: '2026-02-01', phase: 'Production' },
-      { id: 'D017', pr: 'PR-MEN-0029', name: 'Beard Oil 3-Variant Range', stage: 'Brief', status: 'new', due: '2026-05-30', phase: 'Brief Review' },
-      { id: 'D018', pr: 'PR-MEN-0031', name: 'SPF 20 Daily Moisturiser', stage: 'R&D Stage', status: 'inprog', due: '2026-04-20', phase: 'Trial 3' },
-    ],
-    orders: [{ id: 'O014', prod: 'Charcoal Face Wash 100mL', qty: '60,000 units', status: 'inprog', due: '2026-03-10', batch: 'BT-2026-0310' }],
-    appts: [{ id: 'A010', title: 'Q2 Portfolio Planning Review', date: '2026-03-07', time: '3:30 PM', type: 'In-person', with: 'Arjun Malik' }],
-  },
-  {
-    id: 'C008', name: 'AquaFresh Wellness', initials: 'AW', color: 'cyan',
-    seg: 'Body Care · Wellness — Since 2023', priority: 'low', am: 'Priya Mehta', rev: '₹22L',
-    contacts: ['Kavita Rao (Director)', 'Mohan Lal (QA)'],
-    queries: [{ id: 'Q017', title: 'Body butter formula — cocoa butter new brief', status: 'pending', due: '2026-03-18', cat: 'New Brief', note: 'R&D review meeting scheduled' }],
-    devs: [
-      { id: 'D019', pr: 'PR-BDY-0012', name: 'Shea Butter Body Lotion 200mL', stage: 'Scale-up', status: 'inprog', due: '2026-03-28', phase: 'Pilot Batch' },
-      { id: 'D020', pr: 'PR-BDY-0015', name: 'Coffee Exfoliating Body Scrub', stage: 'R&D Stage', status: 'inprog', due: '2026-04-25', phase: 'Trial 2' },
-      { id: 'D021', pr: 'PR-BDY-0019', name: 'Cocoa Butter Rich Body Butter', stage: 'Brief', status: 'new', due: '2026-05-20', phase: 'Brief Review' },
-    ],
-    orders: [
-      { id: 'O015', prod: 'Shea Butter Lotion 200mL', qty: '25,000 units', status: 'inprog', due: '2026-03-30', batch: 'BT-2026-0330' },
-      { id: 'O016', prod: 'Coffee Body Scrub 200g', qty: '15,000 units', status: 'pending', due: '2026-04-10', batch: 'TBD' },
-    ],
-    appts: [{ id: 'A011', title: 'Body Butter Brief Meeting', date: '2026-03-09', time: '10:00 AM', type: 'Video Call', with: 'Kavita Rao' }],
-  },
-];
+// Data is fetched from the API — see the main component below.
 
 // ─── STYLE MAPS ───────────────────────────────────────────────────────
 const AVATAR_BG: Record<string, string> = {
@@ -223,7 +117,7 @@ const CAT_CHIP: Record<string, string> = {
 const COLOR_OPTS = ['orange','teal','violet','red','amber','pink','blue','cyan'];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────
-const TODAY = new Date('2026-03-07T00:00:00');
+const TODAY = new Date(new Date().toDateString());
 const dDiff = (d: string) => Math.round((new Date(d).getTime() - TODAY.getTime()) / 864e5);
 const fDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 const fDay  = (d: string) => new Date(d).getDate();
@@ -239,6 +133,24 @@ function StatusBadge({ status }: { status: string }) {
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
       {s.label}
     </span>
+  );
+}
+
+const EDITABLE_STATUSES = ['new', 'pending', 'inprog', 'done', 'overdue'] as const;
+
+function StatusDropdown({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const s = STATUS_MAP[value] ?? STATUS_MAP.pending;
+  return (
+    <select
+      value={value}
+      onChange={e => { e.stopPropagation(); onChange(e.target.value); }}
+      onClick={e => e.stopPropagation()}
+      className={`appearance-none cursor-pointer px-2.5 py-1 rounded-full text-xs font-semibold border outline-none transition-colors ${s.cls}`}
+    >
+      {EDITABLE_STATUSES.map(st => (
+        <option key={st} value={st}>{STATUS_MAP[st].label}</option>
+      ))}
+    </select>
   );
 }
 
@@ -415,39 +327,91 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
   const [dForm, setDForm] = useState({ pr: '', name: '', stage: 'R&D Stage', phase: 'Formula Dev', due: '' });
   const [oForm, setOForm] = useState({ prod: '', qty: '', batch: '', due: '' });
   const [aForm, setAForm] = useState({ title: '', date: '', time: '', type: 'Video Call', with: '' });
+  const [statusEdits, setStatusEdits] = useState<Record<string, string>>({});
+  const [savingStatus, setSavingStatus] = useState<Record<string, boolean>>({});
 
-  const addQuery = () => {
+  const editStatus = (type: 'q' | 'd' | 'o', id: string, newStatus: string) => {
+    setStatusEdits(prev => ({ ...prev, [`${type}_${id}`]: newStatus }));
+  };
+
+  const getEditedStatus = (type: 'q' | 'd' | 'o', id: string, original: string) => {
+    return statusEdits[`${type}_${id}`] ?? original;
+  };
+
+  const isDirty = (type: 'q' | 'd' | 'o', id: string, original: string) => {
+    const key = `${type}_${id}`;
+    return statusEdits[key] !== undefined && statusEdits[key] !== original;
+  };
+
+  const saveStatus = async (type: 'q' | 'd' | 'o', id: string) => {
+    const key = `${type}_${id}`;
+    const newStatus = statusEdits[key];
+    if (!newStatus) return;
+    setSavingStatus(prev => ({ ...prev, [key]: true }));
+    try {
+      if (type === 'q') {
+        await updateClientQuery(id, { status: newStatus });
+        const updated = { ...client, queries: client.queries.map(q => q.id === id ? { ...q, status: newStatus } : q) };
+        onUpdate(updated);
+      } else if (type === 'd') {
+        await updateClientDevelopment(id, { status: newStatus });
+        const updated = { ...client, devs: client.devs.map(d => d.id === id ? { ...d, status: newStatus } : d) };
+        onUpdate(updated);
+      } else {
+        await updateClientOrder(id, { status: newStatus });
+        const updated = { ...client, orders: client.orders.map(o => o.id === id ? { ...o, status: newStatus } : o) };
+        onUpdate(updated);
+      }
+      setStatusEdits(prev => { const n = { ...prev }; delete n[key]; return n; });
+      onToast('Status updated', 'success');
+    } catch { onToast('Failed to update status', 'error'); }
+    setSavingStatus(prev => ({ ...prev, [key]: false }));
+  };
+
+  const addQuery = async () => {
     if (!qForm.title.trim() || !qForm.due) return;
-    const updated = { ...client, queries: [...client.queries, { id: `Q${Date.now()}`, title: qForm.title.trim(), status: 'new', due: qForm.due, cat: qForm.cat, note: qForm.note }] };
-    onUpdate(updated);
-    setQForm({ title: '', cat: 'Pricing', due: '', note: '' });
-    setShowQueryForm(false);
-    onToast('Query added successfully', 'success');
+    try {
+      const created = await addClientQuery(client.id, { title: qForm.title.trim(), due: qForm.due, cat: qForm.cat, note: qForm.note });
+      const updated = { ...client, queries: [...client.queries, created] };
+      onUpdate(updated);
+      setQForm({ title: '', cat: 'Pricing', due: '', note: '' });
+      setShowQueryForm(false);
+      onToast('Query added successfully', 'success');
+    } catch { onToast('Failed to add query', 'error'); }
   };
-  const addDev = () => {
+  const addDev = async () => {
     if (!dForm.name.trim() || !dForm.due) return;
-    const pr = dForm.pr || `PR-NEW-${String(client.devs.length + 1).padStart(4, '0')}`;
-    const updated = { ...client, devs: [...client.devs, { id: `D${Date.now()}`, pr, name: dForm.name.trim(), stage: dForm.stage, status: 'new', due: dForm.due, phase: dForm.phase }] };
-    onUpdate(updated);
-    setDForm({ pr: '', name: '', stage: 'R&D Stage', phase: 'Formula Dev', due: '' });
-    setShowDevForm(false);
-    onToast('Development added successfully', 'success');
+    try {
+      const pr = dForm.pr || `PR-NEW-${String(client.devs.length + 1).padStart(4, '0')}`;
+      const created = await addClientDevelopment(client.id, { name: dForm.name.trim(), pr, stage: dForm.stage, phase: dForm.phase, due: dForm.due });
+      const updated = { ...client, devs: [...client.devs, created] };
+      onUpdate(updated);
+      setDForm({ pr: '', name: '', stage: 'R&D Stage', phase: 'Formula Dev', due: '' });
+      setShowDevForm(false);
+      onToast('Development added successfully', 'success');
+    } catch { onToast('Failed to add development', 'error'); }
   };
-  const addOrder = () => {
+  const addOrder = async () => {
     if (!oForm.prod.trim() || !oForm.due) return;
-    const updated = { ...client, orders: [...client.orders, { id: `O${Date.now()}`, prod: oForm.prod.trim(), qty: oForm.qty || '—', status: 'pending', due: oForm.due, batch: oForm.batch || 'TBD' }] };
-    onUpdate(updated);
-    setOForm({ prod: '', qty: '', batch: '', due: '' });
-    setShowOrderForm(false);
-    onToast('Order added successfully', 'success');
+    try {
+      const created = await addClientOrder(client.id, { prod: oForm.prod.trim(), qty: oForm.qty || '—', due: oForm.due, batch: oForm.batch || 'TBD' });
+      const updated = { ...client, orders: [...client.orders, created] };
+      onUpdate(updated);
+      setOForm({ prod: '', qty: '', batch: '', due: '' });
+      setShowOrderForm(false);
+      onToast('Order added successfully', 'success');
+    } catch { onToast('Failed to add order', 'error'); }
   };
-  const addAppt = () => {
+  const addAppt = async () => {
     if (!aForm.title.trim() || !aForm.date) return;
-    const updated = { ...client, appts: [...client.appts, { id: `A${Date.now()}`, title: aForm.title.trim(), date: aForm.date, time: aForm.time || 'TBD', type: aForm.type, with: aForm.with || '—' }] };
-    onUpdate(updated);
-    setAForm({ title: '', date: '', time: '', type: 'Video Call', with: '' });
-    setShowApptForm(false);
-    onToast('Appointment scheduled successfully', 'success');
+    try {
+      const created = await addClientAppointment(client.id, { title: aForm.title.trim(), date: aForm.date, time: aForm.time || 'TBD', type: aForm.type, with: aForm.with || '—' });
+      const updated = { ...client, appts: [...client.appts, created] };
+      onUpdate(updated);
+      setAForm({ title: '', date: '', time: '', type: 'Video Call', with: '' });
+      setShowApptForm(false);
+      onToast('Appointment scheduled successfully', 'success');
+    } catch { onToast('Failed to add appointment', 'error'); }
   };
 
   const avatarBg = AVATAR_BG[client.color] ?? AVATAR_BG.blue;
@@ -664,7 +628,17 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                         <td className={`${tdCls} font-semibold max-w-xs`}>{q.title}</td>
                         <td className={tdCls}><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{q.cat}</span></td>
                         <td className={`${tdCls} font-mono text-xs text-gray-500`}>{fDate(q.due)}</td>
-                        <td className={tdCls}><StatusBadge status={q.status} /></td>
+                        <td className={tdCls}>
+                          <div className="flex items-center gap-1.5">
+                            <StatusDropdown value={getEditedStatus('q', q.id, q.status)} onChange={v => editStatus('q', q.id, v)} />
+                            {isDirty('q', q.id, q.status) && (
+                              <button onClick={e => { e.stopPropagation(); saveStatus('q', q.id); }} disabled={savingStatus[`q_${q.id}`]}
+                                className="p-1 rounded-md bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 transition-colors" title="Save status">
+                                {savingStatus[`q_${q.id}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className={`${tdCls} text-xs text-gray-500 max-w-xs`}>{q.note}</td>
                       </tr>
                     ))}
@@ -725,7 +699,17 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                           <td className={tdCls}><span className="text-xs bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full font-medium">{d.stage}</span></td>
                           <td className={`${tdCls} text-xs text-gray-500`}>{d.phase}</td>
                           <td className={`${tdCls} font-mono text-xs ${da < 0 && d.status !== 'done' ? 'text-red-600 font-bold' : 'text-gray-500'}`}>{fDate(d.due)}</td>
-                          <td className={tdCls}><StatusBadge status={d.status} /></td>
+                          <td className={tdCls}>
+                            <div className="flex items-center gap-1.5">
+                              <StatusDropdown value={getEditedStatus('d', d.id, d.status)} onChange={v => editStatus('d', d.id, v)} />
+                              {isDirty('d', d.id, d.status) && (
+                                <button onClick={e => { e.stopPropagation(); saveStatus('d', d.id); }} disabled={savingStatus[`d_${d.id}`]}
+                                  className="p-1 rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors" title="Save status">
+                                  {savingStatus[`d_${d.id}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -780,7 +764,17 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                           <td className={`${tdCls} font-bold text-gray-700`}>{o.qty}</td>
                           <td className={`${tdCls} font-mono text-xs text-gray-500`}>{o.batch}</td>
                           <td className={`${tdCls} font-mono text-xs ${d < 0 && o.status !== 'done' ? 'text-red-600 font-bold' : 'text-gray-500'}`}>{fDate(o.due)}</td>
-                          <td className={tdCls}><StatusBadge status={o.status} /></td>
+                          <td className={tdCls}>
+                            <div className="flex items-center gap-1.5">
+                              <StatusDropdown value={getEditedStatus('o', o.id, o.status)} onChange={v => editStatus('o', o.id, v)} />
+                              {isDirty('o', o.id, o.status) && (
+                                <button onClick={e => { e.stopPropagation(); saveStatus('o', o.id); }} disabled={savingStatus[`o_${o.id}`]}
+                                  className="p-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors" title="Save status">
+                                  {savingStatus[`o_${o.id}`] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -906,28 +900,38 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
 }
 
 // ─── ADD CLIENT MODAL ─────────────────────────────────────────────────
-function AddClientModal({ onClose, onAdd }: {
+function AddClientModal({ onClose, onAdd, accountManagers }: {
   onClose: () => void;
   onAdd: (c: Client) => void;
+  accountManagers: { id: number; name: string }[];
 }) {
-  const [form, setForm] = useState({ name: '', init: '', seg: '', priority: 'medium', am: 'Priya Mehta', rev: '', contact: '' });
+  const [form, setForm] = useState({ name: '', init: '', seg: '', priority: 'medium', amId: '', rev: '', contact: '' });
+  const [saving, setSaving] = useState(false);
   const f = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.name.trim() && form.init.trim();
 
-  const handleSave = () => {
-    if (!valid) return;
-    const color = COLOR_OPTS[Math.floor(Math.random() * COLOR_OPTS.length)];
-    onAdd({
-      id: `C${Date.now()}`, name: form.name.trim(),
-      initials: form.init.trim().toUpperCase().slice(0, 3),
-      color,
-      seg: form.seg || '—',
-      priority: form.priority as 'high' | 'medium' | 'low',
-      am: form.am, rev: form.rev || '—',
-      contacts: [form.contact || '—'],
-      queries: [], devs: [], orders: [], appts: [],
-    });
-    onClose();
+  const handleSave = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    try {
+      const avatarColor = COLOR_OPTS[Math.floor(Math.random() * COLOR_OPTS.length)];
+      const revNum = parseFloat(form.rev.replace(/[^\d.]/g, '')) || 0;
+      const revInPaisa = form.rev.toLowerCase().includes('cr') ? revNum * 10000000 : form.rev.toLowerCase().includes('l') ? revNum * 100000 : revNum;
+      const selectedAm = accountManagers.find(a => String(a.id) === form.amId);
+      const apiResp = await apiCreateClient({
+        name: form.name.trim(),
+        priority: form.priority,
+        segment: form.seg || undefined,
+        avatarColor,
+        revenueValue: revInPaisa,
+        accountManagerId: selectedAm?.id,
+        contacts: form.contact ? [{ name: form.contact, role: '' }] : [],
+      });
+      onAdd(apiClientToLocal(apiResp));
+      onClose();
+    } catch {
+      setSaving(false);
+    }
   };
 
   const labelCls = 'block text-xs font-semibold text-gray-600 mb-1';
@@ -950,14 +954,14 @@ function AddClientModal({ onClose, onAdd }: {
           <div><label className={labelCls}>Initials <span className="text-red-500">*</span></label><input value={form.init} onChange={e => f('init', e.target.value)} placeholder="e.g. LG" maxLength={3} className={inputCls} /></div>
           <div className="col-span-2"><label className={labelCls}>Segment</label><input value={form.seg} onChange={e => f('seg', e.target.value)} placeholder="e.g. Skin Care · Luxury — Since 2026" className={inputCls} /></div>
           <div><label className={labelCls}>Priority</label><select value={form.priority} onChange={e => f('priority', e.target.value)} className={inputCls}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
-          <div><label className={labelCls}>Account Manager</label><select value={form.am} onChange={e => f('am', e.target.value)} className={inputCls}><option>Priya Mehta</option><option>Suresh Kumar</option><option>Ananya Krishnan</option></select></div>
+          <div><label className={labelCls}>Account Manager</label><select value={form.amId} onChange={e => f('amId', e.target.value)} className={inputCls}><option value="">Select...</option>{accountManagers.map(am => <option key={am.id} value={am.id}>{am.name}</option>)}</select></div>
           <div><label className={labelCls}>Revenue</label><input value={form.rev} onChange={e => f('rev', e.target.value)} placeholder="e.g. ₹25L" className={inputCls} /></div>
           <div><label className={labelCls}>Primary Contact</label><input value={form.contact} onChange={e => f('contact', e.target.value)} placeholder="e.g. Ravi Sharma (BD Head)" className={inputCls} /></div>
         </div>
         <div className="flex items-center justify-end gap-3 px-5 py-3.5 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={!valid} className="px-4 py-2 text-sm font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            Add Client
+          <button onClick={handleSave} disabled={!valid || saving} className="px-4 py-2 text-sm font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            {saving ? 'Adding...' : 'Add Client'}
           </button>
         </div>
       </div>
@@ -988,7 +992,10 @@ function Toast({ toast }: { toast: ToastState }) {
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────
 const ClientHub = () => {
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('all');
   const [segFilter, setSegFilter] = useState<string | null>(null);
   const [amFilter, setAmFilter] = useState<string | null>(null);
@@ -998,6 +1005,22 @@ const ClientHub = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState<ToastState>({ msg: '', type: 'info', visible: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchClientHubDashboard();
+      setClients(data.clients.map(apiClientToLocal));
+      setKpis(data.kpis);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load client hub');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const showToast = useCallback((msg: string, type: ToastState['type'] = 'info') => {
     setToast({ msg, type, visible: true });
@@ -1052,7 +1075,7 @@ const ClientHub = () => {
     }
     if (sort === 'overdue')  list.sort((a, b) => cOver(b) - cOver(a));
     else if (sort === 'priority') list.sort((a, b) => ['high','medium','low'].indexOf(a.priority) - ['high','medium','low'].indexOf(b.priority));
-    else if (sort === 'revenue')  list.sort((a, b) => b.rev.localeCompare(a.rev));
+    else if (sort === 'revenue')  list.sort((a, b) => b.revenueValue - a.revenueValue);
     else list.sort((a, b) => a.name.localeCompare(b.name));
     return list;
   })();
@@ -1091,6 +1114,32 @@ const ClientHub = () => {
     </button>
   );
 
+  if (loading) {
+    return (
+      <div className="flex h-full min-h-screen bg-gray-50 items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto" />
+          <p className="text-sm text-gray-500 mt-3 font-medium">Loading Client Hub...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full min-h-screen bg-gray-50 items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
+          <p className="text-sm font-semibold text-gray-700 mt-3">Failed to load Client Hub</p>
+          <p className="text-xs text-gray-400 mt-1">{error}</p>
+          <button onClick={loadDashboard} className="mt-4 px-4 py-2 text-sm font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-screen bg-gray-50">
       {/* ── INNER SIDEBAR ── */}
@@ -1122,7 +1171,7 @@ const ClientHub = () => {
             </div>
 
           <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-wider px-2 py-1.5 mt-2">Account Managers</p>
-          {['Priya Mehta', 'Suresh Kumar', 'Ananya Krishnan'].map(am => {
+          {[...new Set(clients.map(c => c.am).filter(Boolean))].map(am => {
             const amCount = clients.filter(c => c.am === am).length;
             return (
               <SidebarBtn key={am} active={amFilter === am} onClick={() => { setAmFilter(am); setSegFilter(null); setView('all'); showToast(`Filtered: ${am}'s clients`, 'info'); }}>
@@ -1174,7 +1223,7 @@ const ClientHub = () => {
             <KpiCard label="Active Orders"   value={totalOrds}  sub="In production / pending" icon={<Package className="w-4 h-4" />}    color="emerald" />
             <KpiCard label="R&D Pipelines"   value={totalDevs}  sub="Across all clients"     icon={<FlaskConical className="w-4 h-4" />} color="violet" />
             <KpiCard label="Appointments"    value={totalAppts} sub="Upcoming scheduled"     icon={<Calendar className="w-4 h-4" />}    color="pink"    onClick={() => setView('appts')} />
-            <KpiCard label="Portfolio Rev"   value="1.4Cr+"     sub="Combined client value"  icon={<TrendingUp className="w-4 h-4" />}  color="orange" />
+            <KpiCard label="Portfolio Rev"   value={formatTotalRevenue(kpis?.totalRevenue ?? clients.reduce((s, c) => s + c.revenueValue, 0))} sub="Combined client value"  icon={<TrendingUp className="w-4 h-4" />}  color="orange" />
           </div>
 
           {/* Overdue Alert Strip */}
@@ -1340,6 +1389,7 @@ const ClientHub = () => {
         <AddClientModal
           onClose={() => setShowAddModal(false)}
           onAdd={(c) => { setClients(p => [...p, c]); showToast(`${c.name} added to Client Hub!`, 'success'); }}
+          accountManagers={[...new Map(clients.filter(c => c.am && c.am !== '—' && c.amId).map(c => [c.am, { id: c.amId!, name: c.am }])).values()]}
         />
       )}
 

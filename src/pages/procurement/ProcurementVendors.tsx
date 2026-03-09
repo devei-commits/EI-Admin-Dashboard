@@ -118,7 +118,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
               onClick={() => applyRouteState('Procurement', sideSection)}
               className="px-4 py-2 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-300 hover:bg-cyan-100 transition"
             >
-              ← Back
+              Back
             </button>
             <button
               type="button"
@@ -184,7 +184,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                     <td className="px-6 py-3 text-slate-600">{vendor.city}</td>
                     <td className="px-6 py-3 text-slate-600 text-xs">{vendor.paymentTerms}</td>
                     <td className="px-6 py-3">
-                      <span className="text-yellow-700 font-bold">{'★'.repeat(Math.round(vendor.rating))} {vendor.rating}</span>
+                      <span className="text-yellow-700 font-bold">{vendor.rating}</span>
                     </td>
                     <td className="px-6 py-3 text-slate-600 font-semibold">{vendor.posIssued}</td>
                     <td className="px-6 py-3">
@@ -206,7 +206,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
               onClick={() => setSelectedVendor(null)}
               className="text-slate-400 hover:text-slate-600 text-xl font-bold"
             >
-              ✕
+              X
             </button>
           </div>
 
@@ -250,7 +250,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
 
             <div>
               <p className="text-xs text-slate-500 tracking-widest font-semibold">RATING</p>
-              <p className="text-sm text-yellow-700 font-bold mt-1">{'★'.repeat(Math.round(selectedVendor.rating))} {selectedVendor.rating}</p>
+              <p className="text-sm text-yellow-700 font-bold mt-1">{selectedVendor.rating}</p>
             </div>
 
             <div className="border-t border-slate-200 pt-4">
@@ -301,7 +301,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                 disabled={saving}
                 className="text-slate-400 hover:text-slate-600 text-xl font-bold disabled:opacity-50"
               >
-                ✕
+                X
               </button>
             </div>
             <form onSubmit={handleAddVendorSubmit} className="p-6 space-y-4">

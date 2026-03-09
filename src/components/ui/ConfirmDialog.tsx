@@ -98,7 +98,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
      >
       {isLoading ? (
        <span className="flex items-center gap-2">
-        <span className="inline-block animate-spin">⏳</span>
+        <span className="inline-block">Loading...</span>
         Processing...
        </span>
       ) : (

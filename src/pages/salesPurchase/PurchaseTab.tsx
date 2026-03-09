@@ -225,7 +225,7 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({
                             onClick={() => setDelayImpactModalPoId(order.id)}
                             className="px-3 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-50 transition"
                           >
-                            ⏱ Delay
+                            Delay
                           </button>
                         )}
                       </div>
@@ -320,7 +320,7 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({
                       onClick={() => setDelayImpactModalPoId(order.id)}
                       className="px-3 py-2 border border-amber-300 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-50 transition"
                     >
-                      ⏱ Delay
+                      Delay
                     </button>
                   )}
                 </div>

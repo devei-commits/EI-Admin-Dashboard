@@ -144,7 +144,7 @@ const UniversalSwapPage = () => {
 
   const handleSwapItem = () => {
     if (!swapFromItem || !swapToItem) return;
-    alert(`Swapping ${swapFromItem} → ${swapToItem} for ${effectiveSelected?.mo}`);
+    alert(`Swapping ${swapFromItem} > ${swapToItem} for ${effectiveSelected?.mo}`);
   };
 
   const handleAddItem = () => {
@@ -173,7 +173,7 @@ const UniversalSwapPage = () => {
         <div className="text-center">
           <p className="text-gray-500">{planningLoading ? 'Loading orders…' : 'No planning orders found.'}</p>
           <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
-            ← Back to Planning
+            Back to Planning
           </Link>
         </div>
       </div>
@@ -186,7 +186,7 @@ const UniversalSwapPage = () => {
         <div className="text-center">
           <p className="text-gray-500">Please select a product and view RM Plan to see details.</p>
           <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
-            ← Back to Planning
+            Back to Planning
           </Link>
         </div>
       </div>
@@ -275,7 +275,7 @@ const UniversalSwapPage = () => {
       <div className="grow p-6 overflow-y-auto bg-gray-50">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Selected Product → Items Involved</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Selected Product - Items Involved</h1>
             <p className="text-sm text-gray-500 mt-1">Stage-specific BOM (without touching masters)</p>
           </div>
           <Link to="/planning" className="text-blue-600 hover:underline text-sm font-medium">

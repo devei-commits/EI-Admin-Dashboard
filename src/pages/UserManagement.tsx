@@ -19,10 +19,19 @@ import {
  ChevronDown,
  ChevronUp,
  RefreshCw,
+ Settings,
+ Check,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
 import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, createStaffUser, type StaffUserFromApi } from '../services/user.service';
 import { listRoles } from '../services/role.service';
+import {
+ fetchDepartments,
+ createDepartment as apiCreateDepartment,
+ updateDepartment as apiUpdateDepartment,
+ deleteDepartment as apiDeleteDepartment,
+ type DepartmentRow,
+} from '../services/department.service';
 
 // ==================== TYPES ====================
 interface User {
@@ -39,18 +48,10 @@ interface User {
 }
 
 // ==================== CONSTANTS ====================
-const DEPARTMENTS = [
- 'Business Development',
- 'Quality Assurance',
- 'Research & Development',
- 'Sales',
- 'Packaging',
- 'Design',
- 'Procurement',
- 'Manufacturing',
- 'Logistics',
- 'Administration',
-] as const;
+const FALLBACK_DEPARTMENTS = [
+ 'Business Development', 'Quality Assurance', 'Research & Development', 'Sales',
+ 'Packaging', 'Design', 'Procurement', 'Manufacturing', 'Logistics', 'Administration', 'Production',
+];
 
 /** Map API staff user to page User type */
 function mapStaffToUser(r: StaffUserFromApi): User {
@@ -72,10 +73,127 @@ function mapStaffToUser(r: StaffUserFromApi): User {
  };
 }
 
+// ==================== DEPARTMENT MANAGER ====================
+function DepartmentManager({ departments, onRefresh }: { departments: DepartmentRow[]; onRefresh: () => void }) {
+ const [open, setOpen] = useState(false);
+ const [addName, setAddName] = useState('');
+ const [addCode, setAddCode] = useState('');
+ const [editId, setEditId] = useState<number | null>(null);
+ const [editName, setEditName] = useState('');
+ const [editCode, setEditCode] = useState('');
+ const [saving, setSaving] = useState(false);
+
+ const handleAdd = async () => {
+  if (!addName.trim()) return;
+  const code = addCode.trim() || addName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  setSaving(true);
+  try {
+   await apiCreateDepartment({ name: addName.trim(), code });
+   setAddName(''); setAddCode('');
+   onRefresh();
+  } catch { /* handled by toast or inline error */ }
+  finally { setSaving(false); }
+ };
+
+ const handleUpdate = async (id: number) => {
+  if (!editName.trim()) return;
+  setSaving(true);
+  try {
+   await apiUpdateDepartment(id, { name: editName.trim(), code: editCode.trim() || undefined });
+   setEditId(null);
+   onRefresh();
+  } catch { /* */ }
+  finally { setSaving(false); }
+ };
+
+ const handleDelete = async (dept: DepartmentRow) => {
+  if (!confirm(`Delete department "${dept.name}"? This cannot be undone.`)) return;
+  try {
+   await apiDeleteDepartment(dept.id);
+   onRefresh();
+  } catch { /* */ }
+ };
+
+ const handleToggleActive = async (dept: DepartmentRow) => {
+  try {
+   await apiUpdateDepartment(dept.id, { is_active: !dept.is_active });
+   onRefresh();
+  } catch { /* */ }
+ };
+
+ const startEdit = (dept: DepartmentRow) => {
+  setEditId(dept.id);
+  setEditName(dept.name);
+  setEditCode(dept.code);
+ };
+
+ return (
+  <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+   <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+    <div className="flex items-center gap-2">
+     <Settings className="w-4 h-4 text-slate-500" />
+     <span className="text-sm font-semibold text-slate-700">Manage Departments</span>
+     <span className="text-xs text-slate-400 ml-1">({departments.length})</span>
+    </div>
+    {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+   </button>
+   {open && (
+    <div className="border-t border-gray-100 p-4">
+     {/* Add new department */}
+     <div className="flex gap-2 mb-4">
+      <input value={addName} onChange={e => { setAddName(e.target.value); setAddCode(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')); }}
+       placeholder="Department name" className={`${inputClassName} flex-1`} />
+      <input value={addCode} onChange={e => setAddCode(e.target.value)}
+       placeholder="Code (auto)" className={`${inputClassName} w-40`} />
+      <button onClick={handleAdd} disabled={saving || !addName.trim()}
+       className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+       <Plus className="w-3.5 h-3.5" /> Add
+      </button>
+     </div>
+
+     {/* Department list */}
+     <div className="space-y-1.5">
+      {departments.sort((a, b) => a.name.localeCompare(b.name)).map(dept => (
+       <div key={dept.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${dept.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+        {editId === dept.id ? (
+         <>
+          <input value={editName} onChange={e => setEditName(e.target.value)} className={`${inputClassName} flex-1 py-1.5!`} autoFocus />
+          <input value={editCode} onChange={e => setEditCode(e.target.value)} className={`${inputClassName} w-36 py-1.5!`} />
+          <button onClick={() => handleUpdate(dept.id)} disabled={saving}
+           className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><Check className="w-4 h-4" /></button>
+          <button onClick={() => setEditId(null)}
+           className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
+         </>
+        ) : (
+         <>
+          <Building2 className={`w-4 h-4 ${dept.is_active ? 'text-slate-500' : 'text-slate-300'}`} />
+          <span className="flex-1 text-sm font-medium text-slate-700">{dept.name}</span>
+          <span className="text-xs text-slate-400 font-mono">{dept.code}</span>
+          <button onClick={() => handleToggleActive(dept)} title={dept.is_active ? 'Deactivate' : 'Activate'}
+           className={`px-2 py-0.5 text-[10px] font-semibold rounded-md border ${dept.is_active ? 'text-green-600 bg-green-50 border-green-200' : 'text-slate-400 bg-slate-50 border-slate-200'}`}>
+           {dept.is_active ? 'Active' : 'Inactive'}
+          </button>
+          <button onClick={() => startEdit(dept)}
+           className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => handleDelete(dept)}
+           className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
+         </>
+        )}
+       </div>
+      ))}
+      {departments.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No departments yet. Add one above.</p>}
+     </div>
+    </div>
+   )}
+  </div>
+ );
+}
+
 // ==================== COMPONENT ====================
 const UserManagement = () => {
  const [users, setUsers] = useState<User[]>([]);
  const [roles, setRoles] = useState<Array<{ role_id: number; role_name: string }>>([]);
+ const [departments, setDepartments] = useState<DepartmentRow[]>([]);
  const [loading, setLoading] = useState(true);
  const [error, setError] = useState<string | null>(null);
  const [searchTerm, setSearchTerm] = useState('');
@@ -91,6 +209,18 @@ const UserManagement = () => {
  const [formData, setFormData] = useState<Partial<User> & { password?: string }>({});
  const itemsPerPage = 8;
 
+ const departmentNames = useMemo(() => {
+  if (departments.length > 0) return departments.filter(d => d.is_active).map(d => d.name).sort();
+  return FALLBACK_DEPARTMENTS;
+ }, [departments]);
+
+ const loadDepartments = useCallback(async () => {
+  try {
+   const rows = await fetchDepartments();
+   setDepartments(rows);
+  } catch { /* fallback to hardcoded */ }
+ }, []);
+
  const loadUsers = useCallback(async () => {
   setLoading(true);
   setError(null);
@@ -98,6 +228,7 @@ const UserManagement = () => {
    const [usersRes, rolesList] = await Promise.all([
     fetchStaffUsers(),
     listRoles(),
+    loadDepartments(),
    ]);
    if (usersRes.success && usersRes.data) {
     setUsers(usersRes.data.map(mapStaffToUser));
@@ -111,7 +242,7 @@ const UserManagement = () => {
   } finally {
    setLoading(false);
   }
- }, []);
+ }, [loadDepartments]);
 
  useEffect(() => {
   loadUsers();
@@ -402,6 +533,9 @@ const UserManagement = () => {
     ))}
    </div>
 
+   {/* Department Management */}
+   <DepartmentManager departments={departments} onRefresh={loadDepartments} />
+
    {/* Search & Filters */}
    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
     <div className="flex flex-col md:flex-row gap-4">
@@ -422,7 +556,7 @@ const UserManagement = () => {
      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
       {[
        { label: 'Status', value: statusFilter, setter: setStatusFilter, options: ['all', 'active', 'inactive', 'suspended'] },
-       { label: 'Department', value: departmentFilter, setter: setDepartmentFilter, options: ['all', ...DEPARTMENTS] },
+       { label: 'Department', value: departmentFilter, setter: setDepartmentFilter, options: ['all', ...departmentNames] },
        { label: 'Role', value: roleFilter, setter: setRoleFilter, options: ['all', ...roleFilterOptions] },
       ].map(({ label, value, setter, options }) => (
        <div key={label}>
@@ -630,7 +764,7 @@ const UserManagement = () => {
         <div><label className="block text-sm font-medium text-slate-300 mb-1">Password *</label><input type="password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
        )}
        <div className="grid grid-cols-2 gap-4">
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Department *</label><select value={formData.department || ''} onChange={(e) => setFormData(p => ({ ...p, department: e.target.value }))} className={selectClassName} required><option value="">Select</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+        <div><label className="block text-sm font-medium text-slate-300 mb-1">Department *</label><select value={formData.department || ''} onChange={(e) => setFormData(p => ({ ...p, department: e.target.value }))} className={selectClassName} required><option value="">Select</option>{departmentNames.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
         <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
        </div>
        <div><label className="block text-sm font-medium text-slate-300 mb-1">Status</label><select value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>

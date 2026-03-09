@@ -28,7 +28,7 @@ import { formatDate, getTodayISO } from '../../utils/orderFulfillmentUtils';
 const TRACKING_STEPS = [
   { key: 'order_placed', label: 'Order Placed', icon: ClipboardList },
   { key: 'fg_ready', label: 'FG Ready', icon: Warehouse },
-  { key: 'picked', label: 'Picked', icon: Box },
+  { key: 'picking', label: 'Picked', icon: Box },
   { key: 'invoiced', label: 'Invoiced', icon: FileText },
   { key: 'shipped', label: 'Shipped', icon: Truck },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle },
@@ -38,7 +38,7 @@ const getStepIndex = (ffStatus: string): number => {
   const statusMap: { [key: string]: number } = {
     'fg_pending': 0, 'wip': 0, 'bulk_qc': 0,
     'fg_ready': 1,
-    'picked': 2,
+    'picking': 2,
     'invoiced': 3,
     'shipped': 4,
     'delivered': 5,
