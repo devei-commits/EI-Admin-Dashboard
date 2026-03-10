@@ -954,6 +954,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
   }, [batch?.bmrNo]);
 
   useEffect(() => {
+    if (!batch) return;
     setMfgDate(batch.mfgDate || today());
     setFillDate(batch.fillDate || addDaysStr(batch.mfgDate || today(), 3));
     setPackDate(batch.packDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), 1));
@@ -964,7 +965,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     setFillLine(batch.fillingLine || compatF[0] || '');
     setPackLine(batch.packagingLine || compatP[0] || '');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch.bmrNo]);
+  }, [batch?.bmrNo]);
 
   const handleMfgChange = (val: string) => {
     setMfgDate(val);
