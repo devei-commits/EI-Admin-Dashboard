@@ -15,6 +15,14 @@ const UI_TO_API_STATUS: Record<string, string> = {
   'Completed': 'Completed',
 };
 
+/** Display label for transfer direction. */
+const TRANSFER_TYPE_LABEL = {
+  outbound: 'Outbound (to MU)',
+  inbound_from_mu: 'Inbound from MU',
+} as const;
+
+type TransferTypeFilter = 'All' | 'outbound' | 'inbound_from_mu';
+
 interface MRN {
   id: string;
   mrnNo: string;
@@ -25,6 +33,9 @@ interface MRN {
   itemsCount: number;
   notes: string;
   lineItems: { id: string; name: string; itemCode: string; quantity: number; unit: string; notes?: string; raw_material_id?: number; pack_material_id?: number; product_id?: number }[];
+  bmrNo?: string;
+  source?: string;
+  isInboundFromMu: boolean;
 }
 
 interface PickLineItem {
@@ -49,6 +60,9 @@ function mapApiToMRN(r: MRNRecordFromApi): MRN {
     transferTeam: r.transferTeam || '',
     itemsCount: (r.lineItems || []).length,
     notes: r.notes || '',
+    bmrNo: r.bmrNo || '',
+    source: r.source || '',
+    isInboundFromMu: Boolean(r.isInboundFromMu),
     lineItems: (r.lineItems || []).map((li) => ({
       id: li.id,
       name: li.item || li.itemCode || '—',
@@ -69,6 +83,7 @@ const OutboundDashboard = () => {
   const [assignablePickers, setAssignablePickers] = useState<AssignablePicker[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [transferTypeFilter, setTransferTypeFilter] = useState<TransferTypeFilter>('All');
   const [selectedMRNId, setSelectedMRNId] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<'pick' | 'view'>('pick');
   const [assignedPicker, setAssignedPicker] = useState('');
@@ -271,12 +286,19 @@ const OutboundDashboard = () => {
   const counts = getStatusCounts();
 
   const filteredMRNs = mrnData.filter(mrn => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      mrn.mrnNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mrn.requestedBy.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (mrn.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
+      mrn.mrnNo.toLowerCase().includes(q) ||
+      mrn.requestedBy.toLowerCase().includes(q) ||
+      (mrn.notes || '').toLowerCase().includes(q) ||
+      (mrn.bmrNo || '').toLowerCase().includes(q) ||
+      (mrn.source || '').toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'All' || mrn.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTransferType =
+      transferTypeFilter === 'All' ||
+      (transferTypeFilter === 'inbound_from_mu' && mrn.isInboundFromMu) ||
+      (transferTypeFilter === 'outbound' && !mrn.isInboundFromMu);
+    return matchesSearch && matchesStatus && matchesTransferType;
   });
 
   const getStatusBadgeColor = (status: string) => {
@@ -351,8 +373,26 @@ const OutboundDashboard = () => {
         <div className="bg-white border border-slate-200 rounded-lg">
           {/* Header */}
           <div className="p-6 border-b border-slate-200">
-            <h1 className="text-xl font-bold text-slate-900 mb-4">Stock Request Notes (MRN)</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-4">Transfer orders</h1>
             
+            {/* Transfer type filter */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-sm text-slate-500">Type:</span>
+              {(['All', 'outbound', 'inbound_from_mu'] as TransferTypeFilter[]).map(filter => (
+                <button
+                  key={filter}
+                  onClick={() => setTransferTypeFilter(filter)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                    transferTypeFilter === filter
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {filter === 'All' ? 'All' : TRANSFER_TYPE_LABEL[filter]}
+                </button>
+              ))}
+            </div>
+
             {/* Filter Tabs */}
             <div className="flex items-center gap-2 mb-4">
               {(['All', 'Pending Pick', 'In Pick', 'In Transfer', 'Completed'] as StatusFilter[]).map(filter => (
@@ -385,7 +425,9 @@ const OutboundDashboard = () => {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">MRN NO.</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Request ID (MRN)</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Source / BMR</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Requested By</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
@@ -395,9 +437,9 @@ const OutboundDashboard = () => {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading MRNs…</td></tr>
+                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">Loading transfer orders…</td></tr>
                 ) : filteredMRNs.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No MRNs found.</td></tr>
+                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">No transfer orders found.</td></tr>
                 ) : (
                   filteredMRNs.map(mrn => (
                     <tr
@@ -410,6 +452,21 @@ const OutboundDashboard = () => {
                     >
                       <td className="px-6 py-4">
                         <div className="text-amber-700 font-medium text-sm">{mrn.mrnNo}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${mrn.isInboundFromMu ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {mrn.isInboundFromMu ? TRANSFER_TYPE_LABEL.inbound_from_mu : TRANSFER_TYPE_LABEL.outbound}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {mrn.source === 'MTR' && mrn.bmrNo ? (
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 font-medium">MTR</span>
+                            <span className="text-slate-600">{mrn.bmrNo}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-slate-900 text-sm">{mrn.requestedBy}</div>

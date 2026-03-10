@@ -49,6 +49,10 @@ export interface PlanningExtractedRow {
   color?: string;
   sales_order_id?: number;
   product_id?: number;
+  /** Indices of batches already sent to production */
+  sentBatchIndices?: number[];
+  batchCount?: number | null;
+  customBatches?: { sizeKg: number }[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -91,6 +95,7 @@ export interface UpdatePlanningExtractedPayload {
   productionLine?: string;
   bomConfirmedAt?: string;
   customBatches?: CustomBatch[];
+  sentBatchIndices?: number[];
 }
 
 export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
@@ -108,6 +113,35 @@ export async function updatePlanningExtracted(
 ): Promise<PlanningExtractedRow | null> {
   try {
     const res = await api.patch<PlanningExtractedRow>(`/api/v1/planning-extracted/${id}`, payload);
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Custom BOM override for a planning extracted row (swapped/edited in Plan Batches). */
+export interface PlanningBomOverrideRow {
+  rmLines: Array<{ phase?: string; inci_name?: string; rm_code?: string; pct_w_w?: number; uom?: string; raw_material_id?: number }>;
+  pmLines: Array<{ pm_code?: string; description?: string; qty_per_unit?: number; uom?: string }>;
+}
+
+export async function fetchBomOverride(planningExtractedId: string): Promise<PlanningBomOverrideRow | null> {
+  try {
+    const res = await api.get<PlanningBomOverrideRow>(`/api/v1/planning-extracted/${planningExtractedId}/bom-override`);
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function putBomOverride(
+  planningExtractedId: string,
+  payload: PlanningBomOverrideRow
+): Promise<PlanningBomOverrideRow | null> {
+  try {
+    const res = await api.put<PlanningBomOverrideRow>(`/api/v1/planning-extracted/${planningExtractedId}/bom-override`, payload);
     const data = res?.data ?? res;
     return data ?? null;
   } catch {

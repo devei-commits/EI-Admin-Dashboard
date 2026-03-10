@@ -159,17 +159,28 @@ export const SOCard: React.FC<SOCardProps> = ({
           />
         </div>
         <div className="flex justify-between mt-1.5 text-xs font-medium text-gray-500">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400" /> FG Ready
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> Shipped
-            </span>
-          </div>
-          <span>
-            {progress.shippedPct}% of {progress.total} units
-          </span>
+          {progress.readyPct === 0 && progress.shippedPct === 0 ? (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-gray-400" /> Pending
+              </span>
+              <span>0% of {progress.total} units</span>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-400" /> FG Ready
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" /> Shipped
+                </span>
+              </div>
+              <span>
+                {progress.shippedPct}% of {progress.total} units
+              </span>
+            </>
+          )}
         </div>
       </div>
 

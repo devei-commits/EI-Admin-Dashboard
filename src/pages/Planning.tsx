@@ -7,6 +7,8 @@ import {
   fetchPlanningExtractedList,
   fetchPlanningExtractedById,
   updatePlanningExtracted,
+  fetchBomOverride,
+  putBomOverride,
   fetchItemsInvolved,
   type PlanningExtractedRow,
 } from '../services/planningExtracted.service';
@@ -17,7 +19,6 @@ import {
 } from '../services/procurement.service';
 import {
   fetchBOMByProductId,
-  updateBOM,
   type BOMRecord,
   type BOMRmLine,
   type BOMPmLine,
@@ -114,9 +115,11 @@ interface SalesOrder {
   packagingMaterials: PackagingMaterial[];
   color?: string;
   productId?: number;
+  /** Indices of batches already sent to production (history); gray out in Plan Batches */
+  sentBatchIndices?: number[];
+  batchCount?: number | null;
+  customBatches?: { sizeKg: number }[] | null;
 }
-
-import { FeasibilityCard } from '../components/FeasibilityCard';
 
 /** Map API row to SalesOrder shape for Plan Batches / Raise PR modals */
 function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
@@ -138,6 +141,9 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     packagingMaterials: (row.packagingMaterials ?? []).map((pm, i) => ({ ...pm, id: pm.id ?? String((pm as { pack_material_id?: number }).pack_material_id ?? i) } as PackagingMaterial)),
     color: row.color,
     productId: row.product_id,
+    sentBatchIndices: Array.isArray(row.sentBatchIndices) ? row.sentBatchIndices : [],
+    batchCount: row.batchCount ?? null,
+    customBatches: Array.isArray(row.customBatches) ? row.customBatches : null,
   };
 }
 
@@ -174,6 +180,8 @@ const Planning = () => {
   const [productionSentOrderIds, setProductionSentOrderIds] = useState<string[]>([]);
   const [customBatches, setCustomBatches] = useState<{sizeKg: number}[]>([]);
   const [expandedBatchIndex, setExpandedBatchIndex] = useState<number | null>(null);
+  /** Indices of batches selected (checked) to send this time */
+  const [batchesToSendIndices, setBatchesToSendIndices] = useState<number[]>([]);
   const location = useLocation();
   const pathTab = location.pathname.split('/planning/')[1]?.split('/')[0] || '';
   const activeMainTab: 'pis-extracted' | 'items-involved' | 'availability-summary' =
@@ -212,15 +220,69 @@ const Planning = () => {
   });
   const activeBom: BOMRecord | null = bomByProduct ?? null;
 
+  // BOM for detail popup: when FG row is clicked, load BOM to show RM/PM × order qty
+  const productIdForDetail = selectedRowForDetail?.productId ?? 0;
+  const { data: bomForDetail } = useQuery({
+    queryKey: ['bom-by-product-detail', productIdForDetail],
+    queryFn: async () => {
+      const r = await fetchBOMByProductId(productIdForDetail);
+      return r.data ?? null;
+    },
+    enabled: detailModalOpen && productIdForDetail > 0,
+  });
+
+  // Parse order qty from display string (e.g. "50,000 Units" or "50000") for total required calc
+  const orderQtyNumForDetail = useMemo(() => {
+    if (!selectedRowForDetail?.orderQty) return 0;
+    const s = String(selectedRowForDetail.orderQty).replace(/,/g, '').trim();
+    const n = parseInt(s, 10);
+    return Number.isNaN(n) ? 0 : n;
+  }, [selectedRowForDetail?.orderQty]);
+
+  // RM/PM list for detail popup: BOM lines × order quantity (total required for this FG order)
+  const { detailRmItems, detailPmItems } = useMemo(() => {
+    const orderQty = orderQtyNumForDetail || 1;
+    const bom = bomForDetail ?? null;
+    if (!bom) {
+      return {
+        detailRmItems: [] as { id: string; name: string; quantity: number; unit: string }[],
+        detailPmItems: [] as { id: string; name: string; quantity: number; unit: string }[],
+      };
+    }
+    const rmLines = bom.rmLines ?? [];
+    const pmLines = bom.pmLines ?? [];
+    const rmItems = rmLines.map((line: BOMRmLine, i: number) => {
+      const qtyPerUnit = (line as { quantity?: number }).quantity ?? ((line.pct_w_w ?? (line as { pct?: number }).pct ?? 0) / 100);
+      const totalQty = qtyPerUnit * orderQty;
+      return {
+        id: String((line as { raw_material_id?: number }).raw_material_id ?? line.rm_code ?? i),
+        name: (line as { inci_name?: string }).inci_name ?? (line as { name?: string }).name ?? String(line.rm_code ?? ''),
+        quantity: totalQty,
+        unit: line.uom ?? 'KG',
+      };
+    });
+    const pmItems = pmLines.map((line: BOMPmLine, i: number) => {
+      const qtyPerUnit = (line as { qty_per_unit?: number }).qty_per_unit ?? (line as { qty?: number }).qty ?? 1;
+      const totalQty = qtyPerUnit * orderQty;
+      return {
+        id: String((line as { pack_material_id?: number }).pack_material_id ?? line.pm_code ?? i),
+        name: line.description ?? (line as { name?: string }).name ?? String(line.pm_code ?? ''),
+        quantity: totalQty,
+        unit: line.uom ?? 'PCS',
+      };
+    });
+    return { detailRmItems: rmItems, detailPmItems: pmItems };
+  }, [bomForDetail, orderQtyNumForDetail]);
+
   const { data: rawMaterialsList = [] } = useQuery({
     queryKey: ['raw-materials-list'],
     queryFn: () => fetchRawMaterialsList(),
-    enabled: planBatchesModalOpen || prModalOpen,
+    enabled: planBatchesModalOpen || prModalOpen || detailModalOpen,
   });
   const { data: packMaterialsList = [] } = useQuery({
     queryKey: ['pack-materials-list'],
     queryFn: () => fetchPackMaterialsList(),
-    enabled: planBatchesModalOpen || prModalOpen,
+    enabled: planBatchesModalOpen || prModalOpen || detailModalOpen,
   });
 
   const { data: productsList = [] } = useQuery({
@@ -245,7 +307,7 @@ const Planning = () => {
       const r = await fetchWarehouseInventory();
       return r.data ?? null;
     },
-    enabled: planBatchesModalOpen || prModalOpen || activeMainTab === 'availability-summary',
+    enabled: planBatchesModalOpen || prModalOpen || activeMainTab === 'availability-summary' || detailModalOpen,
   });
   const warehouseRows = warehouseResult?.rows ?? [];
 
@@ -261,6 +323,12 @@ const Planning = () => {
   const { data: planningRowForBatch } = useQuery({
     queryKey: ['planning-extracted', planningIdForBatch],
     queryFn: () => fetchPlanningExtractedById(planningIdForBatch),
+    enabled: planBatchesModalOpen && !!planningIdForBatch,
+  });
+
+  const { data: bomOverrideForPlanning } = useQuery({
+    queryKey: ['planning-bom-override', planningIdForBatch],
+    queryFn: () => fetchBomOverride(planningIdForBatch),
     enabled: planBatchesModalOpen && !!planningIdForBatch,
   });
 
@@ -280,10 +348,39 @@ const Planning = () => {
 
   const lastSyncedBomIdRef = useRef<string | null>(null);
   const syncedFallbackOrderIdRef = useRef<string | null>(null);
+  const prFromBatchShortagesRef = useRef(false);
+  const prFromDetailShortagesRef = useRef(false);
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch) return;
+    if (bomOverrideForPlanning === undefined) return;
+    if (bomOverrideForPlanning === null) lastSyncedBomIdRef.current = null;
+    if (bomOverrideForPlanning && (bomOverrideForPlanning.rmLines?.length > 0 || bomOverrideForPlanning.pmLines?.length > 0)) {
+      lastSyncedBomIdRef.current = 'override';
+      syncedFallbackOrderIdRef.current = null;
+      const rmLines = bomOverrideForPlanning.rmLines ?? [];
+      const pmLines = bomOverrideForPlanning.pmLines ?? [];
+      setBomFormula(rmLines.map((line: BOMRmLine, i: number) => ({
+        id: String((line as { raw_material_id?: number }).raw_material_id ?? line.rm_code ?? i),
+        name: line.inci_name ?? (line as { name?: string }).name ?? '',
+        quantity: 0,
+        unit: line.uom ?? 'KG',
+        percentage: line.pct_w_w ?? line.pct ?? 0,
+        code: line.rm_code,
+        phase: line.phase,
+      })));
+      setBomPackaging(pmLines.map((line: BOMPmLine, i: number) => ({
+        id: String((line as { pm_code?: string }).pm_code ?? i),
+        name: line.description ?? (line as { name?: string }).name ?? '',
+        quantity: 0,
+        unit: 'PCS',
+        value: (line as { qty_per_unit?: number }).qty_per_unit ?? (line as { qty?: number }).qty ?? 1,
+        percentage: 0,
+        code: (line as { pm_code?: string }).pm_code,
+      })));
+      return;
+    }
     if (activeBom && activeBom.productId === selectedSOForBatch.productId) {
-      if (lastSyncedBomIdRef.current === activeBom.id) return;
+      if (lastSyncedBomIdRef.current === 'override' || lastSyncedBomIdRef.current === activeBom.id) return;
       lastSyncedBomIdRef.current = activeBom.id;
       syncedFallbackOrderIdRef.current = null;
       const rmLines = activeBom.rmLines ?? [];
@@ -330,7 +427,7 @@ const Planning = () => {
         code: (item as PackagingMaterial).code,
       })));
     }
-  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.productId, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.packagingMaterials, activeBom?.id, activeBom?.productId, activeBom?.rmLines, activeBom?.pmLines]);
+  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.productId, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.packagingMaterials, activeBom?.id, activeBom?.productId, activeBom?.rmLines, activeBom?.pmLines, bomOverrideForPlanning]);
 
   useEffect(() => {
     if (!planBatchesModalOpen) {
@@ -340,10 +437,77 @@ const Planning = () => {
   }, [planBatchesModalOpen]);
 
   // When PR modal opens, build prItems only from items that exist in RM/PM master tables (raw_materials, pack_materials)
+  // When opening from Plan Batches "Raise PR for Shortages", prFromBatchShortagesRef is set and we build from feasibility short rows instead
   useEffect(() => {
     if (!prModalOpen || !selectedSO) {
       setPrItems([]);
       setPrOmittedCount(0);
+      return;
+    }
+    if (prFromDetailShortagesRef.current) {
+      prFromDetailShortagesRef.current = false;
+      return;
+    }
+    if (prFromBatchShortagesRef.current) {
+      prFromBatchShortagesRef.current = false;
+      const rmByCode = new Map(rawMaterialsList.map((r) => [r.code?.toLowerCase() ?? '', r]));
+      const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
+      const items: ProcurementRequestItem[] = [];
+      let omitted = 0;
+      for (const row of feasibilityRmRows) {
+        if (row.ok) continue;
+        const master = rmByCode.get(row.code?.toLowerCase() ?? '') ?? rawMaterialsList.find((r) => r.code === row.code || r.name === row.name);
+        if (!master) {
+          omitted += 1;
+          continue;
+        }
+        const raw_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+        if (raw_material_id == null || Number.isNaN(raw_material_id)) {
+          omitted += 1;
+          continue;
+        }
+        const shortage = Math.max(0, row.totalReq - row.sih);
+        items.push({
+          type: 'RM',
+          code: master.code ?? row.code,
+          name: master.name ?? row.name,
+          required: row.totalReq,
+          sih: row.sih,
+          shortage,
+          quantity_requested: shortage,
+          unit: 'KG',
+          line_notes: '',
+          raw_material_id,
+        });
+      }
+      for (const row of feasibilityPmRows) {
+        if (row.ok) continue;
+        const master = pmByCode.get(row.code?.toLowerCase() ?? '') ?? packMaterialsList.find((p) => p.code === row.code || p.description === row.name);
+        if (!master) {
+          omitted += 1;
+          continue;
+        }
+        const pack_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+        if (pack_material_id == null || Number.isNaN(pack_material_id)) {
+          omitted += 1;
+          continue;
+        }
+        const shortage = Math.max(0, row.totalReq - row.sih);
+        items.push({
+          type: 'PM',
+          code: master.code ?? row.code,
+          name: master.description ?? row.name,
+          required: row.totalReq,
+          sih: row.sih,
+          shortage,
+          quantity_requested: shortage,
+          unit: 'PCS',
+          line_notes: '',
+          pack_material_id,
+        });
+      }
+      setPrItems(items);
+      setPrOmittedCount(omitted);
       return;
     }
     const validRmIds = new Set(rawMaterialsList.map((r) => String(r.id)));
@@ -427,6 +591,18 @@ const Planning = () => {
   const batchSizeNum = parseInt(selectedSOForBatch?.batchSize?.replace(/\D/g, '') || '500', 10) || 500;
   const batchesReq = selectedSOForBatch?.batchesRequired ?? 15;
   const feasibilityRmRows = useMemo(() => {
+    if (bomFormula.length > 0) {
+      return bomFormula.map((item, i) => {
+        const code = item.code ?? item.id;
+        const pct = item.percentage ?? 0;
+        const perBatch = (batchSizeNum * pct) / 100;
+        const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.code === code || r.name === item.name || String(r.sourceId) === String(item.id)));
+        const sih = whRow?.stockInHand ?? 0;
+        const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
+        const totalReq = perBatch * batchesReq;
+        return { name: item.name, code: String(code), pct, perBatch, sih, maxBatches, totalReq, ok: maxBatches >= batchesReq };
+      });
+    }
     if (activeBom?.rmLines?.length) {
       return activeBom.rmLines.map((line, i) => {
         const code = line.rm_code ?? String(line.raw_material_id ?? i);
@@ -448,11 +624,23 @@ const Planning = () => {
       const totalReq = perBatch * batchesReq;
       return { name: item.name, code: (item as RawMaterial).code ?? item.id, pct, perBatch, sih, maxBatches, totalReq, ok: maxBatches >= batchesReq };
     });
-  }, [activeBom?.rmLines, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.batchSize, selectedSOForBatch?.batchesRequired, warehouseRows, batchSizeNum, batchesReq]);
+  }, [bomFormula, activeBom?.rmLines, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.batchSize, selectedSOForBatch?.batchesRequired, warehouseRows, batchSizeNum, batchesReq]);
 
   const feasibilityPmRows = useMemo(() => {
+    const unitsPerBatch = Math.ceil(parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '50000', 10) / batchesReq) || 3333;
+    if (bomPackaging.length > 0) {
+      return bomPackaging.map((item, i) => {
+        const code = item.code ?? item.id;
+        const qtyPerUnit = item.value ?? 1;
+        const perBatchPcs = unitsPerBatch * qtyPerUnit;
+        const whRow = warehouseRows.find((r) => r.type === 'PM' && (r.code === code || r.name === item.name || String(r.sourceId) === String(item.id)));
+        const sih = whRow?.stockInHand ?? 0;
+        const maxBatches = perBatchPcs > 0 ? Math.floor(sih / perBatchPcs) : 999;
+        const totalReq = perBatchPcs * batchesReq;
+        return { name: item.name, code: String(code), qtyPerUnit, perBatchPcs, sih, maxBatches, totalReq, ok: maxBatches >= batchesReq };
+      });
+    }
     if (activeBom?.pmLines?.length) {
-      const unitsPerBatch = Math.ceil(parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '50000', 10) / batchesReq) || 3333;
       return activeBom.pmLines.map((line, i) => {
         const code = (line as { pm_code?: string }).pm_code ?? String(i);
         const qtyPerUnit = (line as { qty_per_unit?: number }).qty_per_unit ?? (line as { qty?: number }).qty ?? 1;
@@ -474,7 +662,7 @@ const Planning = () => {
       const totalReq = perBatchPcs * batchesReq;
       return { name: item.name, code: (item as PackagingMaterial).code ?? item.id, qtyPerUnit, perBatchPcs, sih, maxBatches, totalReq, ok: maxBatches >= batchesReq };
     });
-  }, [activeBom?.pmLines, selectedSOForBatch?.packagingMaterials, selectedSOForBatch?.orderQty, selectedSOForBatch?.batchesRequired, warehouseRows, batchesReq]);
+  }, [bomPackaging, activeBom?.pmLines, selectedSOForBatch?.packagingMaterials, selectedSOForBatch?.orderQty, selectedSOForBatch?.batchesRequired, warehouseRows, batchesReq]);
 
   // Items Involved — from confirmed BOMs only (API); also used by Availability Summary RM/PM tables and tab stats
   const { data: itemsInvolvedRows = [], isLoading: itemsInvolvedLoading } = useQuery({
@@ -660,47 +848,6 @@ const Planning = () => {
     });
   }, [planningExtractedList, warehouseRows]);
 
-  // All RM vs Whole Order / All PM vs Whole Order — from items-involved API (confirmed BOMs)
-  const availabilityRMItems = useMemo(() => {
-    return itemsInvolvedRows
-      .filter((r) => r.type === 'RM')
-      .map((r) => {
-        const coverage = r.coverage ?? 0;
-        const status = coverage >= 100 ? 'OK' : coverage >= 75 ? 'WARN' : 'SHORT';
-        const statusColor = coverage >= 100 ? 'bg-green-100 text-green-700' : coverage >= 75 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
-        return {
-          id: `RM-${r.raw_material_id}`,
-          name: r.name,
-          code: r.code,
-          reqKg: r.totalRequired.toLocaleString(),
-          sihKg: r.sih.toLocaleString(),
-          coverage,
-          status,
-          statusColor,
-        };
-      });
-  }, [itemsInvolvedRows]);
-
-  const availabilityPMItems = useMemo(() => {
-    return itemsInvolvedRows
-      .filter((r) => r.type === 'PM')
-      .map((r) => {
-        const coverage = r.coverage ?? 0;
-        const status = coverage >= 100 ? 'OK' : coverage >= 75 ? 'WARN' : 'SHORT';
-        const statusColor = coverage >= 100 ? 'bg-green-100 text-green-700' : coverage >= 75 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
-        return {
-          id: `PM-${r.pack_material_id}`,
-          name: r.name,
-          code: r.code,
-          required: r.totalRequired.toLocaleString(),
-          sih: r.sih.toLocaleString(),
-          coverage,
-          status,
-          statusColor,
-        };
-      });
-  }, [itemsInvolvedRows]);
-
   // Fallback when API returns no rows (empty state); all list data comes from planning-extracted API
   const initialSalesOrders: SalesOrder[] = [];
 
@@ -737,6 +884,7 @@ const Planning = () => {
 
   const handlePlanBatches = (order: SalesOrder) => {
     setSelectedSOForBatch(order);
+    setBatchesToSendIndices([]);
     setBomFormula(order.rawMaterials);
     setBomPackaging(order.packagingMaterials);
     setIsReadyForProduction(false);
@@ -752,14 +900,193 @@ const Planning = () => {
   };
 
   const handleRaisePR = (order: SalesOrder, pmOnly: boolean = false) => {
-    console.log('handleRaisePR called with:', { orderId: order.id, orderNumber: order.soNumber, pmOnly });
     setSelectedSO(order);
     setPrModalOpen(true);
     setPrShowPMOnly(pmOnly);
     setPrPriority('High');
-    setPrRequiredByDate(order.dueDate);
+    setPrRequiredByDate(order.dueDate || '');
     setPrNotes('');
-    console.log('State updated - modal should open');
+  };
+
+  /** Build PR items for a single batch and open PR modal (PR is per batch, not bulk). */
+  const handleRaisePRForBatch = (order: SalesOrder, batchIndex: number) => {
+    const batchSizeKg = parseFloat(order.batchSize?.replace(/\D/g, '') || '') || 500;
+    const batches = order.customBatches?.length
+      ? order.customBatches
+      : Array.from({ length: order.batchCount ?? order.batchesRequired ?? 1 }, () => ({ sizeKg: batchSizeKg }));
+    const sizeKgForBatch = batches[batchIndex]?.sizeKg ?? batchSizeKg;
+    const scale = sizeKgForBatch / batchSizeKg;
+
+    const rmByCode = new Map(rawMaterialsList.map((r) => [r.code?.toLowerCase() ?? '', r]));
+    const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
+    const items: ProcurementRequestItem[] = [];
+    let omitted = 0;
+
+    for (const item of order.rawMaterials ?? []) {
+      const qty = (typeof item.quantity === 'number' ? item.quantity : 0) * scale;
+      const idStr = String((item as RawMaterial).code ?? item.id ?? '');
+      const master = rawMaterialsList.find((r) => String(r.id) === idStr) ?? rmByCode.get(idStr.toLowerCase()) ?? rawMaterialsList.find((r) => r.code === idStr || r.name === item.name);
+      if (!master) { omitted += 1; continue; }
+      const raw_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+      if (raw_material_id == null || Number.isNaN(raw_material_id)) { omitted += 1; continue; }
+      const wh = warehouseRows.find((r) => r.type === 'RM' && (Number(r.sourceId) === Number(raw_material_id) || r.code === master.code || r.name === master.name));
+      const sih = wh?.stockInHand ?? 0;
+      const shortage = Math.max(0, qty - sih);
+      if (shortage <= 0) continue;
+      items.push({
+        type: 'RM',
+        code: master.code ?? idStr,
+        name: master.name ?? item.name,
+        required: qty,
+        sih,
+        shortage,
+        quantity_requested: shortage,
+        unit: (item as RawMaterial).unit || 'KG',
+        line_notes: '',
+        raw_material_id,
+      });
+    }
+
+    for (const item of order.packagingMaterials ?? []) {
+      const qty = Math.ceil((typeof item.quantity === 'number' ? item.quantity : 0) * scale);
+      const idStr = String((item as PackagingMaterial).code ?? item.id ?? '');
+      const master = packMaterialsList.find((p) => String(p.id) === idStr) ?? pmByCode.get(idStr.toLowerCase()) ?? packMaterialsList.find((p) => p.code === idStr || p.description === item.name);
+      if (!master) { omitted += 1; continue; }
+      const pack_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+      if (pack_material_id == null || Number.isNaN(pack_material_id)) { omitted += 1; continue; }
+      const wh = warehouseRows.find((r) => r.type === 'PM' && (Number(r.sourceId) === Number(pack_material_id) || r.code === master.code || r.name === master.description));
+      const sih = wh?.stockInHand ?? 0;
+      const shortage = Math.max(0, qty - sih);
+      if (shortage <= 0) continue;
+      items.push({
+        type: 'PM',
+        code: master.code ?? idStr,
+        name: master.description ?? item.name,
+        required: qty,
+        sih,
+        shortage,
+        quantity_requested: shortage,
+        unit: (item as PackagingMaterial).unit || 'PCS',
+        line_notes: '',
+        pack_material_id,
+      });
+    }
+
+    setPrItems(items);
+    setPrOmittedCount(omitted);
+    prFromDetailShortagesRef.current = true;
+    setSelectedSO(order);
+    setPrPriority('High');
+    setPrRequiredByDate(order.dueDate || '');
+    setPrNotes(`Batch B-${String(batchIndex + 1).padStart(2, '0')} — ${sizeKgForBatch} KG`);
+    setDetailModalOpen(false);
+    setSelectedRowForDetail(null);
+    setPrModalOpen(true);
+  };
+
+  /** Build PR items from PIS detail popup: only items that are short (BOM×orderQty - SIH > 0), pre-fill quantities. */
+  const handleRaisePRFromDetailPopup = () => {
+    if (!selectedRowForDetail) return;
+    if (detailRmItems.length === 0 && detailPmItems.length === 0) {
+      setDetailModalOpen(false);
+      setSelectedRowForDetail(null);
+      handleRaisePR(selectedRowForDetail);
+      return;
+    }
+    const rmByCode = new Map(rawMaterialsList.map((r) => [r.code?.toLowerCase() ?? '', r]));
+    const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
+    const items: ProcurementRequestItem[] = [];
+    let omitted = 0;
+
+    for (const item of detailRmItems) {
+      const idStr = String(item.id ?? '');
+      const master =
+        rawMaterialsList.find((r) => String(r.id) === idStr) ??
+        rmByCode.get(idStr.toLowerCase()) ??
+        rawMaterialsList.find((r) => r.code === idStr || r.name === item.name);
+      if (!master) {
+        omitted += 1;
+        continue;
+      }
+      const raw_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+      if (raw_material_id == null || Number.isNaN(raw_material_id)) {
+        omitted += 1;
+        continue;
+      }
+      const wh = warehouseRows.find(
+        (r) =>
+          r.type === 'RM' &&
+          (Number(r.sourceId) === Number(raw_material_id) || r.code === master.code || r.name === master.name)
+      );
+      const sih = wh?.stockInHand ?? 0;
+      const required = item.quantity;
+      const shortage = Math.max(0, required - sih);
+      if (shortage <= 0) continue;
+      items.push({
+        type: 'RM',
+        code: master.code ?? idStr,
+        name: master.name ?? item.name,
+        required,
+        sih,
+        shortage,
+        quantity_requested: shortage,
+        unit: item.unit || 'KG',
+        line_notes: '',
+        raw_material_id,
+      });
+    }
+
+    for (const item of detailPmItems) {
+      const idStr = String(item.id ?? '');
+      const master =
+        packMaterialsList.find((p) => String(p.id) === idStr) ??
+        pmByCode.get(idStr.toLowerCase()) ??
+        packMaterialsList.find((p) => p.code === idStr || p.description === item.name);
+      if (!master) {
+        omitted += 1;
+        continue;
+      }
+      const pack_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
+      if (pack_material_id == null || Number.isNaN(pack_material_id)) {
+        omitted += 1;
+        continue;
+      }
+      const wh = warehouseRows.find(
+        (r) =>
+          r.type === 'PM' &&
+          (Number(r.sourceId) === Number(pack_material_id) ||
+            r.code === master.code ||
+            r.name === master.description)
+      );
+      const sih = wh?.stockInHand ?? 0;
+      const required = item.quantity;
+      const shortage = Math.max(0, required - sih);
+      if (shortage <= 0) continue;
+      items.push({
+        type: 'PM',
+        code: master.code ?? idStr,
+        name: master.description ?? item.name,
+        required,
+        sih,
+        shortage,
+        quantity_requested: shortage,
+        unit: item.unit || 'PCS',
+        line_notes: '',
+        pack_material_id,
+      });
+    }
+
+    setPrItems(items);
+    setPrOmittedCount(omitted);
+    prFromDetailShortagesRef.current = true;
+    setSelectedSO(selectedRowForDetail);
+    setPrModalOpen(true);
+    setPrShowPMOnly(false);
+    setPrPriority('High');
+    setPrRequiredByDate(selectedRowForDetail.dueDate || '');
+    setPrNotes('');
+    setDetailModalOpen(false);
+    setSelectedRowForDetail(null);
   };
 
   const handleSendToProcurement = async () => {
@@ -868,17 +1195,16 @@ const Planning = () => {
         uom: 'pc/unit',
       }));
 
-      if (activeBom?.id) {
-        const res = await updateBOM(activeBom.id, { rmLines, pmLines });
-        if (!res.success || res.error) {
-          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update BOM');
-          return;
-        }
+      const saved = await putBomOverride(selectedSOForBatch.id, { rmLines, pmLines });
+      if (!saved) {
+        addToast('error', 'Failed to save custom BOM for this SO');
+        return;
       }
       await updatePlanningExtracted(selectedSOForBatch.id, {
         bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       });
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-bom-override', selectedSOForBatch.id] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
       addToast('success', `BOM confirmed for ${selectedSOForBatch.productName}. Go to Batch Plan to set batches and schedule.`);
       setIsReadyForProduction(true);
@@ -892,6 +1218,12 @@ const Planning = () => {
 
   const handleSendToProduction = async () => {
     if (!selectedSOForBatch || !canSendToProduction) return;
+    const toSend = batchesToSendIndices.filter((i) => i >= 0 && i < customBatches.length);
+    if (toSend.length === 0) {
+      addToast('info', 'Select at least one batch to send to Production.');
+      return;
+    }
+    const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), ...toSend])].sort((a, b) => a - b);
     try {
       await updatePlanningExtracted(selectedSOForBatch.id, {
         batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
@@ -900,9 +1232,10 @@ const Planning = () => {
         productionLine: productionLine || undefined,
         bomStatus: 'Production Released',
         customBatches: customBatches.length > 0 ? customBatches : undefined,
+        sentBatchIndices: mergedSent,
       });
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
-      addToast('success', `Plan for ${selectedSOForBatch.productName} sent to Production successfully`);
+      addToast('success', `${toSend.length} batch${toSend.length !== 1 ? 'es' : ''} sent to Production`);
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save');
     }
@@ -918,16 +1251,18 @@ const Planning = () => {
     setIsReadyForProduction(false);
     setCustomBatches([]);
     setExpandedBatchIndex(null);
+    setBatchesToSendIndices([]);
   };
 
   const handleRaisePRFromBatch = () => {
     if (selectedSOForBatch) {
+      prFromBatchShortagesRef.current = true;
       setPlanBatchesModalOpen(false);
-      setPrModalOpen(true);
       setSelectedSO(selectedSOForBatch);
+      setPrModalOpen(true);
       setPrShowPMOnly(false);
       setPrPriority('High');
-      setPrRequiredByDate(selectedSOForBatch.dueDate);
+      setPrRequiredByDate(selectedSOForBatch.dueDate || '');
       setPrNotes('');
     }
   };
@@ -1305,6 +1640,16 @@ const Planning = () => {
                     </select>
                   </div>
                   <p className="text-sm text-gray-600">{order.productCode} · SO: {order.soNumber}</p>
+                  {(order.batchCount != null || (order.sentBatchIndices?.length ?? 0) > 0) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Target: <span className="font-medium text-gray-700">{order.orderQty}</span>
+                      {' · '}
+                      Batches sent: <span className="font-medium text-emerald-700">{order.sentBatchIndices?.length ?? 0}</span>
+                      {(order.batchCount != null || order.batchesRequired != null) && (
+                        <span> / {order.batchCount ?? order.batchesRequired}</span>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-8 mr-4">
                   <div className="text-right">
@@ -1369,19 +1714,63 @@ const Planning = () => {
                   </button>
                 </div>
 
+                {/* Batch breakdown: target, completed, raise PR per batch */}
+                {(() => {
+                  const batchCount = selectedRowForDetail.batchCount ?? selectedRowForDetail.batchesRequired ?? 1;
+                  const batchSizeKg = parseFloat(selectedRowForDetail.batchSize?.replace(/\D/g, '') || '') || 500;
+                  const batchesList = selectedRowForDetail.customBatches?.length
+                    ? selectedRowForDetail.customBatches
+                    : Array.from({ length: batchCount }, () => ({ sizeKg: batchSizeKg }));
+                  const sentSet = new Set(selectedRowForDetail.sentBatchIndices ?? []);
+                  return (
+                    <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                      <h4 className="text-sm font-bold text-gray-900 mb-3">Batch breakdown</h4>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Target: <span className="font-semibold text-gray-700">{selectedRowForDetail.orderQty}</span>
+                        {' · '}
+                        Batches sent: <span className="font-semibold text-emerald-700">{sentSet.size}</span> / {batchesList.length}
+                      </p>
+                      <div className="space-y-2">
+                        {batchesList.map((b, idx) => (
+                          <div key={idx} className="flex items-center justify-between gap-3 py-2 px-3 bg-white rounded-lg border border-gray-100">
+                            <span className="text-sm font-medium text-gray-800">
+                              B-{String(idx + 1).padStart(2, '0')} — {b.sizeKg.toLocaleString()} KG
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {sentSet.has(idx) && (
+                                <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Sent</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleRaisePRForBatch(selectedRowForDetail, idx); }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200"
+                              >
+                                Raise PR for this batch
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
                     <h4 className="font-bold text-gray-900 mb-3 flex items-center text-sm">
                       <span className="w-2.5 h-2.5 bg-teal-500 rounded-full mr-2" />
-                      RM — {selectedRowForDetail.rawMaterials.length} items
+                      RM — {(detailRmItems.length > 0 ? detailRmItems : selectedRowForDetail.rawMaterials).length} items
+                      {detailRmItems.length > 0 && (
+                        <span className="ml-2 text-xs font-normal text-gray-500">(BOM × order qty)</span>
+                      )}
                     </h4>
                     <div className="space-y-3">
-                      {selectedRowForDetail.rawMaterials.map((item) => (
+                      {(detailRmItems.length > 0 ? detailRmItems : selectedRowForDetail.rawMaterials).map((item) => (
                         <div key={item.id} className="flex flex-col">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
                             <span className="text-sm text-teal-600 font-semibold shrink-0">
-                              {typeof item.quantity === 'number' ? item.quantity.toFixed(1) : item.quantity}/{item.unit}
+                              {typeof item.quantity === 'number' ? Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : item.quantity} {item.unit}
                             </span>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -1394,15 +1783,18 @@ const Planning = () => {
                   <div>
                     <h4 className="font-bold text-gray-900 mb-3 flex items-center text-sm">
                       <span className="w-2.5 h-2.5 bg-orange-500 rounded-full mr-2" />
-                      PM — {selectedRowForDetail.packagingMaterials.length} items
+                      PM — {(detailPmItems.length > 0 ? detailPmItems : selectedRowForDetail.packagingMaterials).length} items
+                      {detailPmItems.length > 0 && (
+                        <span className="ml-2 text-xs font-normal text-gray-500">(BOM × order qty)</span>
+                      )}
                     </h4>
                     <div className="space-y-3">
-                      {selectedRowForDetail.packagingMaterials.map((item) => (
+                      {(detailPmItems.length > 0 ? detailPmItems : selectedRowForDetail.packagingMaterials).map((item) => (
                         <div key={item.id} className="flex flex-col">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
                             <span className="text-sm text-orange-600 font-semibold shrink-0">
-                              {typeof item.quantity === 'number' ? item.quantity.toFixed(1) : item.quantity}/{item.unit}
+                              {typeof item.quantity === 'number' ? Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : item.quantity} {item.unit}
                             </span>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -1421,7 +1813,7 @@ const Planning = () => {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => { handleRaisePR(selectedRowForDetail); closeDetailModal(); }}
+                      onClick={() => handleRaisePRFromDetailPopup()}
                       className="px-4 py-2 rounded-lg text-sm font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200"
                     >
                       Raise PR
@@ -1830,6 +2222,7 @@ const Planning = () => {
                       
                       // Set selected SO first
                       setSelectedSOForBatch(soToUse);
+                      setBatchesToSendIndices([]);
                       
                       // Initialize batch data
                       setNumBatches(soToUse.batchesRequired.toString());
@@ -1858,121 +2251,6 @@ const Planning = () => {
                   </button>
                 </div>
               ))}
-            </div>
-
-            {/* Two Column Tables Section */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* All RM vs Whole Order Table */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-900">All RM vs Whole Order</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">RM</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REQ KG</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">SIH KG</th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">COVERAGE</th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {availabilityRMItems.map((item, idx) => (
-                        <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-3 py-2">
-                            <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                            <div className="text-xs text-blue-600">{item.code}</div>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-gray-900 font-semibold text-xs">{item.reqKg}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-cyan-600 font-semibold text-xs">{item.sihKg}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-center gap-2">
-                              <div className="flex-1 bg-gray-200 rounded-full h-1.5 w-16">
-                                <div 
-                                  className={`h-1.5 rounded-full ${
-                                    item.coverage >= 100 ? 'bg-green-500' :
-                                    item.coverage >= 75 ? 'bg-orange-400' :
-                                    'bg-red-500'
-                                  }`}
-                                  style={{ width: `${Math.min(item.coverage, 100)}%` }}
-                                ></div>
-                              </div>
-                              <span className="text-xs font-semibold text-gray-700 w-8 text-right">{item.coverage}%</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${item.statusColor}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* All PM vs Whole Order Table */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-900">All PM vs Whole Order</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">PM</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REQUIRED</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">SIH</th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">COVERAGE</th>
-                        <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {availabilityPMItems.map((item, idx) => (
-                        <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-3 py-2">
-                            <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                            <div className="text-xs text-blue-600">{item.code}</div>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-gray-900 font-semibold text-xs">{item.required}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <span className="text-cyan-600 font-semibold text-xs">{item.sih}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-center gap-2">
-                              <div className="flex-1 bg-gray-200 rounded-full h-1.5 w-16">
-                                <div 
-                                  className={`h-1.5 rounded-full ${
-                                    item.coverage >= 100 ? 'bg-green-500' :
-                                    item.coverage >= 75 ? 'bg-orange-400' :
-                                    'bg-red-500'
-                                  }`}
-                                  style={{ width: `${Math.min(item.coverage, 100)}%` }}
-                                ></div>
-                              </div>
-                              <span className="text-xs font-semibold text-gray-700 w-8 text-right">{item.coverage}%</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${item.statusColor}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -2064,39 +2342,6 @@ const Planning = () => {
                         <p className="text-xs font-semibold text-cyan-900">
                           Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
                         </p>
-                      </div>
-
-                      {/* Feasibility Cards */}
-                      <div className="grid grid-cols-3 gap-4">
-                        <FeasibilityCard
-                          type="rm"
-                          title="BY RM ONLY"
-                          possibleUnits={feasibilityRmRows.length && feasibilityRmRows.every((r) => r.perBatch > 0) ? (() => { const canDo = Math.min(...feasibilityRmRows.map((r) => r.maxBatches)); const unitsPerBatch = Math.ceil(parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '50000', 10) / batchesReq) || 3333; return canDo * unitsPerBatch; })() : 0}
-                          limitingFactor={feasibilityRmRows.find((r) => !r.ok)?.name ?? '—'}
-                          isShortfall={feasibilityRmRows.some((r) => !r.ok)}
-                          needed={batchesReq}
-                          canDo={feasibilityRmRows.length ? Math.min(...feasibilityRmRows.filter((r) => r.perBatch > 0).map((r) => r.maxBatches), 999) : 0}
-                        />
-                        <FeasibilityCard
-                          type="pm"
-                          title="BY PM ONLY"
-                          possibleUnits={feasibilityPmRows.length ? (() => { const canDo = Math.min(...feasibilityPmRows.map((r) => r.maxBatches)); const unitsPerBatch = Math.ceil(parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '50000', 10) / batchesReq) || 3333; return canDo * unitsPerBatch; })() : 0}
-                          limitingFactor={feasibilityPmRows.find((r) => !r.ok)?.name ?? '—'}
-                          isShortfall={feasibilityPmRows.some((r) => !r.ok)}
-                          needed={batchesReq}
-                          canDo={feasibilityPmRows.length ? Math.min(...feasibilityPmRows.map((r) => r.maxBatches)) : 0}
-                        />
-                        <FeasibilityCard
-                          type="combined"
-                          title="COMBINED (RM+PM)"
-                          possibleUnits={(() => { const rmCanDo = feasibilityRmRows.length ? Math.min(...feasibilityRmRows.filter((r) => r.perBatch > 0).map((r) => r.maxBatches), 999) : 999; const pmCanDo = feasibilityPmRows.length ? Math.min(...feasibilityPmRows.map((r) => r.maxBatches)) : 999; const canDo = Math.min(rmCanDo, pmCanDo); const unitsPerBatch = Math.ceil(parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '50000', 10) / batchesReq) || 3333; return canDo * unitsPerBatch; })()}
-                          limitingFactor={feasibilityRmRows.find((r) => !r.ok)?.name ?? feasibilityPmRows.find((r) => !r.ok)?.name ?? ''}
-                          isShortfall={feasibilityRmRows.some((r) => !r.ok) || feasibilityPmRows.some((r) => !r.ok)}
-                          canDo={Math.min(
-                            feasibilityRmRows.length ? Math.min(...feasibilityRmRows.filter((r) => r.perBatch > 0).map((r) => r.maxBatches), 999) : 999,
-                            feasibilityPmRows.length ? Math.min(...feasibilityPmRows.map((r) => r.maxBatches)) : 999
-                          )}
-                        />
                       </div>
 
                       {/* RM Feasibility Table */}
@@ -2197,6 +2442,13 @@ const Planning = () => {
                     };
 
                     const getBatchRmRequirements = (batchSizeForCalc: number) => {
+                      if (bomFormula.length > 0) {
+                        return bomFormula.map((item) => {
+                          const pct = item.percentage || 0;
+                          const required = (batchSizeForCalc * pct) / 100;
+                          return { name: item.name, code: item.code ?? item.id, pct, required, uom: item.unit || 'KG' };
+                        });
+                      }
                       if (activeBom?.rmLines?.length) {
                         return activeBom.rmLines.map((line) => {
                           const pct = line.pct_w_w ?? line.pct ?? 0;
@@ -2204,16 +2456,19 @@ const Planning = () => {
                           return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, uom: line.uom ?? 'KG' };
                         });
                       }
-                      return bomFormula.map((item) => {
-                        const pct = item.percentage || 0;
-                        const required = (batchSizeForCalc * pct) / 100;
-                        return { name: item.name, code: item.code ?? item.id, pct, required, uom: item.unit || 'KG' };
-                      });
+                      return [];
                     };
                     const getBatchPmRequirements = (batchSizeForCalc: number) => {
                       const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
                       const unitsFraction = orderTotalKg > 0 ? batchSizeForCalc / orderTotalKg : 0;
                       const unitsForBatch = Math.ceil(orderQtyNum * unitsFraction);
+                      if (bomPackaging.length > 0) {
+                        return bomPackaging.map((item) => {
+                          const qtyPerUnit = item.value ?? 1;
+                          const required = unitsForBatch * qtyPerUnit;
+                          return { name: item.name, code: item.code ?? item.id, qtyPerUnit, required, uom: 'PCS' };
+                        });
+                      }
                       if (activeBom?.pmLines?.length) {
                         return activeBom.pmLines.map((line) => {
                           const qtyPerUnit = (line as { qty_per_unit?: number }).qty_per_unit ?? 1;
@@ -2221,18 +2476,14 @@ const Planning = () => {
                           return { name: line.description ?? (line as { pm_code?: string }).pm_code ?? '—', code: (line as { pm_code?: string }).pm_code ?? '', qtyPerUnit, required, uom: 'PCS' };
                         });
                       }
-                      return bomPackaging.map((item) => {
-                        const qtyPerUnit = item.value ?? 1;
-                        const required = unitsForBatch * qtyPerUnit;
-                        return { name: item.name, code: item.code ?? item.id, qtyPerUnit, required, uom: 'PCS' };
-                      });
+                      return [];
                     };
 
                     return (
                     <div className="space-y-6">
                       {canSendToProduction && (
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
-                          <span className="font-semibold">BOM confirmed.</span> Split the SO quantity into custom batches. Click a batch to view its required materials.
+                          <span className="font-semibold">BOM confirmed.</span> Select which batches to send to Production (checkboxes). Already-sent batches are grayed out. Click a batch to view its required materials.
                         </div>
                       )}
 
@@ -2272,13 +2523,28 @@ const Planning = () => {
                       <div>
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
-                          <button
-                            type="button"
-                            onClick={() => addBatch()}
-                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors"
-                          >
-                            + Add Batch
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {canSendToProduction && customBatches.some((_, idx) => !(selectedSOForBatch?.sentBatchIndices ?? []).includes(idx)) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const unsent = customBatches.map((_, i) => i).filter((i) => !(selectedSOForBatch?.sentBatchIndices ?? []).includes(i));
+                                  const allSelected = unsent.every((i) => batchesToSendIndices.includes(i));
+                                  setBatchesToSendIndices(allSelected ? [] : [...new Set([...batchesToSendIndices, ...unsent])]);
+                                }}
+                                className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                              >
+                                {customBatches.every((_, idx) => (selectedSOForBatch?.sentBatchIndices ?? []).includes(idx) || batchesToSendIndices.includes(idx)) ? 'Deselect all' : 'Select all unsent'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => addBatch()}
+                              className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors"
+                            >
+                              + Add Batch
+                            </button>
+                          </div>
                         </div>
 
                         {customBatches.length === 0 && (
@@ -2295,16 +2561,33 @@ const Planning = () => {
                         <div className="space-y-3">
                           {customBatches.map((batch, idx) => {
                             const isExpanded = expandedBatchIndex === idx;
+                            const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
+                            const isSent = sentBatchIndices.includes(idx);
+                            const isChecked = batchesToSendIndices.includes(idx);
                             const rmReqs = isExpanded ? getBatchRmRequirements(batch.sizeKg) : [];
                             const pmReqs = isExpanded ? getBatchPmRequirements(batch.sizeKg) : [];
                             return (
-                              <div key={idx} className={`border-2 rounded-lg overflow-hidden transition-colors ${isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                              <div key={idx} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
                                 <div className="flex items-center gap-3 p-4">
+                                  {canSendToProduction && !isSent && (
+                                    <label className="flex items-center gap-1.5 shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => setBatchesToSendIndices((prev) => prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx])}
+                                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="text-xs font-medium text-gray-700">Send</span>
+                                    </label>
+                                  )}
+                                  {isSent && (
+                                    <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
+                                  )}
                                   <div
                                     className="flex-1 flex items-center gap-4 cursor-pointer"
                                     onClick={() => setExpandedBatchIndex(isExpanded ? null : idx)}
                                   >
-                                    <span className="text-sm font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-md">
+                                    <span className={`text-sm font-bold px-3 py-1 rounded-md ${isSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
                                       B-{String(idx + 1).padStart(2, '0')}
                                     </span>
                                     <span className="text-xs text-gray-500">
@@ -2316,17 +2599,20 @@ const Planning = () => {
                                       type="number"
                                       value={batch.sizeKg}
                                       onChange={(e) => updateBatchSize(idx, parseFloat(e.target.value) || 0)}
-                                      className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                      disabled={isSent}
+                                      className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
                                       min={0}
                                     />
                                     <span className="text-xs font-semibold text-gray-600">KG</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeBatch(idx)}
-                                      className="ml-2 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
-                                    >
-                                      <X size={14} />
-                                    </button>
+                                    {!isSent && (
+                                      <button
+                                        type="button"
+                                        onClick={() => removeBatch(idx)}
+                                        className="ml-2 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2542,7 +2828,7 @@ const Planning = () => {
                 {/* Modal Footer */}
                 <div className="border-t border-gray-200 p-6 flex gap-3 justify-between">
                   <button
-                    onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
+                    onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); setBatchesToSendIndices([]); }}
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
                   >
                     Cancel
@@ -2555,8 +2841,12 @@ const Planning = () => {
                       {canSendToProduction ? 'BOM Confirmed' : 'Confirm BOM'}
                     </button>
                     {canSendToProduction && (
-                      <button onClick={() => handleSendToProduction()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                        Send to Production
+                      <button
+                        onClick={() => handleSendToProduction()}
+                        disabled={batchesToSendIndices.length === 0}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Send to Production{batchesToSendIndices.length > 0 ? ` (${batchesToSendIndices.length} selected)` : ''}
                       </button>
                     )}
                   </div>

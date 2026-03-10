@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { fetchPackMaterialsList, fetchNextPackMaterialCode, createPackMaterial, type PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchNextPackMaterialCode, createPackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -1145,6 +1145,8 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
  const [allPMs, setAllPMs] = useState<PackMaterialRecord[]>([]);
  const [loading, setLoading] = useState(true);
  const [loadError, setLoadError] = useState<string | null>(null);
+ const [reservedModal, setReservedModal] = useState<{ pm: PackMaterialRecord; data: ReservedStockResponse } | null>(null);
+ const [reservedLoading, setReservedLoading] = useState(false);
 
  useEffect(() => {
   if (pmFromQuery) setSearch(pmFromQuery);
@@ -1194,6 +1196,19 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
   { label: 'PM GROUPS',  value: stats.groups,    sub: 'With affinities',      accent: 'border-l-orange-500', num: 'text-orange-600' },
   { label: 'PACK TYPES', value: stats.types,     sub: 'Tube, Bottle...',      accent: 'border-l-rose-500',   num: 'text-rose-600' },
  ];
+
+ const openReservedModal = async (pm: PackMaterialRecord) => {
+  setReservedLoading(true);
+  setReservedModal(null);
+  try {
+   const data = await fetchReservedStock(pm.id);
+   setReservedModal({ pm, data });
+  } catch {
+   setReservedModal({ pm, data: { actual: 0, reserved: 0, available: 0, unit: 'PCS' } });
+  } finally {
+   setReservedLoading(false);
+  }
+ };
 
  return (
   <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -1313,12 +1328,13 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-50">
         {filtered.length === 0 ? (
          <tr>
-          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={13} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1377,6 +1393,17 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
              ))}
             </div>
            </td>
+           {/* Show reserved */}
+           <td className="px-4 py-3 text-right">
+            <button
+             type="button"
+             onClick={() => openReservedModal(pm)}
+             disabled={reservedLoading}
+             className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline disabled:opacity-50"
+            >
+             {reservedLoading ? '…' : 'Show reserved'}
+            </button>
+           </td>
           </tr>
          );
         })}
@@ -1384,6 +1411,43 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
       </table>
      </div>
     </div>
+
+    {/* Reserved stock modal */}
+    {(reservedModal || reservedLoading) && (
+     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
+      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
+       {reservedLoading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+       ) : reservedModal ? (
+        <>
+         <div className="flex justify-between items-start mb-4">
+          <div>
+           <p className="font-bold text-gray-900">{reservedModal.pm.code}</p>
+           <p className="text-xs text-gray-500">{reservedModal.pm.description}</p>
+          </div>
+          <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+         </div>
+         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
+         <div className="grid grid-cols-3 gap-3">
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+           <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
+           <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+           <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
+           <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+           <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
+           <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+         </div>
+         <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
+        </>
+       ) : null}
+      </div>
+     </div>
+    )}
 
      </>
     )}

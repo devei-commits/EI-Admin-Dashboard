@@ -56,7 +56,12 @@ interface GRNRecord {
 const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
-  const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(grn.lineItems || []);
+  const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
+    (grn.lineItems || []).map(li => ({
+      ...li,
+      rcvdQty: (li.rcvdQty != null && li.rcvdQty !== 0) ? li.rcvdQty : li.poQty,
+    }))
+  );
   const [labelsGenerated, setLabelsGenerated] = useState(!!(grn.generatedLabels && grn.generatedLabels.length > 0));
   const [labels, setLabels] = useState<GeneratedLabel[] | null>(grn.generatedLabels ?? null);
   const [generatingLabels, setGeneratingLabels] = useState(false);
@@ -88,8 +93,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       })
     );
   };
-
-  const allQCPassed = editedLineItems.length > 0 && editedLineItems.every(item => item.qcStatus === 'Pass');
 
   const persistUpdate = async (payload: { status?: string; qcStatus?: string; workflowSteps?: string[] }) => {
     setSaveError(null);
@@ -145,10 +148,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const handleSaveOnly = () => persistUpdate({});
 
   const handleCompleteGRN = () => {
-    if (!allQCPassed) {
-      setSaveError('All items must have QC Status "Pass" before completing GRN.');
-      return;
-    }
     persistUpdate({
       status: 'GRN Complete',
       qcStatus: 'Passed',
@@ -536,13 +535,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             </button>
             <button
               onClick={handleCompleteGRN}
-              disabled={saving || (!allQCPassed && grn.status === 'In Transit')}
+              disabled={saving}
               className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
-                grn.status === 'In Transit'
-                  ? allQCPassed
-                    ? 'bg-emerald-600 hover:bg-emerald-700'
-                    : 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
+                grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
               {grn.status === 'In Transit' ? 'Complete GRN & Initiate Stock' : 'Mark complete'}

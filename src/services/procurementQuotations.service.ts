@@ -77,3 +77,25 @@ export async function fetchProcurementQuotationById(
     return { data: null, error: message, success: false };
   }
 }
+
+/**
+ * GET quote-line-defaults: PR items with pricePerUnit/totalValue from Items List for the given vendor.
+ * Use when creating a quotation to pre-fill line prices from the price list.
+ */
+export async function fetchQuoteLineDefaults(
+  procurementRequestId: number,
+  vendorId: number
+): Promise<ServiceResult<{ items: ProcurementQuotationItem[] }>> {
+  try {
+    const params = new URLSearchParams();
+    params.set('procurementRequestId', String(procurementRequestId));
+    params.set('vendorId', String(vendorId));
+    const data = await api.get<{ items: ProcurementQuotationItem[] }>(
+      `/api/v1/procurement-quotations/quote-line-defaults?${params.toString()}`
+    );
+    return { data: data ?? { items: [] }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to fetch quote line defaults';
+    return { data: { items: [] }, error: message, success: false };
+  }
+}

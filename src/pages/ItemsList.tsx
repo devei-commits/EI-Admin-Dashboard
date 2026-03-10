@@ -43,6 +43,7 @@ const ItemsList: React.FC = () => {
   const [submittingTiers, setSubmittingTiers] = useState(false);
   const [addPriceListMode, setAddPriceListMode] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
+  const [vendorFilterId, setVendorFilterId] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +68,15 @@ const ItemsList: React.FC = () => {
       setVendors(r.success && r.data ? r.data : []);
     });
   }, []);
+
+  const filteredPageItems = useMemo(() => {
+    if (activeTab !== 'rm' && activeTab !== 'pm') return pageItems;
+    if (!vendorFilterId) return pageItems;
+    const vid = vendorFilterId;
+    return pageItems.filter((item) =>
+      item.vendorRates?.some((r) => String(r.vendor_id) === vid)
+    );
+  }, [activeTab, pageItems, vendorFilterId]);
 
   const stats = useMemo(() => {
     const withTiers = pageItems.filter((i) => i.vendorRates && i.vendorRates.length > 0).length;
@@ -221,7 +231,7 @@ const ItemsList: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-bold text-gray-900">Price Lists — Vendor & MOQ-wise</span>
             <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
@@ -236,6 +246,26 @@ const ItemsList: React.FC = () => {
                 </button>
               ))}
             </div>
+            {(activeTab === 'rm' || activeTab === 'pm') && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="items-list-vendor-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                  Filter by vendor
+                </label>
+                <select
+                  id="items-list-vendor-filter"
+                  value={vendorFilterId}
+                  onChange={(e) => setVendorFilterId(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">All vendors</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name ?? v.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <button
             onClick={openAddPriceList}
@@ -283,7 +313,7 @@ const ItemsList: React.FC = () => {
           </div>
         ) : (
           <div id="pl-list-body" className="space-y-2.5">
-            {pageItems.map((item) => {
+            {filteredPageItems.map((item) => {
               const hasTiers = item.vendorRates && item.vendorRates.length > 0;
               const isRm = item.type === 'RM';
               if (!hasTiers) {
@@ -364,7 +394,11 @@ const ItemsList: React.FC = () => {
                 </div>
               );
             })}
-            {pageItems.length === 0 && <p className="text-gray-500 py-8 text-center">No items</p>}
+            {filteredPageItems.length === 0 && (
+              <p className="text-gray-500 py-8 text-center">
+                {pageItems.length === 0 ? 'No items' : 'No items with rates for the selected vendor.'}
+              </p>
+            )}
           </div>
         )}
       </div>

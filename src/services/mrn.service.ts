@@ -25,11 +25,35 @@ export interface MRNRecordFromApi {
   transferTeam: string;
   lineItems: MRNLineItemFromApi[];
   notes: string;
+  bmrNo?: string;
+  source?: string;
+  /** true = Inbound from MU (MU→WH); false = Outbound to MU (WH→MU). */
+  isInboundFromMu?: boolean;
+}
+
+export interface CreateMRNPayload {
+  mrnNo?: string;
+  requestedBy?: string;
+  status?: string;
+  assignedPicker?: string;
+  transferTeam?: string;
+  lineItems: Array<{ id?: string; code?: string; itemCode?: string; raw_material_id?: number; pack_material_id?: number; quantity: number; unit: string; notes?: string }>;
+  notes?: string;
+  bmrNo?: string;
+  source?: string;
+  isInboundFromMu?: boolean;
+  itemType?: 'rm' | 'pm';
 }
 
 export async function fetchMRNList(): Promise<MRNRecordFromApi[]> {
-  const list = await api.get<MRNRecordFromApi[]>('/api/v1/mrn');
+  const res = await api.get<MRNRecordFromApi[]>('/api/v1/mrn');
+  const list = (res as any)?.data ?? res;
   return Array.isArray(list) ? list : [];
+}
+
+export async function createMRN(payload: CreateMRNPayload): Promise<MRNRecordFromApi> {
+  const res = await api.post<MRNRecordFromApi>('/api/v1/mrn', payload);
+  return (res as any)?.data ?? res;
 }
 
 export interface AssignablePicker {
@@ -50,6 +74,7 @@ export interface UpdateMRNPayload {
   transferTeam?: string;
   lineItems?: MRNLineItemFromApi[];
   notes?: string;
+  isInboundFromMu?: boolean;
 }
 
 export async function updateMRN(id: string, payload: UpdateMRNPayload): Promise<MRNRecordFromApi> {

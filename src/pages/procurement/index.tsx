@@ -7,13 +7,14 @@ import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
 import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem } from '../../services/procurement.service';
-import { fetchProcurementQuotations } from '../../services/procurementQuotations.service';
+import { fetchProcurementQuotations, fetchQuoteLineDefaults } from '../../services/procurementQuotations.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
 import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
+import { fetchPriceListPage, type PriceListItemPage } from '../../services/itemsList.service';
 import {
   mapBackendPrToRequest,
   mapBackendQuotationToQuote,
@@ -341,6 +342,87 @@ const Procurement: React.FC = () => {
     },
     enabled: !!selectedPO?.backendPoId,
   });
+
+  const needItemsListForDraftPO = sideSection === 'Draft POs' || !!selectedDraftPO;
+  const { data: itemsListRm } = useQuery({
+    queryKey: ['items-list-page', 'RM'],
+    queryFn: async () => {
+      const res = await fetchPriceListPage('RM');
+      return res.success ? res.data ?? [] : [];
+    },
+    enabled: needItemsListForDraftPO,
+  });
+  const { data: itemsListPm } = useQuery({
+    queryKey: ['items-list-page', 'PM'],
+    queryFn: async () => {
+      const res = await fetchPriceListPage('PM');
+      return res.success ? res.data ?? [] : [];
+    },
+    enabled: needItemsListForDraftPO,
+  });
+
+  const vendorItemPriceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const add = (item: PriceListItemPage) => {
+      const code = (item.code ?? '').trim().toLowerCase();
+      const name = (item.name ?? '').trim().toLowerCase();
+      item.vendorRates?.forEach((rate) => {
+        const vendorName = (rate.vendor_name ?? '').trim().toLowerCase();
+        if (!vendorName) return;
+        const price = rate.tiers?.[0]?.price_per_unit;
+        if (price != null && !Number.isNaN(Number(price))) {
+          if (code) map.set(`${code}|${vendorName}`, Number(price));
+          if (name) map.set(`${name}|${vendorName}`, Number(price));
+        }
+      });
+    };
+    (itemsListRm ?? []).forEach(add);
+    (itemsListPm ?? []).forEach(add);
+    return map;
+  }, [itemsListRm, itemsListPm]);
+
+  const draftPOSidebarTotals = useMemo(() => {
+    if (!selectedDraftPO) return null;
+    const vendorNorm = (selectedDraftPO.vendor ?? '').trim().toLowerCase();
+    const gstPercent = 18;
+    const confirmedQuote = selectedDraftPO.requestId
+      ? quotes.find((q) => q.requestId === selectedDraftPO.requestId && q.status === 'Confirmed')
+      : null;
+    const enrichedLines: DraftPOLineItem[] = selectedDraftPO.lineItems.map((line) => {
+      const qty = parseFloat(String(line.qty).replace(/[^\d.]/g, '')) || 0;
+      const nameNorm = (line.item ?? '').trim().toLowerCase();
+      const codeNorm = (line.itemCode ?? '').trim().toLowerCase();
+      let price: number | undefined;
+      if (confirmedQuote?.lines?.length) {
+        const quoteLine = confirmedQuote.lines.find(
+          (l) =>
+            (l.item && (String(l.item).trim().toLowerCase() === nameNorm || String(l.item).trim().toLowerCase() === codeNorm)) ||
+            (line.item && String(l.item).trim() === String(line.item).trim())
+        );
+        if (quoteLine != null && typeof quoteLine.pricePerUnit === 'number') price = quoteLine.pricePerUnit;
+      }
+      if (price == null && vendorNorm) {
+        price =
+          (codeNorm && vendorItemPriceMap.get(`${codeNorm}|${vendorNorm}`)) ??
+          (nameNorm && vendorItemPriceMap.get(`${nameNorm}|${vendorNorm}`));
+      }
+      const priceFromList = price ?? line.pricePerUnit ?? 0;
+      const subtotal = qty * priceFromList;
+      const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+      const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+      return {
+        ...line,
+        pricePerUnit: priceFromList,
+        gstPercent,
+        gstAmount,
+        lineTotal,
+      };
+    });
+    const subtotal = parseFloat(enrichedLines.reduce((s, l) => s + (l.lineTotal - l.gstAmount), 0).toFixed(2));
+    const gstTotal = parseFloat(enrichedLines.reduce((s, l) => s + l.gstAmount, 0).toFixed(2));
+    const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2));
+    return { lineItems: enrichedLines, subtotal, gstTotal, grandTotal };
+  }, [selectedDraftPO, quotes, vendorItemPriceMap]);
 
   const isProcurementDataLoading =
     backendPrResult === undefined ||
@@ -818,31 +900,63 @@ const Procurement: React.FC = () => {
             ? 'At Risk'
             : 'Released';
 
-        const fallbackLineItems = request.items.map((item, index) => ({
-          item,
-          itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
-          type: request.type,
-          qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
-          pricePerUnit: request.itemDetails?.[index]?.plannedPrice ?? 0,
-          gstPercent: 18,
-          gstAmount: 0,
-          lineTotal: request.itemDetails?.[index]?.estValue ?? 0,
-        }));
+        const fallbackLineItems = request.items.map((item, index) => {
+          const qtyNum = Number(request.itemDetails?.[index]?.reqQty) || 0;
+          const pricePerUnit = linkedQuote?.lines?.[index]?.pricePerUnit ?? request.itemDetails?.[index]?.plannedPrice ?? 0;
+          const gstPercent = 18;
+          const subtotal = qtyNum * pricePerUnit;
+          const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+          return {
+            item,
+            itemCode: `EI-${request.type}-${String(index + 1).padStart(3, '0')}`,
+            type: request.type,
+            qty: request.itemDetails?.[index]?.reqQty ? `${request.itemDetails[index].reqQty}` : '—',
+            pricePerUnit,
+            gstPercent,
+            gstAmount,
+            lineTotal,
+          };
+        });
+
+        const withQuotePrices = (lines: { item: string; itemCode: string; type: RequestType; qty: string; pricePerUnit: number; gstPercent: number; gstAmount: number; lineTotal: number }[]) =>
+          linkedQuote?.lines?.length
+            ? lines.map((ln, idx) => {
+                const quoteLine = linkedQuote.lines[idx] ?? linkedQuote.lines.find((l) => l.item && String(l.item).trim() === String(ln.item).trim());
+                const pricePerUnit = (quoteLine && typeof quoteLine.pricePerUnit === 'number') ? quoteLine.pricePerUnit : ln.pricePerUnit;
+                const qty = parseFloat(String(ln.qty).replace(/[^\d.]/g, '')) || 0;
+                const subtotal = qty * pricePerUnit;
+                const gstPercent = 18;
+                const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+                const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                return { ...ln, pricePerUnit, gstPercent, gstAmount, lineTotal };
+              })
+            : lines;
 
         const lineItems =
           linkedDraftPO?.lineItems ??
-          (linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
-            ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => ({
-                item: i.itemName ?? i.name ?? request.items[idx] ?? '',
-                itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
-                type: request.type,
-                qty: String(i.quantity ?? ''),
-                pricePerUnit: Number(i.rate ?? i.price ?? 0),
-                gstPercent: 18,
-                gstAmount: 0,
-                lineTotal: Number(i.quantity ?? 0) * Number(i.rate ?? i.price ?? 0),
-              }))
-            : fallbackLineItems);
+          withQuotePrices(
+            linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
+              ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => {
+                  const qty = Number(i.quantity) || 0;
+                  const rate = Number(i.rate ?? i.price ?? 0);
+                  const gstPct = Number(i.tax) || 18;
+                  const subtotal = qty * rate;
+                  const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+                  const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                  return {
+                    item: i.itemName ?? i.name ?? request.items[idx] ?? '',
+                    itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+                    type: request.type,
+                    qty: String(i.quantity ?? ''),
+                    pricePerUnit: rate,
+                    gstPercent: gstPct,
+                    gstAmount,
+                    lineTotal,
+                  };
+                })
+              : fallbackLineItems
+          );
 
         const grandTotal =
           linkedDraftPO?.grandTotal ??
@@ -978,18 +1092,24 @@ const Procurement: React.FC = () => {
         poValue: record.grandTotal ?? 0,
         status: 'Under GRN',
         receivedDate: today,
-        lineItems: record.lineItems.map((line, idx) => ({
-          id: `line-${idx}`,
-          item: String(line.item ?? ''),
-          itemCode: line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
-          poQty: Number(line.qty) || 0,
-          rcvdQty: 0,
-          invoiceQty: 0,
-          unitPrice: Number(line.pricePerUnit) || 0,
-          diff: 0,
-          qcStatus: 'Pending',
-          qcBy: '',
-        })),
+        lineItems: record.lineItems.map((line, idx) => {
+          const prItem = items[idx];
+          return {
+            id: `line-${idx}`,
+            item: String(line.item ?? ''),
+            itemCode: prItem?.code ?? line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
+            poQty: Number(line.qty) || 0,
+            rcvdQty: 0,
+            invoiceQty: 0,
+            unitPrice: Number(line.pricePerUnit) || 0,
+            diff: 0,
+            qcStatus: 'Pending',
+            qcBy: '',
+            raw_material_id: prItem?.raw_material_id,
+            pack_material_id: prItem?.pack_material_id,
+            product_id: prItem?.product_id,
+          };
+        }),
       });
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
@@ -1128,7 +1248,7 @@ const Procurement: React.FC = () => {
     }, 500);
   };
 
-  /** Create a draft PO from request data only (no quote). Used after Edit Request save. */
+  /** Create a draft PO from request data only (no quote). Uses confirmed quote prices if available; otherwise fetches vendor prices from Items List (quote-line-defaults). */
   const createDraftPOFromRequest = async (
     requestId: string,
     requestCode: string,
@@ -1140,14 +1260,35 @@ const Procurement: React.FC = () => {
       addToast('warning', 'Add at least one line item to the request to create a draft PO.');
       return false;
     }
+    const confirmedQuote = quotes.find((q) => q.requestId === requestId && q.status === 'Confirmed');
+    const vendor = preferredVendor?.trim() || 'Unassigned';
+    const vendorId = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase())?.id;
+
+    let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
+    if (vendorId && vendor !== 'Unassigned') {
+      const res = await fetchQuoteLineDefaults(parseInt(requestId, 10), parseInt(String(vendorId), 10));
+      if (res.success && res.data?.items?.length) {
+        itemsListPrices = res.data.items.map((i) => ({ name: i.name ?? '', itemId: i.itemId, pricePerUnit: Number(i.pricePerUnit) || 0 }));
+      }
+    }
+
     const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
     const lineItems: DraftPOLineItem[] = items.map((it, idx) => {
       const qty = Number(it.quantity_requested) || 0;
-      const pricePerUnit = 0;
+      const matchedLine = confirmedQuote?.lines?.find((l) => (l.item && (l.item === it.name || l.item === it.code)) || String(l.item).trim() === String(it.name ?? it.code ?? '').trim());
+      let pricePerUnit = matchedLine != null && typeof matchedLine.pricePerUnit === 'number' && matchedLine.pricePerUnit > 0
+        ? matchedLine.pricePerUnit
+        : 0;
+      if (pricePerUnit === 0 && itemsListPrices.length > 0) {
+        const byIndex = itemsListPrices[idx];
+        const byName = itemsListPrices.find((p) => (p.name || '').trim().toLowerCase() === String(it.name ?? '').trim().toLowerCase());
+        const byCode = itemsListPrices.find((p) => ((p.itemId ?? p.name) || '').trim().toLowerCase() === String(it.code ?? '').trim().toLowerCase());
+        pricePerUnit = byIndex?.pricePerUnit ?? byName?.pricePerUnit ?? byCode?.pricePerUnit ?? 0;
+      }
       const gstPercent = 18;
       const subtotal = qty * pricePerUnit;
-      const gstAmount = subtotal * (gstPercent / 100);
-      const lineTotal = subtotal + gstAmount;
+      const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+      const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
       return {
         item: it.name ?? it.code ?? 'Item',
         itemCode: requestType === 'PM' ? `EI-PM-${String(idx + 1).padStart(3, '0')}` : `EI-RM-${String(idx + 1).padStart(3, '0')}`,
@@ -1155,8 +1296,8 @@ const Procurement: React.FC = () => {
         qty: String(it.quantity_requested ?? 0),
         pricePerUnit,
         gstPercent,
-        gstAmount: parseFloat(gstAmount.toFixed(2)),
-        lineTotal: parseFloat(lineTotal.toFixed(2)),
+        gstAmount,
+        lineTotal,
       };
     });
     const subtotal = parseFloat(lineItems.reduce((s, l) => s + (l.lineTotal - l.gstAmount), 0).toFixed(2));
@@ -1165,7 +1306,6 @@ const Procurement: React.FC = () => {
     const today = new Date();
     const createdDateStr = today.toISOString().split('T')[0];
     const expectedDeliveryStr = createdDateStr;
-    const vendor = preferredVendor?.trim() || 'Unassigned';
     const poPayload = {
       orderId: newDpoId,
       vendorName: vendor,
@@ -1188,6 +1328,7 @@ const Procurement: React.FC = () => {
       return false;
     }
     const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
+    const usedItemsListPrices = itemsListPrices.length > 0 && lineItems.some((l) => l.pricePerUnit > 0);
     const newDraftPO: DraftPO = {
       id: newDpoId,
       dpoNumber: newDpoId,
@@ -1203,8 +1344,10 @@ const Procurement: React.FC = () => {
       expectedDelivery: expectedDeliveryStr,
       deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
       vendorRating: 0,
-      alertMessage: 'Draft PO created from request. Add rates in Edit if needed.',
-      alertType: 'warning',
+      alertMessage: usedItemsListPrices
+        ? `Draft PO created with ${vendor} prices from Items List.`
+        : 'Draft PO created from request. Add rates in Edit if needed.',
+      alertType: usedItemsListPrices ? 'success' : 'warning',
       lineItems,
       subtotal,
       gstTotal,
@@ -1779,7 +1922,7 @@ const Procurement: React.FC = () => {
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
                 const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
-                const activeRequests = requests.filter(r => r.status !== 'PO Released');
+                const activeRequests = requests.filter(r => r.status !== 'PO Released' && r.status !== 'Delivery Pending');
                 const rmRequests = requests.filter(r => r.type === 'RM');
                 const pmRequests = requests.filter(r => r.type === 'PM');
                 const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
@@ -1893,7 +2036,7 @@ const Procurement: React.FC = () => {
                     </div>
 
                     {/* RM + PM Summary Tables */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <div className="rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden">
                         <div className="px-5 py-3 border-b border-cyan-200 bg-cyan-50 flex items-center gap-2">
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-200 text-cyan-800">RM</span>
@@ -1959,7 +2102,7 @@ const Procurement: React.FC = () => {
                           </table>
                         </div>
                       </div>
-                    </div>
+                    </div> */}
                   </>
                 );
               })()}
@@ -4250,6 +4393,12 @@ const Procurement: React.FC = () => {
       {/* ── Draft PO Detail Side Panel ── */}
       {selectedDraftPO && (() => {
         const dpo = selectedDraftPO;
+        const totals = draftPOSidebarTotals;
+        const lineItems = totals?.lineItems ?? dpo.lineItems;
+        const subtotal = totals?.subtotal ?? dpo.subtotal;
+        const gstTotal = totals?.gstTotal ?? dpo.gstTotal;
+        const grandTotal = totals?.grandTotal ?? dpo.grandTotal;
+        const pricesFromItemsList = !!totals;
 
         return (
           <div className="fixed inset-0 z-50 flex" onClick={() => setSelectedDraftPO(null)}>
@@ -4290,7 +4439,7 @@ const Procurement: React.FC = () => {
                     { label: 'Created', value: new Date(dpo.createdDate).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
                     { label: 'Payment Terms', value: dpo.paymentTerms },
                     { label: 'Expected Delivery', value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
-                    { label: 'Grand Total', value: `₹${dpo.grandTotal.toLocaleString('en-IN')}`, bold: true },
+                    { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
                     { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
                   ].map(row => (
                     <div key={row.label} className="flex items-center justify-between px-4 py-2">
@@ -4301,6 +4450,19 @@ const Procurement: React.FC = () => {
                     </div>
                   ))}
                 </div>
+
+                {(totals && (() => {
+                  const hasQuote = dpo.requestId && quotes.some((q) => q.requestId === dpo.requestId && q.status === 'Confirmed');
+                  return hasQuote ? (
+                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                      Prices and totals from confirmed Quotation (vendor: {dpo.vendor}).
+                    </p>
+                  ) : pricesFromItemsList ? (
+                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                      Prices and totals from Items List (vendor: {dpo.vendor}).
+                    </p>
+                  ) : null;
+                })())}
 
                 {/* Alert */}
                 {dpo.alertMessage && (
@@ -4316,7 +4478,7 @@ const Procurement: React.FC = () => {
                 <div>
                   <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Line Items</p>
                   <div className="space-y-2">
-                    {dpo.lineItems.map((line, idx) => (
+                    {lineItems.map((line, idx) => (
                       <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
                         <div className="flex items-center justify-between mb-2">
                           <div>
@@ -4327,9 +4489,10 @@ const Procurement: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
                           <span>Qty: <strong className="text-yellow-700">{line.qty}</strong></span>
-                          <span>Price: <strong className="text-slate-900">₹{line.pricePerUnit}</strong></span>
+                          <span>Price/unit: <strong className="text-slate-900">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN') : line.pricePerUnit}</strong></span>
                           <span>GST: <strong className="text-slate-900">{line.gstPercent}%</strong></span>
-                          <span>Total: <strong className="text-slate-900">₹{line.lineTotal.toLocaleString('en-IN')}</strong></span>
+                          <span>GST amt: <strong className="text-slate-900">₹{line.gstAmount.toLocaleString('en-IN')}</strong></span>
+                          <span className="col-span-2">Line total: <strong className="text-slate-900">₹{line.lineTotal.toLocaleString('en-IN')}</strong></span>
                         </div>
                       </div>
                     ))}
@@ -4340,15 +4503,15 @@ const Procurement: React.FC = () => {
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600">Subtotal</span>
-                    <span className="font-medium text-slate-800">₹{dpo.subtotal.toLocaleString('en-IN')}</span>
+                    <span className="font-medium text-slate-800">₹{subtotal.toLocaleString('en-IN')}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600">GST Total</span>
-                    <span className="font-medium text-slate-800">₹{dpo.gstTotal.toLocaleString('en-IN')}</span>
+                    <span className="font-medium text-slate-800">₹{gstTotal.toLocaleString('en-IN')}</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                     <span className="text-yellow-700 font-bold">Grand Total</span>
-                    <span className="text-yellow-700 font-bold text-lg">₹{dpo.grandTotal.toLocaleString('en-IN')}</span>
+                    <span className="text-yellow-700 font-bold text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>
@@ -4408,43 +4571,42 @@ const Procurement: React.FC = () => {
         const remainingCount = splitPOTarget.lineItems.length - selectedCount;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeSplitPOModal}>
-            <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeSplitPOModal}>
             <div
-              className="relative w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl overflow-hidden"
+              className="relative w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
-                <h3 className="text-lg font-bold text-slate-100">Split PO — {splitPOTarget.dpoNumber}</h3>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+                <h3 className="text-lg font-bold text-slate-900">Split PO — {splitPOTarget.dpoNumber}</h3>
                 <button
                   onClick={closeSplitPOModal}
-                  className="w-7 h-7 rounded-md border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition"
+                  className="w-7 h-7 rounded-md border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition"
                   aria-label="Close"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="px-5 py-4 space-y-3">
-                <p className="text-xs text-slate-400">Select items for each split PO. Unchecked items will remain in a new separate PO.</p>
+              <div className="px-5 py-4 space-y-3 bg-white">
+                <p className="text-xs text-slate-600">Select items for each split PO. Unchecked items will remain in a new separate PO.</p>
 
-                <p className="text-[10px] tracking-widest text-slate-500 uppercase">Items — Check for PO 1</p>
+                <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Items — Check for PO 1</label>
                 <div className="space-y-2">
                   {splitPOTarget.lineItems.map((line, index) => {
                     const checked = splitSelectedLineIndexes.includes(index);
                     return (
                       <label
                         key={`${line.itemCode}-${index}`}
-                        className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 cursor-pointer"
+                        className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 cursor-pointer hover:bg-slate-100 transition"
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleSplitLineSelection(index)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-800 text-amber-400 focus:ring-amber-400"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-400"
                         />
                         <div className="leading-tight">
-                          <p className="text-sm font-semibold text-slate-100">{line.item}</p>
+                          <p className="text-sm font-semibold text-slate-900">{line.item}</p>
                           <p className="text-xs text-slate-500">{line.qty} · ₹{line.lineTotal.toLocaleString('en-IN')}</p>
                         </div>
                       </label>
@@ -4452,22 +4614,22 @@ const Procurement: React.FC = () => {
                   })}
                 </div>
 
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   Two POs will be created. You can release them independently to the same or different vendors.
-                  <span className="ml-2 text-amber-200">({selectedCount} item(s) in PO 1, {remainingCount} item(s) in PO 2)</span>
+                  <span className="ml-2 font-medium">({selectedCount} item(s) in PO 1, {remainingCount} item(s) in PO 2)</span>
                 </div>
               </div>
 
-              <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-end gap-2">
+              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
                 <button
                   onClick={submitSplitPO}
-                  className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 text-sm font-bold hover:bg-amber-500 transition"
+                  className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
                 >
                   Split PO
                 </button>
                 <button
                   onClick={closeSplitPOModal}
-                  className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-sm font-semibold hover:bg-slate-900 transition"
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
                 >
                   Cancel
                 </button>
@@ -4479,25 +4641,24 @@ const Procurement: React.FC = () => {
 
       {/* ── Release PO Modal ── */}
       {releasePOTarget && (() => (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeReleasePOModal}>
-          <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeReleasePOModal}>
           <div
-            className="relative w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
-              <h3 className="text-lg font-bold text-slate-100">Release PO — {releasePOTarget.dpoNumber}</h3>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-900">Release PO — {releasePOTarget.dpoNumber}</h3>
               <button
                 onClick={closeReleasePOModal}
-                className="w-7 h-7 rounded-md border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition"
+                className="w-7 h-7 rounded-md border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-3">
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+            <div className="px-5 py-4 space-y-3 bg-white">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                 You are about to release a PO to <span className="font-bold">{releasePOTarget.vendor}</span> for <span className="font-bold">₹{releasePOTarget.grandTotal.toLocaleString('en-IN')}</span>.
               </div>
 
@@ -4507,7 +4668,7 @@ const Procurement: React.FC = () => {
                   <input
                     value={releasePOTarget.dpoNumber}
                     readOnly
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700"
                   />
                 </div>
                 <div>
@@ -4515,7 +4676,7 @@ const Procurement: React.FC = () => {
                   <select
                     value={releaseMethod}
                     onChange={(event) => setReleaseMethod(event.target.value as 'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email')}
-                    className="w-full rounded-lg border border-amber-400/50 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                   >
                     <option value="Email + Portal">Email + Portal</option>
                     <option value="Email only">Email only</option>
@@ -4532,11 +4693,11 @@ const Procurement: React.FC = () => {
                   onChange={(event) => setReleaseNotes(event.target.value)}
                   rows={3}
                   placeholder="e.g. Advance invoice to be raised immediately"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                 />
               </div>
 
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 <p className="font-semibold mb-1">Items in this PO:</p>
                 <ul className="list-disc pl-4 space-y-0.5">
                   {releasePOTarget.lineItems.map((line, index) => (
@@ -4548,7 +4709,7 @@ const Procurement: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-end gap-2">
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
               <button
                 onClick={submitReleasePO}
                 className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
@@ -4557,7 +4718,7 @@ const Procurement: React.FC = () => {
               </button>
               <button
                 onClick={closeReleasePOModal}
-                className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-sm font-semibold hover:bg-slate-900 transition"
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
               >
                 Cancel
               </button>

@@ -107,7 +107,7 @@ export const UnifiedCard: React.FC<UnifiedCardProps> = ({
 export interface UnifiedModalProps {
  isOpen: boolean;
  onClose: () => void;
- title: string;
+ title: ReactNode;
  children: ReactNode;
  footer?: ReactNode;
  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -135,7 +135,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
   <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
    <div className={`bg-white rounded-xl shadow-lg w-full ${modalSizeClass[size]} max-h-[90vh] overflow-auto`}>
     <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
-     <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">{title}</h3>
+     <div className="flex-1 min-w-0">{typeof title === 'string' ? <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">{title}</h3> : title}</div>
      <button
       onClick={onClose}
       className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"

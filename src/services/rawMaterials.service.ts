@@ -111,3 +111,18 @@ export async function updateRawMaterial(id: string, payload: RawMaterialFormPayl
 export async function deleteRawMaterial(id: string): Promise<void> {
   await api.delete(`/api/v1/raw-materials/${id}`);
 }
+
+/** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */
+export interface ReservedStockResponse {
+  actual: number;
+  reserved: number;
+  available: number;
+  unit: string;
+}
+
+/**
+ * Fetch actual | reserved | available stock for a raw material.
+ */
+export async function fetchReservedStock(id: string): Promise<ReservedStockResponse> {
+  return api.get<ReservedStockResponse>(`/api/v1/raw-materials/${id}/reserved-stock`);
+}

@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
-import { fetchRawMaterialsList, createRawMaterial, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchRawMaterialsList, createRawMaterial, fetchReservedStock, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
@@ -917,6 +917,8 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
  const [allRMs, setAllRMs] = useState<RawMaterialRecord[]>([]);
  const [loading, setLoading] = useState(true);
  const [loadError, setLoadError] = useState<string | null>(null);
+ const [reservedModal, setReservedModal] = useState<{ rm: RawMaterialRecord; data: ReservedStockResponse } | null>(null);
+ const [reservedLoading, setReservedLoading] = useState(false);
 
  const loadRawMaterials = useCallback(async () => {
   setLoading(true);
@@ -960,6 +962,19 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   { label: 'SURFACTANTS', value: stats.surfactants, sub: 'Facewash actives',       accent: 'border-l-violet-500', num: 'text-violet-600' },
   { label: 'CATEGORIES',  value: stats.categories,  sub: 'Distinct types',         accent: 'border-l-rose-500',   num: 'text-rose-600' },
  ];
+
+ const openReservedModal = async (rm: RawMaterialRecord) => {
+  setReservedLoading(true);
+  setReservedModal(null);
+  try {
+   const data = await fetchReservedStock(rm.id);
+   setReservedModal({ rm, data });
+  } catch {
+   setReservedModal({ rm, data: { actual: 0, reserved: 0, available: 0, unit: rm.uom || 'KG' } });
+  } finally {
+   setReservedLoading(false);
+  }
+ };
 
  return (
   <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -1069,12 +1084,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Shelf</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-50">
         {filtered.length === 0 ? (
          <tr>
-          <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1129,6 +1145,17 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              ))}
             </div>
            </td>
+           {/* Show reserved */}
+           <td className="px-4 py-3.5 text-right">
+            <button
+             type="button"
+             onClick={() => openReservedModal(rm)}
+             disabled={reservedLoading}
+             className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline disabled:opacity-50"
+            >
+             {reservedLoading ? '…' : 'Show reserved'}
+            </button>
+           </td>
           </tr>
          );
         })}
@@ -1136,6 +1163,43 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       </table>
      </div>
     </div>
+
+    {/* Reserved stock modal */}
+    {(reservedModal || reservedLoading) && (
+     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
+      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
+       {reservedLoading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+       ) : reservedModal ? (
+        <>
+         <div className="flex justify-between items-start mb-4">
+          <div>
+           <p className="font-bold text-gray-900">{reservedModal.rm.code}</p>
+           <p className="text-xs text-gray-500">{reservedModal.rm.name}</p>
+          </div>
+          <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+         </div>
+         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
+         <div className="grid grid-cols-3 gap-3">
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+           <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
+           <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+           <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
+           <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+           <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
+           <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+          </div>
+         </div>
+         <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
+        </>
+       ) : null}
+      </div>
+     </div>
+    )}
 
      </>
     )}

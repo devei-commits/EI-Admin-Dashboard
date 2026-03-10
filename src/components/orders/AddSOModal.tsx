@@ -146,28 +146,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     onClose();
   };
 
+  /* Only Finished Goods (FG) in dropdown; RMs and PMs are materials used to build FGs. */
   const productOptions = [
-    { value: '', label: 'Select Product' },
-    ...(() => {
-      const prods = products.filter(p => p.type === 'product');
-      const rms = products.filter(p => p.type === 'raw_material');
-      const pms = products.filter(p => p.type === 'pack_material');
-      const opts: { value: string; label: string }[] = [];
-
-      if (prods.length) {
-        opts.push({ value: '__header_products', label: '── Products ──' });
-        prods.forEach(p => opts.push({ value: p.name, label: `${p.name} (${p.sku})` }));
-      }
-      if (rms.length) {
-        opts.push({ value: '__header_rm', label: '── Raw Materials ──' });
-        rms.forEach(p => opts.push({ value: p.name, label: `${p.name} (${p.sku})` }));
-      }
-      if (pms.length) {
-        opts.push({ value: '__header_pm', label: '── Pack Materials ──' });
-        pms.forEach(p => opts.push({ value: p.name, label: `${p.name} (${p.sku})` }));
-      }
-      return opts;
-    })(),
+    { value: '', label: 'Select Product (FG)' },
+    ...products.map(p => ({ value: p.name, label: `${p.name} (${p.sku})` })),
   ];
 
   return (
@@ -243,7 +225,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         label="Product"
                         value={item.productName}
                         onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-                        options={productOptions.filter(o => !o.value.startsWith('__header_'))}
+                        options={productOptions}
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2">

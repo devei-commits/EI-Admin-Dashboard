@@ -17,7 +17,7 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
     { id: 'locations', label: 'Locations', icon: '' },
     { id: 'inventory', label: 'Inventory', icon: '' },
     { id: 'inbound', label: 'Inbound', icon: '' },
-    { id: 'outbound', label: 'Outbound', icon: '' },
+    { id: 'outbound', label: 'Transfer orders', icon: '' },
   ];
 
   const handleSectionClick = (sectionId: string) => {

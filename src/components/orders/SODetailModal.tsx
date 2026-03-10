@@ -1,26 +1,14 @@
 /**
  * SODetailModal Component
- * Detailed view of a sale order with complete information
+ * Detailed view of a sale order with KPI grid, ship address, progress bar, and items with batch splits (reference layout).
  */
 
 import React from 'react';
-import {
-  Package,
-  FileText,
-  Truck,
-  Radar,
-  MapPin,
-  Calendar,
-  DollarSign,
-  Clock,
-  Info,
-  Star,
-  Hash,
-  CheckCircle,
-} from 'lucide-react';
-import { UnifiedModal as Modal } from '../ui/UnifiedComponents';
+import { Package, MapPin } from 'lucide-react';
+import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
 import type { SODetailModalProps } from '../../types/orderFulfillment';
+import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
 import {
   formatDate,
   formatNumber,
@@ -30,15 +18,19 @@ import {
   formatDaysLeft,
   calculateOrderValue,
 } from '../../utils/orderFulfillmentUtils';
-import { UnifiedButton as Button } from '../ui/UnifiedComponents';
 
-const DetailItem = ({ icon: Icon, label, children }) => (
-  <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-    <Icon className="h-5 w-5 text-gray-500 mt-0.5" />
-    <div>
-      <p className="text-sm font-medium text-gray-500">{label}</p>
-      <div className="text-base font-semibold text-gray-800">{children}</div>
+const KPI = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) => (
+  <div className="bg-black/10 dark:bg-black/15 border border-gray-200 dark:border-gray-700 rounded-lg py-2.5 px-3">
+    <div className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+      {label}
     </div>
+    <div className="text-[11.5px] font-bold">{children}</div>
   </div>
 );
 
@@ -52,237 +44,319 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
 
   const progress = calculateSOProgress(saleOrder);
   const totalValue = calculateOrderValue(saleOrder);
-  const daysLeftFormatted = formatDaysLeft(getDaysLeft(saleOrder.dueDate));
+  const daysLeft = getDaysLeft(saleOrder.dueDate);
+  const daysLeftFormatted = formatDaysLeft(daysLeft);
 
-  const splits = saleOrder.items.flatMap((i) => i.batchSplits);
-  const hasFGReady = splits.some((sp) => sp.ffStatus === 'fg_ready');
-  const hasPicking = splits.some((sp) => sp.ffStatus === 'picking');
-  const hasInvoiced = splits.some((sp) => sp.ffStatus === 'invoiced');
-  const hasShipped = splits.some((sp) => sp.ffStatus === 'shipped');
+  const hasFGReady = saleOrder.items.some((i) =>
+    i.batchSplits.some((sp) => sp.ffStatus === 'fg_ready')
+  );
 
-  const actionButtons = [
-    {
-      label: 'Pick FG',
-      icon: Package,
-      onClick: () => onAction('pick', saleOrder.soNo),
-      show: hasFGReady,
-      variant: 'default' as const,
-    },
-    {
-      label: 'Invoice',
-      icon: FileText,
-      onClick: () => onAction('invoice', saleOrder.soNo),
-      show: hasPicking,
-      variant: 'default' as const,
-    },
-    {
-      label: 'Ship',
-      icon: Truck,
-      onClick: () => onAction('ship', saleOrder.soNo),
-      show: hasInvoiced,
-      variant: 'default' as const,
-    },
-    {
-      label: 'Track',
-      icon: Radar,
-      onClick: () => onAction('track', saleOrder.soNo),
-      show: hasShipped,
-      variant: 'default' as const,
-    },
-  ];
+  const modalTitle = (
+    <div>
+      <div className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight" id="sod-title">
+        {saleOrder.soNo}
+      </div>
+      <div
+        className="text-[10.5px] text-gray-500 dark:text-gray-400 mt-0.5"
+        id="sod-sub"
+      >
+        {saleOrder.customer}
+        {saleOrder.customerCity ? ` · ${saleOrder.customerCity}` : ''}
+      </div>
+    </div>
+  );
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`SO Details: ${saleOrder.soNo}`}
+      title={modalTitle}
       size="xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          {hasFGReady && (
+            <Button
+              variant="primary"
+              onClick={() => onAction('pick', saleOrder.soNo)}
+              className="flex items-center gap-1.5"
+            >
+              <Package className="w-4 h-4" />
+              Pick FG
+            </Button>
+          )}
+        </>
+      }
     >
-      <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Order Info */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <DetailItem icon={Info} label="Status">
-                <StatusBadge status={saleOrder.soStatus} type="so" />
-              </DetailItem>
-              <DetailItem icon={Calendar} label="Order Date">
-                {formatDate(saleOrder.orderDate)}
-              </DetailItem>
-              <DetailItem icon={Clock} label="Due Date">
-                <span className={daysLeftFormatted.color}>
-                  {formatDate(saleOrder.dueDate)} ({daysLeftFormatted.text})
-                </span>
-              </DetailItem>
-              <DetailItem icon={DollarSign} label="Total Value">
-                {formatCurrency(totalValue)}
-              </DetailItem>
-              <DetailItem icon={Hash} label="Payment">
-                {saleOrder.paymentTerms}
-              </DetailItem>
-              <DetailItem icon={Star} label="Priority">
-                {saleOrder.priority === 'high' ? (
-                  <span className="text-red-600 font-bold">High</span>
-                ) : (
-                  'Normal'
-                )}
-              </DetailItem>
-            </div>
-
-            {/* Progress */}
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium text-gray-900">
-                Fulfillment Progress
-              </h3>
-              <div className="relative h-3 w-full bg-gray-200 rounded-full">
-                <div
-                  className="absolute top-0 left-0 h-full bg-green-400 rounded-full transition-all duration-500 z-10"
-                  style={{ width: `${progress.readyPct}%` }}
-                  title={`FG Ready: ${progress.readyPct}%`}
-                />
-                <div
-                  className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-500"
-                  style={{ width: `${progress.shippedPct}%` }}
-                  title={`Shipped: ${progress.shippedPct}%`}
-                />
-              </div>
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>
-                  {formatNumber(progress.ready)}/{formatNumber(progress.total)}{' '}
-                  units FG ready
-                </span>
-                <span>
-                  {formatNumber(progress.shipped)}/{formatNumber(progress.total)}{' '}
-                  units shipped
-                </span>
-              </div>
-            </div>
-
-            {/* Items & Batches */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900">
-                Items & Batches
-              </h3>
-              {saleOrder.items.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="border border-gray-200 rounded-lg overflow-hidden"
-                >
-                  <div className="bg-gray-50 p-4 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-gray-800">
-                        {item.productName}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {item.sku} | {item.pack}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-800">
-                        {formatNumber(item.orderedQty)} units
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        @ {formatCurrency(item.unitPrice)}/unit
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    {item.batchSplits.length > 0 ? (
-                      <table className="w-full text-sm">
-                        <thead className="text-left text-gray-500">
-                          <tr>
-                            <th className="pb-2 font-medium">BPR No</th>
-                            <th className="pb-2 font-medium">FG Qty</th>
-                            <th className="pb-2 font-medium">Location</th>
-                            <th className="pb-2 font-medium">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {item.batchSplits.map((sp, sidx) => (
-                            <tr key={sidx} className="border-b last:border-0">
-                              <td className="py-2 font-mono text-purple-600">
-                                {sp.bprNo}
-                              </td>
-                              <td className="py-2 font-semibold text-green-600">
-                                {formatNumber(sp.fgQty)}
-                              </td>
-                              <td className="py-2">{sp.fgLocation}</td>
-                              <td className="py-2">
-                                <StatusBadge status={sp.ffStatus} type="ff" />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <p className="text-sm text-gray-500 text-center py-4">
-                        No production batches linked yet.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            <div className="p-4 border rounded-lg bg-gray-50">
-              <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-gray-500" /> Shipping Address
-              </h3>
-              <address className="not-italic text-gray-600">
-                <strong className="font-semibold text-gray-800">
-                  {saleOrder.customer}
-                </strong>
-                <br />
-                {saleOrder.shipAddress}
-              </address>
-            </div>
-
-            {saleOrder.notes && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="font-semibold mb-1 text-blue-900">Notes</p>
-                <p className="text-blue-700">{saleOrder.notes}</p>
-              </div>
+      <div id="sod-body" className="space-y-4">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2 mb-4">
+          <KPI label="Status">
+            <StatusBadge status={saleOrder.soStatus} type="so" size="sm" />
+          </KPI>
+          <KPI label="Order Date">{formatDate(saleOrder.orderDate)}</KPI>
+          <KPI label="Due Date">{formatDate(saleOrder.dueDate)}</KPI>
+          <KPI label="Days Left">
+            <span className={daysLeftFormatted.color}>{daysLeftFormatted.text}</span>
+          </KPI>
+          <KPI label="Total Value">{formatCurrency(totalValue)}</KPI>
+          <KPI label="Payment">{saleOrder.paymentTerms}</KPI>
+          <KPI label="Priority">
+            {saleOrder.priority === 'high' ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
+                High
+              </span>
+            ) : (
+              'Normal'
             )}
+          </KPI>
+        </div>
 
-            <div className="space-y-3 p-4 bg-linear-to-br from-blue-50 to-slate-50 border border-blue-100 rounded-lg">
-              <h3 className="font-bold text-gray-900">Actions</h3>
-              <div className="grid grid-cols-1 gap-2">
-                {actionButtons
-                  .filter((btn) => btn.show)
-                  .map((btn) => (
-                    <Button
-                      key={btn.label}
-                      variant="primary"
-                      onClick={btn.onClick}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
-                    >
-                      <btn.icon className="h-5 w-5" />
-                      <span>{btn.label}</span>
-                    </Button>
-                  ))}
-              </div>
-              {splits.length > 0 &&
-                splits.every((sp) =>
-                  ['delivered', 'closed'].includes(sp.ffStatus)
-                ) && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 text-green-700">
-                    <CheckCircle className="h-5 w-5" />
-                    <span className="font-semibold">Order Completed</span>
-                  </div>
-                )}
+        {/* Ship address */}
+        <div className="flex gap-2 p-2.5 pl-3.5 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <span className="text-base" aria-hidden>📍</span>
+          <div>
+            <div className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Deliver To
+            </div>
+            <div className="text-[12.5px] font-bold mt-0.5">{saleOrder.customer}</div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">
+              {saleOrder.shipAddress || '—'}
             </div>
           </div>
         </div>
-      </div>
-      <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+
+        {/* Notes alert */}
+        {saleOrder.notes && (
+          <div className="flex gap-2 p-3 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 text-blue-800 dark:text-blue-200 text-sm">
+            <span aria-hidden>📝</span>
+            <div>{saleOrder.notes}</div>
+          </div>
+        )}
+
+        {/* Overall progress bar */}
+        <div className="p-3 px-4 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Fulfillment Progress
+            </span>
+            <span className="font-mono text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400">
+              {progress.readyPct}% FG Ready · {progress.shippedPct}% Shipped
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 dark:bg-black/20 overflow-hidden relative">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/50 dark:bg-emerald-400/50 z-1 transition-all"
+              style={{ width: `${progress.readyPct}%` }}
+            />
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-blue-500 dark:bg-blue-400 z-2 transition-all"
+              style={{ width: `${progress.shippedPct}%` }}
+            />
+          </div>
+          <div className="flex gap-3 mt-1.5 text-[9.5px] text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500/50 dark:bg-emerald-400/50 inline-block" />
+              FG Ready
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 inline-block" />
+              Shipped
+            </span>
+          </div>
+        </div>
+
+        {/* Items with batch splits */}
+        {saleOrder.items.map((item, idx) => (
+          <ItemWithBatches
+            key={idx}
+            item={item}
+            soNo={saleOrder.soNo}
+            onPick={() => onAction('pick', saleOrder.soNo)}
+          />
+        ))}
       </div>
     </Modal>
   );
 };
+
+function ItemWithBatches({
+  item,
+  soNo,
+  onPick,
+}: {
+  item: OrderItem;
+  soNo: string;
+  onPick: () => void;
+}) {
+  const readyQty = item.batchSplits.reduce(
+    (sum, sp) =>
+      ['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(sp.ffStatus)
+        ? sum + (sp.fgQty || 0)
+        : sum,
+    0
+  );
+  const itemValue = item.orderedQty * item.unitPrice;
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mb-4">
+      <div className="px-4 py-3 bg-black/10 dark:bg-black/15 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[13px] font-extrabold">{item.productName}</div>
+          <div className="flex gap-1.5 mt-1 flex-wrap">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {item.sku}
+            </span>
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {item.pack}
+            </span>
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              {formatCurrency(item.unitPrice)}/unit
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[9.5px] text-gray-500 dark:text-gray-400">FG Ready / Ordered</div>
+          <div className="font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
+            {formatNumber(readyQty)}
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">
+              {' '}
+              / {formatNumber(item.orderedQty)}
+            </span>
+          </div>
+          <div className="text-[9.5px] text-gray-500 dark:text-gray-400">
+            Value {formatCurrency(itemValue)}
+          </div>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-800/50">
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                BMR / BPR
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                Planned
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                FG Output
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                FG Location
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                Picked
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                Invoice
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                AWB / Courier
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                Status
+              </th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {item.batchSplits.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                  No production batches linked yet.
+                </td>
+              </tr>
+            ) : (
+              item.batchSplits.map((sp, sidx) => (
+                <BatchRow key={sidx} split={sp} soNo={soNo} onPick={onPick} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BatchRow({
+  split,
+  soNo,
+  onPick,
+}: {
+  split: BatchSplit;
+  soNo: string;
+  onPick: () => void;
+}) {
+  const isFGReady = split.ffStatus === 'fg_ready';
+  const isPending =
+    ['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) || !split.fgQty;
+
+  return (
+    <tr className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+      <td className="py-2 px-3">
+        <div className="font-mono text-[10px] text-blue-600 dark:text-blue-400">
+          {split.bmrNo}
+        </div>
+        <div className="font-mono text-[10px] text-purple-600 dark:text-purple-400">
+          {split.bprNo}
+        </div>
+      </td>
+      <td className="py-2 px-3 font-mono">{formatNumber(split.plannedQty)}</td>
+      <td className="py-2 px-3 font-mono font-bold">
+        {split.fgQty != null && split.fgQty > 0 ? (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {formatNumber(split.fgQty)}
+          </span>
+        ) : (
+          <span className="text-gray-400 dark:text-gray-500">—</span>
+        )}
+      </td>
+      <td className="py-2 px-3">
+        {split.fgLocation ? (
+          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-500/15 text-teal-700 dark:text-teal-400 border border-teal-500/30">
+            📍 {split.fgLocation}
+          </span>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="py-2 px-3 font-mono text-gray-500 dark:text-gray-400">
+        {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
+      </td>
+      <td className="py-2 px-3">
+        {split.invoiceNo != null ? String(split.invoiceNo) : '—'}
+      </td>
+      <td className="py-2 px-3">
+        {split.awbNo || split.courier
+          ? [split.awbNo, split.courier].filter(Boolean).join(' / ')
+          : '—'}
+      </td>
+      <td className="py-2 px-3">
+        <StatusBadge status={split.ffStatus} type="ff" size="sm" />
+      </td>
+      <td className="py-2 px-3 min-w-[90px]">
+        <div className="flex gap-1 flex-wrap">
+          {isFGReady && (
+            <button
+              type="button"
+              onClick={onPick}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              📦 Pick
+            </button>
+          )}
+          {isPending && (
+            <span className="text-[9px] text-gray-500 dark:text-gray-400">
+              In production
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
