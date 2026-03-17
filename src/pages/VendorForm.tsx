@@ -48,10 +48,11 @@ interface VendorItem {
 interface VendorFormData {
  setupType: 'VENDOR' | 'CLIENT';
  setupCategory: string;
- setupPrefix: string;
- entityCode: string;
- legalName: string;
- tradeName: string;
+  setupPrefix: string;
+  entityCode: string;
+  zohoId: string;
+  legalName: string;
+  tradeName: string;
  primaryEmail: string;
  primaryPhone: string;
  billingAddress: string;
@@ -127,6 +128,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   setupCategory: '',
   setupPrefix: 'VEN',
   entityCode: '',
+  zohoId: '',
   legalName: '',
   tradeName: '',
   primaryEmail: '',
@@ -194,6 +196,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         paymentTerms: data.paymentTerms || existingVendor.paymentTerms,
         notes: data.notes || existingVendor.notes,
         entityCode: String(entityCode || ''),
+        zohoId: data.zohoId ?? (existingVendor as { zohoId?: string }).zohoId ?? '',
      };
 
      setFormData(prev => ({
@@ -382,6 +385,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     category: payload.category,
     paymentTerms: payload.paymentTerms,
     notes: payload.notes,
+    zohoId: formData.zohoId || undefined,
     data: payload.data as Record<string, unknown>,
    });
    if (res.success) {
@@ -398,6 +402,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   const res = await createVendorClient({
    type: 'vendor',
    entityCode: formData.entityCode || '',
+   zohoId: formData.zohoId || undefined,
    name: payload.name,
    email: payload.email,
    phone: payload.phone,
@@ -413,7 +418,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   if (res.success) {
    addToast('success', 'Vendor created successfully!');
    setFormData({
-    setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '',
+    setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '', zohoId: '',
     legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
     billingAddress: '', shippingAddress: '', state: '', country: 'India',
     website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
@@ -522,6 +527,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         <div>
          <label className={labelClass}>Display / Trade Name</label>
          <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={inputClass} />
+        </div>
+       </div>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+         <label className={labelClass}>Zoho ID</label>
+         <input type="text" name="zohoId" value={formData.zohoId} onChange={handleInputChange} placeholder="Zoho contact/org id (for sync)" className={inputClass} />
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

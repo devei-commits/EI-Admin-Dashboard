@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
-import { fetchSwapHistory, fetchAffected, applySwap } from '../services/universalSwap.service';
-import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom } from '../services/universalSwap.service';
+import { fetchSwapHistory, fetchAffected, applySwap, fetchHistoryAffected } from '../services/universalSwap.service';
+import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom, HistoryAffectedResponse } from '../services/universalSwap.service';
 import { searchUsers } from '../services/user.service';
 import type { UserSearchHit } from '../services/user.service';
 
@@ -38,6 +38,9 @@ const UniversalSwap: React.FC = () => {
   const approverContainerRef = useRef<HTMLDivElement>(null);
 
   const [showPreview, setShowPreview] = useState(false);
+
+  const [historyModal, setHistoryModal] = useState<{ swap: SwapHistoryRecord; boms: AffectedBom[] } | null>(null);
+  const [loadingHistoryModal, setLoadingHistoryModal] = useState(false);
 
   const loadRawMaterials = useCallback(async () => {
     setLoadingRms(true);
@@ -169,6 +172,23 @@ const UniversalSwap: React.FC = () => {
   const selectedGroups = itemGroups.filter((g) => g.selected);
   const selectedBoms = boms.filter((b) => b.selected);
   const affectedCount = selectedGroups.length + selectedBoms.length;
+
+  const openHistoryModal = async (swap: SwapHistoryRecord) => {
+    setLoadingHistoryModal(true);
+    try {
+      const res = await fetchHistoryAffected(swap.id);
+      if (res.success && res.data) {
+        setHistoryModal({ swap, boms: (res.data as HistoryAffectedResponse).boms ?? [] });
+      } else {
+        setHistoryModal({ swap, boms: [] });
+      }
+    } catch (_e) {
+      addToast('error', 'Failed to load affected PRs for this swap');
+      setHistoryModal({ swap, boms: [] });
+    } finally {
+      setLoadingHistoryModal(false);
+    }
+  };
 
   const handleApplySwap = async () => {
     if (!formData.reason.trim()) {
@@ -580,6 +600,7 @@ const UniversalSwap: React.FC = () => {
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
                     <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Groups</th>
+                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">PRs Affected</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -601,6 +622,15 @@ const UniversalSwap: React.FC = () => {
                           ? `${swap.affectedGroupIds!.length} group(s)`
                           : '—'}
                       </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <button
+                          type="button"
+                          onClick={() => openHistoryModal(swap)}
+                          className="inline-flex items-center px-2.5 py-1 rounded-full border border-emerald-200 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                        >
+                          View PRs
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -608,6 +638,88 @@ const UniversalSwap: React.FC = () => {
             </div>
           )}
         </div>
+
+        {historyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-4 border border-gray-100">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Swap History · PRs Affected</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-1">
+                    {historyModal.swap.fromIngredient} → {historyModal.swap.toIngredient}{' '}
+                    <span className="text-xs text-gray-500 ml-1">(ratio {Number(historyModal.swap.swapRatio).toFixed(2)})</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHistoryModal(null)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                  aria-label="Close"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="px-5 py-4 border-b border-gray-100 text-xs text-gray-600 space-y-1">
+                <p>
+                  <span className="font-semibold">Reason:</span> {historyModal.swap.reason || '—'}
+                </p>
+                <p className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>
+                    <span className="font-semibold">Date:</span> {historyModal.swap.date || '—'}
+                  </span>
+                  <span>
+                    <span className="font-semibold">Approved By:</span> {historyModal.swap.approvedBy || '—'}
+                  </span>
+                </p>
+              </div>
+
+              <div className="px-5 py-4 max-h-96 overflow-y-auto">
+                {loadingHistoryModal ? (
+                  <div className="py-6 text-sm text-gray-500">Loading PRs affected…</div>
+                ) : historyModal.boms.length === 0 ? (
+                  <div className="py-6 text-sm text-gray-500">
+                    No PR BOMs were recorded as affected for this swap entry.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {historyModal.boms.map((bom) => (
+                      <div
+                        key={bom.id}
+                        className="flex items-start gap-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50"
+                      >
+                        <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">
+                            {bom.product_name || bom.name || bom.bom_code}
+                          </p>
+                          <p className="text-[11px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span className="font-mono">{bom.bom_code}</span>
+                            {bom.name && bom.name !== bom.bom_code && (
+                              <span>{bom.name}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setHistoryModal(null)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, DollarSign, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
-import type { InvoiceModalProps } from '../../types/orderFulfillment';
+import type { InvoiceModalProps, OrderItem } from '../../types/orderFulfillment';
 import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
 import {
   fetchNextInvoiceNo,
@@ -19,6 +19,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   isOpen,
   onClose,
   saleOrder,
+  selectedBprNos,
   onGenerateInvoice,
 }) => {
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -31,12 +32,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [transporters, setTransporters] = useState<TransporterOption[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
-  const pickedSplits =
+  const allPicked =
     saleOrder?.items.flatMap((item) =>
       item.batchSplits
         .filter((sp) => sp.ffStatus === 'picking')
         .map((sp) => ({ item, split: sp }))
     ) ?? [];
+  const pickedSplits =
+    selectedBprNos?.length
+      ? allPicked.filter(({ split }) => selectedBprNos.includes(split.bprNo))
+      : allPicked;
 
   useEffect(() => {
     if (!isOpen || !saleOrder) return;
@@ -66,20 +71,21 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     if (pickedSplits.length === 0 || !preparedBy || !invoiceNo) return;
 
     const subtotal = pickedSplits.reduce(
-      (acc, { item, split }) => acc + (split.pickedQty ?? 0) * item.rate, 0
+      (acc, { item, split }) => acc + (split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0), 0
     );
     const gstPercent = 18;
     const totalValue = subtotal * (1 + gstPercent / 100);
 
     const selectedTransporter = transporters.find(t => t.name === transporter);
 
+    const rate = (item: OrderItem) => item.unitPrice ?? item.rate ?? 0;
     const lineItems = pickedSplits.map(({ item, split }) => ({
       productName: item.productName,
       pack: item.pack,
       bprNo: split.bprNo,
       pickedQty: split.pickedQty ?? 0,
-      rate: item.rate,
-      amount: (split.pickedQty ?? 0) * item.rate,
+      rate: rate(item),
+      amount: (split.pickedQty ?? 0) * rate(item),
     }));
 
     try {
@@ -97,6 +103,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         gstPercent,
         totalValue,
         lineItems,
+        ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
       });
     } catch (err) {
       console.error('Failed to create invoice record:', err);
@@ -110,6 +117,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       gstPercent,
       invoiceValue: totalValue,
       remarks,
+      ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
     });
 
     handleClose();
@@ -126,7 +134,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   if (!saleOrder) return null;
 
   const totalInvoiceValue = pickedSplits.reduce(
-    (acc, { item, split }) => acc + (split.pickedQty ?? 0) * item.rate, 0
+    (acc, { item, split }) => acc + (split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0), 0
   );
 
   return (
@@ -198,8 +206,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           </td>
                           <td className="px-4 py-3 font-mono text-purple-600">{split.bprNo}</td>
                           <td className="px-4 py-3 text-right font-medium text-blue-600">{formatNumber(split.pickedQty ?? 0)}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">₹{formatNumber(item.rate)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-800">₹{formatNumber((split.pickedQty ?? 0) * item.rate)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">₹{formatNumber(item.unitPrice ?? item.rate)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800">₹{formatNumber((split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0))}</td>
                         </tr>
                       ))}
                     </tbody>

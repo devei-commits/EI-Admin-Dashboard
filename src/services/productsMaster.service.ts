@@ -146,3 +146,16 @@ export async function updatePRProduct(
     return { data: null, error: message, success: false };
   }
 }
+
+/**
+ * Delete product by id. Backend: DELETE /api/v1/products/:id
+ */
+export async function deletePRProduct(productId: number | string): Promise<ServiceResult<null>> {
+  try {
+    await api.delete(`/api/v1/products/${productId}`);
+    return { data: null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to delete product';
+    return { data: null, error: message, success: false };
+  }
+}

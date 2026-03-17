@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { fetchLowThresholdAlerts } from '../services/warehouseInventory.service';
+import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { useGlobalState } from '../context/GlobalStateContext';
 import {
   LayoutDashboard,
@@ -362,6 +364,20 @@ const Dashboard = () => {
   const { state } = useGlobalState();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [dashboardTab, setDashboardTab] = useState<'overview' | 'lowThreshold'>('overview');
+  const [lowThresholdRows, setLowThresholdRows] = useState<WarehouseInventoryRow[]>([]);
+  const [lowThresholdLoading, setLowThresholdLoading] = useState(false);
+
+  useEffect(() => {
+    if (dashboardTab !== 'lowThreshold') return;
+    setLowThresholdLoading(true);
+    fetchLowThresholdAlerts()
+      .then((res) => {
+        if (res.success && res.data?.rows) setLowThresholdRows(res.data.rows);
+        else setLowThresholdRows([]);
+      })
+      .finally(() => setLowThresholdLoading(false));
+  }, [dashboardTab]);
 
   const categories = [
     { id: 'all', label: 'All Modules' },
@@ -422,7 +438,79 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Stats Grid */}
+      {/* Dashboard tabs: Overview | Low threshold alert */}
+      <div className="flex gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setDashboardTab('overview')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${dashboardTab === 'overview' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setDashboardTab('lowThreshold')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${dashboardTab === 'lowThreshold' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        >
+          <AlertCircle className="w-4 h-4" />
+          Low threshold alert
+          {lowThresholdRows.length > 0 && (
+            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{lowThresholdRows.length}</span>
+          )}
+        </button>
+      </div>
+
+      {/* Low threshold alert tab content */}
+      {dashboardTab === 'lowThreshold' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+            <AlertCircle className="w-5 h-5 text-amber-600" /> Items at or below reorder point (planning alert)
+          </h2>
+          {lowThresholdLoading ? (
+            <p className="text-gray-500 text-sm">Loading…</p>
+          ) : lowThresholdRows.length === 0 ? (
+            <p className="text-gray-500 text-sm">No items currently at or below reorder point.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Code</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Name</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Type</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Stock in hand</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Reorder PT</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Status</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {lowThresholdRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-900">{row.code}</td>
+                      <td className="px-4 py-2 text-gray-700">{row.name}</td>
+                      <td className="px-4 py-2">{row.type}</td>
+                      <td className="px-4 py-2 text-amber-700 font-medium">{row.stockInHand} {row.whUnit}</td>
+                      <td className="px-4 py-2 text-gray-600">{row.reorderPt}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.status === 'Critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <Link to="/warehouse/inventory" className="text-blue-600 hover:underline font-medium">View inventory</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Stats Grid — hide when Low threshold tab is active so content is focused */}
+      {dashboardTab === 'overview' && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/procurement" />
         <StatCard title="Pending Review" value={state.orders?.customerPOs?.filter((po: any) => po.status.includes('pending')).length || 0} icon={<Clock className="w-6 h-6" />} change="urgent" changeType="down" color="orange" link="/order-hub" />
@@ -431,6 +519,7 @@ const Dashboard = () => {
         <StatCard title="Open Tasks" value={18} icon={<CheckSquare className="w-6 h-6" />} change={`127 completed`} changeType="neutral" color="green" link="/task-management" />
         <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/raw-material" />
       </div>
+      )}
 
       {/* Quick Actions */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">

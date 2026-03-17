@@ -9,6 +9,7 @@ import { api } from "../lib/apiClient";
 export interface VendorClientRecord {
   id: string;
   type: "vendor" | "client";
+  zohoId?: string;
   name: string;
   email: string;
   phone: string;
@@ -30,6 +31,7 @@ export interface VendorClientRecord {
 export interface CreateVendorClientPayload {
   type: "vendor" | "client";
   entityCode: string;
+  zohoId?: string | null;
   name?: string;
   email?: string;
   phone?: string;
@@ -96,6 +98,7 @@ export async function createVendorClient(
     const body = {
       type: payload.type,
       entityCode: payload.entityCode,
+      zohoId: payload.zohoId ?? undefined,
       name: payload.name,
       email: payload.email,
       phone: payload.phone,

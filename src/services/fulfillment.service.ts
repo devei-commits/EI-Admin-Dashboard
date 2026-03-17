@@ -46,7 +46,7 @@ export async function deleteFulfillmentOrder(id: number) {
 /* ── Lookup endpoints for AddSOModal ── */
 
 export interface NextSoNoResponse { soNo: string; }
-export interface CustomerOption { id: number; code: string; name: string; city: string; paymentTerms: string; }
+export interface CustomerOption { id: number; code: string; name: string; city: string; paymentTerms: string; shippingAddress: string; }
 export interface ProductOption { id: string; type: string; name: string; sku: string; pack: string; category: string; price: number; }
 
 export async function fetchNextSoNo(): Promise<string> {

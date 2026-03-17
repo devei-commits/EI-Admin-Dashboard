@@ -21,7 +21,8 @@ import { aggregateKPIs, aggregatePipelineCounts, formatINR, formatLakhs, calcula
 interface SaleOrdersViewProps {
   saleOrders: SaleOrder[];
   onAddSO: (data: AddSOData) => void;
-  onPickConfirm: (soNo: string, data: PickData) => void;
+  /** Returns updated order on success so we can open Invoice modal with fresh data. */
+  onPickConfirm: (soNo: string, data: PickData) => void | Promise<SaleOrder | void>;
   onGenerateInvoice: (soNo: string, data: InvoiceData) => void;
   onDispatch: (soNo: string, data: ShipData) => void;
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
@@ -46,6 +47,11 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [invoiceModalSO, setInvoiceModalSO] = useState<SaleOrder | null>(null);
   const [shipModalSO, setShipModalSO] = useState<SaleOrder | null>(null);
   const [trackModalSO, setTrackModalSO] = useState<SaleOrder | null>(null);
+  /** When set, action modals restrict to these BPRs (single-batch from SO detail). */
+  const [pickSelectedBprNos, setPickSelectedBprNos] = useState<string[] | undefined>(undefined);
+  const [invoiceSelectedBprNos, setInvoiceSelectedBprNos] = useState<string[] | undefined>(undefined);
+  const [shipSelectedBprNos, setShipSelectedBprNos] = useState<string[] | undefined>(undefined);
+  const [trackSelectedBprNos, setTrackSelectedBprNos] = useState<string[] | undefined>(undefined);
 
   // Filter sale orders
   const filteredSOs = useMemo(() => {
@@ -103,24 +109,46 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   };
   const handlePick = (soNo: string) => {
     const so = saleOrders.find(order => order.soNo === soNo);
-    if (so) setPickModalSO(so);
+    if (so) {
+      setPickModalSO(so);
+      setPickSelectedBprNos(undefined);
+    }
   };
   const handleInvoice = (soNo: string) => {
     const so = saleOrders.find(order => order.soNo === soNo);
-    if (so) setInvoiceModalSO(so);
+    if (so) {
+      setInvoiceModalSO(so);
+      setInvoiceSelectedBprNos(undefined);
+    }
   };
   const handleShip = (soNo: string) => {
     const so = saleOrders.find(order => order.soNo === soNo);
-    if (so) setShipModalSO(so);
+    if (so) {
+      setShipModalSO(so);
+      setShipSelectedBprNos(undefined);
+    }
   };
   const handleTrack = (soNo: string) => {
     const so = saleOrders.find(order => order.soNo === soNo);
-    if (so) setTrackModalSO(so);
+    if (so) {
+      setTrackModalSO(so);
+      setTrackSelectedBprNos(undefined);
+    }
   };
 
-  const handlePickConfirm = (data: PickData) => {
-    if (pickModalSO) {
-      onPickConfirm(pickModalSO.soNo, data);
+  const handlePickConfirm = async (data: PickData) => {
+    if (!pickModalSO) return;
+    const so = pickModalSO;
+    const bprNos = data.splits.map((s) => s.bprNo);
+    try {
+      const updated = await Promise.resolve(onPickConfirm(so.soNo, data));
+      setPickModalSO(null);
+      setPickSelectedBprNos(undefined);
+      setInvoiceModalSO(updated ?? so);
+      setInvoiceSelectedBprNos(bprNos);
+    } catch {
+      setPickModalSO(null);
+      setPickSelectedBprNos(undefined);
     }
   };
 
@@ -282,20 +310,25 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
         isOpen={!!detailModalSO}
         onClose={() => setDetailModalSO(null)}
         saleOrder={detailModalSO}
-        onAction={(action, _soNo) => {
+        onAction={(action, _soNo, split) => {
           if (!detailModalSO) return;
+          const bprNos = split ? [split.bprNo] : undefined;
           switch (action) {
             case 'pick':
               setPickModalSO(detailModalSO);
+              setPickSelectedBprNos(bprNos);
               break;
             case 'invoice':
               setInvoiceModalSO(detailModalSO);
+              setInvoiceSelectedBprNos(bprNos);
               break;
             case 'ship':
               setShipModalSO(detailModalSO);
+              setShipSelectedBprNos(bprNos);
               break;
             case 'track':
               setTrackModalSO(detailModalSO);
+              setTrackSelectedBprNos(bprNos);
               break;
           }
           setDetailModalSO(null);
@@ -304,29 +337,33 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
 
       <PickModal
         isOpen={!!pickModalSO}
-        onClose={() => setPickModalSO(null)}
+        onClose={() => { setPickModalSO(null); setPickSelectedBprNos(undefined); }}
         saleOrder={pickModalSO}
+        selectedBprNos={pickSelectedBprNos}
         onConfirmPick={handlePickConfirm}
       />
 
       <InvoiceModal
         isOpen={!!invoiceModalSO}
-        onClose={() => setInvoiceModalSO(null)}
+        onClose={() => { setInvoiceModalSO(null); setInvoiceSelectedBprNos(undefined); }}
         saleOrder={invoiceModalSO}
+        selectedBprNos={invoiceSelectedBprNos}
         onGenerateInvoice={handleInvoiceGenerate}
       />
 
       <ShipModal
         isOpen={!!shipModalSO}
-        onClose={() => setShipModalSO(null)}
+        onClose={() => { setShipModalSO(null); setShipSelectedBprNos(undefined); }}
         saleOrder={shipModalSO}
+        selectedBprNos={shipSelectedBprNos}
         onDispatch={handleDispatchConfirm}
       />
 
       <TrackModal
         isOpen={!!trackModalSO}
-        onClose={() => setTrackModalSO(null)}
+        onClose={() => { setTrackModalSO(null); setTrackSelectedBprNos(undefined); }}
         saleOrder={trackModalSO}
+        selectedBprNos={trackSelectedBprNos}
         onConfirmDelivery={handleDeliveryConfirm}
       />
     </div>

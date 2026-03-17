@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
-import { fetchRawMaterialsList, createRawMaterial, fetchReservedStock, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
@@ -13,10 +13,14 @@ const RawMaterialRefactored: React.FC = () => {
  const [currentStage, setCurrentStage] = useState(0);
  const [pageTab, setPageTab] = useState<'dashboard' | 'form'>('dashboard');
  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+ const [existingRmId, setExistingRmId] = useState<string | null>(null);
+ const [editRmLoading, setEditRmLoading] = useState(false);
 
  const [formData, setFormData] = useState({
-  // Primary Info
+  // Primary Info (incl. for Zoho sync — TODO: implement Zoho integration)
   rmSku: '',
+  zohoId: '',
+  sku: '',
   rmTaxPreference: 'Taxable',
   rmReturnable: false,
   rmAssociateItems: '',
@@ -311,8 +315,14 @@ const RawMaterialRefactored: React.FC = () => {
    return;
   }
   try {
-   await createRawMaterial(formData as Record<string, unknown>);
-   addToast('success', 'Raw Material saved successfully!');
+   if (existingRmId) {
+    await updateRawMaterial(existingRmId, formData as Record<string, unknown>);
+    addToast('success', 'Raw Material updated successfully!');
+    setExistingRmId(null);
+   } else {
+    await createRawMaterial(formData as Record<string, unknown>);
+    addToast('success', 'Raw Material saved successfully!');
+   }
    setDashboardRefreshKey(k => k + 1);
    setPageTab('dashboard');
   } catch (err) {
@@ -324,7 +334,7 @@ const RawMaterialRefactored: React.FC = () => {
  // Stage content rendering
  const renderStageContent = () => {
   switch (currentStage) {
-  case 0: // Primary Info
+  case 0: // Primary Info (Zoho sync TODO: use zohoId, sku when integration is implemented)
   return (
    <div className="space-y-4">
     <InputField
@@ -333,6 +343,20 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.rmSku}
      onChange={handleInputChange}
      placeholder="Internal raw material code (e.g. RM-000123)"
+    />
+    <InputField
+     label="Zoho ID"
+     id="zohoId"
+     value={formData.zohoId}
+     onChange={handleInputChange}
+     placeholder="Zoho item id (sync TODO)"
+    />
+    <InputField
+     label="SKU (for Zoho)"
+     id="sku"
+     value={formData.sku}
+     onChange={handleInputChange}
+     placeholder="Optional; defaults to SKU above"
     />
     <SelectField
      label="Tax Preference"
@@ -833,9 +857,71 @@ const RawMaterialRefactored: React.FC = () => {
   }
  };
 
+ // Load existing RM when editing — always populate from API; use form_data if present, else map from record
+ useEffect(() => {
+  if (pageTab !== 'form' || !existingRmId) return;
+  let cancelled = false;
+  setEditRmLoading(true);
+  fetchRawMaterialById(existingRmId).then((result) => {
+   if (cancelled) return;
+   setEditRmLoading(false);
+   if (!result) return;
+   const fd = result.form_data as Record<string, unknown> | null | undefined;
+   if (fd && typeof fd === 'object' && Object.keys(fd).length > 0) {
+    setFormData(prev => ({ ...prev, ...fd }));
+    return;
+   }
+   // Fallback: map list-view record to form fields so form is never empty when editing
+   const r = result.record;
+   setFormData(prev => ({
+    ...prev,
+    rmSku: r.code ?? prev.rmSku,
+    inciName: r.inci ?? prev.inciName,
+    tradeCommercialName: r.name ?? prev.tradeCommercialName,
+    rmCategory: r.category ?? prev.rmCategory,
+    rmType: r.rmType ?? prev.rmType,
+    primaryUom: r.uom ?? prev.primaryUom,
+    gst: String(r.gst ?? prev.gst ?? ''),
+    shelfLife: r.shelf ?? prev.shelfLife,
+    group: r.group ?? prev.group,
+    zohoId: r.zohoId ?? prev.zohoId,
+    sku: r.sku ?? prev.sku,
+    hsnCode: r.hsnCode ?? prev.hsnCode,
+    rmTaxPreference: r.taxPref ?? prev.rmTaxPreference,
+    accountingCategory: r.salesPurchaseAccount ?? prev.accountingCategory,
+   }));
+  });
+  return () => { cancelled = true; };
+ }, [pageTab, existingRmId]);
+
+ // When editing, show loading until RM data is fetched
+ if (pageTab === 'form' && existingRmId && editRmLoading) {
+  return (
+   <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center">
+    <p className="text-gray-500">Loading raw material…</p>
+   </div>
+  );
+ }
+
  // If on dashboard tab, show dashboard instead of form
 if (pageTab === 'dashboard') {
-  return <RawMaterialDashboard refreshKey={dashboardRefreshKey} onSwitchToForm={() => setPageTab('form')} />;
+  return (
+   <RawMaterialDashboard
+    refreshKey={dashboardRefreshKey}
+    onSwitchToForm={() => { setExistingRmId(null); setPageTab('form'); }}
+    onEditRm={(rm) => { setExistingRmId(rm.id); setPageTab('form'); }}
+    onDeleteRm={async (rm) => {
+     if (!window.confirm(`Delete raw material "${rm.name}" (${rm.code})? This cannot be undone.`)) return;
+     try {
+      await deleteRawMaterial(rm.id);
+      addToast('success', 'Raw material deleted');
+      setDashboardRefreshKey(k => k + 1);
+     } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to delete');
+     }
+    }}
+   />
+  );
 }
 
  return (
@@ -862,6 +948,8 @@ if (pageTab === 'dashboard') {
 type RawMaterialDashboardProps = {
  refreshKey?: number;
  onSwitchToForm: () => void;
+ onEditRm: (rm: RawMaterialRecord) => void;
+ onDeleteRm: (rm: RawMaterialRecord) => void | Promise<void>;
 };
 
 /** Palette of category badge styles; any category (including new ones from API) gets a stable style via hash. */
@@ -910,7 +998,7 @@ function GroupChip({ group }: { group: string }) {
  );
 }
 
-const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm }) => {
+const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
  const [search, setSearch] = useState('');
  const [catFilter, setCatFilter] = useState('');
  const [sortAsc, setSortAsc] = useState(true);
@@ -1085,12 +1173,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-50">
         {filtered.length === 0 ? (
          <tr>
-          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={13} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1154,6 +1243,23 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline disabled:opacity-50"
             >
              {reservedLoading ? '…' : 'Show reserved'}
+            </button>
+           </td>
+           {/* Actions */}
+           <td className="px-4 py-3.5 text-right whitespace-nowrap">
+            <button
+             type="button"
+             onClick={(e) => { e.stopPropagation(); onEditRm(rm); }}
+             className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline mr-2"
+            >
+             Edit
+            </button>
+            <button
+             type="button"
+             onClick={(e) => { e.stopPropagation(); onDeleteRm(rm); }}
+             className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
+            >
+             Delete
             </button>
            </td>
           </tr>

@@ -16,6 +16,7 @@ export interface GRNRecordFromApi {
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: string;
+  qcBy: string;
   status: string;
   lineItems?: Array<{
     id: string;
@@ -122,6 +123,7 @@ export interface UpdateGRNPayload {
   grnDate?: string | null;
   receivedDate?: string | null;
   qcStatus?: string;
+  qcBy?: string | null;
   status?: string;
   lineItems?: GRNRecordFromApi['lineItems'];
   workflowSteps?: string[];

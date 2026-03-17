@@ -20,6 +20,7 @@ export const ShipModal: React.FC<ShipModalProps> = ({
   isOpen,
   onClose,
   saleOrder,
+  selectedBprNos,
   onDispatch,
 }) => {
   const [courier, setCourier] = useState('');
@@ -32,12 +33,16 @@ export const ShipModal: React.FC<ShipModalProps> = ({
   const [transporters, setTransporters] = useState<TransporterOption[]>([]);
   const [loadingTransporters, setLoadingTransporters] = useState(false);
 
-  const invoicedSplits =
+  const allInvoiced =
     saleOrder?.items.flatMap((item) =>
       item.batchSplits
         .filter((sp) => sp.ffStatus === 'invoiced')
         .map((sp) => ({ item, split: sp }))
     ) ?? [];
+  const invoicedSplits =
+    selectedBprNos?.length
+      ? allInvoiced.filter(({ split }) => selectedBprNos.includes(split.bprNo))
+      : allInvoiced;
 
   useEffect(() => {
     if (isOpen) {
@@ -71,6 +76,7 @@ export const ShipModal: React.FC<ShipModalProps> = ({
       driverName: '',
       driverPhone: '',
       remarks: vehicleRemarks,
+      ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
     });
     onClose();
   };
@@ -202,7 +208,7 @@ export const ShipModal: React.FC<ShipModalProps> = ({
                       <td className="px-4 py-3">
                         {split.invoiceNo ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/10 text-purple-600 border border-purple-500/20">
-                            INV-{split.invoiceNo}
+                            {String(split.invoiceNo)}
                           </span>
                         ) : '—'}
                       </td>

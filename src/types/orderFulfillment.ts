@@ -55,7 +55,7 @@ export interface BatchSplit {
   pickDate: string | null;
   pickSlipNo: string | null;
   remarks: string | null;
-  invoiceNo: number | null;
+  invoiceNo: string | null;
   awbNo: string | null;
   courier: string | null;
   dispatchDate: string | null;
@@ -74,6 +74,7 @@ export interface OrderItem {
 }
 
 export interface SaleOrder {
+  id?: number;
   soNo: string;
   soDate: string;
   customer: string;
@@ -104,6 +105,12 @@ export interface SOProgress {
   shipped: number;
   readyPct: number;
   shippedPct: number;
+  /** Batches (splits) that are closed (delivered & done). */
+  batchesDone: number;
+  /** Total batches (splits) in the order. */
+  batchesTotal: number;
+  /** batchesDone / batchesTotal as percentage (0–100). */
+  batchesDonePct: number;
 }
 
 export interface KPIData {
@@ -143,14 +150,18 @@ export interface SODetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   saleOrder: SaleOrder | null;
-  onAction: (action: string, soNo: string) => void;
+  /** action, soNo, and optionally the batch split (for per-batch Pick/Invoice/Ship/Track) */
+  onAction: (action: string, soNo: string, split?: BatchSplit) => void;
 }
 
 export interface PickModalProps {
   isOpen: boolean;
   onClose: () => void;
   saleOrder: SaleOrder | null;
-  onConfirmPick: (pickData: PickData) => void;
+  /** May return a Promise; modal waits for it before closing so flow can open Invoice next. */
+  onConfirmPick: (pickData: PickData) => void | Promise<void>;
+  /** When set, only these BPR splits are shown and can be picked (single-batch pick). */
+  selectedBprNos?: string[];
 }
 
 export interface InvoiceModalProps {
@@ -158,6 +169,8 @@ export interface InvoiceModalProps {
   onClose: () => void;
   saleOrder: SaleOrder | null;
   onGenerateInvoice: (invoiceData: InvoiceData) => void;
+  /** When set, only these BPR splits are invoiced (single-batch invoice). */
+  selectedBprNos?: string[];
 }
 
 export interface ShipModalProps {
@@ -165,6 +178,8 @@ export interface ShipModalProps {
   onClose: () => void;
   saleOrder: SaleOrder | null;
   onDispatch: (shipData: ShipData) => void;
+  /** When set, only these BPR splits are shipped (single-batch ship). */
+  selectedBprNos?: string[];
 }
 
 export interface TrackModalProps {
@@ -172,6 +187,8 @@ export interface TrackModalProps {
   onClose: () => void;
   saleOrder: SaleOrder | null;
   onConfirmDelivery: (deliveryData: DeliveryData) => void;
+  /** When set, only these BPR splits are shown for delivery (single-batch track). */
+  selectedBprNos?: string[];
 }
 
 export interface AddSOModalProps {
@@ -203,6 +220,8 @@ export interface InvoiceData {
   gstPercent: number;
   invoiceValue: number;
   remarks: string;
+  /** When set, only these BPR splits are marked invoiced. */
+  bprNos?: string[];
 }
 
 export interface ShipData {
@@ -216,6 +235,8 @@ export interface ShipData {
   driverName: string;
   driverPhone: string;
   remarks: string;
+  /** When set, only these BPR splits are marked shipped. */
+  bprNos?: string[];
 }
 
 export interface NewSOItemData {
@@ -249,6 +270,8 @@ export interface DeliveryData {
   deliveryDate: string;
   receivedBy: string;
   remarks: string;
+  /** If set, only these BPR splits are marked delivered; otherwise all shipped splits. */
+  bprNos?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════

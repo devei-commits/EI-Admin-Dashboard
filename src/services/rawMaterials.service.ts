@@ -19,6 +19,12 @@ export interface RawMaterialFromApi {
   status: string;
   products: string[];
   group: string | null;
+  /** Primary info for Zoho sync (TODO: implement Zoho integration) */
+  zoho_id?: string | null;
+  sku?: string | null;
+  hsn_code?: string | null;
+  tax_pref?: string | null;
+  sales_purchase_account?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -37,6 +43,11 @@ export interface RawMaterialRecord {
   status: string;
   products: string[];
   group: string | null;
+  zohoId: string | null;
+  sku: string | null;
+  hsnCode: string | null;
+  taxPref: string | null;
+  salesPurchaseAccount: string | null;
 }
 
 function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
@@ -54,6 +65,11 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     status: row.status ?? '',
     products: Array.isArray(row.products) ? row.products : [],
     group: row.group || null,
+    zohoId: row.zoho_id ?? null,
+    sku: row.sku ?? null,
+    hsnCode: row.hsn_code ?? null,
+    taxPref: row.tax_pref ?? null,
+    salesPurchaseAccount: row.sales_purchase_account ?? null,
   };
 }
 

@@ -19,7 +19,7 @@ export interface ProcurementQuotationItem {
 
 export interface ProcurementQuotation {
   id: number;
-  procurementRequestId: number;
+  procurementRequestId: number | null;
   vendorId: number;
   quoteDate: string | null;
   quotedBy: string | null;
@@ -49,6 +49,28 @@ export interface ProcurementQuotationFilters {
   status?: string;
 }
 
+export interface CreateProcurementQuotationPayload {
+  /** Optional: link quote to a procurement request. Omit for standalone quotations. */
+  procurementRequestId?: number | null;
+  vendorId: number;
+  quoteDate?: string | null;
+  leadTimeDays?: number | null;
+  paymentTerms?: string | null;
+  validTill?: string | null;
+  notes?: string | null;
+  status?: string;
+  items?: ProcurementQuotationItem[];
+}
+
+export interface UpdateProcurementQuotationPayload {
+  items?: ProcurementQuotationItem[];
+  leadTimeDays?: number | null;
+  paymentTerms?: string | null;
+  validTill?: string | null;
+  notes?: string | null;
+  status?: string;
+}
+
 export async function fetchProcurementQuotations(
   filters?: ProcurementQuotationFilters
 ): Promise<ServiceResult<ProcurementQuotation[]>> {
@@ -74,6 +96,31 @@ export async function fetchProcurementQuotationById(
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load quotation';
+    return { data: null, error: message, success: false };
+  }
+}
+
+export async function createProcurementQuotation(
+  payload: CreateProcurementQuotationPayload
+): Promise<ServiceResult<ProcurementQuotation>> {
+  try {
+    const data = await api.post<ProcurementQuotation>('/api/v1/procurement-quotations', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to create quotation';
+    return { data: null, error: message, success: false };
+  }
+}
+
+export async function updateProcurementQuotation(
+  id: number,
+  payload: UpdateProcurementQuotationPayload
+): Promise<ServiceResult<ProcurementQuotation>> {
+  try {
+    const data = await api.patch<ProcurementQuotation>(`/api/v1/procurement-quotations/${id}`, payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update quotation';
     return { data: null, error: message, success: false };
   }
 }

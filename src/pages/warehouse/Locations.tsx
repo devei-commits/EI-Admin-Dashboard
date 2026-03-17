@@ -3,9 +3,10 @@ import { X } from 'lucide-react';
 import { InventoryItem } from './Inventory';
 import { useWarehouseLocations } from '../../hooks/useWarehouseLocations';
 import { type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
-import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
+import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryClient';
+import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 
 const getUtilizationBarColor = (value: number) => {
   if (value >= 90) return 'bg-rose-500';
@@ -20,7 +21,6 @@ const getUtilizationBadge = (value: number) => {
 };
 
 const WarehouseLocations = () => {
-  const queryClient = useQueryClient();
   const { data: locations = [], isLoading: locationsLoading, refetch: refetchLocations } = useWarehouseLocations();
   const { data: inventoryResult, isLoading: inventoryLoading } = useQuery({
     queryKey: queryKeys.warehouseInventory,
@@ -35,66 +35,12 @@ const WarehouseLocations = () => {
   const inventoryData: InventoryItem[] = inventoryResult?.rows ?? [];
   const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [isAdjustMode, setIsAdjustMode] = useState(false);
-  const [savingAdjust, setSavingAdjust] = useState(false);
-  const [adjustError, setAdjustError] = useState<string | null>(null);
 
   const loading = locationsLoading || inventoryLoading;
 
   const openInventoryForStoredItem = (stored: StoredItemSummary) => {
     const row = inventoryData.find((r) => r.warehouseInventoryId === stored.warehouseInventoryId);
     if (row) setSelectedItem(row);
-  };
-
-  const updateInventoryItem = (itemId: string, field: keyof InventoryItem, value: number) => {
-    if (selectedItem && selectedItem.id === itemId) {
-      const updated = { ...selectedItem, [field]: value };
-      if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
-        updated.stockInHand = updated.whStock + updated.ml1Stock + updated.ml2Stock;
-      }
-      setSelectedItem(updated);
-    }
-  };
-
-  const handleDoneAdjustStock = async () => {
-    const item = selectedItem;
-    if (!item) {
-      setIsAdjustMode(false);
-      return;
-    }
-    if (item.warehouseInventoryId == null) {
-      setAdjustError('This item cannot be updated (no warehouse inventory id).');
-      return;
-    }
-    setAdjustError(null);
-    setSavingAdjust(true);
-    const res = await updateWarehouseStock(item.warehouseInventoryId, {
-      wh_stock: item.whStock,
-      ml1_stock: item.ml1Stock,
-      ml2_stock: item.ml2Stock,
-      reserved: item.reserved,
-    });
-    setSavingAdjust(false);
-    if (res.success && res.data) {
-      const d = res.data;
-      const stockInHand = (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
-      queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
-      setSelectedItem((prev) =>
-        prev?.id === item.id
-          ? {
-              ...prev,
-              whStock: Number(d.wh_stock) ?? prev.whStock,
-              ml1Stock: Number(d.ml1_stock) ?? prev.ml1Stock,
-              ml2Stock: Number(d.ml2_stock) ?? prev.ml2Stock,
-              stockInHand,
-              reserved: Number(d.reserved) ?? prev.reserved,
-            }
-          : prev
-      );
-    } else {
-      setAdjustError(res.error ?? 'Failed to save stock adjustment.');
-    }
-    setIsAdjustMode(false);
   };
 
   const getRackCondition = (description: string) => {
@@ -161,11 +107,18 @@ const WarehouseLocations = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
                 {location.racks.map((rack) => (
-                  <button
+                  <div
                     key={rack.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedRack({ location, rack })}
-                    className="px-4 py-3 border-r border-b border-slate-200 last:border-r-0 text-left hover:bg-cyan-50 transition-colors"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedRack({ location, rack });
+                      }
+                    }}
+                    className="px-4 py-3 border-r border-b border-slate-200 last:border-r-0 text-left hover:bg-cyan-50 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xl font-bold text-cyan-700 leading-none">{rack.code}</p>
@@ -206,7 +159,7 @@ const WarehouseLocations = () => {
                     ) : (
                       <div className="mt-2 h-5" />
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             </section>
@@ -215,8 +168,17 @@ const WarehouseLocations = () => {
       </div>
 
       {selectedRack && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/30">
-          <div className="h-full w-full max-w-3xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          onClick={() => setSelectedRack(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rack details"
+        >
+          <div
+            className="w-full max-w-3xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
               <h2 className="text-3xl font-bold text-slate-900">
                 Rack - Bay {selectedRack.rack.code} - {selectedRack.rack.description ?? selectedRack.rack.name}
@@ -329,223 +291,20 @@ const WarehouseLocations = () => {
       )}
 
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/30">
-          <div className="h-full w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto">
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Inventory — {selectedItem.name}</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setSelectedItem(null); setAdjustError(null); }}
-                className="p-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2 py-0.5 rounded border border-cyan-300 bg-cyan-50 text-cyan-700 text-[10px] font-semibold">SIH: {selectedItem.stockInHand} {selectedItem.whUnit}</span>
-                <span className="px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 text-[10px] font-semibold">W1: {selectedItem.whStock}</span>
-                <span className="px-2 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-indigo-700 text-[10px] font-semibold">ML1: {selectedItem.ml1Stock}</span>
-                <span className="px-2 py-0.5 rounded border border-purple-300 bg-purple-50 text-purple-700 text-[10px] font-semibold">ML2: {selectedItem.ml2Stock}</span>
-                <span className="px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">Reserved: {selectedItem.reserved}</span>
-                <span className="px-2 py-0.5 rounded border border-rose-300 bg-rose-50 text-rose-700 text-[10px] font-semibold">In Transit: {selectedItem.inTransit}</span>
-                <span className="px-2 py-0.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 text-[10px] font-semibold">{selectedItem.status}</span>
-                <span className="px-2 py-0.5 rounded border border-slate-300 bg-slate-50 text-slate-700 text-[10px] font-semibold">{selectedItem.type}</span>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Item Details</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Item Code</p>
-                    <p className="text-[11px] font-semibold text-cyan-700">{selectedItem.code}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Input Category</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.subtitle.split('·')[0].trim()}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">UOM</p>
-                    <p className="text-[11px] font-semibold text-emerald-700">{selectedItem.whUnit}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Storage Location</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Zone</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.zone}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Rack / Slot</p>
-                    <p className="text-[11px] font-semibold text-cyan-700">{selectedItem.rack}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Stock Breakdown</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Stock in Warehouse</p>
-                    <p className="text-base font-bold text-cyan-700">{selectedItem.whStock}</p>
-                    <p className="text-[9px] text-slate-400">physical in racks</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">In Manufacturing (ML1+ML2)</p>
-                    <p className="text-base font-bold text-blue-700">{selectedItem.ml1Stock + selectedItem.ml2Stock}</p>
-                    <p className="text-[9px] text-slate-400">issued to production</p>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-emerald-700">Stock in Hand (Total)</p>
-                    <p className="text-base font-bold text-emerald-700">{selectedItem.stockInHand}</p>
-                    <p className="text-[9px] text-emerald-600">KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Reserve (committed)</p>
-                    <p className="text-sm font-bold text-amber-700">{selectedItem.reserved} {selectedItem.whUnit}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Free / available</p>
-                    <p className="text-sm font-bold text-cyan-700">{Math.max(0, selectedItem.stockInHand - selectedItem.reserved)} {selectedItem.whUnit}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Ordered in Transit</p>
-                    <p className="text-sm font-bold text-rose-700">{selectedItem.inTransit} {selectedItem.whUnit}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Avg Consumption (Monthly)</p>
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Avg 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo * 0.9)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Sep 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo * 0.8)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Oct 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">3-Month Avg</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.avgMo} {selectedItem.whUnit}/month</p>
-                  </div>
-                </div>
-              </div>
-
-              {isAdjustMode && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Adjust Stock (Realtime)</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">WH Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.whStock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'whStock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-cyan-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">ML1 Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.ml1Stock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'ml1Stock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-blue-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">ML2 Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.ml2Stock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'ml2Stock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-indigo-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">Reserved</p>
-                      <input
-                        type="number"
-                        value={selectedItem.reserved}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'reserved', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-amber-700"
-                      />
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Item Specifications</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Batch / Lot Number</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.batchNumber || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Expiry Date</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.expiryDate || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Manufacturer</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.manufacturer || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Quality Grade</p>
-                    <p className="text-[11px] font-semibold text-emerald-700">{selectedItem.qualityGrade || 'N/A'}</p>
-                  </div>
-                  <div className="col-span-2 bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Storage Condition</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.storageCondition || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {adjustError && (
-              <p className="px-4 py-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md" role="alert">
-                {adjustError}
-              </p>
-            )}
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 sticky bottom-0 bg-white">
-              {isAdjustMode ? (
-                <button
-                  type="button"
-                  onClick={handleDoneAdjustStock}
-                  disabled={savingAdjust}
-                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                >
-                  {savingAdjust ? 'Saving…' : 'Save & done'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setAdjustError(null); setIsAdjustMode(true); }}
-                  className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors"
-                >
-                  Adjust Stock
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => { setSelectedItem(null); setAdjustError(null); }}
-                className="px-3 py-1.5 bg-slate-600 text-white rounded-md text-xs font-semibold hover:bg-slate-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          onClick={() => setSelectedItem(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Inventory item details"
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <WarehouseInventorySidebar
+              item={selectedItem}
+              onClose={() => setSelectedItem(null)}
+              onItemUpdated={(updated) => setSelectedItem(updated)}
+              variant="modal"
+            />
           </div>
         </div>
       )}

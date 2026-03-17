@@ -5,7 +5,12 @@ import {
   createItemList,
   createItemListRate,
   createItemListTier,
+  updateItemListRate,
+  deleteItemListRate,
+  updateItemListTier,
+  deleteItemListTier,
   type PriceListItemPage,
+  type ItemListTierRow,
 } from '../services/itemsList.service';
 import { fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
@@ -42,8 +47,27 @@ const ItemsList: React.FC = () => {
   const [priceTiers, setPriceTiers] = useState<PriceTierRow[]>(EMPTY_TIERS);
   const [submittingTiers, setSubmittingTiers] = useState(false);
   const [addPriceListMode, setAddPriceListMode] = useState(false);
+  const [addPriceListCombinedItems, setAddPriceListCombinedItems] = useState<PriceListItemPage[]>([]);
+  const [loadingCombined, setLoadingCombined] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
+  const [paymentTerms, setPaymentTerms] = useState<string>('');
+
+  // Edit rate (vendor block) — item + rate for PUT/DELETE
+  type RateForEdit = PriceListItemPage['vendorRates'][number];
+  const [editingRate, setEditingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
+  const [editRateCurrency, setEditRateCurrency] = useState('INR');
+  const [editRatePaymentTerms, setEditRatePaymentTerms] = useState('');
+  const [submittingEditRate, setSubmittingEditRate] = useState(false);
+
+  // Edit tier (single price row) — item + rateId + tier for PUT/DELETE
+  const [editingTier, setEditingTier] = useState<{ item: PriceListItemPage; rateId: number; tier: ItemListTierRow } | null>(null);
+  const [editTierMoqMin, setEditTierMoqMin] = useState('');
+  const [editTierMoqMax, setEditTierMoqMax] = useState('');
+  const [editTierPrice, setEditTierPrice] = useState('');
+  const [editTierValidTill, setEditTierValidTill] = useState('');
+  const [editTierNote, setEditTierNote] = useState('');
+  const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,11 +119,36 @@ const ItemsList: React.FC = () => {
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
+  useEffect(() => {
+    if (!showAddTierModal || !addPriceListMode || tierTarget) {
+      setAddPriceListCombinedItems([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCombined(true);
+    Promise.all([
+      fetchPriceListPage('RM'),
+      fetchPriceListPage('PM'),
+      fetchPriceListPage('PR'),
+    ]).then(([rRes, pRes, prRes]) => {
+      if (cancelled) return;
+      const rm = rRes.success && rRes.data ? rRes.data : [];
+      const pm = pRes.success && pRes.data ? pRes.data : [];
+      const pr = prRes.success && prRes.data ? prRes.data : [];
+      setAddPriceListCombinedItems([...rm, ...pm, ...pr]);
+      setLoadingCombined(false);
+    }).catch(() => {
+      if (!cancelled) setLoadingCombined(false);
+    });
+    return () => { cancelled = true; };
+  }, [showAddTierModal, addPriceListMode, tierTarget]);
+
   const openAddTier = (item: PriceListItemPage) => {
     setTierTarget(item);
     setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
     setSelectedVendor(null);
     setCurrency('INR');
+    setPaymentTerms('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(false);
     setItemSearchQuery('');
@@ -111,6 +160,7 @@ const ItemsList: React.FC = () => {
     setResolvedItemsListId(null);
     setSelectedVendor(null);
     setCurrency('INR');
+    setPaymentTerms('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(true);
     setItemSearchQuery('');
@@ -126,11 +176,11 @@ const ItemsList: React.FC = () => {
   const filteredItemsForSelection = useMemo(() => {
     if (!addPriceListMode) return [];
     const q = itemSearchQuery.trim().toLowerCase();
-    return pageItems.filter((item) => {
+    return addPriceListCombinedItems.filter((item) => {
       if (q && !item.name.toLowerCase().includes(q) && !item.code.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [addPriceListMode, pageItems, itemSearchQuery]);
+  }, [addPriceListMode, addPriceListCombinedItems, itemSearchQuery]);
 
   const handleSaveTiers = async () => {
     if (!tierTarget || !selectedVendor) {
@@ -148,8 +198,10 @@ const ItemsList: React.FC = () => {
       if (!itemsListId) {
         const payload =
           tierTarget.type === 'RM'
-            ? { type: 'RM' as const, raw_material_id: tierTarget.raw_material_id!, pack_material_id: null }
-            : { type: 'PM' as const, raw_material_id: null, pack_material_id: tierTarget.pack_material_id! };
+            ? { type: 'RM' as const, raw_material_id: tierTarget.raw_material_id!, pack_material_id: null, product_id: null }
+            : tierTarget.type === 'PM'
+              ? { type: 'PM' as const, raw_material_id: null, pack_material_id: tierTarget.pack_material_id!, product_id: null }
+              : { type: 'PR' as const, raw_material_id: null, pack_material_id: null, product_id: tierTarget.product_id! };
         const createRes = await createItemList(payload);
         if (!createRes.success || !createRes.data) {
           addToast('error', createRes.error?.message ?? 'Failed to add item to list');
@@ -161,6 +213,7 @@ const ItemsList: React.FC = () => {
       const rateRes = await createItemListRate(String(itemsListId), {
         vendor_id: parseInt(selectedVendor.id, 10),
         currency,
+        payment_terms: paymentTerms || undefined,
       });
       if (!rateRes.success || !rateRes.data) {
         addToast('error', rateRes.error?.message ?? 'Failed to create vendor rate');
@@ -184,10 +237,131 @@ const ItemsList: React.FC = () => {
         const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
         if (res.success && res.data) setPageItems(res.data);
       }
+      if (activeTab === 'pr') {
+        const res = await fetchPRProducts();
+        if (res.success && res.data) setProducts(res.data);
+      }
     } catch (e) {
       addToast('error', 'Failed to save tiers');
     }
     setSubmittingTiers(false);
+  };
+
+  const refetchPage = () => {
+    if (activeTab === 'rm' || activeTab === 'pm') {
+      fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM').then((res) => {
+        if (res.success && res.data) setPageItems(res.data);
+      });
+    }
+  };
+
+  const openEditRate = (item: PriceListItemPage, rate: RateForEdit) => {
+    setEditingRate({ item, rate });
+    setEditRateCurrency(rate.currency);
+    setEditRatePaymentTerms(rate.payment_terms ?? '');
+  };
+
+  const openEditTier = (item: PriceListItemPage, rateId: number, tier: ItemListTierRow) => {
+    setEditingTier({ item, rateId, tier });
+    setEditTierMoqMin(String(tier.moq_min));
+    setEditTierMoqMax(tier.moq_max != null ? String(tier.moq_max) : '');
+    setEditTierPrice(String(tier.price_per_unit));
+    setEditTierValidTill(tier.valid_till ?? '');
+    setEditTierNote(tier.note ?? '');
+  };
+
+  const handleUpdateRate = async () => {
+    if (!editingRate || editingRate.item.itemsListId == null) return;
+    setSubmittingEditRate(true);
+    const res = await updateItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id, {
+      currency: editRateCurrency,
+      payment_terms: editRatePaymentTerms || null,
+    });
+    setSubmittingEditRate(false);
+    if (res.success) {
+      addToast('success', 'Vendor rate updated');
+      setEditingRate(null);
+      refetchPage();
+    } else {
+      addToast('error', res.error?.message ?? 'Failed to update rate');
+    }
+  };
+
+  const handleDeleteRate = async () => {
+    if (!editingRate || editingRate.item.itemsListId == null) return;
+    if (!window.confirm(`Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`)) return;
+    setSubmittingEditRate(true);
+    const res = await deleteItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id);
+    setSubmittingEditRate(false);
+    if (res.success) {
+      addToast('success', 'Vendor rate removed');
+      setEditingRate(null);
+      refetchPage();
+    } else {
+      addToast('error', res.error?.message ?? 'Failed to delete rate');
+    }
+  };
+
+  const handleUpdateTier = async () => {
+    if (!editingTier || editingTier.item.itemsListId == null) return;
+    const moqMin = parseInt(editTierMoqMin, 10);
+    const price = parseFloat(editTierPrice);
+    if (Number.isNaN(moqMin) || Number.isNaN(price)) {
+      addToast('error', 'MOQ and price are required');
+      return;
+    }
+    setSubmittingEditTier(true);
+    const res = await updateItemListTier(
+      String(editingTier.item.itemsListId),
+      editingTier.rateId,
+      editingTier.tier.id,
+      {
+        moq_min: moqMin,
+        moq_max: editTierMoqMax ? parseInt(editTierMoqMax, 10) : null,
+        price_per_unit: price,
+        valid_till: editTierValidTill || null,
+        note: editTierNote || null,
+      }
+    );
+    setSubmittingEditTier(false);
+    if (res.success) {
+      addToast('success', 'Tier updated');
+      setEditingTier(null);
+      refetchPage();
+    } else {
+      addToast('error', res.error?.message ?? 'Failed to update tier');
+    }
+  };
+
+  const handleDeleteTier = async () => {
+    if (!editingTier || editingTier.item.itemsListId == null) return;
+    if (!window.confirm('Remove this price tier?')) return;
+    setSubmittingEditTier(true);
+    const res = await deleteItemListTier(
+      String(editingTier.item.itemsListId),
+      editingTier.rateId,
+      editingTier.tier.id
+    );
+    setSubmittingEditTier(false);
+    if (res.success) {
+      addToast('success', 'Tier removed');
+      setEditingTier(null);
+      refetchPage();
+    } else {
+      addToast('error', res.error?.message ?? 'Failed to delete tier');
+    }
+  };
+
+  const deleteTierFromRow = async (item: PriceListItemPage, rateId: number, tier: ItemListTierRow) => {
+    if (item.itemsListId == null) return;
+    if (!window.confirm('Remove this price tier?')) return;
+    const res = await deleteItemListTier(String(item.itemsListId), rateId, tier.id);
+    if (res.success) {
+      addToast('success', 'Tier removed');
+      refetchPage();
+    } else {
+      addToast('error', res.error?.message ?? 'Failed to delete tier');
+    }
   };
 
   const vendorIdsUsed = useMemo(() => {
@@ -269,8 +443,7 @@ const ItemsList: React.FC = () => {
           </div>
           <button
             onClick={openAddPriceList}
-            disabled={activeTab === 'pr'}
-            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
           >
             + Add Price List
           </button>
@@ -358,12 +531,24 @@ const ItemsList: React.FC = () => {
                   </div>
                   {item.vendorRates?.map((rate) => (
                     <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                         <div>
                           <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
                           {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
+                          {rate.payment_terms && <span className="text-[10.5px] text-gray-500 ml-1.5">· {rate.payment_terms}</span>}
                         </div>
-                        <span className="text-[11px] text-gray-400">{rate.currency}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-400">{rate.currency}</span>
+                          {item.itemsListId != null && (
+                            <button
+                              type="button"
+                              onClick={() => openEditRate(item, rate)}
+                              className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
+                            >
+                              Edit rate
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <table className="w-full text-sm border-collapse mt-2">
                         <thead>
@@ -372,6 +557,7 @@ const ItemsList: React.FC = () => {
                             <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price {isRm ? '/ KG' : '/ pc'}</th>
                             <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
                             <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
+                            {item.itemsListId != null && <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -385,6 +571,24 @@ const ItemsList: React.FC = () => {
                               <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">{formatPrice(t.price_per_unit)}</td>
                               <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
                               <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                              {item.itemsListId != null && (
+                                <td className="py-1.5 px-2 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditTier(item, rate.id, t)}
+                                    className="text-[10.5px] text-teal-600 hover:underline mr-2"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTierFromRow(item, rate.id, t)}
+                                    className="text-[10.5px] text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -420,7 +624,7 @@ const ItemsList: React.FC = () => {
               {addPriceListMode && !tierTarget && (
                 <div>
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
-                    Select {activeTab === 'pm' ? 'Packaging Material' : 'Raw Material'} *
+                    Select RM, PM, or Product *
                   </label>
                   <input
                     type="text"
@@ -431,19 +635,22 @@ const ItemsList: React.FC = () => {
                     autoFocus
                   />
                   <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                    {filteredItemsForSelection.length === 0 ? (
+                    {loadingCombined ? (
+                      <div className="px-3 py-4 text-xs text-gray-400 text-center">Loading RM, PM &amp; products…</div>
+                    ) : filteredItemsForSelection.length === 0 ? (
                       <div className="px-3 py-4 text-xs text-gray-400 text-center">No items found</div>
                     ) : (
-                      filteredItemsForSelection.slice(0, 50).map((item) => (
+                      filteredItemsForSelection.slice(0, 80).map((item) => (
                         <button
-                          key={item.code}
+                          key={item.type === 'PR' ? `PR-${item.product_id}` : item.code}
                           type="button"
                           onClick={() => selectItemForPriceList(item)}
                           className="w-full text-left px-3 py-2.5 hover:bg-teal-50 transition-colors flex items-center justify-between gap-2"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`font-mono text-[10.5px] shrink-0 ${item.type === 'RM' ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                            <span className={`font-mono text-[10.5px] shrink-0 ${item.type === 'RM' ? 'text-teal-600' : item.type === 'PM' ? 'text-violet-600' : 'text-amber-600'}`}>{item.code}</span>
                             <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
+                            <span className="text-[10px] text-gray-400 shrink-0">({item.type})</span>
                           </div>
                           {item.vendorRates && item.vendorRates.length > 0 ? (
                             <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">
@@ -462,8 +669,9 @@ const ItemsList: React.FC = () => {
               {/* Selected item chip in Add Price List mode */}
               {addPriceListMode && tierTarget && (
                 <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
-                  <span className={`font-mono text-[10.5px] ${tierTarget.type === 'RM' ? 'text-teal-600' : 'text-violet-600'}`}>{tierTarget.code}</span>
+                  <span className={`font-mono text-[10.5px] ${tierTarget.type === 'RM' ? 'text-teal-600' : tierTarget.type === 'PM' ? 'text-violet-600' : 'text-amber-600'}`}>{tierTarget.code}</span>
                   <span className="text-sm font-bold text-gray-900">{tierTarget.name}</span>
+                  <span className="text-[10px] text-gray-500">({tierTarget.type})</span>
                   <button
                     type="button"
                     onClick={() => { setTierTarget(null); setResolvedItemsListId(null); }}
@@ -499,6 +707,19 @@ const ItemsList: React.FC = () => {
                     <option value="INR">INR</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms</label>
+                  <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
+                    <option value="">—</option>
+                    <option value="NET 15">NET 15</option>
+                    <option value="NET 30">NET 30</option>
+                    <option value="NET 45">NET 45</option>
+                    <option value="NET 60">NET 60</option>
+                    <option value="Due on receipt">Due on receipt</option>
+                    <option value="Advance">Advance</option>
+                    <option value="CIA">CIA</option>
                   </select>
                 </div>
               </div>
@@ -571,6 +792,111 @@ const ItemsList: React.FC = () => {
                   {submittingTiers ? 'Saving…' : 'Save Tiers'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit vendor rate modal */}
+      {editingRate && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-900">
+                Edit rate — {editingRate.rate.vendor_name ?? 'Vendor'} · {editingRate.item.name}
+              </span>
+              <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Currency</label>
+                <select value={editRateCurrency} onChange={(e) => setEditRateCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
+                  <option value="INR">INR</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms</label>
+                <select value={editRatePaymentTerms} onChange={(e) => setEditRatePaymentTerms(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
+                  <option value="">—</option>
+                  <option value="NET 15">NET 15</option>
+                  <option value="NET 30">NET 30</option>
+                  <option value="NET 45">NET 45</option>
+                  <option value="NET 60">NET 60</option>
+                  <option value="Due on receipt">Due on receipt</option>
+                  <option value="Advance">Advance</option>
+                  <option value="CIA">CIA</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-between">
+              <button
+                type="button"
+                onClick={handleDeleteRate}
+                disabled={submittingEditRate}
+                className="px-3 py-2 rounded-lg border border-red-300 bg-white text-red-600 text-xs font-bold hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete rate & tiers
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditingRate(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={handleUpdateRate} disabled={submittingEditRate} className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50">
+                  {submittingEditRate ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit tier modal */}
+      {editingTier && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-900">Edit tier — {editingTier.item.name}</span>
+              <button onClick={() => setEditingTier(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">MOQ min</label>
+                  <input type="number" min={1} value={editTierMoqMin} onChange={(e) => setEditTierMoqMin(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">MOQ max (optional)</label>
+                  <input type="number" min={1} value={editTierMoqMax} onChange={(e) => setEditTierMoqMax(e.target.value)} placeholder="—" className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Price per unit</label>
+                <input type="number" step="0.01" value={editTierPrice} onChange={(e) => setEditTierPrice(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+              </div>
+              <div>
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Valid till</label>
+                <input type="date" value={editTierValidTill} onChange={(e) => setEditTierValidTill(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Note</label>
+                <input type="text" value={editTierNote} onChange={(e) => setEditTierNote(e.target.value)} placeholder="Optional" className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-between">
+              <button
+                type="button"
+                onClick={handleDeleteTier}
+                disabled={submittingEditTier}
+                className="px-3 py-2 rounded-lg border border-red-300 bg-white text-red-600 text-xs font-bold hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete tier
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditingTier(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={handleUpdateTier} disabled={submittingEditTier} className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50">
+                  {submittingEditTier ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

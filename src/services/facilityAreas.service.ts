@@ -1,6 +1,16 @@
 import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
 
+export interface RackDTO {
+  id: number;
+  locationId: number;
+  code: string;
+  name: string | null;
+  description: string | null;
+  levels: number;
+  slotsTotal: number;
+}
+
 export interface ZoneDTO {
   id: number;
   code: string;
@@ -11,6 +21,7 @@ export interface ZoneDTO {
   areaSqm: number | null;
   description: string | null;
   utilisationPct: number;
+  racks?: RackDTO[];
 }
 
 export interface FacilityAreaDTO {
@@ -146,5 +157,23 @@ export async function deleteZone(id: number): Promise<ServiceResult<null>> {
     return { data: null, error: null, success: true };
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'Failed to delete zone', success: false };
+  }
+}
+
+export interface CreateRackPayload {
+  location_id: number;
+  code: string;
+  name?: string;
+  description?: string;
+  levels?: number;
+  slots_total?: number;
+}
+
+export async function createRack(payload: CreateRackPayload): Promise<ServiceResult<RackDTO>> {
+  try {
+    const res = await api.post<RackDTO>(`${ZONES_BASE}/racks`, payload);
+    return { data: extractOne<RackDTO>(res), error: null, success: true };
+  } catch (e) {
+    return { data: null as unknown as RackDTO, error: e instanceof Error ? e.message : 'Failed to create rack', success: false };
   }
 }

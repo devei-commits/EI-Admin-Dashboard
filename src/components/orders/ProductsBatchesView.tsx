@@ -1,15 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
   Package,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  ChevronDown,
-  ChevronUp,
+  FileText,
+  Truck,
+  MapPin,
+  Eye,
 } from 'lucide-react';
-import { KPICard } from './KPICard';
 import { FilterBar } from './FilterBar';
-import { BatchSplitTable } from './BatchSplitTable';
 import { PickModal } from './PickModal';
 import { InvoiceModal } from './InvoiceModal';
 import { ShipModal } from './ShipModal';
@@ -24,7 +21,14 @@ import type {
   DeliveryData,
   OrderItem,
 } from '../../types/orderFulfillment';
-import { filterSaleOrders } from '../../utils/orderFulfillmentUtils';
+import { filterBatchSplits } from '../../utils/orderFulfillmentUtils';
+import {
+  formatDate,
+  formatNumber,
+  getDaysLeft,
+  formatDaysLeft,
+} from '../../utils/orderFulfillmentUtils';
+import { StatusBadge } from './StatusBadge';
 import { UnifiedButton as Button } from '../ui/UnifiedComponents';
 
 interface ProductsBatchesViewProps {
@@ -35,80 +39,7 @@ interface ProductsBatchesViewProps {
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
 }
 
-interface BatchWithContext extends BatchSplit {
-  soNo: string;
-  customer: string;
-  productName: string;
-  pack: string;
-  sku: string;
-}
-
-const ProductBatchCard: React.FC<{
-  product: { name: string; sku: string; pack: string };
-  rows: Array<{ so: SaleOrder; item: OrderItem; split: BatchSplit }>;
-  onPick: (bprNo: string) => void;
-  onInvoice: (bprNo: string) => void;
-  onShip: (bprNo: string) => void;
-  onTrack: (bprNo: string) => void;
-  onViewSO: (soNo: string) => void;
-}> = ({ product, rows, ...actions }) => {
-  const [isOpen, setIsOpen] = useState(true);
-
-  const totalQty = useMemo(
-    () => rows.reduce((acc, row) => acc + row.split.fgQty, 0),
-    [rows]
-  );
-  const readyQty = useMemo(
-    () =>
-      rows
-        .filter((r) => r.split.ffStatus === 'fg_ready')
-        .reduce((acc, row) => acc + row.split.fgQty, 0),
-    [rows]
-  );
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-      <div
-        className="flex justify-between items-center p-4 cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-            <Package className="w-6 h-6 text-gray-500" />
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-800">{product.name}</h3>
-            <p className="text-sm text-gray-500">
-              {product.sku} &middot; {product.pack}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-6 text-sm">
-          <div>
-            <p className="text-xs text-gray-500">Total Batches</p>
-            <p className="font-bold text-lg text-gray-800">{rows.length}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Total Qty</p>
-            <p className="font-bold text-lg text-gray-800">{totalQty}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Ready for Picking</p>
-            <p className="font-bold text-lg text-green-600">{readyQty}</p>
-          </div>
-          <Button variant="ghost" size="sm">
-            {isOpen ? <ChevronUp /> : <ChevronDown />}
-          </Button>
-        </div>
-      </div>
-      {isOpen && (
-        <div className="border-t">
-          <BatchSplitTable rows={rows} {...actions} />
-        </div>
-      )}
-    </div>
-  );
-};
+type Row = { so: SaleOrder; item: OrderItem; split: BatchSplit };
 
 export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   saleOrders,
@@ -120,69 +51,17 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
-  // Modal states
   const [pickModalSO, setPickModalSO] = useState<SaleOrder | null>(null);
   const [invoiceModalSO, setInvoiceModalSO] = useState<SaleOrder | null>(null);
   const [shipModalSO, setShipModalSO] = useState<SaleOrder | null>(null);
   const [trackModalSO, setTrackModalSO] = useState<SaleOrder | null>(null);
   const [detailModalSO, setDetailModalSO] = useState<SaleOrder | null>(null);
 
-  const productsWithBatches = useMemo(() => {
-    const filteredSOs = filterSaleOrders(saleOrders, activeFilter, searchQuery);
-    const filteredSONos = new Set(filteredSOs.map((so) => so.soNo));
+  const tableRows = useMemo(
+    () => filterBatchSplits(saleOrders, activeFilter, searchQuery),
+    [saleOrders, activeFilter, searchQuery]
+  );
 
-    const products: {
-      [productName: string]: {
-        product: { name: string; sku: string; pack: string };
-        rows: Array<{ so: SaleOrder; item: OrderItem; split: BatchSplit }>;
-      };
-    } = {};
-
-    saleOrders.forEach((so) => {
-      if (!filteredSONos.has(so.soNo)) return;
-
-      so.items.forEach((item) => {
-        if (item.batchSplits.length > 0) {
-          if (!products[item.productName]) {
-            products[item.productName] = {
-              product: {
-                name: item.productName,
-                sku: item.sku,
-                pack: item.pack,
-              },
-              rows: [],
-            };
-          }
-
-          item.batchSplits.forEach((split) => {
-            products[item.productName].rows.push({ so, item, split });
-          });
-        }
-      });
-    });
-
-    return Object.values(products);
-  }, [saleOrders, activeFilter, searchQuery]);
-
-  const batchKPIs = useMemo(() => {
-    const allBatches = saleOrders.flatMap(so => so.items.flatMap(item => item.batchSplits));
-    const totalBatches = allBatches.length;
-    const wipCount = allBatches.filter((b) => b.ffStatus === 'wip').length;
-    const fgReadyCount = allBatches.filter(
-      (b) => b.ffStatus === 'fg_ready'
-    ).length;
-    const completedCount = allBatches.filter((b) =>
-      ['picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(b.ffStatus)
-    ).length;
-    const completionRate =
-      totalBatches > 0
-        ? Math.round((completedCount / totalBatches) * 100)
-        : 0;
-
-    return { totalBatches, wipCount, fgReadyCount, completionRate };
-  }, [saleOrders]);
-
-  // Modal handlers
   const findSOByBprNo = (bprNo: string) =>
     saleOrders.find((so) =>
       so.items.some((item) =>
@@ -199,13 +78,10 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     setDetailModalSO(so || null);
   };
 
-  // Handle SO Detail Modal actions
   const handleSODetailAction = (action: string, soNo: string) => {
     const so = saleOrders.find((s) => s.soNo === soNo);
     if (!so) return;
-
-    setDetailModalSO(null); // Close the detail modal
-    
+    setDetailModalSO(null);
     switch (action) {
       case 'pick':
         setPickModalSO(so);
@@ -224,7 +100,6 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     }
   };
 
-  // Modal confirm handlers
   const handlePickConfirm = (data: PickData) => pickModalSO && onPickConfirm(pickModalSO.soNo, data);
   const handleInvoiceGenerate = (data: InvoiceData) => invoiceModalSO && onGenerateInvoice(invoiceModalSO.soNo, data);
   const handleDispatchConfirm = (data: ShipData) => shipModalSO && onDispatch(shipModalSO.soNo, data);
@@ -232,41 +107,11 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">
-          Products & Batches Dashboard
-        </h2>
-        <p className="text-sm text-gray-600">
-          Product-centric view of all production splits and their fulfillment
-          status.
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">Products & Batches</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Batch-split level view — FG output, location, status per batch
         </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          label="Total Batches"
-          value={batchKPIs.totalBatches.toString()}
-          icon={<Package size={20} />}
-          color="blue"
-        />
-        <KPICard
-          label="In Production (WIP)"
-          value={batchKPIs.wipCount.toString()}
-          icon={<AlertCircle size={20} />}
-          color="purple"
-        />
-        <KPICard
-          label="Ready for Picking"
-          value={batchKPIs.fgReadyCount.toString()}
-          icon={<CheckCircle size={20} />}
-          color="orange"
-        />
-        <KPICard
-          label="Completion Rate"
-          value={`${batchKPIs.completionRate}%`}
-          icon={<TrendingUp size={20} />}
-          color="emerald"
-        />
       </div>
 
       <FilterBar
@@ -281,36 +126,58 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
         }}
       />
 
-      {productsWithBatches.length > 0 ? (
-        <div className="space-y-4">
-          {productsWithBatches.map(({ product, rows }) => (
-            <ProductBatchCard
-              key={product.name}
-              product={product}
-              rows={rows}
-              onPick={handlePickBatch}
-              onInvoice={handleInvoiceBatch}
-              onShip={handleShipBatch}
-              onTrack={handleTrackBatch}
-              onViewSO={handleViewSO}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
-          <Package size={48} className="mx-auto mb-4 text-gray-400" />
-          <h3 className="text-lg font-semibold text-gray-800 mb-1">
-            No Batches Found
-          </h3>
-          <p className="text-sm text-gray-500">
-            {searchQuery || activeFilter !== 'all'
-              ? 'Try adjusting your filters or search query.'
-              : 'Batches will appear here once production starts for an order.'}
-          </p>
-        </div>
-      )}
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full text-sm border-collapse">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Sale Order</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Product / SKU</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">BMR / BPR</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Order Date</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Planned Qty</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">FG Output</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">FG Location</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Picked</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Invoice</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">AWB / Courier</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {tableRows.length === 0 ? (
+              <tr>
+                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
+                  <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                  <p className="font-medium">No batches found</p>
+                  <p className="text-xs mt-1">
+                    {searchQuery || activeFilter !== 'all'
+                      ? 'Try adjusting filters or search.'
+                      : 'Batches will appear when BPR is closed and FG is ready.'}
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              tableRows.map(({ so, item, split }: Row) => (
+                <BatchRow
+                  key={`${so.soNo}-${split.bprNo}`}
+                  so={so}
+                  item={item}
+                  split={split}
+                  onPick={() => handlePickBatch(split.bprNo)}
+                  onInvoice={() => handleInvoiceBatch(split.bprNo)}
+                  onShip={() => handleShipBatch(split.bprNo)}
+                  onTrack={() => handleTrackBatch(split.bprNo)}
+                  onViewSO={handleViewSO}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Modals */}
       <PickModal
         isOpen={!!pickModalSO}
         onClose={() => setPickModalSO(null)}
@@ -344,3 +211,147 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     </div>
   );
 };
+
+function BatchRow({
+  so,
+  item,
+  split,
+  onPick,
+  onInvoice,
+  onShip,
+  onTrack,
+  onViewSO,
+}: {
+  so: SaleOrder;
+  item: OrderItem;
+  split: BatchSplit;
+  onPick: () => void;
+  onInvoice: () => void;
+  onShip: () => void;
+  onTrack: () => void;
+  onViewSO: (soNo: string) => void;
+}) {
+  const daysLeft = getDaysLeft(so.dueDate);
+  const daysLeftFormatted = formatDaysLeft(daysLeft);
+
+  return (
+    <tr className="hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-3">
+        <button
+          type="button"
+          onClick={() => onViewSO(so.soNo)}
+          className="font-mono text-xs font-bold text-blue-600 hover:underline text-left"
+        >
+          {so.soNo}
+        </button>
+        {so.priority === 'high' && (
+          <span className="block text-[10px] font-bold text-red-600 mt-0.5">High</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="font-semibold text-gray-800 text-xs">{so.customer}</div>
+        <div className="text-[11px] text-gray-500">{so.customerCity || '—'}</div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="font-semibold text-gray-800 text-xs">{item.productName}</div>
+        <div className="flex gap-1 mt-0.5 flex-wrap">
+          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+            {item.sku}
+          </span>
+          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+            {item.pack}
+          </span>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="font-mono text-[10px] text-blue-600">{split.bmrNo}</div>
+        <div className="font-mono text-[10px] text-purple-600">{split.bprNo}</div>
+      </td>
+      <td className="px-4 py-3 text-[10.5px] text-gray-500">
+        {formatDate(so.orderDate)}
+      </td>
+      <td className="px-4 py-3">
+        <div className={`text-xs font-bold ${daysLeftFormatted.color}`}>
+          {formatDate(so.dueDate)}
+        </div>
+        <div className={`text-[10px] ${daysLeftFormatted.color}`}>
+          {daysLeftFormatted.text}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-right font-mono text-xs">
+        {formatNumber(split.plannedQty)}
+      </td>
+      <td className="px-4 py-3 text-right">
+        {split.fgQty != null && split.fgQty > 0 ? (
+          <span className="font-mono text-xs font-bold text-emerald-600">
+            {formatNumber(split.fgQty)}
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {split.fgLocation ? (
+          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-100 text-teal-700 border border-teal-200">
+            {split.fgLocation}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-[10.5px]">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+        {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
+      </td>
+      <td className="px-4 py-3">
+        {split.invoiceNo != null ? String(split.invoiceNo) : '—'}
+      </td>
+      <td className="px-4 py-3">
+        {split.awbNo || split.courier
+          ? [split.awbNo, split.courier].filter(Boolean).join(' / ')
+          : '—'}
+      </td>
+      <td className="px-4 py-3">
+        <StatusBadge status={split.ffStatus} type="ff" size="sm" />
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex gap-1 flex-wrap">
+          {split.ffStatus === 'fg_ready' && (
+            <Button size="sm" variant="secondary" onClick={onPick} className="whitespace-nowrap">
+              <Package className="h-3.5 w-3.5 mr-1" />
+              Pick
+            </Button>
+          )}
+          {split.ffStatus === 'picking' && (
+            <Button size="sm" variant="secondary" onClick={onInvoice} className="whitespace-nowrap">
+              <FileText className="h-3.5 w-3.5 mr-1" />
+              Invoice
+            </Button>
+          )}
+          {split.ffStatus === 'invoiced' && (
+            <Button size="sm" variant="secondary" onClick={onShip} className="whitespace-nowrap">
+              <Truck className="h-3.5 w-3.5 mr-1" />
+              Ship
+            </Button>
+          )}
+          {['shipped', 'delivered', 'closed'].includes(split.ffStatus) && (
+            <Button size="sm" variant="secondary" onClick={onTrack} className="whitespace-nowrap">
+              <MapPin className="h-3.5 w-3.5 mr-1" />
+              Track
+            </Button>
+          )}
+          {['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) && (
+            <span className="text-[9.5px] text-gray-500">In Production</span>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onViewSO(so.soNo)}
+            title="View Sale Order Details"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}

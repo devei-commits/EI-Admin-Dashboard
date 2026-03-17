@@ -85,14 +85,17 @@ export const OrderFulfillment: React.FC = () => {
     return (order as any)?.id ?? null;
   };
 
-  const handlePickConfirm = async (soNo: string, data: PickData) => {
+  const handlePickConfirm = async (soNo: string, data: PickData): Promise<SaleOrder | void> => {
     const id = findOrderId(soNo);
     if (!id) return;
     try {
       await pickFulfillmentSplits(id, data);
-      await loadOrders();
+      const orders = await fetchFulfillmentOrders();
+      setSaleOrders(orders);
+      return orders.find((o) => o.soNo === soNo) ?? undefined;
     } catch (err) {
       console.error('Failed to pick:', err);
+      throw err;
     }
   };
 
@@ -113,6 +116,7 @@ export const OrderFulfillment: React.FC = () => {
         courier: data.courier,
         dispatchDate: data.dispatchDate,
         eta: data.eta,
+        ...(data.bprNos?.length ? { bprNos: data.bprNos } : {}),
       });
       await loadOrders();
     } catch (err) {
@@ -124,7 +128,12 @@ export const OrderFulfillment: React.FC = () => {
     const id = findOrderId(soNo);
     if (!id) return;
     try {
-      await deliverFulfillmentSplits(id, data);
+      await deliverFulfillmentSplits(id, {
+        deliveryDate: data.deliveryDate,
+        receivedBy: data.receivedBy,
+        remarks: data.remarks,
+        ...(data.bprNos && data.bprNos.length > 0 ? { bprNos: data.bprNos } : {}),
+      });
       await loadOrders();
     } catch (err) {
       console.error('Failed to confirm delivery:', err);

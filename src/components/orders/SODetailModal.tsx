@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Package, MapPin } from 'lucide-react';
+import { Package, MapPin, FileText, Truck, CheckCircle } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
 import type { SODetailModalProps } from '../../types/orderFulfillment';
@@ -112,11 +112,17 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               'Normal'
             )}
           </KPI>
+          <KPI label="FG Ready">
+            {progress.readyPct}% · {progress.ready.toLocaleString('en-IN')} units
+          </KPI>
+          <KPI label="Shipped">
+            {progress.shippedPct}% · {progress.shipped.toLocaleString('en-IN')} units
+          </KPI>
         </div>
 
         {/* Ship address */}
         <div className="flex gap-2 p-2.5 pl-3.5 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <span className="text-base" aria-hidden>📍</span>
+          <MapPin className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0 mt-0.5" aria-hidden />
           <div>
             <div className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Deliver To
@@ -131,13 +137,13 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
         {/* Notes alert */}
         {saleOrder.notes && (
           <div className="flex gap-2 p-3 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 text-blue-800 dark:text-blue-200 text-sm">
-            <span aria-hidden>📝</span>
+            <FileText className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
             <div>{saleOrder.notes}</div>
           </div>
         )}
 
         {/* Overall progress bar */}
-        <div className="p-3 px-4 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
+        {/* <div className="p-3 px-4 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Fulfillment Progress
@@ -156,7 +162,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               style={{ width: `${progress.shippedPct}%` }}
             />
           </div>
-          <div className="flex gap-3 mt-1.5 text-[9.5px] text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[9.5px] text-gray-500 dark:text-gray-400">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500/50 dark:bg-emerald-400/50 inline-block" />
               FG Ready
@@ -165,8 +171,13 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 inline-block" />
               Shipped
             </span>
+            {progress.batchesTotal > 0 && (
+              <span className="font-semibold text-gray-600 dark:text-gray-300">
+                Batches: {progress.batchesDonePct}% ({progress.batchesDone}/{progress.batchesTotal}) done
+              </span>
+            )}
           </div>
-        </div>
+        </div> */}
 
         {/* Items with batch splits */}
         {saleOrder.items.map((item, idx) => (
@@ -174,7 +185,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             key={idx}
             item={item}
             soNo={saleOrder.soNo}
-            onPick={() => onAction('pick', saleOrder.soNo)}
+            onAction={onAction}
           />
         ))}
       </div>
@@ -185,11 +196,11 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
 function ItemWithBatches({
   item,
   soNo,
-  onPick,
+  onAction,
 }: {
   item: OrderItem;
   soNo: string;
-  onPick: () => void;
+  onAction: (action: string, soNo: string, split?: BatchSplit) => void;
 }) {
   const readyQty = item.batchSplits.reduce(
     (sum, sp) =>
@@ -273,7 +284,7 @@ function ItemWithBatches({
               </tr>
             ) : (
               item.batchSplits.map((sp, sidx) => (
-                <BatchRow key={sidx} split={sp} soNo={soNo} onPick={onPick} />
+                <BatchRow key={sidx} split={sp} soNo={soNo} onAction={onAction} />
               ))
             )}
           </tbody>
@@ -286,13 +297,16 @@ function ItemWithBatches({
 function BatchRow({
   split,
   soNo,
-  onPick,
+  onAction,
 }: {
   split: BatchSplit;
   soNo: string;
-  onPick: () => void;
+  onAction: (action: string, soNo: string, split?: BatchSplit) => void;
 }) {
   const isFGReady = split.ffStatus === 'fg_ready';
+  const isPicking = split.ffStatus === 'picking';
+  const isInvoiced = split.ffStatus === 'invoiced';
+  const isShipped = split.ffStatus === 'shipped';
   const isPending =
     ['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) || !split.fgQty;
 
@@ -318,8 +332,8 @@ function BatchRow({
       </td>
       <td className="py-2 px-3">
         {split.fgLocation ? (
-          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-500/15 text-teal-700 dark:text-teal-400 border border-teal-500/30">
-            📍 {split.fgLocation}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-500/15 text-teal-700 dark:text-teal-400 border border-teal-500/30">
+            <MapPin className="w-3 h-3" /> {split.fgLocation}
           </span>
         ) : (
           '—'
@@ -339,15 +353,42 @@ function BatchRow({
       <td className="py-2 px-3">
         <StatusBadge status={split.ffStatus} type="ff" size="sm" />
       </td>
-      <td className="py-2 px-3 min-w-[90px]">
+      <td className="py-2 px-3 min-w-[120px]">
         <div className="flex gap-1 flex-wrap">
           {isFGReady && (
             <button
               type="button"
-              onClick={onPick}
+              onClick={() => onAction('pick', soNo, split)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
             >
-              📦 Pick
+              <Package className="w-3 h-3" /> Pick
+            </button>
+          )}
+          {isPicking && (
+            <button
+              type="button"
+              onClick={() => onAction('invoice', soNo, split)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <FileText className="w-3 h-3" /> Invoice
+            </button>
+          )}
+          {isInvoiced && (
+            <button
+              type="button"
+              onClick={() => onAction('ship', soNo, split)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <Truck className="w-3 h-3" /> Ship
+            </button>
+          )}
+          {isShipped && (
+            <button
+              type="button"
+              onClick={() => onAction('track', soNo, split)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-slate-600 hover:bg-slate-700 text-white"
+            >
+              <CheckCircle className="w-3 h-3" /> Track
             </button>
           )}
           {isPending && (

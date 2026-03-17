@@ -149,7 +149,121 @@ export async function putBomOverride(
   }
 }
 
-/** Items Involved — from confirmed BOMs only (backend aggregates RM/PM + warehouse SIH). */
+/** Batch-specific BOM copy (saved when batch plan is saved; each batch gets id e.g. PE-5-B1 and current BOM copy). */
+export interface PlanningBatchRow {
+  id: number;
+  planningExtractedId: number;
+  sequence: number;
+  batchCode: string;
+  sizeKg: number | null;
+  rmLines: unknown[];
+  pmLines: unknown[];
+}
+
+export async function fetchPlanningBatches(planningExtractedId: string): Promise<PlanningBatchRow[]> {
+  try {
+    const res = await api.get<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`);
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createOrUpdatePlanningBatches(
+  planningExtractedId: string,
+  batches: { sizeKg: number }[]
+): Promise<PlanningBatchRow[]> {
+  try {
+    const res = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, {
+      batches: batches.map((b) => ({ sizeKg: b.sizeKg })),
+    });
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchBatchById(planningExtractedId: string, batchId: number): Promise<PlanningBatchRow | null> {
+  try {
+    const res = await api.get<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/${batchId}`);
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Add one batch with BOM from product master (not override). Returns the new batch. */
+export async function addOneBatchFromMaster(planningExtractedId: string): Promise<PlanningBatchRow | null> {
+  try {
+    const res = await api.post<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/add-one`, {});
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateBatch(
+  planningExtractedId: string,
+  batchId: number,
+  payload: { rmLines?: unknown[]; pmLines?: unknown[]; sizeKg?: number }
+): Promise<PlanningBatchRow | null> {
+  try {
+    const res = await api.put<PlanningBatchRow>(
+      `/api/v1/planning-extracted/${planningExtractedId}/batches/${batchId}`,
+      payload
+    );
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** All batches across PIs (for Batches menu). */
+export interface PlanningBatchAllRow extends PlanningBatchRow {
+  sent?: boolean;
+  sentBatchIndices?: number[];
+  soNumber?: string;
+  customerName?: string;
+  productName?: string;
+  productCode?: string;
+  orderQty?: string;
+  totalKg?: string;
+  dueDate?: string;
+  bomStatus?: string;
+}
+
+export async function fetchAllBatches(): Promise<PlanningBatchAllRow[]> {
+  try {
+    const res = await api.get<PlanningBatchAllRow[]>('/api/v1/planning-extracted/batches/all');
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Per-SO sent batch indices (0-based). Used by Production to allow scheduling only for batches sent from Planning. */
+export interface SentBatchSummaryRow {
+  soNumber: string;
+  sentBatchIndices: number[];
+}
+
+export async function fetchSentBatchSummary(): Promise<SentBatchSummaryRow[]> {
+  try {
+    const res = await api.get<SentBatchSummaryRow[]>('/api/v1/planning-extracted/sent-summary');
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Items Involved — from batches released to production (sent); when none sent, from confirmed BOMs. */
 export interface ItemsInvolvedRow {
   type: 'RM' | 'PM';
   raw_material_id: number | null;
@@ -161,6 +275,8 @@ export interface ItemsInvolvedRow {
   planningExtractedIds: number[];
   totalRequired: number;
   unit: string;
+  /** Number of production batches (released) that use this item — consolidated view */
+  batchCount?: number;
   sih: number;
   surplusShortage: number;
   coverage: number;
@@ -170,6 +286,12 @@ export interface ItemsInvolvedRow {
   batchNumber: string | null;
   /** Expiry date (YYYY-MM-DD) from warehouse batch */
   expiryDate: string | null;
+  /** From warehouse_inventory — same as Warehouse -> Inventory */
+  reserved?: number;
+  inTransit?: number;
+  reorderPt?: number;
+  avgMo?: number;
+  status?: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
 }
 
 export async function fetchItemsInvolved(): Promise<ItemsInvolvedRow[]> {

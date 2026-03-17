@@ -16,6 +16,12 @@ export interface MRNLineItemFromApi {
   product_id?: number;
 }
 
+export interface GeneratedMRNLabel {
+  boxIndex: number;
+  qrPayload: string;
+  qrImageDataUrl: string;
+}
+
 export interface MRNRecordFromApi {
   id: string;
   mrnNo: string;
@@ -29,6 +35,17 @@ export interface MRNRecordFromApi {
   source?: string;
   /** true = Inbound from MU (MU→WH); false = Outbound to MU (WH→MU). */
   isInboundFromMu?: boolean;
+  receivedAtMu?: string | null;
+  generatedLabels?: GeneratedMRNLabel[] | null;
+  noOfBoxes?: number | null;
+  unitsPerBox?: number | null;
+  locationPrefix?: string | null;
+  grnBatchMfg?: string | null;
+  expiry?: string | null;
+  mfgBatch?: string | null;
+  muReceiveZone?: string | null;
+  muReceiveRack?: string | null;
+  createdAt?: string | null;
 }
 
 export interface CreateMRNPayload {
@@ -45,10 +62,17 @@ export interface CreateMRNPayload {
   itemType?: 'rm' | 'pm';
 }
 
-export async function fetchMRNList(): Promise<MRNRecordFromApi[]> {
-  const res = await api.get<MRNRecordFromApi[]>('/api/v1/mrn');
+/** Fetch all MRNs, optionally filtered by transferType: 'outbound' (WH→MU) or 'inbound_from_mu' (MU→WH). */
+export async function fetchMRNList(params?: { transferType?: 'outbound' | 'inbound_from_mu' }): Promise<MRNRecordFromApi[]> {
+  const query = params?.transferType ? `?transferType=${params.transferType}` : '';
+  const res = await api.get<MRNRecordFromApi[]>(`/api/v1/mrn${query}`);
   const list = (res as any)?.data ?? res;
   return Array.isArray(list) ? list : [];
+}
+
+export async function fetchMRNById(id: string): Promise<MRNRecordFromApi> {
+  const res = await api.get<MRNRecordFromApi>(`/api/v1/mrn/${id}`);
+  return (res as any)?.data ?? res;
 }
 
 export async function createMRN(payload: CreateMRNPayload): Promise<MRNRecordFromApi> {
@@ -75,8 +99,59 @@ export interface UpdateMRNPayload {
   lineItems?: MRNLineItemFromApi[];
   notes?: string;
   isInboundFromMu?: boolean;
+  receivedAtMu?: string | null;
+  generatedLabels?: GeneratedMRNLabel[] | null;
+  noOfBoxes?: number | null;
+  unitsPerBox?: number | null;
+  locationPrefix?: string | null;
+  grnBatchMfg?: string | null;
+  expiry?: string | null;
+  mfgBatch?: string | null;
+  muReceiveZone?: string | null;
+  muReceiveRack?: string | null;
+}
+
+export interface GenerateMRNLabelsPayload {
+  noOfBoxes?: number;
+  unitsPerBox?: number;
+  locationPrefix?: string;
+  grnBatchMfg?: string;
+  expiry?: string;
+  mfgBatch?: string;
+  productName?: string;
+  itemCode?: string;
 }
 
 export async function updateMRN(id: string, payload: UpdateMRNPayload): Promise<MRNRecordFromApi> {
   return api.put<MRNRecordFromApi>(`/api/v1/mrn/${id}`, payload);
+}
+
+export async function generateMRNLabels(
+  id: string,
+  payload?: GenerateMRNLabelsPayload
+): Promise<{ labels: GeneratedMRNLabel[] }> {
+  const res = await api.post<{ labels: GeneratedMRNLabel[] }>(`/api/v1/mrn/${id}/generate-labels`, payload ?? {});
+  return (res as any)?.data ?? res;
+}
+
+export interface MRNLocationHistoryEntry {
+  id: number;
+  warehouseInventoryId: number;
+  itemType: string;
+  rawMaterialId?: number | null;
+  packMaterialId?: number | null;
+  productId?: number | null;
+  fromZone?: string | null;
+  fromRack?: string | null;
+  toZone?: string | null;
+  toRack?: string | null;
+  qtyDelta?: number | null;
+  actionType?: string | null;
+  movedAt: string;
+}
+
+export async function fetchMRNLocationHistory(id: string): Promise<MRNLocationHistoryEntry[]> {
+  const res = await api.get<{ history: MRNLocationHistoryEntry[] }>(`/api/v1/mrn/${id}/location-history`);
+  const data = (res as any)?.data ?? res;
+  return Array.isArray(data?.history) ? data.history : [];
 }

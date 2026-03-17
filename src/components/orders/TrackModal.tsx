@@ -1,6 +1,6 @@
 /**
- * TrackModal Component  
- * Per-split shipment tracking with 7-step stepper timeline — bright theme
+ * TrackModal Component
+ * Per-split shipment tracking with stepper timeline. Mark Delivered per split or Mark All Delivered.
  */
 
 import React, { useState } from 'react';
@@ -14,46 +14,80 @@ import {
   FileText,
   Box,
   CheckCircle,
-  Circle,
-  User,
-  Calendar,
-  StickyNote,
 } from 'lucide-react';
-import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedButton as Button } from '../ui/UnifiedComponents';
-import { StatusBadge } from './StatusBadge';
 import type { TrackModalProps } from '../../types/orderFulfillment';
 import { formatDate, getTodayISO } from '../../utils/orderFulfillmentUtils';
 
-const TRACKING_STEPS = [
+const STEPS = [
   { key: 'order_placed', label: 'Order Placed', icon: ClipboardList },
-  { key: 'fg_ready', label: 'FG Ready', icon: Warehouse },
-  { key: 'picking', label: 'Picked', icon: Box },
-  { key: 'invoiced', label: 'Invoiced', icon: FileText },
-  { key: 'shipped', label: 'Shipped', icon: Truck },
+  { key: 'fg_stored', label: 'FG Stored', icon: Warehouse },
+  { key: 'picked', label: 'Picked', icon: Box },
+  { key: 'invoiced', label: 'Invoice', icon: FileText },
+  { key: 'dispatched', label: 'Dispatched', icon: Truck },
+  { key: 'out_for_delivery', label: 'Out for Delivery', icon: MapPin },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle },
 ];
 
-const getStepIndex = (ffStatus: string): number => {
-  const statusMap: { [key: string]: number } = {
-    'fg_pending': 0, 'wip': 0, 'bulk_qc': 0,
-    'fg_ready': 1,
-    'picking': 2,
-    'invoiced': 3,
-    'shipped': 4,
-    'delivered': 5,
-    'closed': 5,
+function getStepIndex(ffStatus: string): number {
+  const map: Record<string, number> = {
+    fg_pending: 0, wip: 0, bulk_qc: 0,
+    fg_ready: 1,
+    picking: 2,
+    invoiced: 3,
+    shipped: 4,
+    delivered: 6,
+    closed: 6,
   };
-  return statusMap[ffStatus] ?? 0;
-};
+  return map[ffStatus] ?? 0;
+}
 
-// Stepper component removed - simplified tracking view
-// const Stepper: React.FC<...> = ...
+function Stepper({ split }: { split: { ffStatus: string; fgLocation?: string | null; pickedQty?: number; invoiceNo?: string | null; dispatchDate?: string | null; awbNo?: string | null; courier?: string | null; etaDate?: string | null; deliveryDate?: string | null } }) {
+  const baseStep = getStepIndex(split.ffStatus);
+  const activeStep = split.ffStatus === 'shipped' ? 5 : baseStep;
+
+  return (
+    <div className="flex flex-col gap-0">
+      {STEPS.map((step, idx) => {
+        const done = idx < activeStep;
+        const active = idx === activeStep;
+        const Icon = step.icon;
+        return (
+          <div key={step.key} className="flex gap-3 items-start">
+            <div
+              className={`
+                w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold
+                ${done ? 'bg-emerald-500 text-white' : active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}
+              `}
+            >
+              {done && <Check className="w-3.5 h-3.5" />}
+              {active && (idx === 5 ? <MapPin className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />)}
+              {!done && !active && idx === 6 && <span className="text-[10px]">?</span>}
+            </div>
+            <div className="pb-4">
+              <div className={`text-xs font-bold ${done ? 'text-emerald-600' : active ? 'text-blue-600' : 'text-gray-400'}`}>
+                {step.key === 'fg_stored' && split.fgLocation ? `FG Stored — ${split.fgLocation}` : step.label}
+              </div>
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                {step.key === 'picked' && (split.pickedQty != null) && split.pickedQty > 0 && `${split.pickedQty.toLocaleString('en-IN')} units`}
+                {step.key === 'invoiced' && split.invoiceNo && `${split.invoiceNo} · ${split.dispatchDate ? formatDate(split.dispatchDate) : ''}`}
+                {step.key === 'dispatched' && (split.courier || split.awbNo) && `${split.courier || ''} ${split.awbNo ? `AWB: ${split.awbNo}` : ''} ${split.dispatchDate ? formatDate(split.dispatchDate) : ''}`}
+                {step.key === 'out_for_delivery' && split.etaDate && `ETA: ${formatDate(split.etaDate)}`}
+                {step.key === 'delivered' && split.deliveryDate && formatDate(split.deliveryDate)}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export const TrackModal: React.FC<TrackModalProps> = ({
   isOpen,
   onClose,
   saleOrder,
+  selectedBprNos,
   onConfirmDelivery,
 }) => {
   const [deliveryDate, setDeliveryDate] = useState(getTodayISO());
@@ -62,22 +96,38 @@ export const TrackModal: React.FC<TrackModalProps> = ({
 
   if (!saleOrder) return null;
 
-  const allSplits = saleOrder.items.flatMap((item) =>
+  const allSplitsRaw = saleOrder.items.flatMap((item) =>
     item.batchSplits.map((sp) => ({
       ...sp,
       productName: item.productName,
       pack: item.pack,
     }))
   );
+  const allSplits =
+    selectedBprNos?.length
+      ? allSplitsRaw.filter((sp) => selectedBprNos.includes(sp.bprNo))
+      : allSplitsRaw;
 
-  const hasShipped = allSplits.some((sp) => ['shipped', 'delivered'].includes(sp.ffStatus));
+  const shippedSplits = allSplits.filter((sp) => sp.ffStatus === 'shipped');
   const allDelivered = allSplits.length > 0 && allSplits.every((sp) => ['delivered', 'closed'].includes(sp.ffStatus));
+  const hasShipped = shippedSplits.length > 0;
 
-  const handleConfirmDelivery = () => {
+  const handleMarkAllDelivered = () => {
     onConfirmDelivery({
       deliveryDate,
       receivedBy,
       remarks: deliveryRemarks,
+      ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
+    });
+    handleClose();
+  };
+
+  const handleMarkSplitDelivered = (bprNo: string) => {
+    onConfirmDelivery({
+      deliveryDate: getTodayISO(),
+      receivedBy,
+      remarks: deliveryRemarks,
+      bprNos: [bprNo],
     });
     handleClose();
   };
@@ -93,92 +143,65 @@ export const TrackModal: React.FC<TrackModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title={`Track Shipment for SO: ${saleOrder.soNo}`}
+      title={`Tracking — ${saleOrder.soNo}`}
       size="xl"
     >
       <div className="p-6">
         {allDelivered ? (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex gap-3">
-            <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <CheckCircle className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
             <p className="text-sm text-green-700">This order has been fully delivered.</p>
           </div>
-        ) : hasShipped ? (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex gap-3">
-            <Truck className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-blue-700">
-              The order is on its way. Confirm delivery once it reaches the
-              destination.
-            </p>
-          </div>
-        ) : (
+        ) : !hasShipped ? (
           <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex gap-3">
-            <Package className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <Package className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
             <p className="text-sm text-yellow-700">
-              This order has not been shipped yet. Complete the previous steps
-              to proceed.
+              This order has not been shipped yet. Complete dispatch first.
             </p>
           </div>
-        )}
+        ) : null}
 
-        <div className="space-y-8">
-          {allSplits.map((split, idx) => (
-            <div key={idx} className="p-4 border rounded-lg bg-gray-50">
-              <div className="flex justify-between items-start mb-4">
+        <div className="space-y-6">
+          {allSplits.filter((s) => ['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(s.ffStatus)).map((split, idx) => (
+            <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="font-bold text-gray-800">
-                    {split.productName} ({split.pack})
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    BPR No: <span className="font-mono text-purple-600">{split.bprNo}</span>
-                  </p>
+                  <p className="font-bold text-gray-800 text-sm">{split.productName}</p>
+                  <p className="text-xs text-gray-500">{split.pack} · {split.bprNo} · {(split.pickedQty ?? split.fgQty ?? 0).toLocaleString('en-IN')} units</p>
                 </div>
-                <StatusBadge status={split.ffStatus} type="ff" />
+                {(split.awbNo || split.courier) && (
+                  <div className="text-right">
+                    <p className="font-mono text-xs font-bold text-gray-700">AWB: {split.awbNo || '—'}</p>
+                    <p className="text-[10px] text-gray-500">{split.courier}</p>
+                  </div>
+                )}
               </div>
+              <div className="p-4">
+                <Stepper split={split} />
+              </div>
+              {split.ffStatus === 'shipped' && (
+                <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                  <span className="text-[10px] text-gray-500">
+                    ETA: <b className="text-gray-700">{split.etaDate ? formatDate(split.etaDate) : '—'}</b>
+                  </span>
+                  <Button size="sm" variant="secondary" onClick={() => handleMarkSplitDelivered(split.bprNo)}>
+                    <Check className="w-3.5 h-3.5 mr-1" />
+                    Mark Delivered
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
-
-        {hasShipped && !allDelivered && (
-          <div className="mt-8 pt-6 border-t">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Confirm Delivery
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <Input
-                  label="Received By"
-                  value={receivedBy}
-                  onChange={(e) => setReceivedBy(e.target.value)}
-                  placeholder="Enter recipient's name"
-                />
-                <Input
-                  label="Delivery Date"
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                />
-              </div>
-              <Input
-                label="Delivery Remarks"
-                value={deliveryRemarks}
-                onChange={(e) => setDeliveryRemarks(e.target.value)}
-                placeholder="Optional notes (e.g., condition of goods)"
-              />
-            </div>
-          </div>
-        )}
       </div>
       <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
         <Button variant="ghost" onClick={handleClose}>
           Close
         </Button>
         {hasShipped && !allDelivered && (
-          <Button
-            onClick={handleConfirmDelivery}
-            disabled={!receivedBy.trim()}
-          >
-            <Check className="mr-2 h-4 w-4" />
-            Mark as Delivered
+          <Button onClick={handleMarkAllDelivered}>
+            <Check className="w-4 h-4 mr-2" />
+            Mark All Delivered
           </Button>
         )}
       </div>

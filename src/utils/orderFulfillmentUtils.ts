@@ -90,15 +90,19 @@ export const calculateSOProgress = (saleOrder: SaleOrder): SOProgress => {
   let total = 0;
   let ready = 0;
   let shipped = 0;
+  let batchesTotal = 0;
+  let batchesDone = 0;
 
   saleOrder.items.forEach(item => {
     total += item.orderedQty;
     item.batchSplits.forEach(split => {
-      // Count as ready if in any fulfillment stage
-      if (['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(split.ffStatus)) {
+      batchesTotal += 1;
+      if (split.ffStatus === 'closed') batchesDone += 1;
+      // FG Ready = in warehouse, not yet shipped (exclude shipped/delivered/closed so we don't double-count)
+      if (['fg_ready', 'picking', 'invoiced'].includes(split.ffStatus)) {
         ready += split.fgQty || 0;
       }
-      // Count as shipped if dispatched
+      // Shipped = dispatched or delivered/closed
       if (['shipped', 'delivered', 'closed'].includes(split.ffStatus)) {
         shipped += split.fgQty || 0;
       }
@@ -107,8 +111,9 @@ export const calculateSOProgress = (saleOrder: SaleOrder): SOProgress => {
 
   const readyPct = total > 0 ? Math.min(100, Math.round((ready / total) * 100)) : 0;
   const shippedPct = total > 0 ? Math.min(100, Math.round((shipped / total) * 100)) : 0;
+  const batchesDonePct = batchesTotal > 0 ? Math.min(100, Math.round((batchesDone / batchesTotal) * 100)) : 0;
 
-  return { total, ready, shipped, readyPct, shippedPct };
+  return { total, ready, shipped, readyPct, shippedPct, batchesDone, batchesTotal, batchesDonePct };
 };
 
 export const calculateOrderValue = (saleOrder: SaleOrder): number => {

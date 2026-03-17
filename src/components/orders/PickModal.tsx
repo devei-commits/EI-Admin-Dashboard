@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Package, MapPin, Check, User, Calendar, File, StickyNote } from 'lucide-react';
+import { Package, MapPin, Check, User, Calendar, File, StickyNote, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { PickModalProps } from '../../types/orderFulfillment';
 import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
@@ -13,6 +13,7 @@ export const PickModal: React.FC<PickModalProps> = ({
   isOpen,
   onClose,
   saleOrder,
+  selectedBprNos,
   onConfirmPick,
 }) => {
   const [pickerName, setPickerName] = useState('');
@@ -23,12 +24,16 @@ export const PickModal: React.FC<PickModalProps> = ({
   const [remarks, setRemarks] = useState('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  const pickableSplits =
+  const allPickable =
     saleOrder?.items.flatMap((item) =>
       item.batchSplits
         .filter((sp) => sp.ffStatus === 'fg_ready')
         .map((sp) => ({ item, split: sp }))
     ) ?? [];
+  const pickableSplits =
+    selectedBprNos?.length
+      ? allPickable.filter(({ split }) => selectedBprNos.includes(split.bprNo))
+      : allPickable;
 
   useEffect(() => {
     if (saleOrder && pickableSplits.length > 0) {
@@ -38,9 +43,11 @@ export const PickModal: React.FC<PickModalProps> = ({
       });
       setQuantities(initialQty);
     }
-  }, [saleOrder?.soNo, isOpen]);
+  }, [saleOrder?.soNo, isOpen, selectedBprNos?.join(',')]);
 
-  const handleConfirm = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleConfirm = async () => {
     if (pickableSplits.length === 0) return;
 
     const pickData = {
@@ -54,8 +61,15 @@ export const PickModal: React.FC<PickModalProps> = ({
       remarks,
     };
 
-    onConfirmPick(pickData);
-    handleClose();
+    setSubmitting(true);
+    try {
+      await Promise.resolve(onConfirmPick(pickData));
+      handleClose();
+    } catch {
+      // Error already logged by parent; keep modal open
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -167,10 +181,14 @@ export const PickModal: React.FC<PickModalProps> = ({
                         {split.bprNo}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5 bg-teal-100 text-teal-800 px-2 py-1 rounded-full text-xs font-medium">
-                          <MapPin size={12} />
-                          {split.fgLocation}
-                        </span>
+                        {split.fgLocation ? (
+                          <span className="inline-flex items-center gap-1.5 bg-teal-100 text-teal-800 px-2 py-1 rounded-full text-xs font-medium">
+                            <MapPin size={12} />
+                            {split.fgLocation}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-green-600">
                         {formatNumber(split.fgQty)}
@@ -209,10 +227,19 @@ export const PickModal: React.FC<PickModalProps> = ({
         </Button>
         <Button
           onClick={handleConfirm}
-          disabled={pickableSplits.length === 0 || !pickerName}
+          disabled={pickableSplits.length === 0 || !pickerName || submitting}
         >
-          <Check className="mr-2 h-4 w-4" />
-          Confirm Pick & Generate List
+          {submitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Updating…
+            </>
+          ) : (
+            <>
+              <Check className="mr-2 h-4 w-4" />
+              Confirm Pick & Generate List
+            </>
+          )}
         </Button>
       </div>
     </Modal>

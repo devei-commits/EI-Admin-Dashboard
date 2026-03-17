@@ -46,6 +46,7 @@ interface ClientFormData {
   setupCategory: string;
   setupPrefix: string;
   entityCode: string;
+  zohoId: string;
   legalName: string;
   tradeName: string;
   brandName: string;
@@ -135,6 +136,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     setupCategory: '',
     setupPrefix: 'CLI',
     entityCode: '',
+    zohoId: '',
     legalName: '',
     tradeName: '',
     brandName: '',
@@ -215,6 +217,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         paymentTerms: data.paymentTerms || existingClient.paymentTerms,
         notes: data.notes || existingClient.notes,
         entityCode: String(entityCode || ''),
+        zohoId: data.zohoId ?? (existingClient as { zohoId?: string }).zohoId ?? '',
       };
 
       setFormData(prev => ({
@@ -398,6 +401,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         category: payload.category,
         paymentTerms: payload.paymentTerms,
         notes: payload.notes,
+        zohoId: formData.zohoId || undefined,
         data: payload.data as Record<string, unknown>,
       });
       if (res.success) {
@@ -424,6 +428,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     const res = await apiCreateVendorClient({
       type: 'client',
       entityCode,
+      zohoId: formData.zohoId || undefined,
       name: payload.name,
       email: payload.email,
       phone: payload.phone,
@@ -439,7 +444,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     if (res.success) {
       addToast('success', 'Client created successfully!');
       setFormData({
-        setupType: 'CLIENT', setupCategory: '', setupPrefix: 'CLI', entityCode: '',
+        setupType: 'CLIENT', setupCategory: '', setupPrefix: 'CLI', entityCode: '', zohoId: '',
         legalName: '', tradeName: '', brandName: '', primaryEmail: '', primaryPhone: '',
         billingAddress: '', shippingAddress: '', state: '', country: 'India',
         website: '', segment: '', industry: '', businessType: '', notes: '',
@@ -555,6 +560,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 <div>
                   <label className={labelClass}>Display / Trade Name</label>
                   <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={inputClass} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Zoho ID</label>
+                  <input type="text" name="zohoId" value={formData.zohoId} onChange={handleInputChange} placeholder="Zoho contact/org id (for sync)" className={inputClass} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

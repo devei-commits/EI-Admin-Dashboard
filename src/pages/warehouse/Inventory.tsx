@@ -1,6 +1,18 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, MapPin, Grid3x3, X } from 'lucide-react';
-import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
+import {
+  fetchWarehouseInventory,
+  fetchAllWarehouseLocationHistory,
+  fetchRackLocations,
+  fetchUsageStats,
+} from '../../services/warehouseInventory.service';
+import type {
+  WarehouseLocationHistoryEntry,
+  RackLocationEntry,
+  InTransitBreakdownItem,
+  UsageStatsRow,
+} from '../../services/warehouseInventory.service';
+import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 
 export interface InventoryItem {
   id: string;
@@ -17,6 +29,10 @@ export interface InventoryItem {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  /** In-transit lines from pending GRNs: vendor, PO id, expected date */
+  inTransitBreakdown?: InTransitBreakdownItem[];
+  /** Total quantity from purchase orders (vendor) */
+  poQuantity?: number;
   reorderPt: number;
   avgMo: number;
   status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
@@ -810,6 +826,59 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   );
 };
 
+/** Cell that shows stock value; hover or click shows where in warehouse (location/racks) */
+function StockLocationCell({
+  item,
+  type,
+  value,
+  className,
+  onShowLocations,
+  onHoverLeave,
+}: {
+  item: InventoryItem;
+  type: 'wh' | 'ml1' | 'ml2';
+  value: string;
+  className: string;
+  onShowLocations: (item: InventoryItem, type: 'wh' | 'ml1' | 'ml2') => void;
+  onHoverLeave?: () => void;
+}) {
+  const canShow = item.warehouseInventoryId != null;
+  const hoverOpenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = () => {
+    if (!canShow) return;
+    hoverOpenRef.current = setTimeout(() => onShowLocations(item, type), 400);
+  };
+  const handleMouseLeave = () => {
+    if (hoverOpenRef.current) {
+      clearTimeout(hoverOpenRef.current);
+      hoverOpenRef.current = null;
+    }
+    onHoverLeave?.();
+  };
+
+  return (
+    <button
+      type="button"
+      className={className}
+      title={canShow ? 'Hover or click to see location / racks' : undefined}
+      disabled={!canShow}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (hoverOpenRef.current) {
+          clearTimeout(hoverOpenRef.current);
+          hoverOpenRef.current = null;
+        }
+        if (canShow) onShowLocations(item, type);
+      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <span className="font-semibold text-sm">{value}</span>
+    </button>
+  );
+}
+
 /** Map API row to InventoryItem for table/sidebar */
 function rowToInventoryItem(row: {
   id: string;
@@ -828,6 +897,8 @@ function rowToInventoryItem(row: {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  inTransitBreakdown?: InTransitBreakdownItem[];
+  poQuantity?: number;
   reorderPt: number;
   avgMo: number;
   status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
@@ -848,6 +919,8 @@ function rowToInventoryItem(row: {
     stockInHand: row.stockInHand,
     reserved: row.reserved,
     inTransit: row.inTransit,
+    inTransitBreakdown: row.inTransitBreakdown,
+    poQuantity: row.poQuantity,
     reorderPt: row.reorderPt,
     avgMo: row.avgMo,
     status: row.status,
@@ -860,6 +933,7 @@ function rowToInventoryItem(row: {
 const WarehouseInventory = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
+  const [viewMode, setViewMode] = useState<'current' | 'history' | 'usage'>('current');
   const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
@@ -868,10 +942,55 @@ const WarehouseInventory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [isAdjustMode, setIsAdjustMode] = useState(false);
-  const [savingAdjust, setSavingAdjust] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [racks, setRacks] = useState<Rack[]>([]);
+  const [historyRows, setHistoryRows] = useState<WarehouseLocationHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [usageRows, setUsageRows] = useState<UsageStatsRow[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [inTransitPopoverItem, setInTransitPopoverItem] = useState<InventoryItem | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [locationPopover, setLocationPopover] = useState<{
+    item: InventoryItem;
+    type: 'wh' | 'ml1' | 'ml2';
+  } | null>(null);
+  const [rackLocations, setRackLocations] = useState<RackLocationEntry[]>([]);
+  const [rackLocationsLoading, setRackLocationsLoading] = useState(false);
+  const hoverCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleLocationPopoverClose = () => {
+    if (hoverCloseTimeoutRef.current) clearTimeout(hoverCloseTimeoutRef.current);
+    hoverCloseTimeoutRef.current = setTimeout(() => setLocationPopover(null), 200);
+  };
+  const cancelLocationPopoverClose = () => {
+    if (hoverCloseTimeoutRef.current) {
+      clearTimeout(hoverCloseTimeoutRef.current);
+      hoverCloseTimeoutRef.current = null;
+    }
+  };
+
+  // Fetch rack locations when user opens WH/ML1/ML2 location popover
+  useEffect(() => {
+    if (!locationPopover || locationPopover.item.warehouseInventoryId == null) {
+      setRackLocations([]);
+      setRackLocationsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRackLocationsLoading(true);
+    setRackLocations([]);
+    fetchRackLocations(locationPopover.item.warehouseInventoryId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) setRackLocations(res.data.locations || []);
+      })
+      .finally(() => {
+        if (!cancelled) setRackLocationsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locationPopover?.item?.id, locationPopover?.item?.warehouseInventoryId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -904,76 +1023,61 @@ const WarehouseInventory = () => {
     };
   }, []);
 
-  const updateInventoryItem = (itemId: string, field: keyof InventoryItem, value: number) => {
-    setInventoryData(prev =>
-      prev.map(item => {
-        if (item.id !== itemId) return item;
+  // Load consolidated movement history when the History tab is first opened
+  useEffect(() => {
+    if (viewMode !== 'history') return;
+    if (historyRows.length > 0) return;
 
-        const updatedItem = { ...item, [field]: value } as InventoryItem;
-        if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
-          updatedItem.stockInHand = updatedItem.whStock + updatedItem.ml1Stock + updatedItem.ml2Stock;
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    fetchAllWarehouseLocationHistory()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setHistoryRows(res.data.history || []);
+        } else {
+          setHistoryError(res.error || 'Failed to load inventory history');
         }
-        return updatedItem;
       })
-    );
-
-    setSelectedItem(prev => {
-      if (!prev || prev.id !== itemId) return prev;
-      const updated = { ...prev, [field]: value } as InventoryItem;
-      if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
-        updated.stockInHand = updated.whStock + updated.ml1Stock + updated.ml2Stock;
-      }
-      return updated;
-    });
-  };
-
-  const handleDoneAdjustStock = async () => {
-    const item = selectedItem;
-    if (!item) {
-      setIsAdjustMode(false);
-      return;
-    }
-    if (item.warehouseInventoryId != null) {
-      setSavingAdjust(true);
-      const res = await updateWarehouseStock(item.warehouseInventoryId, {
-        wh_stock: item.whStock,
-        ml1_stock: item.ml1Stock,
-        ml2_stock: item.ml2Stock,
-        reserved: item.reserved,
+      .catch((err) => {
+        if (!cancelled) {
+          setHistoryError(err?.message || 'Failed to load inventory history');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
       });
-      setSavingAdjust(false);
-      if (res.success && res.data) {
-        const d = res.data;
-        const stockInHand = (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
-        setInventoryData(prev =>
-          prev.map((i) =>
-            i.id === item.id
-              ? {
-                  ...i,
-                  whStock: Number(d.wh_stock) ?? i.whStock,
-                  ml1Stock: Number(d.ml1_stock) ?? i.ml1Stock,
-                  ml2Stock: Number(d.ml2_stock) ?? i.ml2Stock,
-                  stockInHand,
-                  reserved: Number(d.reserved) ?? i.reserved,
-                }
-              : i
-          )
-        );
-        setSelectedItem((prev) =>
-          prev?.id === item.id
-            ? {
-                ...prev,
-                whStock: Number(d.wh_stock) ?? prev.whStock,
-                ml1Stock: Number(d.ml1_stock) ?? prev.ml1Stock,
-                ml2Stock: Number(d.ml2_stock) ?? prev.ml2Stock,
-                stockInHand,
-                reserved: Number(d.reserved) ?? prev.reserved,
-              }
-            : prev
-        );
-      }
-    }
-    setIsAdjustMode(false);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, historyRows.length]);
+
+  // Load usage stats when the Usage tab is first opened
+  useEffect(() => {
+    if (viewMode !== 'usage') return;
+
+    let cancelled = false;
+    setUsageLoading(true);
+    fetchUsageStats()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) setUsageRows(res.data.rows || []);
+        else setUsageRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [viewMode]);
+
+  const handleItemUpdatedFromSidebar = (updated: InventoryItem) => {
+    setInventoryData(prev =>
+      prev.map(item => (item.id === updated.id ? { ...item, ...updated } : item))
+    );
+    setSelectedItem(updated);
   };
 
   const addLocation = (locationData: Omit<Location, 'id' | 'createdAt'>) => {
@@ -1053,6 +1157,40 @@ const WarehouseInventory = () => {
     return { all, rm, pm, fgpr, low };
   }, [inventoryData]);
 
+  const filteredHistoryRows = useMemo(() => {
+    let rows = historyRows;
+
+    // Type filter (RM / PM / FG/PR)
+    if (activeFilter === 'RM') {
+      rows = rows.filter((row) => row.itemType === 'RM');
+    } else if (activeFilter === 'PM') {
+      rows = rows.filter((row) => row.itemType === 'PM');
+    } else if (activeFilter === 'FG/PR') {
+      rows = rows.filter((row) => row.itemType === 'FG/PR');
+    }
+
+    // Text search across code, name, subtitle and locations
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      rows = rows.filter((row) => {
+        const fields = [
+          row.code || '',
+          row.name || '',
+          row.subtitle || '',
+          row.fromZone || '',
+          row.fromRack || '',
+          row.toZone || '',
+          row.toRack || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return fields.includes(q);
+      });
+    }
+
+    return rows;
+  }, [historyRows, activeFilter, searchQuery]);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'In Stock':
@@ -1124,86 +1262,303 @@ const WarehouseInventory = () => {
       {/* Filters and Actions */}
       <div className="sticky top-0 bg-white border-b border-gray-200 z-10">
         <div className="p-6">
-          {/* Filter Tabs */}
+          {/* View mode + filter tabs */}
           <div className="mb-4">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Inventory</h1>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              {[
-                { key: 'All', label: `All (${counts.all})` },
-                { key: 'RM', label: `RM (${counts.rm})` },
-                { key: 'PM', label: `PM (${counts.pm})` },
-                { key: 'FG/PR', label: `FG/PR (${counts.fgpr})` },
-                { key: 'Low', label: `△ Low (${counts.low})` },
-              ].map(filter => (
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h1 className="text-2xl font-bold text-gray-900">
+                {viewMode === 'current' ? 'Inventory' : viewMode === 'history' ? 'Inventory History' : 'Usage'}
+              </h1>
+              <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
                 <button
-                  key={filter.key}
-                  onClick={() => setActiveFilter(filter.key as any)}
-                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                    activeFilter === filter.key
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  type="button"
+                  onClick={() => setViewMode('current')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
+                    viewMode === 'current'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  {filter.label}
+                  Main Inventory
                 </button>
-              ))}
-              {/* Item groups filter */}
-              <label className="sr-only" htmlFor="item-group-filter">Filter by item group</label>
-              <select
-                id="item-group-filter"
-                value={itemGroupFilter}
-                onChange={(e) => setItemGroupFilter(e.target.value)}
-                className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                <option value="">All item groups</option>
-                {itemGroups.map((g) => (
-                  <option key={g.id} value={g.code}>
-                    {g.name} ({g.code})
-                  </option>
-                ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('history')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
+                    viewMode === 'history'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Inventory History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('usage')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
+                    viewMode === 'usage'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Usage
+                </button>
+              </div>
             </div>
+
+            {viewMode === 'current' && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {[
+                  { key: 'All', label: `All (${counts.all})` },
+                  { key: 'RM', label: `RM (${counts.rm})` },
+                  { key: 'PM', label: `PM (${counts.pm})` },
+                  { key: 'FG/PR', label: `FG/PR (${counts.fgpr})` },
+                  { key: 'Low', label: `△ Low (${counts.low})` },
+                ].map(filter => (
+                  <button
+                    key={filter.key}
+                    onClick={() => setActiveFilter(filter.key as any)}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      activeFilter === filter.key
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+                {/* Item groups filter */}
+                <label className="sr-only" htmlFor="item-group-filter">Filter by item group</label>
+                <select
+                  id="item-group-filter"
+                  value={itemGroupFilter}
+                  onChange={(e) => setItemGroupFilter(e.target.value)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="">All item groups</option>
+                  {itemGroups.map((g) => (
+                    <option key={g.id} value={g.code}>
+                      {g.name} ({g.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {viewMode === 'history' && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {[
+                  { key: 'All', label: 'All' },
+                  { key: 'RM', label: 'RM only' },
+                  { key: 'PM', label: 'PM only' },
+                  { key: 'FG/PR', label: 'FG/PR only' },
+                ].map(filter => (
+                  <button
+                    key={filter.key}
+                    onClick={() => setActiveFilter(filter.key as any)}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      activeFilter === filter.key
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Search and Action Buttons */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search item, code, category..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
+          {viewMode === 'current' && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search item, code, category..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              </div>
+              <button 
+                onClick={() => setIsLocationModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+              >
+                <MapPin className="w-4 h-4" />
+                Location
+              </button>
+              <button 
+                onClick={() => setIsRackModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+              >
+                <Grid3x3 className="w-4 h-4" />
+                Rack
+              </button>
             </div>
-            <button 
-              onClick={() => setIsLocationModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
-            >
-              <MapPin className="w-4 h-4" />
-              Location
-            </button>
-            <button 
-              onClick={() => setIsRackModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
-            >
-              <Grid3x3 className="w-4 h-4" />
-              Rack
-            </button>
-          </div>
+          )}
+
+          {viewMode === 'history' && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search history by item, code, zone, rack..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Inventory Table */}
+      {/* Inventory Table / History view */}
       <div className="p-6">
-        {error && (
+        {error && viewMode === 'current' && (
           <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
             {error}
           </div>
         )}
-        {loading ? (
+        {loading && viewMode === 'current' ? (
           <div className="py-12 text-center text-gray-500">Loading inventory…</div>
+        ) : viewMode === 'history' ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Inventory History</h2>
+            {historyError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                {historyError}
+              </div>
+            )}
+            {historyLoading ? (
+              <div className="py-12 text-center text-gray-500">Loading internal movement history…</div>
+            ) : filteredHistoryRows.length === 0 ? (
+              <div className="py-12 text-center text-gray-500 text-sm">
+                No internal movements recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Item
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        From (Zone / Rack)
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        To (Zone / Rack)
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Action
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Reserved / Batch
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Qty Δ
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Moved At
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredHistoryRows.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {row.code || '—'}{row.name ? ` — ${row.name}` : ''}
+                          </div>
+                          {row.subtitle && (
+                            <div className="text-xs text-gray-500">{row.subtitle}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {getTypeBadge(row.itemType)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          <div>{row.fromZone || '—'}</div>
+                          <div className="text-xs text-gray-500">{row.fromRack || '—'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          <div>{row.toZone || '—'}</div>
+                          <div className="text-xs text-gray-500">{row.toRack || '—'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
+                            ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
+                            : (row.actionType || 'Move')}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {(row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') && (
+                            <span className="text-amber-700 font-medium">
+                              +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'} {row.batchNo ? `· ${row.batchNo}` : ''}
+                            </span>
+                          )}
+                          {row.actionType !== 'BMR_RESERVED' && row.actionType !== 'BPR_RESERVED' && '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {row.qtyDelta != null ? row.qtyDelta : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {new Date(row.movedAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : viewMode === 'usage' ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Usage (consumption) — avg per period</h2>
+            {usageLoading ? (
+              <div className="py-12 text-center text-gray-500">Loading usage stats…</div>
+            ) : usageRows.length === 0 ? (
+              <div className="py-12 text-center text-gray-500 text-sm">No usage data yet (from movement history).</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Code</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Day</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Week</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Month</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Quarter</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Year</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total (all time)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {usageRows.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-4 py-3 font-medium text-gray-900">{row.code || row.id}</td>
+                        <td className="px-4 py-3 text-gray-700">{row.name || '—'}</td>
+                        <td className="px-4 py-3">{row.type}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgDay).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgWeek).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgMonth).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgQuarter).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgYear).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{Number(row.totalAllTime).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         ) : (
         <>
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -1224,9 +1579,6 @@ const WarehouseInventory = () => {
                     Item groups
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Zone / Rack
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     WH Stock
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -1243,6 +1595,9 @@ const WarehouseInventory = () => {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     In Transit
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    PO Qty
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Reorder PT
@@ -1275,30 +1630,35 @@ const WarehouseInventory = () => {
                         {item.itemGroupNames?.length ? item.itemGroupNames.join(', ') : '—'}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{item.zone}</div>
-                          <div className="text-xs text-gray-500">{item.rack}</div>
-                        </div>
-                      </div>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <StockLocationCell
+                        item={item}
+                        type="wh"
+                        value={`${item.whStock} ${item.whUnit}`}
+                        className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer hover:ring-2 hover:ring-teal-300"
+                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                        onHoverLeave={scheduleLocationPopoverClose}
+                      />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200">
-                        <span className="font-bold text-sm">{item.whStock}</span>
-                        <span className="text-xs ml-1 font-medium">{item.whUnit}</span>
-                      </div>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <StockLocationCell
+                        item={item}
+                        type="ml1"
+                        value={String(item.ml1Stock)}
+                        className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer hover:ring-2 hover:ring-blue-300"
+                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                        onHoverLeave={scheduleLocationPopoverClose}
+                      />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
-                        <span className="font-semibold text-sm">{item.ml1Stock}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
-                        <span className="font-semibold text-sm">{item.ml2Stock}</span>
-                      </div>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <StockLocationCell
+                        item={item}
+                        type="ml2"
+                        value={String(item.ml2Stock)}
+                        className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer hover:ring-2 hover:ring-indigo-300"
+                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                        onHoverLeave={scheduleLocationPopoverClose}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
@@ -1308,10 +1668,47 @@ const WarehouseInventory = () => {
                         <span className="font-semibold text-sm">{item.reserved}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200">
-                        <span className="font-semibold text-sm">{item.inTransit} {item.whUnit}</span>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
+                          className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+                        >
+                          {item.inTransit} {item.whUnit}
+                          {(item.inTransitBreakdown?.length ?? 0) > 0 && (
+                            <span className="ml-1 text-red-500" aria-hidden>▼</span>
+                          )}
+                        </button>
+                        {inTransitPopoverItem?.id === item.id && (item.inTransitBreakdown?.length ?? 0) > 0 && (
+                          <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">Vendor · PO · Expected</div>
+                            <ul className="space-y-2">
+                              {item.inTransitBreakdown!.map((b, idx) => (
+                                <li key={idx} className="text-xs text-gray-600 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                  <span className="font-medium text-gray-800">{b.vendor || '—'}</span>
+                                  <span className="mx-1">·</span>
+                                  <span>PO {b.poNo || (b.poId != null ? `#${b.poId}` : '—')}</span>
+                                  {b.expectedDate && (
+                                    <span className="block text-gray-500 mt-0.5">Expected: {b.expectedDate}</span>
+                                  )}
+                                  <span className="block text-red-600 font-medium mt-0.5">{b.quantity} {item.whUnit}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setInTransitPopoverItem(null); }}
+                              className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm text-gray-600">{item.poQuantity != null ? item.poQuantity : '—'}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-gray-600">{item.reorderPt}</div>
@@ -1354,231 +1751,71 @@ const WarehouseInventory = () => {
         )}
       </div>
 
-      {/* Modals */}
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/30">
-          <div className="h-full w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto">
+      {/* Location / Rack popover (WH stock & MUs) — opens on hover or click */}
+      {locationPopover && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/30"
+          onClick={() => setLocationPopover(null)}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-sm w-full mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            onMouseEnter={cancelLocationPopoverClose}
+            onMouseLeave={scheduleLocationPopoverClose}
+            role="dialog"
+            aria-label="Where in warehouse — location and racks"
+          >
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Inventory — {selectedItem.name}</h2>
-              </div>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Where in warehouse — {locationPopover.item.code}
+              </h3>
               <button
                 type="button"
-                onClick={() => setSelectedItem(null)}
-                className="p-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50"
+                onClick={() => setLocationPopover(null)}
+                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
               >
-                <X className="w-4 h-4" />
+                <span className="sr-only">Close</span>×
               </button>
             </div>
-
-            <div className="p-4 space-y-4">
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2 py-0.5 rounded border border-cyan-300 bg-cyan-50 text-cyan-700 text-[10px] font-semibold">SIH: {selectedItem.stockInHand} {selectedItem.whUnit}</span>
-                <span className="px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 text-[10px] font-semibold">W1: {selectedItem.whStock}</span>
-                <span className="px-2 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-indigo-700 text-[10px] font-semibold">ML1: {selectedItem.ml1Stock}</span>
-                <span className="px-2 py-0.5 rounded border border-purple-300 bg-purple-50 text-purple-700 text-[10px] font-semibold">ML2: {selectedItem.ml2Stock}</span>
-                <span className="px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">Reserved: {selectedItem.reserved}</span>
-                <span className="px-2 py-0.5 rounded border border-rose-300 bg-rose-50 text-rose-700 text-[10px] font-semibold">In Transit: {selectedItem.inTransit}</span>
-                <span className="px-2 py-0.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 text-[10px] font-semibold">{selectedItem.status}</span>
-                <span className="px-2 py-0.5 rounded border border-slate-300 bg-slate-50 text-slate-700 text-[10px] font-semibold">{selectedItem.type}</span>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Item Details</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Item Code</p>
-                    <p className="text-[11px] font-semibold text-cyan-700">{selectedItem.code}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Input Category</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.subtitle.split('·')[0].trim()}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">UOM</p>
-                    <p className="text-[11px] font-semibold text-emerald-700">{selectedItem.whUnit}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Storage Location</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Zone</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.zone}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Rack / Slot</p>
-                    <p className="text-[11px] font-semibold text-cyan-700">{selectedItem.rack}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Stock Breakdown</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Stock in Warehouse</p>
-                    <p className="text-base font-bold text-cyan-700">{selectedItem.whStock}</p>
-                    <p className="text-[9px] text-slate-400">physical in racks</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">In Manufacturing (ML1+ML2)</p>
-                    <p className="text-base font-bold text-blue-700">{selectedItem.ml1Stock + selectedItem.ml2Stock}</p>
-                    <p className="text-[9px] text-slate-400">issued to production</p>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-emerald-700">Stock in Hand (Total)</p>
-                    <p className="text-base font-bold text-emerald-700">{selectedItem.stockInHand}</p>
-                    <p className="text-[9px] text-emerald-600">KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Reserve (committed)</p>
-                    <p className="text-sm font-bold text-amber-700">{selectedItem.reserved} {selectedItem.whUnit}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Free / available</p>
-                    <p className="text-sm font-bold text-cyan-700">{Math.max(0, selectedItem.stockInHand - selectedItem.reserved)} {selectedItem.whUnit}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Ordered in Transit</p>
-                    <p className="text-sm font-bold text-rose-700">{selectedItem.inTransit} {selectedItem.whUnit}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Avg Consumption (Monthly)</p>
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Avg 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo * 0.9)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Sep 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo * 0.8)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Oct 2025</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{Math.round(selectedItem.avgMo)} KG</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">3-Month Avg</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.avgMo} {selectedItem.whUnit}/month</p>
-                  </div>
-                </div>
-              </div>
-
-              {isAdjustMode && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Adjust Stock (Realtime)</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">WH Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.whStock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'whStock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-cyan-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">ML1 Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.ml1Stock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'ml1Stock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-blue-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">ML2 Stock</p>
-                      <input
-                        type="number"
-                        value={selectedItem.ml2Stock}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'ml2Stock', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-indigo-700"
-                      />
-                    </label>
-                    <label className="bg-slate-50 border border-slate-200 rounded p-2">
-                      <p className="text-[9px] uppercase text-slate-500 mb-1">Reserved</p>
-                      <input
-                        type="number"
-                        value={selectedItem.reserved}
-                        onChange={e => updateInventoryItem(selectedItem.id, 'reserved', Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-amber-700"
-                      />
-                    </label>
-                  </div>
-                </div>
+            <div className="p-4 max-h-64 overflow-y-auto">
+              {rackLocationsLoading ? (
+                <p className="text-sm text-slate-500">Loading locations &amp; racks…</p>
+              ) : rackLocations.length === 0 ? (
+                <p className="text-sm text-slate-500">No location/rack assignments for this item.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {rackLocations.map((loc, idx) => (
+                    <li key={idx} className="text-sm flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="font-medium text-slate-800">{loc.locationName}</span>
+                      <span className="text-slate-500">→</span>
+                      <span className="text-cyan-700 font-mono">{loc.rackCode}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Item Specifications</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Batch / Lot Number</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.batchNumber || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Expiry Date</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.expiryDate || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Manufacturer</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.manufacturer || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Quality Grade</p>
-                    <p className="text-[11px] font-semibold text-emerald-700">{selectedItem.qualityGrade || 'N/A'}</p>
-                  </div>
-                  <div className="col-span-2 bg-slate-50 border border-slate-200 rounded p-2">
-                    <p className="text-[9px] uppercase text-slate-500">Storage Condition</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedItem.storageCondition || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Open Stock Requests</p>
-                <p className="text-[11px] text-slate-600 mb-2">Reserved at which BRM / batch — open requests for this item.</p>
-                <div className="bg-amber-50/50 border border-amber-200 rounded p-3">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="text-left text-slate-600 border-b border-amber-200">
-                        <th className="py-1 pr-2">Request / BRM</th>
-                        <th className="py-1 pr-2">Qty</th>
-                        <th className="py-1 pr-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan={3} className="py-2 text-slate-500 italic">No open stock requests</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 sticky bottom-0 bg-white">
-              <button
-                type="button"
-                onClick={isAdjustMode ? handleDoneAdjustStock : () => setIsAdjustMode(true)}
-                disabled={savingAdjust}
-                className="px-3 py-1.5 bg-cyan-600 text-white rounded-md text-xs font-semibold hover:bg-cyan-700 transition-colors disabled:opacity-60"
-              >
-                {isAdjustMode ? (savingAdjust ? 'Saving…' : 'Done') : 'Adjust Stock'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
-                className="px-3 py-1.5 bg-slate-600 text-white rounded-md text-xs font-semibold hover:bg-slate-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+      {/* Item detail popup (replaces sidebar) */}
+      {selectedItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          onClick={() => setSelectedItem(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Inventory item details"
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <WarehouseInventorySidebar
+              item={selectedItem}
+              onClose={() => setSelectedItem(null)}
+              onItemUpdated={handleItemUpdatedFromSidebar}
+              variant="modal"
+            />
           </div>
         </div>
       )}

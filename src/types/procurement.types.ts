@@ -3,7 +3,7 @@ export type RequestPriority = 'High' | 'Medium' | 'Low';
 export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending' | 'Under GRN';
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
 export type MainTab = 'Procurement' | 'Vendors' | 'Reports';
-export type SideSection = 'Overview' | 'Requests' | 'Quotations' | 'Draft POs' | 'Issued POs' | 'GRN Monitor' | 'Stock Check' | 'Item Tracker';
+export type SideSection = 'Overview' | 'Requests' | 'Quotations' | 'Draft POs' | 'Issued POs' | 'GRN Monitor' | 'Item Tracker';
 
 export type ItemDetail = {
   itemCode: string;
@@ -41,8 +41,15 @@ export type ProcurementRequest = {
   requestedBy?: string;
   source?: string;
   preferredVendor?: string;
+  /** Planning batch id that raised this PR (when raised from Planning > Batches). */
+  batchId?: string | null;
   itemDetails?: ItemDetail[];
   stockSummary?: StockSummary;
+  /** Stock check (from procurement request view) — persisted to DB */
+  stockCheckAssignedTo?: string | null;
+  stockCheckStatus?: string | null;
+  stockCheckDueDate?: string | null;
+  stockCheckNotes?: string | null;
 };
 
 export type QuoteLine = {
@@ -216,6 +223,35 @@ export type ItemTrackerRow = {
   quoteId: string | null;
   draftPoId: string | null;
   poId: string | null;
+};
+
+/** Context for "Release to Planned" modal: one item from a procurement request */
+export type ReleaseToPlannedItem = {
+  itemName: string;
+  itemCode?: string;
+  idx: number;
+  qty: number;
+  unit: string;
+  spec?: string;
+  plannedPrice: number;
+  moq?: string;
+  /** From itemDetails when available */
+  reqQty?: number;
+};
+
+/** A planned line (before Draft PO) — vendor, qty, price, terms chosen from quotations */
+export type PlannedLine = {
+  requestId: string;
+  requestCode: string;
+  itemName: string;
+  itemCode?: string;
+  vendor: string;
+  moqDisplay: string;
+  qty: number;
+  unitPrice: number;
+  paymentTerms: string;
+  leadTimeDays: number;
+  unit: string;
 };
 
 export type LiveProcurementState = {

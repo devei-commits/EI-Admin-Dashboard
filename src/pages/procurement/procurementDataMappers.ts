@@ -40,6 +40,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     createdDate: pr.createdAt ?? '',
     requestedBy: pr.requestedBy ?? undefined,
     preferredVendor: pr.preferredVendor ?? undefined,
+    batchId: pr.planningBatchId != null ? String(pr.planningBatchId) : undefined,
     itemDetails: items.map((i: { code?: string; name?: string; quantity_requested?: number; unit?: string }) => ({
       itemCode: i?.code ?? '',
       itemName: i?.name ?? '',
@@ -57,6 +58,10 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
       inTransit: 0,
       openOrders: 0,
     },
+    stockCheckAssignedTo: (pr as { stockCheckAssignedTo?: string | null }).stockCheckAssignedTo ?? undefined,
+    stockCheckStatus: (pr as { stockCheckStatus?: string | null }).stockCheckStatus ?? undefined,
+    stockCheckDueDate: (pr as { stockCheckDueDate?: string | null }).stockCheckDueDate ?? undefined,
+    stockCheckNotes: (pr as { stockCheckNotes?: string | null }).stockCheckNotes ?? undefined,
   };
 }
 
@@ -76,10 +81,11 @@ export function mapBackendQuotationToQuote(
       vsPlanned: '',
     };
   });
+  const prId = q.procurementRequestId;
   return {
     id: String(q.id),
-    requestId: String(q.procurementRequestId),
-    requestCode: requestCode ?? `PR-REQ-${String(q.procurementRequestId).padStart(3, '0')}`,
+    requestId: prId != null ? String(prId) : '',
+    requestCode: requestCode ?? (prId != null ? `PR-REQ-${String(prId).padStart(3, '0')}` : 'Standalone'),
     requestType: requestType ?? 'RM',
     vendor: q.vendorName ?? '',
     vendorId: String(q.vendorId),

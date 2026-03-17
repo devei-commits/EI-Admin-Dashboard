@@ -70,8 +70,9 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomer(name);
     const selected = customers.find(c => c.name === name);
     if (selected) {
-      setCustomerCity(selected.city);
+      setCustomerCity(selected.city || '');
       if (selected.paymentTerms) setPaymentTerms(selected.paymentTerms);
+      if (selected.shippingAddress) setShipAddress(selected.shippingAddress);
     }
   };
 
@@ -203,15 +204,21 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                 />
               </div>
 
-              <Input label="Shipping Address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />
+              <div>
+                <Input label="Shipping Address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />
+                <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select
-                  label="Payment Terms"
-                  value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                  options={PAYMENT_TERMS.map(term => ({ value: term, label: term }))}
-                />
+                <div>
+                  <Select
+                    label="Payment Terms"
+                    value={paymentTerms}
+                    onChange={(e) => setPaymentTerms(e.target.value)}
+                    options={PAYMENT_TERMS.map(term => ({ value: term, label: term }))}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
+                </div>
                 <Input label="Notes" placeholder="Optional notes or instructions" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
 

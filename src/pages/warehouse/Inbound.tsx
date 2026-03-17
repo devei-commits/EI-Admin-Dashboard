@@ -1,10 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
 
 type GRNType = 'RM' | 'PM';
-type QCStatus = 'Passed' | 'In Progress' | 'Pending' | 'Failed';
+type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
 type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending';
+
+const QC_STATUS_OPTIONS: QCStatus[] = ['Under test', 'Quality checked', 'Passed', 'Rejected'];
+
+/** Map legacy API qc_status to QCStatus */
+function normalizeQcStatus(s: string | undefined): QCStatus {
+  const v = (s || '').trim();
+  if (v === 'Passed') return 'Passed';
+  if (v === 'Rejected' || v === 'Failed') return 'Rejected';
+  if (v === 'Quality checked') return 'Quality checked';
+  return 'Under test';
+}
 type WorkflowStep = 'PO Received' | 'Qty Check' | 'QC Inspection' | 'Label Generation' | 'Dispatch Ready';
 
 const WORKFLOW_STEPS_REQUIRED: WorkflowStep[] = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
@@ -37,6 +49,7 @@ interface GRNRecord {
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: QCStatus;
+  qcBy: string;
   status: GRNStatus;
   invoiceNo?: string;
   invoiceAmount?: number;
@@ -52,8 +65,61 @@ interface GRNRecord {
   generatedLabels?: GeneratedLabel[] | null;
 }
 
+/** Simulate scanning a QR: paste payload JSON → show decoded text + suggested action */
+const ScanSimulator = ({ grnNo }: { grnNo: string }) => {
+  const [pasteInput, setPasteInput] = useState('');
+  const [decoded, setDecoded] = useState<Record<string, unknown> | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = pasteInput.trim();
+    if (!raw) {
+      setDecoded(null);
+      setParseError(null);
+      return;
+    }
+    try {
+      const obj = JSON.parse(raw);
+      setDecoded(obj as Record<string, unknown>);
+      setParseError(null);
+    } catch {
+      setDecoded(null);
+      setParseError('Invalid JSON. Paste the exact QR payload.');
+    }
+  }, [pasteInput]);
+
+  return (
+    <div className="space-y-3">
+      <textarea
+        value={pasteInput}
+        onChange={(e) => setPasteInput(e.target.value)}
+        placeholder='Paste QR payload e.g. {"grn_no":"GRN-001","box_index":1,...}'
+        rows={2}
+        className="w-full text-xs font-mono border border-slate-300 rounded-lg px-3 py-2 bg-white"
+      />
+      {parseError && <p className="text-xs text-red-600">{parseError}</p>}
+      {decoded && !parseError && (
+        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
+          <p className="text-xs font-semibold text-slate-700 uppercase">Decoded (all text)</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-800">
+            {Object.entries(decoded).map(([k, v]) => (
+              <span key={k} className="col-span-2 sm:col-span-1"><dt className="inline font-medium">{k}:</dt> <dd className="inline">{String(v ?? '—')}</dd></span>
+            ))}
+          </dl>
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-emerald-700">Action</p>
+            <p className="text-sm text-slate-900">View GRN {(decoded as { grn_no?: string }).grn_no || grnNo} in Warehouse → Inbound (open this GRN popup).</p>
+            <p className="text-[10px] text-slate-500 mt-1">When material moves to MU, a new QR set can be generated for MTR/location; scan then shows move-related action.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // GRN Detail Modal Component
 const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
+  const { addToast } = useToast();
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
@@ -76,8 +142,22 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [currentWorkflowSteps, setCurrentWorkflowSteps] = useState<WorkflowStep[]>(grn.workflowSteps || []);
+  const [qcStatus, setQcStatus] = useState<QCStatus>(normalizeQcStatus(grn.qcStatus));
+  const [qcBy, setQcBy] = useState(grn.qcBy || '');
+  const [qcByInput, setQcByInput] = useState(grn.qcBy || '');
+  const [showQcByDropdown, setShowQcByDropdown] = useState(false);
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
+
+  useEffect(() => {
+    setQcStatus(normalizeQcStatus(grn.qcStatus));
+    setQcBy(grn.qcBy || '');
+    setQcByInput(grn.qcBy || '');
+  }, [grn.id, grn.qcStatus, grn.qcBy]);
+
+  const filteredQcByUsers = assignableUsers.filter(
+    u => (u.displayName || '').toLowerCase().includes((qcByInput || '').toLowerCase().trim())
+  );
 
   const handleLineItemChange = (itemId: string, field: 'rcvdQty' | 'qcStatus', value: string | number) => {
     setEditedLineItems(prev =>
@@ -108,6 +188,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
+        qcStatus: qcStatus as string,
+        qcBy: qcBy || undefined,
         ...payload,
       });
       const updated: GRNRecord = {
@@ -121,7 +203,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         expectedDate: res.expectedDate,
         receivedDate: res.receivedDate,
         assignedTo: res.assignedTo,
-        qcStatus: res.qcStatus as QCStatus,
+        qcStatus: normalizeQcStatus(res.qcStatus),
+        qcBy: res.qcBy || '',
         status: res.status as GRNStatus,
         lineItems: res.lineItems,
         workflowSteps: (res.workflowSteps || []) as WorkflowStep[],
@@ -157,10 +240,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
   const getWorkflowStepColor = (step: WorkflowStep) => {
     if (!currentWorkflowSteps.length) return 'bg-slate-100 text-slate-600 border-slate-300';
-    
+
     const stepIndex = WORKFLOW_STEPS_REQUIRED.indexOf(step);
     const completedUpTo = WORKFLOW_STEPS_REQUIRED.findIndex(s => !currentWorkflowSteps.includes(s));
-    
+
     if (currentWorkflowSteps.includes(step)) {
       return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     } else if (completedUpTo === stepIndex) {
@@ -188,19 +271,82 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         </div>
 
         <div className="p-6 space-y-8">
-          {/* Status and type */}
+          {/* Status, type, QC */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-              currentWorkflowSteps.length === WORKFLOW_STEPS_REQUIRED.length
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${currentWorkflowSteps.length === WORKFLOW_STEPS_REQUIRED.length
                 ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
                 : 'bg-amber-100 text-amber-700 border-amber-300'
-            }`}>
+              }`}>
               {grn.status}
             </span>
             <span className="px-3 py-1 bg-blue-100 text-blue-700 border border-blue-300 rounded-full text-xs font-semibold">
               {grn.type}
             </span>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${qcStatus === 'Passed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                qcStatus === 'Rejected' ? 'bg-rose-100 text-rose-700 border-rose-300' :
+                  qcStatus === 'Quality checked' ? 'bg-sky-100 text-sky-700 border-sky-300' :
+                    'bg-slate-100 text-slate-700 border-slate-300'
+              }`}>
+              QC: {qcStatus}
+              {qcBy && <span className="ml-1 opacity-90">({qcBy})</span>}
+            </span>
           </div>
+
+          {/* QC section: status + QC by (for label generation) */}
+          <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-700">QC status &amp; QC by</h3>
+            <p className="text-xs text-slate-600">Labels (QR) can only be generated after QC is Passed. Select QC status and the user who performed QC.</p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">QC status</label>
+                <select
+                  value={qcStatus}
+                  onChange={(e) => setQcStatus(e.target.value as QCStatus)}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {QC_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 relative">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">QC by</label>
+                <input
+                  type="text"
+                  value={qcByInput}
+                  onChange={(e) => {
+                    setQcByInput(e.target.value);
+                    const match = assignableUsers.find(u => (u.displayName || '').toLowerCase() === e.target.value.trim().toLowerCase());
+                    if (match) setQcBy(match.displayName);
+                    else setQcBy(e.target.value.trim());
+                    setShowQcByDropdown(true);
+                  }}
+                  onFocus={() => setShowQcByDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowQcByDropdown(false), 200)}
+                  placeholder="Type name to search registered users"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                {showQcByDropdown && (filteredQcByUsers.length > 0 || assignableUsers.length > 0) && (
+                  <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                    {(qcByInput.trim() ? filteredQcByUsers : assignableUsers).slice(0, 10).map((u) => (
+                      <li
+                        key={u.id}
+                        onMouseDown={() => {
+                          setQcBy(u.displayName);
+                          setQcByInput(u.displayName);
+                          setShowQcByDropdown(false);
+                        }}
+                        className="px-4 py-2 text-sm text-slate-800 hover:bg-amber-50 cursor-pointer"
+                      >
+                        {u.displayName}
+                        {u.email && <span className="text-slate-500 text-xs block">{u.email}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
 
           {/* Workflow Steps */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -302,7 +448,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Line Items Table */}
           {grn.lineItems && grn.lineItems.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Line items — qty & QC</h3>
+              <h3 className="text-sm font-semibold text-slate-700">Line items — qty</h3>
               <div className="overflow-x-auto border border-slate-200 rounded-lg">
                 <table className="w-full text-xs">
                   <thead className="bg-slate-100 border-b border-slate-200">
@@ -313,8 +459,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       <th className="px-3 py-2 text-center font-semibold text-slate-700">Invoice QTY</th>
                       <th className="px-3 py-2 text-center font-semibold text-slate-700">Unit Price</th>
                       <th className="px-3 py-2 text-center font-semibold text-slate-700">Diff</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">QC Status</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">QC By</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -346,27 +490,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                             );
                           })()}
                         </td>
-                        <td className="px-3 py-2 text-center">
-                          <select
-                            value={item.qcStatus}
-                            onChange={(e) => handleLineItemChange(item.id, 'qcStatus', e.target.value)}
-                            className={`px-2 py-1 rounded-full font-semibold text-xs border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                              item.qcStatus === 'Pass'
-                                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                                : item.qcStatus === 'Hold'
-                                ? 'bg-amber-100 text-amber-700 border-amber-300'
-                                : item.qcStatus === 'Pending'
-                                ? 'bg-slate-100 text-slate-600 border-slate-300'
-                                : 'bg-rose-100 text-rose-700 border-rose-300'
-                            }`}
-                          >
-                            <option value="Pass">Pass</option>
-                            <option value="Hold">Hold</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Fail">Fail</option>
-                          </select>
-                        </td>
-                        <td className="px-3 py-2 text-center text-slate-600">{item.qcBy}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -378,7 +501,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Label data & Generate QR Labels */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
-            <p className="text-xs text-slate-600">Select a product, fill details below and click Generate Labels. Each box gets a QR containing product, GRN, units/box, location, batch, and expiry info.</p>
+            <p className="text-xs text-slate-600">One QR per box for this GRN. Each box gets a unique QR (Box 1, Box 2, …) with product, GRN, units/box, location, batch, and expiry. Generate only after QC is Passed.</p>
+            {qcStatus !== 'Passed' && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                <strong>QC must be Passed</strong> before generating labels. Set QC status to &quot;Passed&quot; and assign &quot;QC by&quot;, then save. After that you can generate QR labels.
+              </div>
+            )}
 
             {/* Product / Line Item Selection */}
             {editedLineItems.length > 0 && (
@@ -427,14 +555,26 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               {!labelsGenerated ? (
                 <button
                   onClick={async () => {
+                    if (qcStatus !== 'Passed') {
+                      setLabelError('QC must be Passed before generating labels. Update QC status and save, then try again.');
+                      return;
+                    }
                     if (editedLineItems.length > 0 && !selectedLineItemId) {
                       setLabelError('Please select a product / line item before generating labels.');
                       return;
                     }
+                    const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
+                    const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
+                    if (selectedLineItem != null) {
+                      const expectedRcvd = numBoxes * numUnitsPerBox;
+                      if (expectedRcvd !== selectedLineItem.rcvdQty) {
+                        setLabelError(`No of boxes × Units/box (${numBoxes} × ${numUnitsPerBox} = ${expectedRcvd}) must equal the received quantity (${selectedLineItem.rcvdQty}) for the selected line item.`);
+                        return;
+                      }
+                    }
                     setLabelError(null);
                     setGeneratingLabels(true);
                     try {
-                      const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
                       const res = await generateGRNLabels(grn.id, {
                         noOfBoxes: numBoxes,
                         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
@@ -450,13 +590,22 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       if (res.workflowSteps) {
                         setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
                       }
-                    } catch (e) {
-                      setLabelError(e instanceof Error ? e.message : 'Failed to generate labels');
+                    } catch (e: unknown) {
+                      const err = e as { status?: number; body?: { error?: string }; message?: string };
+                      const status = err?.status;
+                      const bodyError = err?.body && typeof err.body === 'object' && 'error' in err.body ? (err.body as { error?: string }).error : undefined;
+                      const msg = bodyError || (e instanceof Error ? e.message : 'Failed to generate labels');
+                      setLabelError(msg);
+                      if (status === 403) {
+                        addToast('error', 'Save QC changes before generating labels. Set QC status to Passed and assign QC by, then save.');
+                      } else {
+                        addToast('error', msg);
+                      }
                     } finally {
                       setGeneratingLabels(false);
                     }
                   }}
-                  disabled={generatingLabels}
+                  disabled={generatingLabels || qcStatus !== 'Passed'}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
                   {generatingLabels ? 'Generating…' : 'Generate Labels'}
@@ -476,7 +625,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* QR Label Preview — one card per box with scan payload */}
           {labelsGenerated && labels && labels.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Label preview</h3>
+              <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {labels.map((label) => {
                   let payload: { grn_id?: number; grn_no?: string; product_name?: string; item_code?: string; units_per_box?: number; location_prefix?: string; grn_batch_mfg?: string; expiry?: string; mfg_batch?: string; box_index?: number } = {};
@@ -503,10 +652,18 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                         <p><span className="font-semibold">Expiry:</span> {payload.expiry || '—'}</p>
                         <p><span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}</p>
                       </div>
+                      <p className="mt-2 text-[10px] text-slate-500">On scan: decoder shows all text above + action (e.g. View GRN).</p>
                     </div>
                   );
                 })}
               </div>
+
+              {/* On scan: simulate paste payload → show all text + action */}
+              {/* <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
+                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">On scan — show all text &amp; action</h4>
+                <p className="text-xs text-slate-600 mb-2">Paste the QR payload (JSON) below to simulate a scan. The decoder will show all decoded fields and the suggested action.</p>
+                <ScanSimulator grnNo={grn.grnNo} />
+              </div> */}
             </section>
           )}
 
@@ -536,9 +693,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             <button
               onClick={handleCompleteGRN}
               disabled={saving}
-              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
-                grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
-              }`}
+              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
             >
               {grn.status === 'In Transit' ? 'Complete GRN & Initiate Stock' : 'Mark complete'}
             </button>
@@ -561,6 +717,7 @@ function mapApiToGRNRecord(r: {
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: string;
+  qcBy?: string;
   status: string;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
@@ -586,7 +743,8 @@ function mapApiToGRNRecord(r: {
     expectedDate: r.expectedDate,
     receivedDate: r.receivedDate,
     assignedTo: r.assignedTo,
-    qcStatus: r.qcStatus as QCStatus,
+    qcStatus: normalizeQcStatus(r.qcStatus),
+    qcBy: r.qcBy ?? '',
     status: r.status as GRNStatus,
     lineItems: r.lineItems,
     workflowSteps: r.workflowSteps,
@@ -740,11 +898,10 @@ const WarehouseInbound = () => {
       {toast && (
         <div className="fixed top-4 right-4 z-50">
           <div
-            className={`px-3 py-2 rounded-lg border text-sm font-medium shadow-lg ${
-              toast.type === 'success'
+            className={`px-3 py-2 rounded-lg border text-sm font-medium shadow-lg ${toast.type === 'success'
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-rose-50 text-rose-800 border-rose-200'
-            }`}
+              }`}
           >
             {toast.message}
           </div>
@@ -794,11 +951,10 @@ const WarehouseInbound = () => {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === tab
+                  className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {tab}
                 </button>
@@ -848,75 +1004,74 @@ const WarehouseInbound = () => {
                     <td colSpan={11} className="px-4 py-12 text-center text-slate-500">No GRNs found</td>
                   </tr>
                 ) : (
-                filteredData.map((grn) => (
-                  <tr
-                    key={grn.id}
-                    className="hover:bg-amber-50/50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedGRN(grn)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
-                  >
-                    <td className="px-4 py-3.5">
-                      <span className="text-sm font-mono font-medium text-blue-600">{grn.grnNo}</span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm font-mono text-emerald-600">{grn.poNo}</span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm font-medium text-slate-800">{grn.vendor}</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                        grn.type === 'RM' 
-                          ? 'bg-cyan-100 text-cyan-700 border-cyan-200' 
-                          : 'bg-violet-100 text-violet-700 border-violet-200'
-                      }`}>
-                        {grn.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm font-medium text-slate-700">{grn.items}</span>
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <span className="text-sm font-semibold text-amber-700">{formatCurrency(grn.poValue)}</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm text-slate-600">{formatDate(grn.expectedDate)}</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      {grn.receivedDate ? (
-                        <span className="text-sm text-slate-600">{formatDate(grn.receivedDate)}</span>
-                      ) : (
-                        <span className="text-sm text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className={`text-sm ${grn.assignedTo === 'Unassigned' ? 'text-slate-400 italic' : 'text-slate-700'}`}>
-                        {grn.assignedTo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getQCStatusColor(grn.qcStatus)}`}>
-                        {grn.qcStatus}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={grn.status}
-                        onChange={(e) => handleStatusChange(grn.id, e.target.value as GRNStatus)}
-                        className={`text-xs font-medium rounded-lg border px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${getStatusColor(grn.status)}`}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="In Transit">In Transit</option>
-                        <option value="Under GRN">Under GRN</option>
-                        <option value="On Hold">On Hold</option>
-                        <option value="Delayed">Delayed</option>
-                        <option value="GRN Complete">GRN Complete</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))
+                  filteredData.map((grn) => (
+                    <tr
+                      key={grn.id}
+                      className="hover:bg-amber-50/50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedGRN(grn)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
+                    >
+                      <td className="px-4 py-3.5">
+                        <span className="text-sm font-mono font-medium text-blue-600">{grn.grnNo}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-sm font-mono text-emerald-600">{grn.poNo}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-sm font-medium text-slate-800">{grn.vendor}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${grn.type === 'RM'
+                            ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+                            : 'bg-violet-100 text-violet-700 border-violet-200'
+                          }`}>
+                          {grn.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="text-sm font-medium text-slate-700">{grn.items}</span>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <span className="text-sm font-semibold text-amber-700">{formatCurrency(grn.poValue)}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="text-sm text-slate-600">{formatDate(grn.expectedDate)}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        {grn.receivedDate ? (
+                          <span className="text-sm text-slate-600">{formatDate(grn.receivedDate)}</span>
+                        ) : (
+                          <span className="text-sm text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`text-sm ${grn.assignedTo === 'Unassigned' ? 'text-slate-400 italic' : 'text-slate-700'}`}>
+                          {grn.assignedTo}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getQCStatusColor(grn.qcStatus)}`}>
+                          {grn.qcStatus}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={grn.status}
+                          onChange={(e) => handleStatusChange(grn.id, e.target.value as GRNStatus)}
+                          className={`text-xs font-medium rounded-lg border px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${getStatusColor(grn.status)}`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="In Transit">In Transit</option>
+                          <option value="Under GRN">Under GRN</option>
+                          <option value="On Hold">On Hold</option>
+                          <option value="Delayed">Delayed</option>
+                          <option value="GRN Complete">GRN Complete</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>

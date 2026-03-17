@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type PackBomRow, type ProcessStep } from '../services/productsMaster.service';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type PackBomRow, type ProcessStep } from '../services/productsMaster.service';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
 
@@ -361,12 +361,13 @@ const BOMDashboard: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">STATUS</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">VER.</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">OPEN SOS</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -403,6 +404,31 @@ const BOMDashboard: React.FC = () => {
                             '—'
                           )}
                         </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            to={`/bom/${p.product_id}`}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline mr-2"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!window.confirm(`Delete product "${p.product_name}" (${p.product_code})? This cannot be undone.`)) return;
+                              const res = await deletePRProduct(p.product_id);
+                              if (res.success) {
+                                toast.success('Product deleted');
+                                loadProducts();
+                                if (selectedProduct?.product_id === p.product_id) handleClosePanel();
+                              } else {
+                                toast.error(res.error ?? 'Failed to delete');
+                              }
+                            }}
+                            className="text-xs font-semibold text-red-600 hover:text-red-800 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -421,7 +447,34 @@ const BOMDashboard: React.FC = () => {
               <span className="text-sm font-mono text-gray-500">{selectedProduct?.product_code ?? '—'}</span>
               <h2 className="text-lg font-bold text-gray-900">{selectedProduct?.product_name ?? 'Product'}</h2>
             </div>
-            <button onClick={handleClosePanel} className="p-2 rounded-lg hover:bg-gray-200 text-gray-600">X</button>
+            <div className="flex items-center gap-2">
+              <Link
+                to={selectedProduct ? `/bom/${selectedProduct.product_id}` : '/bom'}
+                className="text-xs font-semibold text-blue-600 hover:underline"
+              >
+                Edit page
+              </Link>
+              {selectedProduct && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm(`Delete product "${selectedProduct.product_name}"? This cannot be undone.`)) return;
+                    const res = await deletePRProduct(selectedProduct.product_id);
+                    if (res.success) {
+                      toast.success('Product deleted');
+                      handleClosePanel();
+                      loadProducts();
+                    } else {
+                      toast.error(res.error ?? 'Failed to delete');
+                    }
+                  }}
+                  className="text-xs font-semibold text-red-600 hover:underline"
+                >
+                  Delete
+                </button>
+              )}
+              <button onClick={handleClosePanel} className="p-2 rounded-lg hover:bg-gray-200 text-gray-600">X</button>
+            </div>
           </div>
           {detailLoading ? (
             <div className="flex-1 flex items-center justify-center text-gray-500">Loading…</div>

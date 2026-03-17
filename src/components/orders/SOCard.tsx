@@ -182,6 +182,11 @@ export const SOCard: React.FC<SOCardProps> = ({
             </>
           )}
         </div>
+        {progress.batchesTotal > 0 && (
+          <div className="mt-1 text-[11px] text-gray-500 font-medium">
+            Batches: {progress.batchesDonePct}% ({progress.batchesDone}/{progress.batchesTotal}) done
+          </div>
+        )}
       </div>
 
       {/* Actions Footer */}

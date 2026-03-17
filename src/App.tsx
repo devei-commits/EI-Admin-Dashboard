@@ -77,6 +77,37 @@ const AppLayout = () => {
               return cleanup;
        }, []);
 
+       // Dynamic document title based on primary dashboard function
+       useEffect(() => {
+              const base = 'eiadmin';
+              let suffix = '';
+
+              const path = location.pathname || '';
+
+              if (path === '/fulfillment' || path.startsWith('/fulfillment/')) suffix = 'Fulfillment';
+              else if (path === '/planning' || path.startsWith('/planning/')) suffix = 'Planning';
+              else if (path === '/production' || path.startsWith('/production/')) suffix = 'Production';
+              else if (path === '/warehouse' || path.startsWith('/warehouse/')) suffix = 'Warehouse';
+              else if (path === '/procurement' || path.startsWith('/procurement/')) suffix = 'Procurement';
+              else if (path === '/pis' || path.startsWith('/pis/')) suffix = 'PIS';
+              else if (path === '/treasury' || path.startsWith('/treasury/')) suffix = 'Treasury';
+              else if (path === '/client-hub' || path.startsWith('/client-hub/')) suffix = 'Client Hub';
+              else if (path.startsWith('/user-management')) suffix = 'User Management';
+              else if (path.startsWith('/role-management')) suffix = 'Role Management';
+              else if (path.startsWith('/catalogue-management')) suffix = 'Catalogue Management';
+              else if (path.startsWith('/packaging')) suffix = 'Packaging';
+              else if (path.startsWith('/raw-material')) suffix = 'Raw Materials';
+              else if (path.startsWith('/bom')) suffix = 'BOM';
+              else if (path.startsWith('/vendor-client')) suffix = 'Vendor & Client';
+              else if (path.startsWith('/items-list')) suffix = 'Items List';
+              else if (path.startsWith('/item-groups')) suffix = 'Item Groups';
+              else if (path.startsWith('/universal-swap')) suffix = 'Universal Swap';
+              else if (path.startsWith('/task-management')) suffix = 'Task Management';
+              else if (path === '/' || path === '') suffix = 'Dashboard';
+
+              document.title = suffix ? `${base} - ${suffix}` : base;
+       }, [location.pathname]);
+
        // Handle login route
        if (location.pathname === '/login') {
               return (
@@ -180,6 +211,11 @@ const AppLayout = () => {
                                                  </ProtectedModuleRoute>
                                           } />
                                           <Route path="/planning/availability-summary" element={
+                                                 <ProtectedModuleRoute moduleId="order-management">
+                                                        <Planning />
+                                                 </ProtectedModuleRoute>
+                                          } />
+                                          <Route path="/planning/batches" element={
                                                  <ProtectedModuleRoute moduleId="order-management">
                                                         <Planning />
                                                  </ProtectedModuleRoute>

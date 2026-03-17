@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState } from 'react';
 export interface VendorClient {
  id: string;
  type: 'vendor' | 'client';
+ zohoId?: string;
  name: string;
  email: string;
  phone: string;

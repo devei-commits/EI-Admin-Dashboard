@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run dashboard checks on every commit (lint). Backend has its own pre-commit for backend tests.
+npm run lint

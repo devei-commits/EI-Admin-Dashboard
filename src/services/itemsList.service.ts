@@ -49,9 +49,10 @@ export interface ItemListDetailRecord extends ItemListRecord {
 }
 
 export interface CreateItemListPayload {
-  type: 'RM' | 'PM';
+  type: 'RM' | 'PM' | 'PR';
   raw_material_id?: number | null;
   pack_material_id?: number | null;
+  product_id?: number | null;
   status?: string;
 }
 
@@ -60,6 +61,7 @@ export interface CreateRatePayload {
   default_rate?: number | null;
   default_moq?: number | null;
   currency?: string;
+  payment_terms?: string | null;
 }
 
 export interface CreateTierPayload {
@@ -70,11 +72,11 @@ export interface CreateTierPayload {
   note?: string | null;
 }
 
-/** Page item: RM/PM from masters with optional vendorRates (for Price Lists view). */
+/** Page item: RM/PM/PR from masters with optional vendorRates (for Price Lists view). */
 export interface PriceListItemPage {
   code: string;
   name: string;
-  type: 'RM' | 'PM';
+  type: 'RM' | 'PM' | 'PR';
   uom?: string;
   gst?: number;
   pricePerUnit: number;
@@ -83,6 +85,7 @@ export interface PriceListItemPage {
   moq?: number;
   raw_material_id?: number | null;
   pack_material_id?: number | null;
+  product_id?: number | null;
   itemsListId: number | null;
   vendorRates: Array<{
     id: number;
@@ -90,6 +93,7 @@ export interface PriceListItemPage {
     vendor_name: string | null;
     vendor_code: string | null;
     currency: string;
+    payment_terms?: string | null;
     tiers: ItemListTierRow[];
   }>;
 }
@@ -105,7 +109,7 @@ export async function fetchItemsList(type?: 'RM' | 'PM'): Promise<ServiceResult<
   }
 }
 
-export async function fetchPriceListPage(type: 'RM' | 'PM'): Promise<ServiceResult<PriceListItemPage[]>> {
+export async function fetchPriceListPage(type: 'RM' | 'PM' | 'PR'): Promise<ServiceResult<PriceListItemPage[]>> {
   try {
     const list = await api.get<PriceListItemPage[]>(`/api/v1/items-list/page?type=${encodeURIComponent(type)}`);
     return { data: list ?? [], error: null, success: true };
@@ -131,6 +135,7 @@ export async function createItemList(payload: CreateItemListPayload): Promise<Se
       type: payload.type,
       raw_material_id: payload.raw_material_id ?? null,
       pack_material_id: payload.pack_material_id ?? null,
+      product_id: payload.product_id ?? null,
       status: payload.status ?? 'Active',
     };
     const row = await api.post<ItemListRecord>('/api/v1/items-list', body);

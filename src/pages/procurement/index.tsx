@@ -7,7 +7,7 @@ import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
 import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem } from '../../services/procurement.service';
-import { fetchProcurementQuotations, fetchQuoteLineDefaults } from '../../services/procurementQuotations.service';
+import { fetchProcurementQuotations, fetchQuoteLineDefaults, createProcurementQuotation, updateProcurementQuotation } from '../../services/procurementQuotations.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
@@ -15,6 +15,8 @@ import type { PoTrackingRecord } from '../../services/poTracking.service';
 import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
 import { fetchPriceListPage, type PriceListItemPage } from '../../services/itemsList.service';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import {
   mapBackendPrToRequest,
   mapBackendQuotationToQuote,
@@ -41,6 +43,8 @@ import type {
   StockCheckLineData,
   ItemTrackerRow,
   LiveProcurementState,
+  ReleaseToPlannedItem,
+  PlannedLine,
 } from '../../types/procurement.types';
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
@@ -50,7 +54,7 @@ const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[]
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
-const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Stock Check', 'Item Tracker'];
+const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
 
 const isMainTab = (value: string | null): value is MainTab => Boolean(value && MAIN_TABS.includes(value as MainTab));
 const isSideSection = (value: string | null): value is SideSection => Boolean(value && SIDE_SECTIONS.includes(value as SideSection));
@@ -199,6 +203,8 @@ const Procurement: React.FC = () => {
     requireStockCheck: 'No'
   });
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
+  /** In PR View: which quotation is selected for "Create Draft PO" (dropdown) */
+  const [selectedQuoteIdInPrView, setSelectedQuoteIdInPrView] = useState<string>('');
   const [editRequestTarget, setEditRequestTarget] = useState<ProcurementRequest | null>(null);
   const [editRequestForm, setEditRequestForm] = useState<{
     priority: RequestPriority;
@@ -206,15 +212,49 @@ const Procurement: React.FC = () => {
     notes: string;
     status: RequestStatus;
     preferredVendor: string;
+    /** Quote id to use when creating Draft PO — deterministic price from this quotation */
+    selectedQuotationId: string;
     items: BackendPRItem[];
-  }>({ priority: 'Medium', requiredByDate: '', notes: '', status: 'New', preferredVendor: '', items: [] });
+  }>({ priority: 'Medium', requiredByDate: '', notes: '', status: 'New', preferredVendor: '', selectedQuotationId: '', items: [] });
   const [editDraftPOTarget, setEditDraftPOTarget] = useState<DraftPO | null>(null);
   const [editDraftPOForm, setEditDraftPOForm] = useState<Pick<DraftPO, 'vendor' | 'paymentTerms' | 'expectedDelivery' | 'deliveryAddress' | 'lineItems'>>({ vendor: '', paymentTerms: '', expectedDelivery: '', deliveryAddress: '', lineItems: [] });
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
   const [updateStockCheckRequest, setUpdateStockCheckRequest] = useState<ProcurementRequest | null>(null);
+  const [stockCheckForm, setStockCheckForm] = useState<{ assignedTo: string; status: string; dueDate: string; notes: string }>({ assignedTo: '', status: '', dueDate: '', notes: '' });
+  const [stockCheckSaving, setStockCheckSaving] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [showRecordQuoteModal, setShowRecordQuoteModal] = useState(false);
+  const [recordQuoteForm, setRecordQuoteForm] = useState<{
+    vendorId: string;
+    quoteDate: string;
+    validTill: string;
+    leadTimeDays: string;
+    paymentTerms: string;
+    notes: string;
+  }>({
+    vendorId: '',
+    quoteDate: '',
+    validTill: '',
+    leadTimeDays: '',
+    paymentTerms: '',
+    notes: '',
+  });
+  const [recordQuoteLines, setRecordQuoteLines] = useState<
+    {
+      index: number;
+      itemId: string;
+      name: string;
+      uom: string;
+      orderQty: string;
+      pricePerUnit: string;
+      totalValue: number;
+      raw_material_id?: number | null;
+      pack_material_id?: number | null;
+      itemType?: 'RM' | 'PM';
+    }[]
+  >([]);
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
   const [selectedGrn, setSelectedGrn] = useState<{
     request: ProcurementRequest;
@@ -252,6 +292,16 @@ const Procurement: React.FC = () => {
   const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
   const [itemTrackerSearch, setItemTrackerSearch] = useState('');
+  const [releaseToPlannedTarget, setReleaseToPlannedTarget] = useState<{ request: ProcurementRequest; item: ReleaseToPlannedItem } | null>(null);
+  const [plannedLines, setPlannedLines] = useState<PlannedLine[]>([]);
+  const [releaseToPlannedForm, setReleaseToPlannedForm] = useState<{
+    vendor: string;
+    moqDisplay: string;
+    qty: string;
+    unitPrice: string;
+    paymentTerms: string;
+    leadTimeDays: number;
+  }>({ vendor: '', moqDisplay: '', qty: '', unitPrice: '', paymentTerms: '', leadTimeDays: 0 });
 
   const queryClient = useQueryClient();
   const { dispatch: globalDispatch } = useGlobalState();
@@ -300,7 +350,18 @@ const Procurement: React.FC = () => {
       const res = await fetchWarehouseInventory();
       return res.success ? res.data : null;
     },
-    enabled: sideSection === 'Stock Check' || sideSection === 'Item Tracker',
+    enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest,
+  });
+
+  const { data: rawMaterialsListForQuote = [] } = useQuery({
+    queryKey: ['raw-materials-list'],
+    queryFn: () => fetchRawMaterialsList(),
+    enabled: showRecordQuoteModal,
+  });
+  const { data: packMaterialsListForQuote = [] } = useQuery({
+    queryKey: ['pack-materials-list'],
+    queryFn: () => fetchPackMaterialsList(),
+    enabled: showRecordQuoteModal,
   });
 
   const requestsFromApi = useMemo(
@@ -394,11 +455,11 @@ const Procurement: React.FC = () => {
       const codeNorm = (line.itemCode ?? '').trim().toLowerCase();
       let price: number | undefined;
       if (confirmedQuote?.lines?.length) {
-        const quoteLine = confirmedQuote.lines.find(
-          (l) =>
-            (l.item && (String(l.item).trim().toLowerCase() === nameNorm || String(l.item).trim().toLowerCase() === codeNorm)) ||
-            (line.item && String(l.item).trim() === String(line.item).trim())
-        );
+        const quoteLine = confirmedQuote.lines.find((l) => {
+          const q = (l.item ?? '').trim().toLowerCase();
+          if (!q) return false;
+          return q === nameNorm || q === codeNorm || (nameNorm && (nameNorm.includes(q) || q.includes(nameNorm))) || (codeNorm && q.includes(codeNorm));
+        });
         if (quoteLine != null && typeof quoteLine.pricePerUnit === 'number') price = quoteLine.pricePerUnit;
       }
       if (price == null && vendorNorm) {
@@ -453,9 +514,39 @@ const Procurement: React.FC = () => {
       notes: (backendPr as { notes?: string } | undefined)?.notes ?? '',
       status: editRequestTarget.status,
       preferredVendor: backendPr?.preferredVendor ?? '',
+      selectedQuotationId: '',
       items,
     });
   }, [editRequestTarget, backendPrResult]);
+
+  useEffect(() => {
+    if (!selectedRequest) {
+      setSelectedQuoteIdInPrView('');
+      return;
+    }
+    const rq = quotes.filter((q) => q.requestId === selectedRequest.id);
+    const conf = rq.find((q) => q.status === 'Confirmed');
+    setSelectedQuoteIdInPrView(conf?.id ?? rq[0]?.id ?? '');
+  }, [selectedRequest, quotes]);
+
+  useEffect(() => {
+    if (!selectedRequest || !backendPrResult) {
+      setStockCheckForm({ assignedTo: '', status: '', dueDate: '', notes: '' });
+      return;
+    }
+    const pr = backendPrResult.find((p: { id: string }) => String(p.id) === selectedRequest.id) as {
+      stockCheckAssignedTo?: string | null;
+      stockCheckStatus?: string | null;
+      stockCheckDueDate?: string | null;
+      stockCheckNotes?: string | null;
+    } | undefined;
+    setStockCheckForm({
+      assignedTo: pr?.stockCheckAssignedTo ?? '',
+      status: pr?.stockCheckStatus ?? '',
+      dueDate: pr?.stockCheckDueDate?.toString().slice(0, 10) ?? '',
+      notes: pr?.stockCheckNotes ?? '',
+    });
+  }, [selectedRequest, backendPrResult]);
 
   useEffect(() => {
     if (!poTrackingData) {
@@ -613,7 +704,6 @@ const Procurement: React.FC = () => {
     const draftPosCount = draftPOs.length;
     const issuedPos = requests.filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending').length;
     const grnCount = Math.max(issuedPos, 1);
-    const stockCheck = requests.filter((request) => request.priority !== 'Low').length;
     const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
 
     return {
@@ -623,7 +713,6 @@ const Procurement: React.FC = () => {
       'Draft POs': draftPosCount,
       'Issued POs': issuedPos,
       'GRN Monitor': grnCount,
-      'Stock Check': stockCheck,
       'Item Tracker': itemTracker,
     };
   }, [draftPOs, quotes, requests]);
@@ -661,20 +750,20 @@ const Procurement: React.FC = () => {
         request.itemDetails && request.itemDetails.length > 0
           ? request.itemDetails
           : request.items.map((itemName, idx) => {
-              const qty = request.quantities?.[idx] ?? 0;
-              const plannedPrice = request.plannedPrices?.[idx] ?? 0;
-              return {
-                itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
-                itemName,
-                reqQty: qty,
-                unit: request.units?.[idx] ?? '',
-                moq: '',
-                packSize: '',
-                plannedPrice,
-                leadTimeDays: 0,
-                estValue: plannedPrice * qty,
-              };
-            });
+            const qty = request.quantities?.[idx] ?? 0;
+            const plannedPrice = request.plannedPrices?.[idx] ?? 0;
+            return {
+              itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+              itemName,
+              reqQty: qty,
+              unit: request.units?.[idx] ?? '',
+              moq: '',
+              packSize: '',
+              plannedPrice,
+              leadTimeDays: 0,
+              estValue: plannedPrice * qty,
+            };
+          });
 
       details.forEach((detail) => {
         const itemName = detail.itemName;
@@ -897,8 +986,8 @@ const Procurement: React.FC = () => {
           request.status === 'Delivery Pending'
             ? 'In Transit'
             : etaDays < 0 || (request.priority === 'High' && etaDays <= 2)
-            ? 'At Risk'
-            : 'Released';
+              ? 'At Risk'
+              : 'Released';
 
         const fallbackLineItems = request.items.map((item, index) => {
           const qtyNum = Number(request.itemDetails?.[index]?.reqQty) || 0;
@@ -922,15 +1011,15 @@ const Procurement: React.FC = () => {
         const withQuotePrices = (lines: { item: string; itemCode: string; type: RequestType; qty: string; pricePerUnit: number; gstPercent: number; gstAmount: number; lineTotal: number }[]) =>
           linkedQuote?.lines?.length
             ? lines.map((ln, idx) => {
-                const quoteLine = linkedQuote.lines[idx] ?? linkedQuote.lines.find((l) => l.item && String(l.item).trim() === String(ln.item).trim());
-                const pricePerUnit = (quoteLine && typeof quoteLine.pricePerUnit === 'number') ? quoteLine.pricePerUnit : ln.pricePerUnit;
-                const qty = parseFloat(String(ln.qty).replace(/[^\d.]/g, '')) || 0;
-                const subtotal = qty * pricePerUnit;
-                const gstPercent = 18;
-                const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
-                const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                return { ...ln, pricePerUnit, gstPercent, gstAmount, lineTotal };
-              })
+              const quoteLine = linkedQuote.lines[idx] ?? linkedQuote.lines.find((l) => l.item && String(l.item).trim() === String(ln.item).trim());
+              const pricePerUnit = (quoteLine && typeof quoteLine.pricePerUnit === 'number') ? quoteLine.pricePerUnit : ln.pricePerUnit;
+              const qty = parseFloat(String(ln.qty).replace(/[^\d.]/g, '')) || 0;
+              const subtotal = qty * pricePerUnit;
+              const gstPercent = 18;
+              const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+              const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+              return { ...ln, pricePerUnit, gstPercent, gstAmount, lineTotal };
+            })
             : lines;
 
         const lineItems =
@@ -938,23 +1027,23 @@ const Procurement: React.FC = () => {
           withQuotePrices(
             linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
               ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => {
-                  const qty = Number(i.quantity) || 0;
-                  const rate = Number(i.rate ?? i.price ?? 0);
-                  const gstPct = Number(i.tax) || 18;
-                  const subtotal = qty * rate;
-                  const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
-                  const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                  return {
-                    item: i.itemName ?? i.name ?? request.items[idx] ?? '',
-                    itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
-                    type: request.type,
-                    qty: String(i.quantity ?? ''),
-                    pricePerUnit: rate,
-                    gstPercent: gstPct,
-                    gstAmount,
-                    lineTotal,
-                  };
-                })
+                const qty = Number(i.quantity) || 0;
+                const rate = Number(i.rate ?? i.price ?? 0);
+                const gstPct = Number(i.tax) || 18;
+                const subtotal = qty * rate;
+                const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+                const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                return {
+                  item: i.itemName ?? i.name ?? request.items[idx] ?? '',
+                  itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+                  type: request.type,
+                  qty: String(i.quantity ?? ''),
+                  pricePerUnit: rate,
+                  gstPercent: gstPct,
+                  gstAmount,
+                  lineTotal,
+                };
+              })
               : fallbackLineItems
           );
 
@@ -1130,138 +1219,71 @@ const Procurement: React.FC = () => {
     addToast('success', `${requestCode} marked delivered at WH. GRN created — see Warehouse > Inbound.`);
   };
 
-  const updateQuoteStatus = (quoteId: string, status: QuoteStatus) => {
-    updateProcurementState((current) => ({
-      quotes: current.quotes.map((quote) => (quote.id === quoteId ? { ...quote, status } : quote)),
-    }));
-    addToast('success', `Quote ${quoteId} moved to ${status}`);
+  const updateQuoteStatus = async (quoteId: string, status: QuoteStatus) => {
+    const backendStatus = status === 'Confirmed' ? 'confirmed' : status === 'Not Selected' ? 'not_selected' : 'pending';
+    const id = parseInt(quoteId, 10);
+    if (Number.isNaN(id)) {
+      addToast('error', 'Invalid quote id');
+      return;
+    }
+    const res = await updateProcurementQuotation(id, { status: backendStatus });
+    if (!res.success) {
+      addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update quote status');
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+    addToast('success', `Quote status updated to ${status}`);
   };
 
-  const createDraftPO = async (quoteId: string) => {
+  const [showCreatePoFromQuoteModal, setShowCreatePoFromQuoteModal] = useState(false);
+  const [createPoFromQuoteState, setCreatePoFromQuoteState] = useState<{
+    quoteId: string;
+    requestId: string;
+    itemKey?: string;
+  } | null>(null);
+
+  const createDraftPO = (quoteId: string) => {
     const selectedQuote = quotes.find((quote) => quote.id === quoteId);
     if (!selectedQuote) {
       addToast('error', 'Quote not found');
       return;
     }
-
-    const relatedRequest = requests.find(req => req.id === selectedQuote.requestId);
-    if (!relatedRequest) {
+    if (selectedQuote.status !== 'Confirmed') {
+      addToast('warning', 'Confirm this quote before creating a draft PO. Use "Confirm Quote" first.');
+      return;
+    }
+    const relatedRequest = requests.find((req) => req.id === selectedQuote.requestId);
+    if (!relatedRequest && selectedQuote.requestId) {
       addToast('error', 'Related request not found');
       return;
     }
-
-    // Generate new DPO ID
-    const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
-    
-    // Create line items from quote lines
-    const lineItems: DraftPOLineItem[] = selectedQuote.lines.map((line, idx) => {
-      const qty = parseFloat(line.qty.replace(/[^\d.]/g, ''));
-      const pricePerUnit = line.pricePerUnit;
-      const gstPercent = 18; // Standard GST rate
-      const subtotal = qty * pricePerUnit;
-      const gstAmount = subtotal * (gstPercent / 100);
-      const lineTotal = subtotal + gstAmount;
-
-      return {
-        item: line.item,
-        itemCode: selectedQuote.requestType === 'RM' ? `EI-RM-${String(idx + 1).padStart(3, '0')}` : `EI-PM-${String(idx + 1).padStart(3, '0')}`,
-        type: selectedQuote.requestType,
-        qty: line.qty,
-        pricePerUnit,
-        gstPercent,
-        gstAmount: parseFloat(gstAmount.toFixed(2)),
-        lineTotal: parseFloat(lineTotal.toFixed(2)),
-      };
+    // Open confirmation modal: choose PR (if standalone quote) and item within that PR/quote before creating Draft PO
+    setCreatePoFromQuoteState({
+      quoteId,
+      requestId: selectedQuote.requestId || (requests[0]?.id ?? ''),
+      itemKey: undefined,
     });
-
-    // Calculate totals
-    const subtotal = parseFloat(lineItems.reduce((sum, item) => sum + (item.lineTotal - item.gstAmount), 0).toFixed(2));
-    const gstTotal = parseFloat(lineItems.reduce((sum, item) => sum + item.gstAmount, 0).toFixed(2));
-    const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2));
-
-    const today = new Date();
-    const expectedDelivery = new Date(today);
-    expectedDelivery.setDate(expectedDelivery.getDate() + selectedQuote.leadTimeDays);
-    const createdDateStr = today.toISOString().split('T')[0];
-    const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
-
-    const vendor = relatedRequest.preferredVendor?.trim() || selectedQuote.vendor;
-    const newDraftPO: DraftPO = {
-      id: newDpoId,
-      dpoNumber: newDpoId,
-      requestId: selectedQuote.requestId,
-      requestCode: selectedQuote.requestCode,
-      type: selectedQuote.requestType,
-      vendor,
-      vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
-      status: 'Pending Approval',
-      createdDate: createdDateStr,
-      createdBy: 'Procurement — Admin',
-      paymentTerms: selectedQuote.terms,
-      expectedDelivery: expectedDeliveryStr,
-      deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
-      vendorRating: selectedQuote.rating,
-      alertMessage: `Draft PO created from quote ${selectedQuote.id}. Awaiting approval to proceed.`,
-      alertType: 'warning',
-      lineItems,
-      subtotal,
-      gstTotal,
-      grandTotal,
-    };
-
-    // Persist to PO table (backend) with request link for reload
-    const poPayload = {
-      orderId: newDraftPO.dpoNumber,
-      vendorName: vendor,
-      orderDate: createdDateStr,
-      expectedShipmentDate: expectedDeliveryStr,
-      reference: newDraftPO.requestCode,
-      paymentTerms: newDraftPO.paymentTerms || undefined,
-      status: 'Draft',
-      formData: { requestId: selectedQuote.requestId, requestCode: selectedQuote.requestCode },
-      items: newDraftPO.lineItems.map((l) => ({
-        itemName: l.item,
-        quantity: l.qty,
-        rate: String(l.pricePerUnit),
-        tax: String(l.gstPercent || 18),
-      })),
-    };
-    const createResult = await createPurchaseOrder(poPayload);
-    if (!createResult.success || !createResult.data) {
-      addToast('error', typeof createResult.error === 'string' ? createResult.error : (createResult.error?.message ?? 'Failed to create purchase order'));
-      return;
-    }
-    const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
-    const draftWithBackend: DraftPO = { ...newDraftPO, backendPoId: backendId };
-
-    await updateRequestStatus(selectedQuote.requestId, 'PO Draft', { skipItems: true });
-
-    updateProcurementState((current) => ({
-      draftPOs: [draftWithBackend, ...current.draftPOs],
-    }));
-
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    addToast('success', `Draft PO ${newDpoId} created for ${selectedQuote.requestCode}`);
-    
-    setTimeout(() => {
-      applyRouteState('Procurement', 'Draft POs');
-    }, 500);
+    setShowCreatePoFromQuoteModal(true);
   };
 
-  /** Create a draft PO from request data only (no quote). Uses confirmed quote prices if available; otherwise fetches vendor prices from Items List (quote-line-defaults). */
+  /** Create a draft PO from request data only (no quote). Uses preferred/confirmed quote prices if available; otherwise fetches vendor prices from Items List (quote-line-defaults). */
   const createDraftPOFromRequest = async (
     requestId: string,
     requestCode: string,
     items: BackendPRItem[],
     preferredVendor: string,
-    requestType: RequestType
+    requestType: RequestType,
+    preferredQuotationId?: string
   ): Promise<boolean> => {
     if (!items.length) {
       addToast('warning', 'Add at least one line item to the request to create a draft PO.');
       return false;
     }
     const confirmedQuote = quotes.find((q) => q.requestId === requestId && q.status === 'Confirmed');
-    const vendor = preferredVendor?.trim() || 'Unassigned';
+    const quoteToUse = preferredQuotationId
+      ? quotes.find((q) => q.id === preferredQuotationId)
+      : confirmedQuote;
+    const vendor = preferredVendor?.trim() || quoteToUse?.vendor?.trim() || 'Unassigned';
     const vendorId = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase())?.id;
 
     let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
@@ -1275,7 +1297,14 @@ const Procurement: React.FC = () => {
     const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
     const lineItems: DraftPOLineItem[] = items.map((it, idx) => {
       const qty = Number(it.quantity_requested) || 0;
-      const matchedLine = confirmedQuote?.lines?.find((l) => (l.item && (l.item === it.name || l.item === it.code)) || String(l.item).trim() === String(it.name ?? it.code ?? '').trim());
+      const prName = String(it.name ?? '').trim().toLowerCase();
+      const prCode = String(it.code ?? '').trim().toLowerCase();
+      const matchedLine = quoteToUse?.lines?.find((l) => {
+        const quoteItem = String(l.item ?? '').trim().toLowerCase();
+        if (!quoteItem) return false;
+        return quoteItem === prName || quoteItem === prCode || prName === quoteItem || prCode === quoteItem
+          || prName.includes(quoteItem) || quoteItem.includes(prName) || (prCode && quoteItem.includes(prCode));
+      });
       let pricePerUnit = matchedLine != null && typeof matchedLine.pricePerUnit === 'number' && matchedLine.pricePerUnit > 0
         ? matchedLine.pricePerUnit
         : 0;
@@ -1328,7 +1357,8 @@ const Procurement: React.FC = () => {
       return false;
     }
     const backendId = String(createResult.data.id ?? '').replace(/^PO-/, '') || String(createResult.data.id);
-    const usedItemsListPrices = itemsListPrices.length > 0 && lineItems.some((l) => l.pricePerUnit > 0);
+    const usedQuotePrices = quoteToUse && lineItems.some((l) => l.pricePerUnit > 0);
+    const usedItemsListPrices = !usedQuotePrices && itemsListPrices.length > 0 && lineItems.some((l) => l.pricePerUnit > 0);
     const newDraftPO: DraftPO = {
       id: newDpoId,
       dpoNumber: newDpoId,
@@ -1344,10 +1374,12 @@ const Procurement: React.FC = () => {
       expectedDelivery: expectedDeliveryStr,
       deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
       vendorRating: 0,
-      alertMessage: usedItemsListPrices
-        ? `Draft PO created with ${vendor} prices from Items List.`
-        : 'Draft PO created from request. Add rates in Edit if needed.',
-      alertType: usedItemsListPrices ? 'success' : 'warning',
+      alertMessage: usedQuotePrices
+        ? `Draft PO created with ${vendor} quotation prices.`
+        : usedItemsListPrices
+          ? `Draft PO created with ${vendor} prices from Items List.`
+          : 'Draft PO created from request. Add rates in Edit if needed.',
+      alertType: usedQuotePrices || usedItemsListPrices ? 'success' : 'warning',
       lineItems,
       subtotal,
       gstTotal,
@@ -1384,11 +1416,11 @@ const Procurement: React.FC = () => {
       draftPOs: current.draftPOs.map((draftPo) =>
         draftPo.id === draftPoId
           ? {
-              ...draftPo,
-              status: 'Approved',
-              alertType: 'ok',
-              alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
-            }
+            ...draftPo,
+            status: 'Approved',
+            alertType: 'ok',
+            alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
+          }
           : draftPo,
       ),
     }));
@@ -1397,11 +1429,11 @@ const Procurement: React.FC = () => {
       setSelectedDraftPO((prev) =>
         prev
           ? {
-              ...prev,
-              status: 'Approved',
-              alertType: 'ok',
-              alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
-            }
+            ...prev,
+            status: 'Approved',
+            alertType: 'ok',
+            alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
+          }
           : prev,
       );
     }
@@ -1603,46 +1635,22 @@ const Procurement: React.FC = () => {
   };
 
   const addNewQuote = () => {
-    const targetRequest = requests.find((request) => request.status === 'New') || requests[0];
-
-    if (!targetRequest) {
-      addToast('warning', 'No request available to attach a new quote');
+    if (!vendors.length) {
+      addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
       return;
     }
-
-    const newId = `QT-${String(quotes.length + 1).padStart(3, '0')}`;
-
-    const newQuote: VendorQuote = {
-      id: newId,
-      requestId: targetRequest.id,
-      requestCode: targetRequest.code,
-      requestType: targetRequest.type,
-      vendor: vendors[0]?.name ?? 'Unassigned',
-      status: 'Pending Review',
-      quotedOn: '2026-02-27',
-      leadTimeDays: 19,
-      terms: '45% Advance, 55% on Dispatch',
-      validTill: '2026-03-22',
-      rating: 4.0,
-      fileName: `${newId}-new-horizon-quote.pdf`,
-      note: 'Auto-generated sample quote for quick review and comparison.',
-      lines: targetRequest.items.map((item, index) => ({
-        item,
-        qty: targetRequest.type === 'RM' ? `${40 + index * 10} KG` : `${20000 + index * 5000} PCS`,
-        pricePerUnit: targetRequest.type === 'RM' ? 640 + index * 25 : 1.95 + index * 0.2,
-        totalValue:
-          targetRequest.type === 'RM'
-            ? (40 + index * 10) * (640 + index * 25)
-            : Math.round((20000 + index * 5000) * (1.95 + index * 0.2)),
-        vsPlanned: index % 2 === 0 ? '-2.1%' : '+1.2%',
-      })),
-    };
-
-    updateProcurementState((current) => ({
-      quotes: [newQuote, ...current.quotes],
-    }));
-    applyRouteState('Procurement', 'Quotations');
-    addToast('success', `${newId} recorded successfully`);
+    const defaultVendor = vendors[0];
+    const todayStr = new Date().toISOString().slice(0, 10);
+    setRecordQuoteForm({
+      vendorId: defaultVendor.id,
+      quoteDate: todayStr,
+      validTill: '',
+      leadTimeDays: '',
+      paymentTerms: defaultVendor.paymentTerms ?? '',
+      notes: '',
+    });
+    setRecordQuoteLines([]);
+    setShowRecordQuoteModal(true);
   };
 
   const openNewRequestModal = () => {
@@ -1683,7 +1691,7 @@ const Procurement: React.FC = () => {
     }
 
     const newCode = `REQ-${String(requests.length + 101).padStart(3, '0')}`;
-    
+
     const newRequest: ProcurementRequest = {
       id: `req-${Date.now()}`,
       code: newCode,
@@ -1737,6 +1745,75 @@ const Procurement: React.FC = () => {
     second: '2-digit',
   });
 
+  const handleRecordQuoteLineChange =
+    (idx: number, field: 'orderQty' | 'pricePerUnit' | 'name' | 'itemId') => (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setRecordQuoteLines((prev) =>
+        prev.map((line, i) => {
+          if (i !== idx) return line;
+          const next: typeof line = { ...line, [field]: value };
+          const qtyNum = parseFloat(String(next.orderQty).replace(/[^\d.]/g, '')) || 0;
+          const priceNum = parseFloat(String(next.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+          next.totalValue = parseFloat((qtyNum * priceNum).toFixed(2));
+          return next;
+        })
+      );
+    };
+
+  const handleRecordQuoteLineSelectItem = (idx: number, value: string) => {
+    if (!value || value === '') {
+      setRecordQuoteLines((prev) =>
+        prev.map((line, i) =>
+          i !== idx
+            ? line
+            : { ...line, itemType: undefined, raw_material_id: null, pack_material_id: null, itemId: '', name: '', uom: 'KG' }
+        )
+      );
+      return;
+    }
+    const [type, idStr] = value.split('-');
+    const id = parseInt(idStr, 10);
+    if (type === 'rm' && !Number.isNaN(id)) {
+      const rm = (rawMaterialsListForQuote as RawMaterialRecord[]).find((r) => String(r.id) === String(id));
+      if (rm) {
+        setRecordQuoteLines((prev) =>
+          prev.map((line, i) =>
+            i !== idx
+              ? line
+              : {
+                ...line,
+                itemType: 'RM',
+                raw_material_id: id,
+                pack_material_id: null,
+                itemId: rm.code ?? '',
+                name: rm.name ?? '',
+                uom: rm.uom ?? 'KG',
+              }
+          )
+        );
+      }
+    } else if (type === 'pm' && !Number.isNaN(id)) {
+      const pm = (packMaterialsListForQuote as PackMaterialRecord[]).find((p) => String(p.id) === String(id));
+      if (pm) {
+        setRecordQuoteLines((prev) =>
+          prev.map((line, i) =>
+            i !== idx
+              ? line
+              : {
+                ...line,
+                itemType: 'PM',
+                raw_material_id: null,
+                pack_material_id: id,
+                itemId: pm.code ?? '',
+                name: pm.description ?? pm.code ?? '',
+                uom: pm.unit ?? 'PCS',
+              }
+          )
+        );
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-yellow-50 text-slate-900">
       <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
@@ -1749,11 +1826,10 @@ const Procurement: React.FC = () => {
                 <button
                   key={tab}
                   onClick={() => applyRouteState(tab, sideSection)}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                    mainTab === tab
-                      ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                      : 'bg-white text-slate-600 border-slate-300 hover:text-slate-900'
-                  }`}
+                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${mainTab === tab
+                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                    : 'bg-white text-slate-600 border-slate-300 hover:text-slate-900'
+                    }`}
                 >
                   {tab}
                 </button>
@@ -1804,11 +1880,10 @@ const Procurement: React.FC = () => {
                 <button
                   key={section}
                   onClick={() => applyRouteState('Procurement', section)}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
-                    sideSection === section
-                      ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                      : 'text-slate-700 hover:bg-slate-50'
-                  }`}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
+                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                    : 'text-slate-700 hover:bg-slate-50'
+                    }`}
                 >
                   <span>{section}</span>
                   <span className="text-xs text-slate-500">{sideCounts[section]}</span>
@@ -1818,18 +1893,17 @@ const Procurement: React.FC = () => {
 
             <p className="text-[11px] tracking-[0.2em] text-slate-400 mb-3">OPERATIONS</p>
             <div className="space-y-1">
-              {(['GRN Monitor', 'Stock Check', 'Item Tracker'] as SideSection[]).map((section) => (
+              {(['GRN Monitor', 'Item Tracker'] as SideSection[]).map((section) => (
                 <button
                   key={section}
                   onClick={() => {
                     applyRouteState('Procurement', section);
                     addToast('info', `${section} synced with procurement data`);
                   }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
-                    sideSection === section
-                      ? 'bg-cyan-100 text-cyan-800 border border-cyan-300'
-                      : 'text-slate-700 hover:bg-slate-50'
-                  }`}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
+                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-300'
+                    : 'text-slate-700 hover:bg-slate-50'
+                    }`}
                 >
                   <span>{section}</span>
                   <span className="text-xs text-cyan-700">{sideCounts[section]}</span>
@@ -1840,88 +1914,88 @@ const Procurement: React.FC = () => {
 
           <main className="px-5 md:px-7 py-5 space-y-4">
             {sideSection !== 'Overview' && (
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {[
-                { label: 'TOTAL QUOTES', value: quoteStats.totalQuotes, color: 'text-yellow-700' },
-                { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
-                { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
-                { label: 'PENDING REVIEW', value: quoteStats.pendingReview, color: 'text-cyan-600' },
-                { label: 'QUOTES VALUE', value: `₹${quoteStats.quotesValue.toLocaleString('en-IN')}`, color: 'text-cyan-700' },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-                  <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
-                  <p className={`mt-2 text-3xl font-bold font-archivo ${stat.color}`}>{stat.value}</p>
-                </div>
-              ))}
-            </div>
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                {[
+                  { label: 'TOTAL QUOTES', value: quoteStats.totalQuotes, color: 'text-yellow-700' },
+                  { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
+                  { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
+                  { label: 'PENDING REVIEW', value: quoteStats.pendingReview, color: 'text-cyan-600' },
+                  { label: 'QUOTES VALUE', value: `₹${quoteStats.quotesValue.toLocaleString('en-IN')}`, color: 'text-cyan-700' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                    <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
+                    <p className={`mt-2 text-3xl font-bold font-archivo ${stat.color}`}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
             )}
 
             {sideSection === 'Quotations' && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-slate-500">CATEGORY:</span>
-                {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => setCategoryFilter(category)}
-                    className={`px-2 py-1 rounded border ${
-                      categoryFilter === category
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-slate-500">CATEGORY:</span>
+                  {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setCategoryFilter(category)}
+                      className={`px-2 py-1 rounded border ${categoryFilter === category
                         ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
                         : 'bg-white text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
-
-                <span className="text-slate-500 ml-2">VENDOR:</span>
-                <select
-                  value={vendorFilter}
-                  onChange={(event) => setVendorFilter(event.target.value)}
-                  className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                >
-                  <option value="All Vendors">All Vendors</option>
-                  {vendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.name}>
-                      {vendor.name}
-                    </option>
+                        }`}
+                    >
+                      {category}
+                    </button>
                   ))}
-                </select>
 
-                <span className="text-slate-500 ml-2">STATUS:</span>
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as 'All Statuses' | QuoteStatus)}
-                  className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                >
-                  <option value="All Statuses">All Statuses</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Not Selected">Not Selected</option>
-                  <option value="Pending Review">Pending Review</option>
-                </select>
-              </div>
+                  <span className="text-slate-500 ml-2">VENDOR:</span>
+                  <select
+                    value={vendorFilter}
+                    onChange={(event) => setVendorFilter(event.target.value)}
+                    className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
+                  >
+                    <option value="All Vendors">All Vendors</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.name}>
+                        {vendor.name}
+                      </option>
+                    ))}
+                  </select>
 
-              <div className="flex items-center gap-2">
-                <input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search vendor, request ID..."
-                  className="w-60 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
-                />
-                <button
-                  onClick={addNewQuote}
-                  className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm"
-                >
-                  + Record Quote
-                </button>
+                  <span className="text-slate-500 ml-2">STATUS:</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as 'All Statuses' | QuoteStatus)}
+                    className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
+                  >
+                    <option value="All Statuses">All Statuses</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Not Selected">Not Selected</option>
+                    <option value="Pending Review">Pending Review</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search vendor, request ID..."
+                    className="w-60 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
+                  />
+                  <button
+                    onClick={addNewQuote}
+                    className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm"
+                  >
+                    + Record Quote
+                  </button>
+                </div>
               </div>
-            </div>
             )}
 
             <div className="space-y-4">
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
                 const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
+                // Once PR → PO is issued and released to vendor, exclude from Overview (Actions Required)
                 const activeRequests = requests.filter(r => r.status !== 'PO Released' && r.status !== 'Delivery Pending');
                 const rmRequests = requests.filter(r => r.type === 'RM');
                 const pmRequests = requests.filter(r => r.type === 'PM');
@@ -2126,6 +2200,7 @@ const Procurement: React.FC = () => {
                             <tr className="border-b border-slate-200 text-left">
                               <th className="py-2 pr-4 font-semibold text-slate-700">ID</th>
                               <th className="py-2 pr-4 font-semibold text-slate-700">Planning line</th>
+                              <th className="py-2 pr-4 font-semibold text-slate-700">Batch ID</th>
                               <th className="py-2 pr-4 font-semibold text-slate-700">Priority</th>
                               <th className="py-2 pr-4 font-semibold text-slate-700">Status</th>
                               <th className="py-2 pr-4 font-semibold text-slate-700">Required by</th>
@@ -2138,6 +2213,7 @@ const Procurement: React.FC = () => {
                               <tr key={pr.id} className="border-b border-slate-100 hover:bg-slate-50">
                                 <td className="py-2 pr-4 text-slate-900 font-medium">{pr.id}</td>
                                 <td className="py-2 pr-4 text-slate-600">PI #{pr.planningExtractedId}</td>
+                                <td className="py-2 pr-4 text-slate-700 font-medium">{pr.planningBatchId != null ? `#${pr.planningBatchId}` : '—'}</td>
                                 <td className="py-2 pr-4">{pr.priority}</td>
                                 <td className="py-2 pr-4">{pr.status}</td>
                                 <td className="py-2 pr-4 text-slate-600">{pr.requiredByDate ?? '—'}</td>
@@ -2243,14 +2319,14 @@ const Procurement: React.FC = () => {
                     <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
                       <div className="flex items-center gap-2 overflow-x-auto">
                         {(['All', 'Active', 'New', 'Quoted', 'PO Draft', 'PO Released'] as const).map((tabStatus) => {
-                          const count = tabStatus === 'All' 
+                          const count = tabStatus === 'All'
                             ? requests.length
                             : tabStatus === 'Active'
-                            ? requests.filter(r => r.status !== 'PO Released').length
-                            : requests.filter(r => r.status === tabStatus).length;
-                          
+                              ? requests.filter(r => r.status !== 'PO Released').length
+                              : requests.filter(r => r.status === tabStatus).length;
+
                           const isActive = requestStatusFilter === (tabStatus === 'All' ? 'All Statuses' : tabStatus === 'Active' ? 'All Statuses' : tabStatus);
-                          
+
                           return (
                             <button
                               key={tabStatus}
@@ -2261,11 +2337,10 @@ const Procurement: React.FC = () => {
                                   setRequestStatusFilter(tabStatus as RequestStatus);
                                 }
                               }}
-                              className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
-                                isActive
-                                  ? 'bg-blue-500 text-white shadow-md'
-                                  : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
-                              }`}
+                              className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${isActive
+                                ? 'bg-blue-500 text-white shadow-md'
+                                : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                                }`}
                             >
                               {tabStatus} ({count})
                             </button>
@@ -2302,7 +2377,7 @@ const Procurement: React.FC = () => {
                           const dueDate = new Date(req.dueDate);
                           const today = new Date('2026-02-28');
                           const daysLeft = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                          
+
                           return (
                             <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                               {/* Card Header */}
@@ -2312,11 +2387,15 @@ const Procurement: React.FC = () => {
                                     <span className="px-3 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
                                       {req.code}
                                     </span>
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                                      req.type === 'RM' 
-                                        ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' 
-                                        : 'bg-violet-100 text-violet-800 border border-violet-300'
-                                    }`}>
+                                    {req.batchId != null && req.batchId !== '' && (
+                                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200" title="Batch that raised this PR">
+                                        Batch #{req.batchId}
+                                      </span>
+                                    )}
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${req.type === 'RM'
+                                      ? 'bg-cyan-100 text-cyan-800 border border-cyan-300'
+                                      : 'bg-violet-100 text-violet-800 border border-violet-300'
+                                      }`}>
                                       {req.type}
                                     </span>
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${priorityClass[req.priority]}`}>
@@ -2328,9 +2407,8 @@ const Procurement: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
                                     <span>Req. {req.dueDate.split('-').reverse().join('-')}</span>
-                                    <span className={`font-bold ${
-                                      daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
-                                    }`}>
+                                    <span className={`font-bold ${daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
+                                      }`}>
                                       {daysLeft}d left
                                     </span>
                                   </div>
@@ -2437,6 +2515,67 @@ const Procurement: React.FC = () => {
                                   >
                                     Priority
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      if (req.itemDetails && req.itemDetails.length > 0) {
+                                        const item = req.itemDetails[0];
+                                        setReleaseToPlannedTarget({
+                                          request: req,
+                                          item: {
+                                            itemName: item.itemName,
+                                            itemCode: item.itemCode,
+                                            idx: 0,
+                                            qty: item.reqQty,
+                                            unit: item.unit,
+                                            plannedPrice: item.plannedPrice,
+                                            moq: item.moq,
+                                            reqQty: item.reqQty,
+                                          },
+                                        });
+                                        const reqQuotesForItem = quotes.filter(
+                                          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim() === (item.itemName ?? '').trim())
+                                        );
+                                        const first = reqQuotesForItem[0];
+                                        const firstLine = first?.lines.find((l) => (l.item ?? '').trim() === (item.itemName ?? '').trim());
+                                        setReleaseToPlannedForm({
+                                          vendor: first?.vendor ?? '',
+                                          moqDisplay: item.moq ? `${item.moq} (₹${firstLine?.pricePerUnit ?? 0} · ${first?.leadTimeDays ?? 0}d)` : '',
+                                          qty: String(item.reqQty ?? item.qty ?? 0),
+                                          unitPrice: String(firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
+                                          paymentTerms: first?.terms ?? 'As per contract',
+                                          leadTimeDays: first?.leadTimeDays ?? item.leadTimeDays ?? 0,
+                                        });
+                                      } else if (req.items && req.items.length > 0) {
+                                        const itemName = req.items[0];
+                                        const qty = req.quantities?.[0] ?? 0;
+                                        const price = req.plannedPrices?.[0] ?? 0;
+                                        const unit = req.units?.[0] ?? 'KG';
+                                        const spec = req.specifications?.[0];
+                                        setReleaseToPlannedTarget({
+                                          request: req,
+                                          item: { itemName, idx: 0, qty, unit, spec, plannedPrice: price },
+                                        });
+                                        const reqQuotesForItem = quotes.filter(
+                                          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim() === (itemName ?? '').trim())
+                                        );
+                                        const first = reqQuotesForItem[0];
+                                        const firstLine = first?.lines.find((l) => (l.item ?? '').trim() === (itemName ?? '').trim());
+                                        setReleaseToPlannedForm({
+                                          vendor: first?.vendor ?? '',
+                                          moqDisplay: '',
+                                          qty: String(qty ?? 0),
+                                          unitPrice: String(firstLine?.pricePerUnit ?? price ?? 0),
+                                          paymentTerms: first?.terms ?? 'As per contract',
+                                          leadTimeDays: first?.leadTimeDays ?? 0,
+                                        });
+                                      } else {
+                                        addToast('warning', 'No items on this request.');
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg border border-amber-400 text-amber-800 text-xs font-semibold hover:bg-amber-50 transition-all"
+                                  >
+                                    Release to Draft PO
+                                  </button>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
@@ -2487,7 +2626,7 @@ const Procurement: React.FC = () => {
                     filteredQuotes.map((quote) => {
                       const totalValue = quote.lines.reduce((sum, line) => sum + line.totalValue, 0);
                       const isExpanded = expandedQuoteId === quote.id;
-                      
+
                       return (
                         <article key={quote.id} className="rounded-xl border border-cyan-300 bg-white shadow-md overflow-hidden">
                           {/* Card Header */}
@@ -2552,9 +2691,8 @@ const Procurement: React.FC = () => {
                                     <td className="px-4 py-3 text-right font-bold text-slate-900">
                                       ₹{line.totalValue.toLocaleString('en-IN')}
                                     </td>
-                                    <td className={`px-4 py-3 text-right font-bold ${
-                                      line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
-                                    }`}>
+                                    <td className={`px-4 py-3 text-right font-bold ${line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
+                                      }`}>
                                       {line.vsPlanned}
                                     </td>
                                   </tr>
@@ -2606,7 +2744,7 @@ const Procurement: React.FC = () => {
                                     <div className="text-sm text-slate-700">{quote.note}</div>
                                   </div>
                                 )}
-                                
+
                                 {/* File Info */}
                                 <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
                                   <div className="flex items-center gap-2">
@@ -2635,18 +2773,24 @@ const Procurement: React.FC = () => {
                             </button>
                             <div className="flex items-center gap-2">
                               <button
+                                type="button"
                                 onClick={() => updateQuoteStatus(quote.id, quote.status === 'Confirmed' ? 'Not Selected' : 'Confirmed')}
-                                className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                                  quote.status === 'Confirmed'
-                                    ? 'border border-slate-300 text-slate-700 hover:bg-slate-50'
-                                    : 'border border-emerald-400 text-emerald-700 hover:bg-emerald-50'
-                                }`}
+                                className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${quote.status === 'Confirmed'
+                                  ? 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                                  : 'border border-emerald-400 text-emerald-700 hover:bg-emerald-50'
+                                  }`}
                               >
                                 {quote.status === 'Confirmed' ? 'Mark Not Selected' : 'Confirm Quote'}
                               </button>
                               <button
+                                type="button"
                                 onClick={() => createDraftPO(quote.id)}
-                                className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 font-bold text-sm hover:bg-amber-500 transition-colors"
+                                disabled={quote.status !== 'Confirmed'}
+                                title={quote.status !== 'Confirmed' ? 'Confirm this quote first to create a draft PO' : undefined}
+                                className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${quote.status === 'Confirmed'
+                                  ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+                                  : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                  }`}
                               >
                                 Create Draft PO
                               </button>
@@ -2669,11 +2813,10 @@ const Procurement: React.FC = () => {
                         <button
                           key={category}
                           onClick={() => setCategoryFilter(category)}
-                          className={`px-2 py-1 rounded border ${
-                            categoryFilter === category
-                              ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                              : 'bg-white text-slate-700 border-slate-300'
-                          }`}
+                          className={`px-2 py-1 rounded border ${categoryFilter === category
+                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                            : 'bg-white text-slate-700 border-slate-300'
+                            }`}
                         >
                           {category}
                         </button>
@@ -2746,7 +2889,7 @@ const Procurement: React.FC = () => {
                       </div>
                     ) : (
                       filteredDraftPOs.map((dpo) => (
-                        <article key={dpo.id} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
+                        <article key={dpo.backendPoId != null ? `po-${dpo.backendPoId}` : `dpo-${dpo.id}`} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           {/* Header */}
                           <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -2754,9 +2897,8 @@ const Procurement: React.FC = () => {
                               <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${requestTypeClass[dpo.type]}`}>{dpo.type}</span>
                               <span className="text-sm font-bold text-slate-900">{dpo.vendor}</span>
                             </div>
-                            <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${
-                              dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                            }`}>{dpo.status}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                              }`}>{dpo.status}</span>
                           </div>
 
                           {/* Items Table */}
@@ -2818,9 +2960,8 @@ const Procurement: React.FC = () => {
 
                           {/* Alert */}
                           {dpo.alertMessage && (
-                            <div className={`px-5 py-2 text-xs flex items-center gap-2 ${
-                              dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
-                            }`}>
+                            <div className={`px-5 py-2 text-xs flex items-center gap-2 ${dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
+                              }`}>
                               <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
                               <span>{dpo.alertMessage}</span>
                             </div>
@@ -2942,12 +3083,11 @@ const Procurement: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-slate-500">Category:</span>
                         <button
-                            onClick={() => setCategoryFilter('All')}
-                            className={`px-2 py-1 rounded-full border text-xs ${
-                            categoryFilter === 'All'
-                              ? 'border-amber-400 text-amber-800 bg-amber-50'
-                              : 'border-slate-300 text-slate-600 bg-white'
-                          }`}
+                          onClick={() => setCategoryFilter('All')}
+                          className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === 'All'
+                            ? 'border-amber-400 text-amber-800 bg-amber-50'
+                            : 'border-slate-300 text-slate-600 bg-white'
+                            }`}
                         >
                           All
                         </button>
@@ -2955,11 +3095,10 @@ const Procurement: React.FC = () => {
                           <button
                             key={type}
                             onClick={() => setCategoryFilter(type)}
-                            className={`px-2 py-1 rounded-full border text-xs ${
-                              categoryFilter === type
-                                ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
-                                : 'border-slate-300 text-slate-600 bg-white'
-                            }`}
+                            className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === type
+                              ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
+                              : 'border-slate-300 text-slate-600 bg-white'
+                              }`}
                           >
                             {type}
                           </button>
@@ -3050,11 +3189,10 @@ const Procurement: React.FC = () => {
                                   </div>
                                 </td>
                                 <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                    record.request.type === 'RM'
-                                      ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-                                      : 'bg-violet-50 text-violet-700 border border-violet-200'
-                                  }`}>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.request.type === 'RM'
+                                    ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                                    : 'bg-violet-50 text-violet-700 border border-violet-200'
+                                    }`}>
                                     {record.request.type}
                                   </span>
                                 </td>
@@ -3073,13 +3211,12 @@ const Procurement: React.FC = () => {
                                 </td>
                                 <td className="px-4 py-2 align-top text-[11px] text-slate-600">{record.paymentTerms}</td>
                                 <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                    record.status === 'In Transit'
-                                      ? 'bg-sky-50 text-sky-700 border border-sky-200'
-                                      : record.status === 'At Risk'
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.status === 'In Transit'
+                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                                    : record.status === 'At Risk'
                                       ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                       : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  }`}>
+                                    }`}>
                                     {record.status}
                                   </span>
                                 </td>
@@ -3141,9 +3278,8 @@ const Procurement: React.FC = () => {
                                   ₹{record.grandTotal.toLocaleString('en-IN')}
                                 </p>
                                 <p
-                                  className={`text-[11px] mt-1 ${
-                                    record.etaDays <= 1 ? 'text-rose-600' : 'text-slate-500'
-                                  }`}
+                                  className={`text-[11px] mt-1 ${record.etaDays <= 1 ? 'text-rose-600' : 'text-slate-500'
+                                    }`}
                                 >
                                   {record.etaDays >= 0 ? `ETA ${record.etaDays} days` : 'Overdue'}
                                 </p>
@@ -3162,18 +3298,16 @@ const Procurement: React.FC = () => {
                                       className="relative flex flex-col items-center flex-1"
                                     >
                                       <div
-                                        className={`z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold shadow-sm ${
-                                          done
-                                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                                            : 'bg-white border-sky-200 text-sky-400'
-                                        }`}
+                                        className={`z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold shadow-sm ${done
+                                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                                          : 'bg-white border-sky-200 text-sky-400'
+                                          }`}
                                       >
                                         {index + 1}
                                       </div>
                                       <p
-                                        className={`mt-2 text-[10px] tracking-[0.18em] uppercase ${
-                                          done ? 'text-sky-700' : 'text-sky-400'
-                                        }`}
+                                        className={`mt-2 text-[10px] tracking-[0.18em] uppercase ${done ? 'text-sky-700' : 'text-sky-400'
+                                          }`}
                                       >
                                         {stage}
                                       </p>
@@ -3327,11 +3461,10 @@ const Procurement: React.FC = () => {
                         <span className="text-slate-500">Category:</span>
                         <button
                           onClick={() => setGrnCategoryFilter('All')}
-                          className={`px-2 py-1 rounded-full border text-xs ${
-                            grnCategoryFilter === 'All'
-                              ? 'border-amber-400 text-amber-800 bg-amber-50'
-                              : 'border-slate-300 text-slate-600 bg-white'
-                          }`}
+                          className={`px-2 py-1 rounded-full border text-xs ${grnCategoryFilter === 'All'
+                            ? 'border-amber-400 text-amber-800 bg-amber-50'
+                            : 'border-slate-300 text-slate-600 bg-white'
+                            }`}
                         >
                           All
                         </button>
@@ -3339,11 +3472,10 @@ const Procurement: React.FC = () => {
                           <button
                             key={type}
                             onClick={() => setGrnCategoryFilter(type)}
-                            className={`px-2 py-1 rounded-full border text-xs ${
-                              grnCategoryFilter === type
-                                ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
-                                : 'border-slate-300 text-slate-600 bg-white'
-                            }`}
+                            className={`px-2 py-1 rounded-full border text-xs ${grnCategoryFilter === type
+                              ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
+                              : 'border-slate-300 text-slate-600 bg-white'
+                              }`}
                           >
                             {type}
                           </button>
@@ -3477,202 +3609,70 @@ const Procurement: React.FC = () => {
                                   <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
                                 </tr>
                               )))}
-                            {filteredGrnLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
-                                  No GRN line items.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                              {filteredGrnLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
+                                <tr>
+                                  <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
+                                    No GRN line items.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
                     )}
 
                     {/* Completed GRNs (read-only from warehouse API) */}
                     {(() => {
                       const completedFromApi = filteredGrnLines.filter((g) => (g.status || '') === 'GRN Complete');
                       return (
-                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
-                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
-                        <p className="text-[11px] text-slate-500">Showing {completedFromApi.length} completed GRN{completedFromApi.length === 1 ? '' : 's'} (read-only)</p>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">GRN No.</th>
-                              <th className="px-4 py-2 text-left">PO No.</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-left">Items</th>
-                              <th className="px-4 py-2 text-left">Received Date</th>
-                              <th className="px-4 py-2 text-left">Assigned To</th>
-                              <th className="px-4 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {completedFromApi.map((grn) => (
-                              <tr key={grn.id} className="border-b border-slate-100 hover:bg-emerald-50/40">
-                                <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
-                                <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
-                                <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
-                                <td className="px-4 py-2 text-[11px]">{(grn.lineItems ?? []).map((li) => li.item ?? li.itemCode ?? '—').filter(Boolean).join(', ') || '—'}</td>
-                                <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
-                                <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
-                                <td className="px-4 py-2">
-                                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">Completed</span>
-                                </td>
-                              </tr>
-                            ))}
-                            {completedFromApi.length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={8}>
-                                  No completed GRNs yet.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
+                          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
+                            <p className="text-[11px] text-slate-500">Showing {completedFromApi.length} completed GRN{completedFromApi.length === 1 ? '' : 's'} (read-only)</p>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-full text-[11px] text-slate-900">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
+                                  <th className="px-4 py-2 text-left">GRN No.</th>
+                                  <th className="px-4 py-2 text-left">PO No.</th>
+                                  <th className="px-4 py-2 text-left">Type</th>
+                                  <th className="px-4 py-2 text-left">Vendor</th>
+                                  <th className="px-4 py-2 text-left">Items</th>
+                                  <th className="px-4 py-2 text-left">Received Date</th>
+                                  <th className="px-4 py-2 text-left">Assigned To</th>
+                                  <th className="px-4 py-2 text-left">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {completedFromApi.map((grn) => (
+                                  <tr key={grn.id} className="border-b border-slate-100 hover:bg-emerald-50/40">
+                                    <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
+                                    <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
+                                    <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
+                                    <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
+                                    <td className="px-4 py-2 text-[11px]">{(grn.lineItems ?? []).map((li) => li.item ?? li.itemCode ?? '—').filter(Boolean).join(', ') || '—'}</td>
+                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
+                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
+                                    <td className="px-4 py-2">
+                                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">Completed</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {completedFromApi.length === 0 && (
+                                  <tr>
+                                    <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={8}>
+                                      No completed GRNs yet.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       );
                     })()}
-                  </div>
-                );
-              })()}
-
-              {sideSection === 'Stock Check' && (() => {
-                const rows: WarehouseInventoryRow[] = warehouseInventoryData?.rows ?? [];
-                const filteredRows = rows.filter((row) => {
-                  if (stockCategoryFilter !== 'All' && row.type !== stockCategoryFilter) return false;
-                  if (stockStatusFilter !== 'All Statuses' && row.status !== stockStatusFilter) return false;
-                  if (!stockSearch.trim()) return true;
-                  const q = stockSearch.toLowerCase();
-                  return (row.code ?? '').toLowerCase().includes(q) || (row.name ?? '').toLowerCase().includes(q);
-                });
-                const total = rows.length;
-                const rmCount = rows.filter((r) => r.type === 'RM').length;
-                const pmCount = rows.filter((r) => r.type === 'PM').length;
-                const fgCount = rows.filter((r) => r.type === 'FG/PR').length;
-                const inStock = rows.filter((r) => r.status === 'In Stock').length;
-                const lowStock = rows.filter((r) => r.status === 'Low Stock').length;
-                const critical = rows.filter((r) => r.status === 'Critical').length;
-                const outOfStock = rows.filter((r) => r.status === 'Out of Stock').length;
-
-                if (warehouseInventoryLoading) {
-                  return (
-                    <div className="rounded-xl border border-blue-200 bg-white p-8 text-center text-slate-500 text-sm">
-                      Loading warehouse inventory…
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                    <p className="text-[11px] text-slate-600">Data from warehouse inventory. Read-only.</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 text-xs">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">Total</p>
-                        <p className="mt-1 text-xl font-bold text-slate-900">{total}</p>
-                      </div>
-                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">RM</p>
-                        <p className="mt-1 text-xl font-bold text-cyan-800">{rmCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM</p>
-                        <p className="mt-1 text-xl font-bold text-violet-800">{pmCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-slate-100 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-slate-600 uppercase">FG/PR</p>
-                        <p className="mt-1 text-xl font-bold text-slate-800">{fgCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">In Stock</p>
-                        <p className="mt-1 text-xl font-bold text-emerald-800">{inStock}</p>
-                      </div>
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-amber-700 uppercase">Low Stock</p>
-                        <p className="mt-1 text-xl font-bold text-amber-800">{lowStock}</p>
-                      </div>
-                      <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-orange-700 uppercase">Critical</p>
-                        <p className="mt-1 text-xl font-bold text-orange-800">{critical}</p>
-                      </div>
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-red-700 uppercase">Out of Stock</p>
-                        <p className="mt-1 text-xl font-bold text-red-800">{outOfStock}</p>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
-                      <span className="text-slate-500">Category:</span>
-                      <button onClick={() => setStockCategoryFilter('All')} className={`px-2 py-1 rounded-full border ${stockCategoryFilter === 'All' ? 'border-amber-400 text-amber-800 bg-amber-50' : 'border-slate-300 text-slate-600 bg-white'}`}>All</button>
-                      {(['RM', 'PM'] as const).map((t) => (
-                        <button key={t} onClick={() => setStockCategoryFilter(t)} className={`px-2 py-1 rounded-full border ${stockCategoryFilter === t ? 'border-emerald-400 text-emerald-800 bg-emerald-50' : 'border-slate-300 text-slate-600 bg-white'}`}>{t}</button>
-                      ))}
-                      <span className="text-slate-500 ml-2">Status:</span>
-                      <select value={stockStatusFilter} onChange={(e) => setStockStatusFilter(e.target.value as typeof stockStatusFilter)} className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs">
-                        <option value="All Statuses">All</option>
-                        <option value="In Stock">In Stock</option>
-                        <option value="Low Stock">Low Stock</option>
-                        <option value="Critical">Critical</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                      </select>
-                      <input value={stockSearch} onChange={(e) => setStockSearch(e.target.value)} placeholder="Search code, name…" className="w-48 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400" />
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                        <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Warehouse inventory</p>
-                      </div>
-                      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Code</th>
-                              <th className="px-4 py-2 text-left">Name</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">Zone</th>
-                              <th className="px-4 py-2 text-left">Rack</th>
-                              <th className="px-4 py-2 text-right">Stock in hand</th>
-                              <th className="px-4 py-2 text-right">In transit</th>
-                              <th className="px-4 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredRows.map((row) => (
-                              <tr key={row.id} className="border-b border-slate-100">
-                                <td className="px-4 py-2 font-mono text-[10px] text-slate-800">{row.code}</td>
-                                <td className="px-4 py-2">{row.name}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : row.type === 'PM' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{row.type}</span>
-                                </td>
-                                <td className="px-4 py-2 text-slate-700">{row.zone ?? '—'}</td>
-                                <td className="px-4 py-2 text-slate-700">{row.rack ?? '—'}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
-                                    row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                    'bg-red-50 text-red-700 border-red-200'
-                                  }`}>{row.status}</span>
-                                </td>
-                              </tr>
-                            ))}
-                            {filteredRows.length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>No warehouse inventory rows match filters.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
                   </div>
                 );
               })()}
@@ -3702,11 +3702,10 @@ const Procurement: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setItemTrackerCategory('All')}
-                        className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${
-                          itemTrackerCategory === 'All'
-                            ? 'border-slate-900 bg-slate-900 text-white'
-                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                        }`}
+                        className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === 'All'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                          }`}
                       >
                         All
                       </button>
@@ -3715,13 +3714,12 @@ const Procurement: React.FC = () => {
                           key={type}
                           type="button"
                           onClick={() => setItemTrackerCategory(type)}
-                          className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${
-                            itemTrackerCategory === type
-                              ? type === 'RM'
-                                ? 'border-cyan-500 bg-cyan-50 text-cyan-800'
-                                : 'border-violet-500 bg-violet-50 text-violet-800'
-                              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                          }`}
+                          className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === type
+                            ? type === 'RM'
+                              ? 'border-cyan-500 bg-cyan-50 text-cyan-800'
+                              : 'border-violet-500 bg-violet-50 text-violet-800'
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                            }`}
                         >
                           {type}
                         </button>
@@ -3801,8 +3799,8 @@ const Procurement: React.FC = () => {
                             row.priority === 'High'
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
                               : row.priority === 'Medium'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-slate-50 text-slate-600 border-slate-200';
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200';
 
                           const typePillClass =
                             row.type === 'RM'
@@ -3994,12 +3992,11 @@ const Procurement: React.FC = () => {
                                 <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
                                 <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
                                 <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
-                                    row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                     row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                    'bg-red-50 text-red-700 border-red-200'
-                                  }`}>{row.status}</span>
+                                      row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                        'bg-red-50 text-red-700 border-red-200'
+                                    }`}>{row.status}</span>
                                 </td>
                               </tr>
                             ))}
@@ -4046,11 +4043,11 @@ const Procurement: React.FC = () => {
         const data = poTrackingData ?? poTrackingForm;
         const timelineFromApi = po.backendPoId && data
           ? TRACKING_STAGES.map((s) => {
-              const atVal = s.useRef ? data.orderTrackingRef : data[s.atKey];
-              const noteVal = data[s.noteKey];
-              const done = !!atVal;
-              return { stage: s.label, done, timestamp: typeof atVal === 'string' ? atVal : null, note: !s.useRef ? (noteVal ?? null) : null };
-            })
+            const atVal = s.useRef ? data.orderTrackingRef : data[s.atKey];
+            const noteVal = data[s.noteKey];
+            const done = !!atVal;
+            return { stage: s.label, done, timestamp: typeof atVal === 'string' ? atVal : null, note: !s.useRef ? (noteVal ?? null) : null };
+          })
           : null;
         const timelineSteps = timelineFromApi ?? (po.timeline ?? []);
 
@@ -4096,14 +4093,13 @@ const Procurement: React.FC = () => {
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex" onClick={() => setSelectedPO(null)}>
-            <div className="flex-1 bg-black/20" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedPO(null)}>
             <div
-              className="w-full sm:w-96 lg:w-120 max-w-[100vw] bg-white border-l border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-white border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+              <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-500 font-mono mb-1">{po.requestCode ?? po.id}</p>
                   <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
@@ -4137,9 +4133,8 @@ const Procurement: React.FC = () => {
                   ].map(row => (
                     <div key={row.label} className="flex items-center justify-between px-4 py-2">
                       <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-medium ${
-                        row.highlight ? 'text-rose-600' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
-                      }`}>{row.value}</span>
+                      <span className={`font-medium ${row.highlight ? 'text-rose-600' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                        }`}>{row.value}</span>
                     </div>
                   ))}
                 </div>
@@ -4188,9 +4183,8 @@ const Procurement: React.FC = () => {
                       <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
                       {timelineSteps.map((step, idx) => (
                         <div key={idx} className="relative">
-                          <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${
-                            step.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-300'
-                          }`}>
+                          <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${step.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-300'
+                            }`}>
                             {step.done ? 'Done' : ''}
                           </div>
                           <div className="pb-1">
@@ -4255,7 +4249,7 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+              <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
                 {po.backendPoId && (
                   <button
                     onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Monitor'); }}
@@ -4390,7 +4384,7 @@ const Procurement: React.FC = () => {
         );
       })()}
 
-      {/* ── Draft PO Detail Side Panel ── */}
+      {/* ── Draft PO Detail Modal ── */}
       {selectedDraftPO && (() => {
         const dpo = selectedDraftPO;
         const totals = draftPOSidebarTotals;
@@ -4401,23 +4395,21 @@ const Procurement: React.FC = () => {
         const pricesFromItemsList = !!totals;
 
         return (
-          <div className="fixed inset-0 z-50 flex" onClick={() => setSelectedDraftPO(null)}>
-            <div className="flex-1 bg-black/20" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedDraftPO(null)}>
             <div
-              className="w-full sm:w-96 lg:w-120 max-w-[100vw] bg-white border-l border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-white border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+              <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-500 font-mono mb-1">{dpo.requestCode}</p>
                   <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
                     {dpo.dpoNumber}
                   </h2>
                   <div className="mt-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${
-                      dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                    }`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                      }`}>
                       {dpo.status}
                     </span>
                   </div>
@@ -4444,9 +4436,8 @@ const Procurement: React.FC = () => {
                   ].map(row => (
                     <div key={row.label} className="flex items-center justify-between px-4 py-2">
                       <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-medium ${
-                        row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
-                      }`}>{row.value}</span>
+                      <span className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                        }`}>{row.value}</span>
                     </div>
                   ))}
                 </div>
@@ -4466,9 +4457,8 @@ const Procurement: React.FC = () => {
 
                 {/* Alert */}
                 {dpo.alertMessage && (
-                  <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${
-                    dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  }`}>
+                  <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    }`}>
                     <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
                     <span>{dpo.alertMessage}</span>
                   </div>
@@ -4517,7 +4507,7 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+              <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
                 <button
                   onClick={() => setEditDraftPOTarget(dpo)}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
@@ -4727,26 +4717,36 @@ const Procurement: React.FC = () => {
         </div>
       ))()}
 
-      {/* ── Request Detail Side Panel ── */}
+      {/* ── Request Detail Modal ── */}
       {selectedRequest && (() => {
         const req = selectedRequest;
-        const reqQuotes = quotes.filter(q => q.requestId === req.id);
+        // Show quotations that contain any of this PR's items (by name), so standalone quotes for same RM/PM show up
+        const prItemNames = new Set<string>(
+          [
+            ...(req.items ?? []),
+            ...(req.itemDetails?.map((d) => d.itemName).filter(Boolean) ?? []),
+          ].map((n) => String(n).trim().toLowerCase()).filter(Boolean)
+        );
+        const reqQuotes = quotes.filter((q) =>
+          q.lines?.some((l) => {
+            const qName = String(l.item ?? '').trim().toLowerCase();
+            if (!qName) return false;
+            return prItemNames.has(qName) || [...prItemNames].some((prName) => prName.includes(qName) || qName.includes(prName));
+          })
+        );
         const confirmedQuote = reqQuotes.find(q => q.status === 'Confirmed');
         const canDraftPO = req.status === 'Quoted' || req.status === 'New';
         const canReleasePO = req.status === 'PO Draft';
 
         return (
-          <div className="fixed inset-0 z-50 flex" onClick={() => setSelectedRequest(null)}>
-            {/* Backdrop */}
-            <div className="flex-1 bg-black/20 backdrop-blur-sm" />
-
-            {/* Panel */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedRequest(null)}>
+            {/* Modal */}
             <div
-              className="w-full max-w-xl bg-white border-l border-blue-200 shadow-2xl overflow-y-auto flex flex-col animate-slide-in-right"
+              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-blue-200 px-6 py-4">
+              <div className="sticky top-0 z-10 rounded-t-xl bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-blue-200 px-6 py-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <h2 className="text-lg font-bold text-slate-900 leading-tight">
                     {req.code} — {req.description ?? req.items[0]?.toUpperCase()}
@@ -4760,21 +4760,18 @@ const Procurement: React.FC = () => {
                   </button>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
-                    req.priority === 'High' ? 'bg-red-50 text-red-700 border-red-200' :
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.priority === 'High' ? 'bg-red-50 text-red-700 border-red-200' :
                     req.priority === 'Medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                    'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}>{req.priority}</span>
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
-                    req.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                      'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}>{req.priority}</span>
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                     req.status === 'Quoted' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                    req.status === 'PO Draft' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                    req.status === 'PO Released' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}>{req.status}</span>
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
-                    req.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-violet-50 text-violet-700 border-violet-200'
-                  }`}>{req.type}</span>
+                      req.status === 'PO Draft' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                        req.status === 'PO Released' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}>{req.status}</span>
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-violet-50 text-violet-700 border-violet-200'
+                    }`}>{req.type}</span>
                 </div>
               </div>
 
@@ -4814,47 +4811,91 @@ const Procurement: React.FC = () => {
                   <div>
                     <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Items Requested</h3>
                     <div className="space-y-4">
-                      {req.itemDetails.map((item, _idx) => (
-                        <div key={item.itemCode} className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
-                          {/* Item Header */}
-                          <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <h4 className="font-bold text-slate-900 text-sm">{item.itemName}</h4>
-                              <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.itemCode}</span>
-                            </div>
-                          </div>
-                          
-                          {/* Item Details Grid */}
-                          <div className="px-4 py-3">
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
-                                <p className="text-slate-900 font-bold">{item.reqQty} {item.unit}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                <p className="text-slate-900 font-bold">{item.moq}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
-                                <p className="text-slate-900 font-bold">{item.packSize}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">Planned Price/Unit</p>
-                                <p className="text-emerald-600 font-bold">₹{item.plannedPrice}/{item.unit}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
-                                <p className="text-amber-600 font-bold">₹{item.estValue.toLocaleString('en-IN')}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                <p className="text-slate-900 font-bold">{item.leadTimeDays}d</p>
+                      {req.itemDetails.map((item, _idx) => {
+                        const itemName = item.itemName ?? '';
+                        const itemNameNorm = itemName.trim().toLowerCase();
+                        const lineMatches = (lineItem: string) => {
+                          const q = String(lineItem ?? '').trim().toLowerCase();
+                          return q && (itemNameNorm === q || itemNameNorm.includes(q) || q.includes(itemNameNorm));
+                        };
+                        const quoteHistory = quotes.filter((q) => q.lines?.some((l) => lineMatches(l.item))).map((q) => {
+                          const line = q.lines?.find((l) => lineMatches(l.item));
+                          return { vendor: q.vendor ?? '', date: q.quotedOn ?? '', price: line?.pricePerUnit ?? 0, status: q.status };
+                        });
+                        const prPOs = purchaseOrders.filter((po) => (po.formData as { requestId?: string })?.requestId === req.id);
+                        const poHistory = prPOs.filter((po) => (po.rawItems as { itemName?: string; name?: string; rate?: number; price?: number }[] | undefined)?.some((r) => lineMatches(r.itemName ?? r.name ?? ''))).map((po) => {
+                          const raw = (po.rawItems ?? []) as { itemName?: string; name?: string; rate?: number; price?: number }[];
+                          const row = raw.find((r) => lineMatches(r.itemName ?? r.name ?? ''));
+                          return { vendor: po.vendorName ?? '', poNumber: po.poNumber ?? '', rate: row?.rate ?? row?.price ?? 0 };
+                        });
+                        return (
+                          <div key={item.itemCode} className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
+                            {/* Item Header */}
+                            <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <h4 className="font-bold text-slate-900 text-sm">{item.itemName}</h4>
+                                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.itemCode}</span>
                               </div>
                             </div>
+
+                            {/* Item Details Grid */}
+                            <div className="px-4 py-3">
+                              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
+                                  <p className="text-slate-900 font-bold">{item.reqQty} {item.unit}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
+                                  <p className="text-slate-900 font-bold">{item.moq}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
+                                  <p className="text-slate-900 font-bold">{item.packSize}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Planned Price/Unit</p>
+                                  <p className="text-emerald-600 font-bold">₹{item.plannedPrice}/{item.unit}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
+                                  <p className="text-amber-600 font-bold">₹{item.estValue.toLocaleString('en-IN')}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
+                                  <p className="text-slate-900 font-bold">{item.leadTimeDays}d</p>
+                                </div>
+                              </div>
+
+                              {/* Vendor history for this RM */}
+                              {(quoteHistory.length > 0 || poHistory.length > 0) && (
+                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                  <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
+                                  <div className="space-y-1.5 text-xs">
+                                    {quoteHistory.map((e, i) => (
+                                      <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
+                                        <span className="font-medium text-slate-900">{e.vendor}</span>
+                                        <span className="text-slate-500">— Quoted</span>
+                                        {e.date && <span className="text-slate-500">{e.date}</span>}
+                                        <span className="text-emerald-600 font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                        {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Confirmed</span>}
+                                      </div>
+                                    ))}
+                                    {poHistory.map((e, i) => (
+                                      <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
+                                        <span className="font-medium text-slate-900">{e.vendor}</span>
+                                        <span className="text-slate-500">— PO</span>
+                                        <span className="font-mono text-slate-600">{e.poNumber}</span>
+                                        <span className="text-emerald-600 font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : req.items && req.items.length > 0 && (
@@ -4868,6 +4909,21 @@ const Procurement: React.FC = () => {
                         const unit = req.units?.[idx] ?? 'KG';
                         const spec = req.specifications?.[idx];
                         const sub = qty * price;
+                        const itemNameNorm = String(itemName ?? '').trim().toLowerCase();
+                        const lineMatches = (lineItem: string) => {
+                          const q = String(lineItem ?? '').trim().toLowerCase();
+                          return q && (itemNameNorm === q || itemNameNorm.includes(q) || q.includes(itemNameNorm));
+                        };
+                        const quoteHistory = quotes.filter((q) => q.lines?.some((l) => lineMatches(l.item))).map((q) => {
+                          const line = q.lines?.find((l) => lineMatches(l.item));
+                          return { vendor: q.vendor ?? '', date: q.quotedOn ?? '', price: line?.pricePerUnit ?? 0, status: q.status };
+                        });
+                        const prPOs = purchaseOrders.filter((po) => (po.formData as { requestId?: string })?.requestId === req.id);
+                        const poHistory = prPOs.filter((po) => (po.rawItems as { itemName?: string; name?: string; rate?: number; price?: number }[] | undefined)?.some((r) => lineMatches(r.itemName ?? r.name ?? ''))).map((po) => {
+                          const raw = (po.rawItems ?? []) as { itemName?: string; name?: string; rate?: number; price?: number }[];
+                          const row = raw.find((r) => lineMatches(r.itemName ?? r.name ?? ''));
+                          return { vendor: po.vendorName ?? '', poNumber: po.poNumber ?? '', rate: row?.rate ?? row?.price ?? 0 };
+                        });
                         return (
                           <div key={idx} className="bg-white border border-blue-200 rounded-lg p-4 space-y-2 shadow-sm">
                             <div className="flex items-start justify-between gap-3">
@@ -4889,6 +4945,30 @@ const Procurement: React.FC = () => {
                                 <span className="text-emerald-600 font-medium">₹{price.toLocaleString('en-IN')}/{unit}</span>
                               </div>
                             </div>
+                            {(quoteHistory.length > 0 || poHistory.length > 0) && (
+                              <div className="mt-3 pt-3 border-t border-slate-200">
+                                <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
+                                <div className="space-y-1.5 text-xs">
+                                  {quoteHistory.map((e, i) => (
+                                    <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
+                                      <span className="font-medium text-slate-900">{e.vendor}</span>
+                                      <span className="text-slate-500">— Quoted</span>
+                                      {e.date && <span className="text-slate-500">{e.date}</span>}
+                                      <span className="text-emerald-600 font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                      {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Confirmed</span>}
+                                    </div>
+                                  ))}
+                                  {poHistory.map((e, i) => (
+                                    <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
+                                      <span className="font-medium text-slate-900">{e.vendor}</span>
+                                      <span className="text-slate-500">— PO</span>
+                                      <span className="font-mono text-slate-600">{e.poNumber}</span>
+                                      <span className="text-emerald-600 font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -4927,79 +5007,118 @@ const Procurement: React.FC = () => {
                   </div>
                 )}
 
-                {/* Quotations */}
+                {/* Quotations — selection menu: pick vendor then Create Draft PO */}
                 <div>
                   <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">
                     Quotations ({reqQuotes.length})
                   </h3>
                   {reqQuotes.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-blue-200 px-4 py-8 text-center text-sm text-slate-500">
-                      No quotes received yet for this request.
+                      No quotations yet that match this request’s items (RM/PM name). Record a quote with matching item names in Procurement → Quotations to see it here.
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {reqQuotes.map(q => {
-                        const qTotal = q.lines.reduce((s, l) => s + l.totalValue, 0);
-                        return (
-                          <div key={q.id} className={`rounded-lg border p-4 shadow-sm ${
-                            q.status === 'Confirmed' 
-                              ? 'border-emerald-500 bg-emerald-50' 
-                              : 'border-blue-200 bg-white'
-                          }`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-base font-bold text-slate-900">{q.vendor}</span>
-                              <span className={`text-xs px-2 py-1 rounded-md font-bold border ${
-                                q.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                q.status === 'Not Selected' ? 'bg-slate-50 text-slate-600 border-slate-200' :
-                                'bg-yellow-50 text-yellow-700 border-yellow-200'
-                              }`}>{q.status}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-600">Terms: <span className="text-slate-900">{q.terms}</span></span>
-                            </div>
-                            <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between">
-                              <span className="text-slate-600 text-sm">Total</span>
-                              <span className="font-bold text-amber-600 text-lg">₹{qTotal.toLocaleString('en-IN')}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Select vendor / quotation</label>
+                      <select
+                        value={selectedQuoteIdInPrView}
+                        onChange={(e) => setSelectedQuoteIdInPrView(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                      >
+                        <option value="">— Select quotation —</option>
+                        {reqQuotes.map((q) => {
+                          const firstLine = q.lines?.[0];
+                          const label = firstLine
+                            ? `${q.vendor ?? 'Vendor'} · ${firstLine.item ?? 'Item'}: ${firstLine.qty ?? 0} ${(firstLine.unit ?? 'kg').toLowerCase()} @ ₹${Number(firstLine.pricePerUnit) || 0}`
+                            : `${q.vendor ?? 'Vendor'}${q.status === 'Confirmed' ? ' ✓ Confirmed' : ''}`;
+                          return (
+                            <option key={q.id} value={q.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <p className="text-xs text-slate-500">Choose the quotation to use for creating the Draft PO, then click Create Draft PO below.</p>
                     </div>
                   )}
                 </div>
 
-                {/* Stock Check Section */}
+                {/* Stock Check Section — editable, persisted to DB */}
                 <div>
-                  <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Check: SC-001</h3>
+                  <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Check</h3>
                   <div className="bg-white rounded-lg border border-blue-200 p-4 space-y-3 shadow-sm">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Assigned To</span>
-                      <span className="text-slate-900 font-medium">Anand Store</span>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Assigned To</label>
+                      <input
+                        type="text"
+                        value={stockCheckForm.assignedTo}
+                        onChange={(e) => setStockCheckForm((f) => ({ ...f, assignedTo: e.target.value }))}
+                        placeholder="e.g. Anand Store"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                      />
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Status</span>
-                      <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">Completed</span>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                      <select
+                        value={stockCheckForm.status}
+                        onChange={(e) => setStockCheckForm((f) => ({ ...f, status: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white"
+                      >
+                        <option value="">— Select status —</option>
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                      </select>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Due Date</span>
-                      <span className="text-slate-900 font-medium">2026-02-12</span>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Due Date</label>
+                      <input
+                        type="date"
+                        value={stockCheckForm.dueDate}
+                        onChange={(e) => setStockCheckForm((f) => ({ ...f, dueDate: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                      />
                     </div>
-                    
-                    {/* Alert Message */}
-                    <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                      <div className="flex items-start gap-2">
-                        <span className="text-amber-600 text-sm font-bold">!</span>
-                        <p className="text-amber-800 text-xs leading-relaxed">
-                          Quarterly replenishment for Q2 sunscreen batch plan. SOH critically low for UV-001.
-                        </p>
-                      </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Notes / Alert</label>
+                      <textarea
+                        value={stockCheckForm.notes}
+                        onChange={(e) => setStockCheckForm((f) => ({ ...f, notes: e.target.value }))}
+                        placeholder="e.g. Quarterly replenishment; SOH critically low for UV-001"
+                        rows={2}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                      />
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        disabled={stockCheckSaving}
+                        onClick={async () => {
+                          setStockCheckSaving(true);
+                          const res = await updateProcurementRequestApi(req.id, {
+                            stockCheckAssignedTo: stockCheckForm.assignedTo.trim() || null,
+                            stockCheckStatus: stockCheckForm.status.trim() || null,
+                            stockCheckDueDate: stockCheckForm.dueDate.trim() || null,
+                            stockCheckNotes: stockCheckForm.notes.trim() || null,
+                          });
+                          setStockCheckSaving(false);
+                          if (res.success) {
+                            queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                            addToast('success', 'Stock check saved');
+                          } else {
+                            addToast('error', res.error ?? 'Failed to save stock check');
+                          }
+                        }}
+                        className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {stockCheckSaving ? 'Saving…' : 'Save stock check'}
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="sticky bottom-0 bg-slate-50 border-t border-blue-200 px-6 py-4 flex items-center justify-between gap-3">
+              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex items-center justify-between gap-3">
                 <button
                   onClick={() => {
                     setEditRequestTarget(req);
@@ -5010,15 +5129,32 @@ const Procurement: React.FC = () => {
                 </button>
 
                 <div className="flex items-center gap-2">
-                  {canDraftPO && confirmedQuote && (
+                  {reqQuotes.length > 0 && selectedQuoteIdInPrView && (
                     <button
-                      onClick={() => {
-                        createDraftPO(confirmedQuote.id);
-                        setSelectedRequest(null);
+                      onClick={async () => {
+                        const selectedQuote = quotes.find((q) => q.id === selectedQuoteIdInPrView);
+                        const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === req.id) as { items?: BackendPRItem[] } | undefined;
+                        const items = Array.isArray(backendPr?.items) ? backendPr.items : [];
+                        if (!items.length) {
+                          addToast('warning', 'Request has no line items. Add items in Edit Request first.');
+                          return;
+                        }
+                        const raised = await createDraftPOFromRequest(
+                          req.id,
+                          req.code,
+                          items,
+                          selectedQuote?.vendor ?? '',
+                          req.type,
+                          selectedQuoteIdInPrView
+                        );
+                        if (raised) {
+                          setSelectedRequest(null);
+                          applyRouteState('Procurement', 'Draft POs');
+                        }
                       }}
                       className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
                     >
-                      Draft PO
+                      Create Draft PO
                     </button>
                   )}
 
@@ -5031,7 +5167,7 @@ const Procurement: React.FC = () => {
                             openReleasePOModal(linkedDraft.id);
                             setSelectedRequest(null);
                           } else {
-                            addToast('warning', 'Create a Draft PO from Quotations first, then release from Draft POs.');
+                            addToast('warning', 'Create a Draft PO from the quotation above first, then release from here.');
                           }
                         }}
                         className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-lg"
@@ -5064,30 +5200,7 @@ const Procurement: React.FC = () => {
           >
             <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
-                  <select
-                    value={editRequestForm.priority}
-                    onChange={(e) => setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Required by date</label>
-                  <input
-                    type="date"
-                    value={editRequestForm.requiredByDate}
-                    onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
+              {/* <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor</label>
                 <select
                   value={editRequestForm.preferredVendor}
@@ -5099,8 +5212,37 @@ const Procurement: React.FC = () => {
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))}
                 </select>
-              </div>
-              <div>
+              </div> */}
+              {/* {(() => {
+                const requestQuotes = quotes.filter(
+                  (q) => q.requestId === editRequestTarget.id && (!editRequestForm.preferredVendor?.trim() || (q.vendor ?? '').trim().toLowerCase() === editRequestForm.preferredVendor.trim().toLowerCase())
+                );
+                return (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Quotation to use for Draft PO</label>
+                    <select
+                      value={editRequestForm.selectedQuotationId}
+                      onChange={(e) => setEditRequestForm((f) => ({ ...f, selectedQuotationId: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">— Select quotation (order qty · price/unit) —</option>
+                      {requestQuotes.map((q) => {
+                        const firstLine = q.lines?.[0];
+                        const label = firstLine
+                          ? `${q.vendor ?? 'Vendor'} · ${firstLine.item ?? 'Item'}: ${firstLine.qty ?? 0} ${(firstLine.unit ?? 'kg').toLowerCase()} @ ₹${Number(firstLine.pricePerUnit) || 0}`
+                          : `${q.vendor ?? 'Vendor'} (${q.lines?.length ?? 0} lines)`;
+                        return (
+                          <option key={q.id} value={q.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">Choose which quotation’s price to use when creating a Draft PO.</p>
+                  </div>
+                );
+              })()} */}
+              {/* <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
                 <textarea
                   value={editRequestForm.notes}
@@ -5108,8 +5250,8 @@ const Procurement: React.FC = () => {
                   rows={2}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
-              </div>
-              <div>
+              </div> */}
+              {/* <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                 <select
                   value={editRequestForm.status}
@@ -5122,7 +5264,7 @@ const Procurement: React.FC = () => {
                   <option value="PO Released">PO Released</option>
                   <option value="Delivery Pending">Delivery Pending</option>
                 </select>
-              </div>
+              </div> */}
               {/* Line items: editable quantities and unit */}
               {editRequestForm.items.length > 0 && (
                 <div>
@@ -5172,6 +5314,119 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Price history: all quotations that have these items (any vendor) + POs for this request */}
+              {/* <div className="border-t border-slate-200 pt-4 mt-4">
+                <h4 className="text-sm font-bold text-slate-800 mb-2">Price history — RM/PM by vendor</h4>
+                <p className="text-xs text-slate-500 mb-3">For each RM/PM on this request: which vendors have been used historically (from quotations and POs). Use this when picking a vendor for a new quote or Draft PO.</p>
+                {(() => {
+                  const prItemNames = new Set<string>(
+                    [
+                      ...(editRequestTarget.items ?? []),
+                      ...(editRequestTarget.itemDetails?.map((d) => d.itemName).filter(Boolean) ?? []),
+                    ].map((n) => String(n).trim().toLowerCase()).filter(Boolean)
+                  );
+                  const quotesForItems = quotes.filter((q) =>
+                    q.lines?.some((l) => prItemNames.has(String(l.item ?? '').trim().toLowerCase()))
+                  );
+                  const prPOs = purchaseOrders.filter((po) => (po.formData as { requestId?: string } | undefined)?.requestId === editRequestTarget.id);
+                  const prPOsReleased = prPOs.filter((po) => (po.status ?? 'Draft') !== 'Draft');
+                  const quotesReleasedAsPO = quotesForItems.filter(
+                    (q) =>
+                      q.status === 'Confirmed' &&
+                      prPOsReleased.some(
+                        (po) => (po.vendorName ?? '').trim().toLowerCase() === (q.vendor ?? '').trim().toLowerCase()
+                      )
+                  );
+                  if (quotesForItems.length === 0 && prPOs.length === 0) {
+                    return (
+                      <p className="text-xs text-slate-500 italic">No price history for these items yet. Record quotations (with or without linking to a PR) to see vendor history here.</p>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {quotesForItems.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Quotations for these items ({quotesForItems.length} total, any vendor)</p>
+                          <div className="space-y-3">
+                            {quotesForItems.map((q) => (
+                              <div key={q.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-sm">
+                                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                  <span className="font-semibold text-slate-900">{q.vendor}</span>
+                                  <span className="text-xs text-slate-500">{q.quotedOn || '—'}</span>
+                                  {q.requestCode && <span className="text-[10px] text-slate-500">Link: {q.requestCode}</span>}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${q.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' :
+                                    q.status === 'Not Selected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'
+                                    }`}>{q.status}</span>
+                                </div>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-slate-500 border-b border-slate-200">
+                                      <th className="text-left py-1 font-medium">Item</th>
+                                      <th className="text-right py-1 font-medium">Qty</th>
+                                      <th className="text-right py-1 font-medium">Price/unit</th>
+                                      <th className="text-right py-1 font-medium">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {q.lines?.map((line, i) => (
+                                      <tr key={i} className="border-b border-slate-100 last:border-0">
+                                        <td className="py-1 text-slate-800">{line.item}</td>
+                                        <td className="py-1 text-right text-slate-700">{line.qty}</td>
+                                        <td className="py-1 text-right font-medium">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : line.pricePerUnit}</td>
+                                        <td className="py-1 text-right font-medium">₹{typeof line.totalValue === 'number' ? line.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : line.totalValue}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {prPOs.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">POs for this request</p>
+                          <div className="space-y-3">
+                            {prPOs.map((po) => (
+                              <div key={po.id} className="rounded-lg border border-slate-200 bg-blue-50/30 p-3 text-sm">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <span className="font-semibold text-slate-900">{po.vendorName ?? po.id}</span>
+                                  <span className="text-xs text-slate-600 font-mono">{po.poNumber}</span>
+                                  <span className="text-xs text-slate-500">{po.date || '—'}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-200 text-slate-700">{po.status ?? 'Draft'}</span>
+                                </div>
+                                {Array.isArray(po.rawItems) && po.rawItems.length > 0 ? (
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="text-slate-500 border-b border-slate-200">
+                                        <th className="text-left py-1 font-medium">Item</th>
+                                        <th className="text-right py-1 font-medium">Qty</th>
+                                        <th className="text-right py-1 font-medium">Rate</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {po.rawItems.map((row: { itemName?: string; name?: string; quantity?: number; rate?: number; price?: number }, i: number) => (
+                                        <tr key={i} className="border-b border-slate-100 last:border-0">
+                                          <td className="py-1 text-slate-800">{row.itemName ?? row.name ?? '—'}</td>
+                                          <td className="py-1 text-right text-slate-700">{row.quantity ?? '—'}</td>
+                                          <td className="py-1 text-right font-medium">₹{typeof (row.rate ?? row.price) === 'number' ? (row.rate ?? row.price)!.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : (row.rate ?? row.price ?? '—')}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                ) : (
+                                  <p className="text-xs text-slate-500">No line detail</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div> */}
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
               <button
@@ -5199,26 +5454,6 @@ const Procurement: React.FC = () => {
                   queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
                   setEditRequestTarget(null);
                   addToast('success', `Request ${editRequestTarget.code} updated`);
-                  const reqId = editRequestTarget.id;
-                  const reqCode = editRequestTarget.code;
-                  const reqType = editRequestTarget.type;
-                  const confirmedQuote = quotes.find((q) => q.requestId === reqId && q.status === 'Confirmed');
-                  if (confirmedQuote) {
-                    await createDraftPO(confirmedQuote.id);
-                    setSelectedRequest(null);
-                  } else {
-                    const raised = await createDraftPOFromRequest(
-                      reqId,
-                      reqCode,
-                      editRequestForm.items,
-                      editRequestForm.preferredVendor ?? '',
-                      reqType
-                    );
-                    if (raised) {
-                      applyRouteState('Procurement', 'Draft POs');
-                      setSelectedRequest(null);
-                    }
-                  }
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
               >
@@ -5228,6 +5463,344 @@ const Procurement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Release to PO Planned Stage Modal ── */}
+      {releaseToPlannedTarget && (() => {
+        const { request: req, item } = releaseToPlannedTarget;
+        const itemName = item.itemName;
+        const itemCode = item.itemCode ?? (req.type === 'RM' ? 'RI-RM-001-001' : 'PI-PM-002-001');
+        const spec = item.spec ?? `${req.type} · ${item.unit}`;
+        const reqQuotesForItem = quotes.filter(
+          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim().toLowerCase() === (itemName ?? '').trim().toLowerCase())
+        );
+        const vendorSlabs = reqQuotesForItem.flatMap((q) => {
+          const line = q.lines.find((l) => (l.item ?? '').trim().toLowerCase() === (itemName ?? '').trim().toLowerCase());
+          if (!line) return [];
+          const moqFromQty = typeof line.qty === 'string' ? parseInt(line.qty, 10) : line.qty;
+          return [{ vendor: q.vendor, moq: Number.isNaN(moqFromQty) ? item.moq ?? '—' : moqFromQty, unitPrice: line.pricePerUnit, leadDays: q.leadTimeDays, terms: q.terms }];
+        });
+        const uniqueVendors = Array.from(new Set(vendorSlabs.map((s) => s.vendor)));
+        const paymentTermsOptions = [
+          '50% Advance, 50% on delivery',
+          '30% Advance, 70% before dispatch',
+          'No advance, Net 15',
+          'No advance, Net 30',
+          'As per contract',
+        ];
+        const existingTerms = vendorSlabs.map((s) => s.terms).filter(Boolean);
+        const allTerms = Array.from(new Set([...existingTerms, ...paymentTermsOptions]));
+        const previousPurchases = (purchaseOrders ?? []).filter((po) => {
+          const raw = po.rawItems ?? [];
+          return raw.some((r: any) => (r?.itemName ?? r?.name ?? '').toString().toLowerCase().includes((itemName ?? '').toLowerCase()));
+        }).map((po) => {
+          const raw = (po.rawItems ?? []) as { itemName?: string; name?: string; quantity?: number; rate?: number; price?: number }[];
+          const row = raw.find((r) => (r?.itemName ?? r?.name ?? '').toString().toLowerCase().includes((itemName ?? '').toLowerCase()));
+          return {
+            date: po.date ?? '',
+            vendor: po.vendorName ?? '',
+            qty: row?.quantity ?? 0,
+            unitPrice: row?.rate ?? row?.price ?? 0,
+            unit: item.unit,
+          };
+        }).filter((r) => r.qty > 0).slice(0, 10);
+        const gapQty = req.stockSummary ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0)) : item.qty;
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setReleaseToPlannedTarget(null)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-xl border border-slate-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Release to PO Planned Stage</h2>
+                  <p className="text-xs text-slate-600 mt-0.5">Pick vendor & MOQ price, choose qty, set payment terms. Creates &quot;Planned&quot; lines grouped by vendor.</p>
+                </div>
+                <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="font-bold text-slate-900 text-sm mb-1">{itemName} <span className="pill font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{itemCode}</span></h3>
+                    <p className="text-xs text-slate-500 mb-3">{spec}</p>
+                    <div className="border-t border-slate-200 my-3" />
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500 border-b border-slate-200">
+                          <th className="text-left py-2 font-medium">Vendor</th>
+                          <th className="text-left py-2 font-medium">MOQ</th>
+                          <th className="text-right py-2 font-medium">Unit ₹</th>
+                          <th className="text-right py-2 font-medium">Lead</th>
+                          <th className="w-16" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vendorSlabs.map((s, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-2 font-medium text-slate-900">{s.vendor}</td>
+                            <td className="py-2 text-slate-700">{s.moq}</td>
+                            <td className="py-2 text-right font-medium">₹{s.unitPrice.toLocaleString('en-IN')}</td>
+                            <td className="py-2 text-right text-slate-700">{s.leadDays}d</td>
+                            <td className="py-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReleaseToPlannedForm((f) => ({
+                                    ...f,
+                                    vendor: s.vendor,
+                                    moqDisplay: `${s.moq} (₹${s.unitPrice} · ${s.leadDays}d)`,
+                                    unitPrice: String(s.unitPrice),
+                                    paymentTerms: s.terms || f.paymentTerms,
+                                    leadTimeDays: s.leadDays,
+                                  }));
+                                }}
+                                className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
+                              >
+                                Pick
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {vendorSlabs.length === 0 && <p className="text-xs text-slate-500 py-3">No quotations for this item yet. Record a quote first.</p>}
+                    <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
+                    <div className="border-t border-slate-200 my-3" />
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
+                        <select
+                          value={releaseToPlannedForm.vendor}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, vendor: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">— Select —</option>
+                          {uniqueVendors.map((v) => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ slab</label>
+                        <select
+                          value={releaseToPlannedForm.moqDisplay}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, moqDisplay: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">— Select slab —</option>
+                          {vendorSlabs.filter((s) => s.vendor === releaseToPlannedForm.vendor).map((s, i) => {
+                            const opt = `${s.moq} (₹${s.unitPrice} · ${s.leadDays}d)`;
+                            return <option key={i} value={opt}>{opt}</option>;
+                          })}
+                          {releaseToPlannedForm.moqDisplay && !vendorSlabs.some((s) => `${s.moq} (₹${s.unitPrice} · ${s.leadDays}d)` === releaseToPlannedForm.moqDisplay) && (
+                            <option value={releaseToPlannedForm.moqDisplay}>{releaseToPlannedForm.moqDisplay}</option>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Quantity</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Enter qty"
+                          value={releaseToPlannedForm.qty}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, qty: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Unit price (₹)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Unit price"
+                          value={releaseToPlannedForm.unitPrice}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, unitPrice: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment Terms</label>
+                        <select
+                          value={releaseToPlannedForm.paymentTerms}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          {allTerms.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-500 mt-1">Advance % decides Treasury request on draft release.</p>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
+                        <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlannedForm.leadTimeDays} days</div>
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-200 my-3" />
+                    <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500 border-b border-slate-200">
+                          <th className="text-left py-1 font-medium">Date</th>
+                          <th className="text-left py-1 font-medium">Vendor</th>
+                          <th className="text-right py-1 font-medium">Qty</th>
+                          <th className="text-right py-1 font-medium">Unit ₹</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previousPurchases.map((r, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1.5 text-slate-700">{r.date ? new Date(r.date + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td className="py-1.5 text-slate-700">{r.vendor}</td>
+                            <td className="py-1.5 text-right text-slate-700">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
+                            <td className="py-1.5 text-right font-medium">₹{r.unitPrice.toLocaleString('en-IN')}</td>
+                          </tr>
+                        ))}
+                        {previousPurchases.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-slate-500 text-xs">No previous purchases for this item.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                <p className="text-xs text-slate-500">Planned stage is the transition stage before Draft POs and splitting/releasing.</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const qtyNum = parseFloat(releaseToPlannedForm.qty) || 0;
+                      const unitPriceNum = parseFloat(releaseToPlannedForm.unitPrice) || 0;
+                      if (!releaseToPlannedForm.vendor || qtyNum <= 0 || unitPriceNum <= 0) {
+                        addToast('warning', 'Select vendor and enter quantity and price.');
+                        return;
+                      }
+
+                      const today = new Date();
+                      const expectedDelivery = new Date(today);
+                      expectedDelivery.setDate(
+                        expectedDelivery.getDate() + (releaseToPlannedForm.leadTimeDays || 0)
+                      );
+                      const createdDateStr = today.toISOString().split('T')[0];
+                      const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+
+                      const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                      const gstPercent = 18;
+                      const subtotal = qtyNum * unitPriceNum;
+                      const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+                      const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+
+                      const lineItem: DraftPOLineItem = {
+                        item: itemName ?? '',
+                        itemCode:
+                          req.type === 'PM'
+                            ? (item.itemCode ?? 'EI-PM-001')
+                            : (item.itemCode ?? 'EI-RM-001'),
+                        type: req.type,
+                        qty: String(qtyNum),
+                        pricePerUnit: unitPriceNum,
+                        gstPercent,
+                        gstAmount,
+                        lineTotal,
+                      };
+
+                      const vendorName = releaseToPlannedForm.vendor || req.preferredVendor || 'Unassigned';
+
+                      const poPayload = {
+                        orderId: newDpoId,
+                        vendorName,
+                        orderDate: createdDateStr,
+                        expectedShipmentDate: expectedDeliveryStr,
+                        reference: req.code,
+                        paymentTerms: releaseToPlannedForm.paymentTerms || undefined,
+                        status: 'Draft',
+                        formData: {
+                          requestId: req.id,
+                          requestCode: req.code,
+                        },
+                        items: [
+                          {
+                            itemName: lineItem.item,
+                            quantity: lineItem.qty,
+                            rate: String(lineItem.pricePerUnit),
+                            tax: String(lineItem.gstPercent || 18),
+                          },
+                        ],
+                      };
+
+                      const createResult = await createPurchaseOrder(poPayload);
+                      if (!createResult.success || !createResult.data) {
+                        addToast(
+                          'error',
+                          typeof createResult.error === 'string'
+                            ? createResult.error
+                            : (createResult.error as any)?.message ??
+                            'Failed to create purchase order'
+                        );
+                        return;
+                      }
+
+                      const backendId =
+                        String(createResult.data.id ?? '').replace(/^PO-/, '') ||
+                        String(createResult.data.id);
+
+                      const newDraftPO: DraftPO = {
+                        id: newDpoId,
+                        dpoNumber: newDpoId,
+                        requestId: req.id,
+                        requestCode: req.code,
+                        type: req.type,
+                        vendor: vendorName,
+                        vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+                        status: 'Pending Approval',
+                        createdDate: createdDateStr,
+                        createdBy: 'Procurement — Admin',
+                        paymentTerms: releaseToPlannedForm.paymentTerms || 'As per contract',
+                        expectedDelivery: expectedDeliveryStr,
+                        deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
+                        vendorRating: 0,
+                        alertMessage: `Draft PO created from planned line for ${itemName ?? ''}. Awaiting approval to proceed.`,
+                        alertType: 'warning',
+                        lineItems: [lineItem],
+                        subtotal,
+                        gstTotal: gstAmount,
+                        grandTotal: lineTotal,
+                        backendPoId: backendId,
+                      };
+
+                      await updateRequestStatus(req.id, 'PO Draft', {
+                        skipItems: true,
+                      });
+
+                      updateProcurementState((current) => ({
+                        draftPOs: [newDraftPO, ...current.draftPOs],
+                      }));
+
+                      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                      addToast(
+                        'success',
+                        `Draft PO ${newDpoId} created for ${req.code}`
+                      );
+                      setReleaseToPlannedTarget(null);
+                      setTimeout(() => {
+                        applyRouteState('Procurement', 'Draft POs');
+                      }, 500);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600"
+                  >
+                    Draft PO
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Edit Draft PO Modal ── */}
       {editDraftPOTarget && (
@@ -5356,16 +5929,16 @@ const Procurement: React.FC = () => {
                     prev.map((po) =>
                       po.id === d.id
                         ? {
-                            ...po,
-                            vendor: form.vendor,
-                            paymentTerms: form.paymentTerms,
-                            expectedDelivery: form.expectedDelivery,
-                            deliveryAddress: form.deliveryAddress,
-                            lineItems: form.lineItems,
-                            subtotal: form.lineItems.reduce((s, l) => s + (l.lineTotal - (l.gstAmount ?? 0)), 0),
-                            gstTotal: form.lineItems.reduce((s, l) => s + (l.gstAmount ?? 0), 0),
-                            grandTotal: form.lineItems.reduce((s, l) => s + l.lineTotal, 0),
-                          }
+                          ...po,
+                          vendor: form.vendor,
+                          paymentTerms: form.paymentTerms,
+                          expectedDelivery: form.expectedDelivery,
+                          deliveryAddress: form.deliveryAddress,
+                          lineItems: form.lineItems,
+                          subtotal: form.lineItems.reduce((s, l) => s + (l.lineTotal - (l.gstAmount ?? 0)), 0),
+                          gstTotal: form.lineItems.reduce((s, l) => s + (l.gstAmount ?? 0), 0),
+                          grandTotal: form.lineItems.reduce((s, l) => s + l.lineTotal, 0),
+                        }
                         : po
                     )
                   );
@@ -5382,7 +5955,7 @@ const Procurement: React.FC = () => {
         </div>
       )}
 
-      {/* ── Stock Check Side Panel ── */}
+      {/* ── Stock Check Modal (inventory from warehouse-inventory API) ── */}
       {selectedStockCheckRequest && (() => {
         const req = selectedStockCheckRequest;
         const updatesForRequest = stockCheckUpdates[req.id] ?? {};
@@ -5405,57 +5978,57 @@ const Procurement: React.FC = () => {
           effectiveStatus === 'Completed'
             ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
             : effectiveStatus === 'In Progress'
-            ? 'bg-sky-50 text-sky-700 border-sky-300'
-            : 'bg-amber-50 text-amber-700 border-amber-300';
+              ? 'bg-sky-50 text-sky-700 border-sky-300'
+              : 'bg-amber-50 text-amber-700 border-amber-300';
+
+        const whRows = warehouseInventoryData?.rows ?? [];
+        const whByCode = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
+        const whByName = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
+        whRows.forEach((row) => {
+          const code = (row.code ?? '').trim();
+          const name = (row.name ?? '').trim();
+          if (code) whByCode.set(code.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
+          if (name) whByName.set(name.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
+        });
+
+        const resolveWh = (itemCode: string, itemName: string) =>
+          whByCode.get((itemCode ?? '').trim().toLowerCase()) ??
+          whByName.get((itemName ?? '').trim().toLowerCase()) ??
+          null;
 
         const stockItems = req.itemDetails && req.itemDetails.length > 0
-          ? req.itemDetails.map((item, idx) => ({
+          ? req.itemDetails.map((item, idx) => {
+            const wh = resolveWh(item.itemCode, item.itemName);
+            const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
+            return {
               itemName: item.itemName,
               itemCode: item.itemCode,
-              systemQty: item.reqQty,
-              physicalQty: (() => {
-                const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
-                return override?.physicalQty ?? item.reqQty;
-              })(),
-              zoneRack: (() => {
-                const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
-                const defaultZone = req.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
-                const defaultRack = `A1-L1-S${idx + 2}`;
-                const zone = override?.zone ?? defaultZone;
-                const rack = override?.rack ?? defaultRack;
-                return `${zone} · ${rack}`;
-              })(),
-              batchCode: `BTH-${item.itemCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-6)}-${String(idx + 1).padStart(2, '0')}`,
-              expiry: `2027-0${(idx % 3) + 6}-3${idx}`,
-            }))
-          : req.items.map((itemName, idx) => ({
+              requestedQty: item.reqQty,
+              systemQty: wh ? wh.stockInHand : null,
+              whUnit: wh?.whUnit ?? '',
+              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
+              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
+              batchCode: override?.batchNo ?? (wh ? null : '—'),
+              fromWarehouse: !!wh,
+            };
+          })
+          : req.items.map((itemName, idx) => {
+            const itemCode = `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`;
+            const wh = resolveWh(itemCode, itemName);
+            const override = updatesForRequest[itemCode];
+            const reqQty = req.quantities?.[idx] ?? 0;
+            return {
               itemName,
-              itemCode: `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`,
-              systemQty: req.quantities?.[idx] ?? 0,
-              physicalQty: (() => {
-                const generatedCodeBase =
-                  itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
-                  String(idx + 1).padStart(3, '0');
-                const itemCode = `EI-${req.type}-${generatedCodeBase}`;
-                const override = updatesForRequest[itemCode];
-                const baseQty = req.quantities?.[idx] ?? 0;
-                return override?.physicalQty ?? baseQty;
-              })(),
-              zoneRack: (() => {
-                const generatedCodeBase =
-                  itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) ||
-                  String(idx + 1).padStart(3, '0');
-                const itemCode = `EI-${req.type}-${generatedCodeBase}`;
-                const override = updatesForRequest[itemCode];
-                const defaultZone = req.type === 'RM' ? 'LOC-RM' : 'LOC-PM';
-                const defaultRack = `A1-L1-S${idx + 2}`;
-                const zone = override?.zone ?? defaultZone;
-                const rack = override?.rack ?? defaultRack;
-                return `${zone} · ${rack}`;
-              })(),
-              batchCode: `BTH-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || 'ITEM'}-${String(idx + 1).padStart(3, '0')}`,
-              expiry: `2027-0${(idx % 3) + 6}-3${idx}`,
-            }));
+              itemCode,
+              requestedQty: reqQty,
+              systemQty: wh ? wh.stockInHand : null,
+              whUnit: wh?.whUnit ?? '',
+              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
+              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
+              batchCode: override?.batchNo ?? (wh ? null : '—'),
+              fromWarehouse: !!wh,
+            };
+          });
         const displayStockItems = selectedStockCheckItemName
           ? stockItems.filter(item => item.itemName === selectedStockCheckItemName)
           : stockItems;
@@ -5464,18 +6037,18 @@ const Procurement: React.FC = () => {
 
         return (
           <div
-            className="fixed inset-0 z-50 flex"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={() => {
               setSelectedStockCheckRequest(null);
               setSelectedStockCheckItemName(null);
             }}
           >
-            <div className="flex-1 bg-black/25 backdrop-blur-[1px]" />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
             <div
-              className="w-full max-w-xl bg-white border-l border-slate-200 shadow-2xl overflow-y-auto flex flex-col animate-slide-in-right"
+              className="relative w-full max-w-xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 z-10 border-b border-slate-200 px-5 py-4 bg-slate-50">
+              <div className="flex-shrink-0 border-b border-slate-200 px-5 py-4 bg-slate-50">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[11px] text-slate-700">
@@ -5498,7 +6071,7 @@ const Procurement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex-1 px-4 py-4 space-y-3 bg-slate-50">
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50">
                 <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Assigned To</span>
@@ -5520,59 +6093,65 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
 
-                {renderedItems.map((item, idx) => (
-                  <div
-                    key={`${item.itemCode}-${idx}`}
-                    className="rounded-lg border border-slate-200 bg-white overflow-hidden"
-                  >
-                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                      <div className="flex items-center gap-2">
-                        <p className="text-slate-900 font-semibold text-sm">{item.itemName}</p>
-                        <span className="text-[10px] text-slate-500">{item.itemCode}</span>
-                      </div>
-                    </div>
-                    <div className="px-4 py-3 space-y-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Zone/Rack</span>
-                        <span className="text-slate-900 font-semibold">{item.zoneRack}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">System Qty</span>
-                        <span className="text-emerald-700 font-bold">{item.systemQty}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Physical Qty</span>
-                        <span className="text-sky-700 font-bold">{item.physicalQty}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Variance</span>
-                        <span className="text-amber-700 font-bold">{Math.max(0, item.physicalQty - item.systemQty)}</span>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-200 mt-2">
-                        <p className="text-[10px] tracking-wide text-slate-500 uppercase mb-1">Batch Details</p>
-                        <div className="flex items-center gap-2 text-xs flex-wrap">
-                          <span className="px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 font-mono">
-                            {item.batchCode}
-                          </span>
-                          <span className="text-slate-800 font-semibold">{item.physicalQty} units</span>
-                          <span className="text-slate-500">Exp: {item.expiry}</span>
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
-                            Good
-                          </span>
-                          <span className="text-slate-400 ml-auto">Not verified yet</span>
+                {warehouseInventoryLoading ? (
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500 text-sm">
+                    Loading warehouse inventory…
+                  </div>
+                ) : (
+                  <>
+                    {renderedItems.map((item, idx) => (
+                      <div
+                        key={`${item.itemCode}-${idx}`}
+                        className="rounded-lg border border-slate-200 bg-white overflow-hidden"
+                      >
+                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                          <div className="flex items-center gap-2">
+                            <p className="text-slate-900 font-semibold text-sm">{item.itemName}</p>
+                            <span className="text-[10px] text-slate-500 font-mono">{item.itemCode}</span>
+                            {!item.fromWarehouse && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">No warehouse match</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 space-y-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Zone / Rack</span>
+                            <span className="text-slate-900 font-semibold">{item.zoneRack}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Requested Qty</span>
+                            <span className="text-slate-800 font-semibold">{item.requestedQty ?? '—'} {item.whUnit || ''}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Stock in hand (from DB)</span>
+                            <span className="text-emerald-700 font-bold">
+                              {item.systemQty != null ? `${item.systemQty} ${item.whUnit || ''}` : '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Physical Qty (count)</span>
+                            <span className="text-sky-700 font-bold">
+                              {item.physicalQty != null ? `${item.physicalQty} ${item.whUnit || ''}` : '—'}
+                            </span>
+                          </div>
+                          {item.batchCode && (
+                            <div className="pt-2 border-t border-slate-200 mt-2">
+                              <p className="text-[10px] tracking-wide text-slate-500 uppercase mb-1">Batch</p>
+                              <span className="text-xs font-mono text-slate-700">{item.batchCode}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    ))}
 
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                  All {req.description ?? 'requested'} stocks verified. Batch details confirmed with COA on file.
-                </div>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      Stock in hand is read from warehouse inventory. Match is by item code or name.
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
+              <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
                 <button
                   onClick={() => {
                     setSelectedStockCheckRequest(null);
@@ -5638,229 +6217,229 @@ const Procurement: React.FC = () => {
             {/* Form Body - Scrollable */}
             <div className="overflow-y-auto flex-1 p-6 bg-linear-to-b from-slate-50 to-white">
               <div className="space-y-5">
-              {/* Row 1: Category, Type */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Row 1: Category, Type */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Category *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. UV FILTER, SURFACTANT"
+                      value={newRequestForm.category}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, category: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Type
+                    </label>
+                    <select
+                      value={newRequestForm.type}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, type: e.target.value as RequestType })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                    >
+                      <option value="RM">RM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Source, Priority */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Source
+                    </label>
+                    <select
+                      value={newRequestForm.source}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, source: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                    >
+                      <option value="Planning Team">Planning Team</option>
+                      <option value="Production Team">Production Team</option>
+                      <option value="Quality Team">Quality Team</option>
+                      <option value="R&D Team">R&D Team</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Priority
+                    </label>
+                    <select
+                      value={newRequestForm.priority}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, priority: e.target.value as 'High' | 'Medium' | 'Low' })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                    >
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 3: Request Date, Required Date */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Request Date *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="dd-mm-yyyy"
+                      value={newRequestForm.requestDate}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requestDate: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Required Date *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="dd-mm-yyyy"
+                      value={newRequestForm.requiredDate}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requiredDate: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: Item Name */}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Category *
+                    Item Name *
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. UV FILTER, SURFACTANT"
-                    value={newRequestForm.category}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, category: e.target.value })}
+                    placeholder="e.g. Homosalate"
+                    value={newRequestForm.itemName}
+                    onChange={(e) => setNewRequestForm({ ...newRequestForm, itemName: e.target.value })}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
                   />
                 </div>
+
+                {/* Row 5: Req Qty, UOM, MOQ */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Req Qty *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="100"
+                      value={newRequestForm.reqQty}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, reqQty: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      UOM
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="KG or pcs"
+                      value={newRequestForm.uom}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, uom: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      MOQ
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="25"
+                      value={newRequestForm.moq}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, moq: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 6: Planned Price, Pack Size, Lead Time */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Planned Price
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="₹20"
+                      value={newRequestForm.plannedPrice}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, plannedPrice: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Pack Size
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="25 KG drum"
+                      value={newRequestForm.packSize}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, packSize: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      Lead Time (Days)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="21"
+                      value={newRequestForm.leadTimeDays}
+                      onChange={(e) => setNewRequestForm({ ...newRequestForm, leadTimeDays: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 7: Preferred Vendor */}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Type
+                    Preferred Vendor
                   </label>
                   <select
-                    value={newRequestForm.type}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, type: e.target.value as RequestType })}
+                    value={newRequestForm.preferredVendor}
+                    onChange={(e) => setNewRequestForm({ ...newRequestForm, preferredVendor: e.target.value })}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
                   >
-                    <option value="RM">RM</option>
-                    <option value="PM">PM</option>
+                    <option value="">— None —</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.name}>
+                        {vendor.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
 
-              {/* Row 2: Source, Priority */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Row 8: Notes */}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Source
+                    Notes
                   </label>
-                  <select
-                    value={newRequestForm.source}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, source: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                  >
-                    <option value="Planning Team">Planning Team</option>
-                    <option value="Production Team">Production Team</option>
-                    <option value="Quality Team">Quality Team</option>
-                    <option value="R&D Team">R&D Team</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Priority
-                  </label>
-                  <select
-                    value={newRequestForm.priority}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, priority: e.target.value as 'High' | 'Medium' | 'Low' })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                  >
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 3: Request Date, Required Date */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Request Date *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="dd-mm-yyyy"
-                    value={newRequestForm.requestDate}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, requestDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                  <textarea
+                    placeholder="Additional notes or context"
+                    rows={3}
+                    value={newRequestForm.notes}
+                    onChange={(e) => setNewRequestForm({ ...newRequestForm, notes: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all resize-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Required Date *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="dd-mm-yyyy"
-                    value={newRequestForm.requiredDate}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, requiredDate: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
 
-              {/* Row 4: Item Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                  Item Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Homosalate"
-                  value={newRequestForm.itemName}
-                  onChange={(e) => setNewRequestForm({ ...newRequestForm, itemName: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                />
+                {/* Hidden: Require Stock Check - Not in reference image */}
               </div>
-
-              {/* Row 5: Req Qty, UOM, MOQ */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Req Qty *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="100"
-                    value={newRequestForm.reqQty}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, reqQty: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    UOM
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="KG or pcs"
-                    value={newRequestForm.uom}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, uom: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    MOQ
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="25"
-                    value={newRequestForm.moq}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, moq: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Row 6: Planned Price, Pack Size, Lead Time */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Planned Price
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="₹20"
-                    value={newRequestForm.plannedPrice}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, plannedPrice: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Pack Size
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="25 KG drum"
-                    value={newRequestForm.packSize}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, packSize: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Lead Time (Days)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="21"
-                    value={newRequestForm.leadTimeDays}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, leadTimeDays: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Row 7: Preferred Vendor */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                  Preferred Vendor
-                </label>
-                <select
-                  value={newRequestForm.preferredVendor}
-                  onChange={(e) => setNewRequestForm({ ...newRequestForm, preferredVendor: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                >
-                  <option value="">— None —</option>
-                  {vendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.name}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Row 8: Notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                  Notes
-                </label>
-                <textarea
-                  placeholder="Additional notes or context"
-                  rows={3}
-                  value={newRequestForm.notes}
-                  onChange={(e) => setNewRequestForm({ ...newRequestForm, notes: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all resize-none"
-                />
-              </div>
-
-              {/* Hidden: Require Stock Check - Not in reference image */}
-            </div>
             </div>
 
             {/* Footer */}
@@ -5883,6 +6462,595 @@ const Procurement: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showRecordQuoteModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-xl p-6 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Record Vendor Quotation</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecordQuoteModal(false)}
+                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2 flex items-center justify-between">
+                <span>Quote lines</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextIndex = recordQuoteLines.length > 0 ? Math.max(...recordQuoteLines.map((l) => l.index)) + 1 : 0;
+                    setRecordQuoteLines((prev) => [
+                      ...prev,
+                      {
+                        index: nextIndex,
+                        itemId: '',
+                        name: '',
+                        uom: 'KG',
+                        orderQty: '0',
+                        pricePerUnit: '0',
+                        totalValue: 0,
+                        raw_material_id: null,
+                        pack_material_id: null,
+                        itemType: undefined,
+                      },
+                    ]);
+                  }}
+                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200"
+                >
+                  + Add line
+                </button>
+              </h3>
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-4 py-2 flex text-[11px] font-semibold text-slate-600">
+                  <div className="flex-1 min-w-[200px]">ITEM (RM/PM from masters)</div>
+                  <div className="w-24 text-right">QTY</div>
+                  <div className="w-28 text-right">PRICE / UNIT</div>
+                  <div className="w-28 text-right">TOTAL VALUE</div>
+                  <div className="w-16" />
+                </div>
+                <div className="max-h-64 overflow-auto divide-y divide-slate-100">
+                  {recordQuoteLines.map((line, idx) => {
+                    const lineItemValue =
+                      line.raw_material_id != null
+                        ? `rm-${line.raw_material_id}`
+                        : line.pack_material_id != null
+                          ? `pm-${line.pack_material_id}`
+                          : '';
+                    return (
+                      <div key={line.index} className="px-4 py-2 flex items-center text-xs gap-2">
+                        <div className="flex-1 min-w-0">
+                          <select
+                            value={lineItemValue}
+                            onChange={(e) => handleRecordQuoteLineSelectItem(idx, e.target.value)}
+                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white"
+                          >
+                            <option value="">— Select RM or PM —</option>
+                            <optgroup label="Raw materials">
+                              {(rawMaterialsListForQuote as RawMaterialRecord[]).map((r) => (
+                                <option key={`rm-${r.id}`} value={`rm-${r.id}`}>
+                                  {r.code} — {r.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Pack materials">
+                              {(packMaterialsListForQuote as PackMaterialRecord[]).map((p) => (
+                                <option key={`pm-${p.id}`} value={`pm-${p.id}`}>
+                                  {p.code} — {p.description || p.code}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          {line.name && (
+                            <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                              {line.itemId && `${line.itemId} · `}{line.name} ({line.uom})
+                            </p>
+                          )}
+                        </div>
+                        <div className="w-24 text-right pl-1">
+                          <input
+                            type="text"
+                            value={line.orderQty}
+                            onChange={handleRecordQuoteLineChange(idx, 'orderQty')}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                          />
+                        </div>
+                        <div className="w-28 text-right pl-1">
+                          <input
+                            type="text"
+                            value={line.pricePerUnit}
+                            onChange={handleRecordQuoteLineChange(idx, 'pricePerUnit')}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                          />
+                        </div>
+                        <div className="w-28 text-right pl-1 text-slate-800">
+                          ₹{line.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          <span className="block text-[10px] text-slate-500">{line.uom}</span>
+                        </div>
+                        <div className="w-16 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-red-600 text-sm"
+                            title="Remove line"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {recordQuoteLines.length === 0 && (
+                    <div className="px-4 py-6 text-center text-xs text-slate-500">
+                      Click &quot;+ Add line&quot; then select an item from Raw materials or Pack materials.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Vendor</label>
+              <select
+                value={recordQuoteForm.vendorId}
+                onChange={(e) => setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }))}
+                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+              >
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">Enter item names and prices from the vendor’s quote.</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Quote Date</label>
+                <input
+                  type="date"
+                  value={recordQuoteForm.quoteDate}
+                  onChange={(e) => setRecordQuoteForm((f) => ({ ...f, quoteDate: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Valid Till</label>
+                <input
+                  type="date"
+                  value={recordQuoteForm.validTill}
+                  onChange={(e) => setRecordQuoteForm((f) => ({ ...f, validTill: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Lead Time (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={recordQuoteForm.leadTimeDays}
+                  onChange={(e) => setRecordQuoteForm((f) => ({ ...f, leadTimeDays: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Payment Terms</label>
+              <textarea
+                value={recordQuoteForm.paymentTerms}
+                onChange={(e) => setRecordQuoteForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                rows={2}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Internal Notes</label>
+              <textarea
+                value={recordQuoteForm.notes}
+                onChange={(e) => setRecordQuoteForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                rows={2}
+              />
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <p className="text-[11px] text-slate-500">
+                Status will start as <span className="font-semibold">Pending Review</span>. You can mark it Confirmed / Not
+                Selected from the Quotations list.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRecordQuoteModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const vendorId = parseInt(recordQuoteForm.vendorId, 10);
+                    if (!vendorId || Number.isNaN(vendorId)) {
+                      addToast('error', 'Select a vendor');
+                      return;
+                    }
+                    if (!recordQuoteLines.length) {
+                      addToast('error', 'Add at least one line.');
+                      return;
+                    }
+                    const missingItem = recordQuoteLines.some((l) => l.raw_material_id == null && l.pack_material_id == null);
+                    if (missingItem) {
+                      addToast('error', 'Select an item (RM or PM) from the dropdown for each line.');
+                      return;
+                    }
+
+                    const items = recordQuoteLines.map((l) => {
+                      const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                      const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                      const total = qty * price;
+                      const item: { itemId: string; name: string; orderQty: number; pricePerUnit: number; uom: string; totalValue: number; raw_material_id?: number; pack_material_id?: number } = {
+                        itemId: l.itemId || l.name || '',
+                        name: l.name || l.itemId || '',
+                        orderQty: qty,
+                        pricePerUnit: price,
+                        uom: l.uom,
+                        totalValue: total,
+                      };
+                      if (l.raw_material_id != null) item.raw_material_id = l.raw_material_id;
+                      if (l.pack_material_id != null) item.pack_material_id = l.pack_material_id;
+                      return item;
+                    });
+
+                    const payload: Parameters<typeof createProcurementQuotation>[0] = {
+                      vendorId,
+                      quoteDate: recordQuoteForm.quoteDate || null,
+                      validTill: recordQuoteForm.validTill || null,
+                      leadTimeDays: recordQuoteForm.leadTimeDays
+                        ? Number(recordQuoteForm.leadTimeDays)
+                        : null,
+                      paymentTerms: recordQuoteForm.paymentTerms || null,
+                      notes: recordQuoteForm.notes || null,
+                      status: 'pending',
+                      items,
+                    };
+
+                    const res = await createProcurementQuotation(payload);
+
+                    if (!res.success || !res.data) {
+                      addToast(
+                        'error',
+                        typeof res.error === 'string' ? res.error : 'Failed to record quotation'
+                      );
+                      return;
+                    }
+
+                    queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+                    addToast(
+                      'success',
+                      `Quotation recorded (${res.data.vendorName ?? 'Vendor'})`
+                    );
+                    setShowRecordQuoteModal(false);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600"
+                >
+                  Save Quote
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreatePoFromQuoteModal && createPoFromQuoteState && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl p-6 space-y-4">
+            {(() => {
+              const selectedQuote = quotes.find((q) => q.id === createPoFromQuoteState.quoteId);
+              const backendPr =
+                backendPrResult?.find((p: { id: string }) => String(p.id) === createPoFromQuoteState.requestId) ??
+                null;
+              const prItems: BackendPRItem[] = Array.isArray((backendPr as any)?.items)
+                ? ((backendPr as any).items as BackendPRItem[])
+                : [];
+              const matchingItems = prItems.filter((it) => {
+                const name = (it.name ?? '').trim().toLowerCase();
+                const code = (it.code ?? '').trim().toLowerCase();
+                return selectedQuote?.lines.some((l) => {
+                  const q = (l.item ?? '').trim().toLowerCase();
+                  if (!q) return false;
+                  return q === name || q === code || (name && name.includes(q)) || (q && name.includes(q)) || (code && q.includes(code));
+                });
+              });
+
+              const selectedItem =
+                matchingItems.find(
+                  (it) =>
+                    it.code === createPoFromQuoteState.itemKey ||
+                    it.name === createPoFromQuoteState.itemKey
+                ) ?? matchingItems[0];
+              const prName = (selectedItem?.name ?? '').trim().toLowerCase();
+              const prCode = (selectedItem?.code ?? '').trim().toLowerCase();
+              const selectedLine =
+                selectedQuote?.lines.find((l) => {
+                  const q = (l.item ?? '').trim().toLowerCase();
+                  if (!q) return false;
+                  return q === prName || q === prCode || (prName && prName.includes(q)) || (q && prName.includes(q)) || (prCode && q.includes(prCode));
+                }) ?? selectedQuote?.lines?.[0] ?? null;
+
+              const qtyNeeded = selectedItem ? Number(selectedItem.quantity_requested) || 0 : 0;
+              const unit = selectedItem?.unit ?? 'KG';
+              const pricePerUnit = selectedLine?.pricePerUnit ?? 0;
+              const subtotal = qtyNeeded * pricePerUnit;
+              const gstPercent = 18;
+              const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+              const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Create Draft PO from Quote</h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Pick the procurement request item this quotation is for. One draft PO will be created per
+                        item/vendor.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreatePoFromQuoteModal(false)}
+                      className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  {!selectedQuote ? (
+                    <p className="text-sm text-rose-600">
+                      Unable to load quote. Please refresh the page and try again.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 mb-1">
+                            Procurement Request (link PO to)
+                          </label>
+                          <select
+                            value={createPoFromQuoteState.requestId}
+                            onChange={(e) =>
+                              setCreatePoFromQuoteState((prev) =>
+                                prev ? { ...prev, requestId: e.target.value, itemKey: undefined } : prev
+                              )
+                            }
+                            className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                          >
+                            {requests.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.code} · {r.items?.slice(0, 2).join(', ')}{r.items?.length > 2 ? '…' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 mb-1">Vendor</label>
+                          <p className="text-sm font-medium text-slate-900">
+                            {selectedQuote.vendor} <span className="text-xs text-slate-500">(from quotation)</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Item</label>
+                        <select
+                          value={createPoFromQuoteState.itemKey ?? (selectedItem?.code ?? selectedItem?.name ?? '')}
+                          onChange={(e) =>
+                            setCreatePoFromQuoteState((prev) =>
+                              prev ? { ...prev, itemKey: e.target.value } : prev
+                            )
+                          }
+                          className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                        >
+                          {matchingItems.map((it) => (
+                            <option key={it.code ?? it.name} value={it.code ?? it.name}>
+                              {(it.code ?? '') && (it.name ?? '')
+                                ? `${it.code} — ${it.name}`
+                                : it.code ?? it.name ?? ''}
+                            </option>
+                          ))}
+                        </select>
+                        {!matchingItems.length && (
+                          <p className="mt-1 text-[11px] text-rose-600">
+                            No items on this request match the lines in this quotation.
+                          </p>
+                        )}
+                      </div>
+
+                      {selectedItem && selectedLine && (
+                        <div className="mt-2 border border-slate-200 rounded-xl p-4 text-sm bg-slate-50">
+                          <p className="text-xs font-semibold text-slate-500 mb-2">Calculation</p>
+                          <p className="text-sm text-slate-800">
+                            <span className="font-medium">
+                              {selectedItem.name ?? selectedItem.code ?? 'Item'}
+                            </span>{' '}
+                            — Required Qty from PR:{' '}
+                            <span className="font-mono font-semibold">
+                              {qtyNeeded} {unit}
+                            </span>
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            Vendor price from quotation:{' '}
+                            <span className="font-mono font-semibold">
+                              ₹{pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 2 })} / {unit}
+                            </span>
+                          </p>
+                          <p className="mt-2 text-sm text-slate-900">
+                            Line subtotal:{' '}
+                            <span className="font-mono font-semibold">
+                              ₹{subtotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </span>{' '}
+                            + GST {gstPercent}% ={' '}
+                            <span className="font-mono font-semibold">
+                              ₹{lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </span>
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pt-2">
+                        <p className="text-[11px] text-slate-500">
+                          One Draft PO will be created for this item and vendor. You can edit or split it later from the
+                          Draft POs tab.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowCreatePoFromQuoteModal(false)}
+                            className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!matchingItems.length || !selectedItem || !selectedLine}
+                            onClick={async () => {
+                              if (!selectedQuote || !backendPr || !selectedItem || !selectedLine) return;
+
+                              const today = new Date();
+                              const expectedDelivery = new Date(today);
+                              expectedDelivery.setDate(
+                                expectedDelivery.getDate() + (selectedQuote.leadTimeDays || 0)
+                              );
+                              const createdDateStr = today.toISOString().split('T')[0];
+                              const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+
+                              const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                              const lineItem: DraftPOLineItem = {
+                                item: selectedItem.name ?? selectedItem.code ?? 'Item',
+                                itemCode:
+                                  selectedQuote.requestType === 'PM'
+                                    ? `EI-PM-001`
+                                    : `EI-RM-001`,
+                                type: selectedQuote.requestType,
+                                qty: String(qtyNeeded),
+                                pricePerUnit,
+                                gstPercent,
+                                gstAmount,
+                                lineTotal,
+                              };
+
+                              const vendorName =
+                                (backendPr as any).preferredVendor?.trim() || selectedQuote.vendor;
+
+                              const poPayload = {
+                                orderId: newDpoId,
+                                vendorName,
+                                orderDate: createdDateStr,
+                                expectedShipmentDate: expectedDeliveryStr,
+                                reference: selectedQuote.requestCode,
+                                paymentTerms: selectedQuote.terms || undefined,
+                                status: 'Draft',
+                                formData: {
+                                  requestId: createPoFromQuoteState.requestId,
+                                  requestCode: requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode,
+                                  quoteId: selectedQuote.id,
+                                },
+                                items: [
+                                  {
+                                    itemName: lineItem.item,
+                                    quantity: lineItem.qty,
+                                    rate: String(lineItem.pricePerUnit),
+                                    tax: String(lineItem.gstPercent || 18),
+                                  },
+                                ],
+                              };
+
+                              const createResult = await createPurchaseOrder(poPayload);
+                              if (!createResult.success || !createResult.data) {
+                                addToast(
+                                  'error',
+                                  typeof createResult.error === 'string'
+                                    ? createResult.error
+                                    : (createResult.error as any)?.message ??
+                                    'Failed to create purchase order'
+                                );
+                                return;
+                              }
+
+                              const backendId =
+                                String(createResult.data.id ?? '').replace(/^PO-/, '') ||
+                                String(createResult.data.id);
+
+                              const newDraftPO: DraftPO = {
+                                id: newDpoId,
+                                dpoNumber: newDpoId,
+                                requestId: createPoFromQuoteState.requestId,
+                                requestCode: requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode,
+                                type: selectedQuote.requestType,
+                                vendor: vendorName,
+                                vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+                                status: 'Pending Approval',
+                                createdDate: createdDateStr,
+                                createdBy: 'Procurement — Admin',
+                                paymentTerms: selectedQuote.terms,
+                                expectedDelivery: expectedDeliveryStr,
+                                deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
+                                vendorRating: selectedQuote.rating,
+                                alertMessage: `Draft PO created from quote ${selectedQuote.id} for ${lineItem.item}. Awaiting approval to proceed.`,
+                                alertType: 'warning',
+                                lineItems: [lineItem],
+                                subtotal,
+                                gstTotal: gstAmount,
+                                grandTotal: lineTotal,
+                                backendPoId: backendId,
+                              };
+
+                              if (createPoFromQuoteState.requestId) {
+                                await updateRequestStatus(createPoFromQuoteState.requestId, 'PO Draft', {
+                                  skipItems: true,
+                                });
+                              }
+
+                              updateProcurementState((current) => ({
+                                draftPOs: [newDraftPO, ...current.draftPOs],
+                              }));
+
+                              queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                              addToast(
+                                'success',
+                                `Draft PO ${newDpoId} created for ${requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode}`
+                              );
+                              setShowCreatePoFromQuoteModal(false);
+
+                              setTimeout(() => {
+                                applyRouteState('Procurement', 'Draft POs');
+                              }, 500);
+                            }}
+                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-60"
+                          >
+                            Approve & Create Draft PO
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

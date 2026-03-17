@@ -1,7 +1,7 @@
 import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
 
-/** Single RM line from API (phase, inci_name, rm_code, pct_w_w, uom; optional raw_material_id). */
+/** Single RM line from API (phase, inci_name, rm_code, pct_w_w, uom; optional raw_material_id, specific_gravity for volume calc). */
 export interface BOMRmLine {
   phase?: string;
   inci_name?: string;
@@ -10,6 +10,8 @@ export interface BOMRmLine {
   pct_w_w?: number;
   pct?: number;
   uom?: string;
+  /** Specific gravity (relative to water) for volume: volume_L = quantity_kg / specific_gravity. Default 1 if omitted. */
+  specific_gravity?: number;
   [key: string]: unknown;
 }
 

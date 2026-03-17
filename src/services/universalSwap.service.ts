@@ -17,6 +17,7 @@ export interface SwapHistoryRecord {
   approvedBy: string;
   date: string;
   affectedGroupIds?: number[];
+  affectedBomIds?: number[];
   createdAt?: string;
 }
 
@@ -38,6 +39,10 @@ export interface AffectedBom {
 
 export interface AffectedResponse {
   itemGroups: AffectedItemGroup[];
+  boms: AffectedBom[];
+}
+
+export interface HistoryAffectedResponse {
   boms: AffectedBom[];
 }
 
@@ -107,5 +112,28 @@ export async function applySwap(payload: ApplySwapPayload): Promise<ServiceResul
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to apply swap';
     return { data: null, error: message, success: false };
+  }
+}
+
+export async function fetchHistoryAffected(
+  historyId: string | number
+): Promise<ServiceResult<HistoryAffectedResponse>> {
+  try {
+    const id = typeof historyId === 'string' ? historyId : String(historyId);
+    const res = await api.get<HistoryAffectedResponse>(
+      `/api/v1/universal-swap/history/${encodeURIComponent(id)}/affected`
+    );
+    return {
+      data: res ?? { boms: [] },
+      error: null,
+      success: true,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load affected PR BOMs';
+    return {
+      data: { boms: [] },
+      error: message,
+      success: false,
+    };
   }
 }

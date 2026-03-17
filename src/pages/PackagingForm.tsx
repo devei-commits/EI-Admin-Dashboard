@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { fetchPackMaterialsList, fetchNextPackMaterialCode, createPackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -62,6 +62,8 @@ const PackagingRefactored: React.FC = () => {
   const { addToast } = useToast();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
   const [bprRefreshKey, setBprRefreshKey] = useState(0);
+  const [existingPmId, setExistingPmId] = useState<string | null>(null);
+  const [editPmLoading, setEditPmLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentSection, setCurrentSection] = useState(0);
   const [autoSaveOn, setAutoSaveOn] = useState(true);
@@ -319,12 +321,10 @@ const PackagingRefactored: React.FC = () => {
     input.click();
   };
 
-  const handleSubmit = async () => {
-    if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
-    if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
+  const buildPayload = () => {
     const code = generatedCode || formData.itemCode;
     const firstVendor = formData.vendors[0];
-    const payload = {
+    return {
       code,
       description: formData.name || `PM Item ${code}`,
       type: formData.itemCategory || formData.pmCategory || undefined,
@@ -336,11 +336,28 @@ const PackagingRefactored: React.FC = () => {
       moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
       lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
       print_status: formData.deco || undefined,
+      zohoId: formData.zohoId ?? undefined,
+      sku: formData.pkgSku ?? undefined,
+      hsnCode: formData.pkgHsn ?? undefined,
+      unit: formData.pkgUnit ?? undefined,
+      taxPref: formData.pkgTaxPreference ?? undefined,
     };
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
+    if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
+    const payload = buildPayload();
     try {
-      await createPackMaterial(payload);
+      if (existingPmId) {
+        await updatePackMaterial(existingPmId, payload);
+        addToast('success', 'Packaging item updated!');
+        setExistingPmId(null);
+      } else {
+        await createPackMaterial(payload);
+        addToast('success', 'Packaging item saved!');
+      }
       localStorage.removeItem('packaging_draft_new');
-      addToast('success', 'Packaging item saved!');
       setBprRefreshKey(k => k + 1);
       setPageTab('bpr');
     } catch (e) {
@@ -928,8 +945,65 @@ const PackagingRefactored: React.FC = () => {
     }
   };
 
+  // Load existing PM when editing — show loading until data is in, then fill form
+  useEffect(() => {
+    if (pageTab !== 'form' || !existingPmId) return;
+    let cancelled = false;
+    setEditPmLoading(true);
+    fetchPackMaterialById(existingPmId).then((pm) => {
+      if (cancelled) return;
+      setEditPmLoading(false);
+      if (!pm) return;
+      setFormData((prev) => ({
+        ...prev,
+        itemCode: pm.code,
+        name: pm.description || '',
+        itemCategory: pm.type || '',
+        level: pm.level || '',
+        subCategory: pm.group || '',
+        matBody: pm.material || '',
+        specNominal: pm.sizeSpec || '',
+        deco: pm.printStatus || '',
+        pkgSku: pm.sku ?? '',
+        pkgHsn: pm.hsnCode ?? '',
+        pkgUnit: pm.unit ?? 'PCS',
+        pkgTaxPreference: pm.taxPref ?? 'Taxable',
+        vendors: [{ name: '', location: '', moq: pm.moq ?? 0, price: pm.pricePerPc ?? 0, leadTime: pm.leadTimeDays ?? 0, approved: '', priceType: '', validTill: '', sampleCost: 0 }],
+      }));
+      setGeneratedCode(pm.code);
+    });
+    return () => { cancelled = true; };
+  }, [pageTab, existingPmId]);
+
+  // When editing PM, show loading until data is fetched
+  if (pageTab === 'form' && existingPmId && editPmLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading pack material…</p>
+      </div>
+    );
+  }
+
   // ── BPR tab ──────────────────────────────────────────────────────────────────
-  if (pageTab === 'bpr') return <BprDashboard refreshKey={bprRefreshKey} onSwitchToForm={() => setPageTab('form')} />;
+  if (pageTab === 'bpr') {
+    return (
+      <BprDashboard
+        refreshKey={bprRefreshKey}
+        onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); }}
+        onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); }}
+        onDeletePm={async (pm) => {
+          if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
+          try {
+            await deletePackMaterial(pm.id);
+            addToast('success', 'Pack material deleted');
+            setBprRefreshKey((k) => k + 1);
+          } catch (e) {
+            addToast('error', e instanceof Error ? e.message : 'Failed to delete');
+          }
+        }}
+      />
+    );
+  }
 
   // ── Main two-panel layout ────────────────────────────────────────────────────
   return (
@@ -1135,7 +1209,12 @@ function GroupChipPM({ group }: { group: string }) {
  );
 }
 
-const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }> = ({ refreshKey = 0, onSwitchToForm }) => {
+const BprDashboard: React.FC<{
+  refreshKey?: number;
+  onSwitchToForm: () => void;
+  onEditPm: (pm: PackMaterialRecord) => void;
+  onDeletePm: (pm: PackMaterialRecord) => void | Promise<void>;
+}> = ({ refreshKey = 0, onSwitchToForm, onEditPm, onDeletePm }) => {
  const [searchParams] = useSearchParams();
  const pmFromQuery = searchParams.get('pm') ?? '';
  const [search, setSearch] = useState(pmFromQuery);
@@ -1329,12 +1408,13 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
+         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-50">
         {filtered.length === 0 ? (
          <tr>
-          <td colSpan={13} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={14} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1402,6 +1482,23 @@ const BprDashboard: React.FC<{ refreshKey?: number; onSwitchToForm: () => void }
              className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline disabled:opacity-50"
             >
              {reservedLoading ? '…' : 'Show reserved'}
+            </button>
+           </td>
+           {/* Actions */}
+           <td className="px-4 py-3 text-right whitespace-nowrap">
+            <button
+             type="button"
+             onClick={(e) => { e.stopPropagation(); onEditPm(pm); }}
+             className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline mr-2"
+            >
+             Edit
+            </button>
+            <button
+             type="button"
+             onClick={(e) => { e.stopPropagation(); onDeletePm(pm); }}
+             className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
+            >
+             Delete
             </button>
            </td>
           </tr>

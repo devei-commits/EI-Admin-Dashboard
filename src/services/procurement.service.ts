@@ -19,6 +19,7 @@ export interface ProcurementRequestItem {
 export interface ProcurementRequest {
   id: string;
   planningExtractedId: number;
+  planningBatchId: number | null;
   priority: string;
   requiredByDate: string | null;
   notes: string | null;
@@ -26,12 +27,17 @@ export interface ProcurementRequest {
   status: string;
   preferredVendor?: string | null;
   requestedBy: string | null;
+  stockCheckAssignedTo?: string | null;
+  stockCheckStatus?: string | null;
+  stockCheckDueDate?: string | null;
+  stockCheckNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateProcurementPayload {
   planningExtractedId: number;
+  planningBatchId?: number | null;
   priority: string;
   requiredByDate: string;
   notes: string;
@@ -68,6 +74,10 @@ export interface UpdateProcurementPayload {
   items?: ProcurementRequestItem[];
   status?: string;
   preferredVendor?: string;
+  stockCheckAssignedTo?: string | null;
+  stockCheckStatus?: string | null;
+  stockCheckDueDate?: string | null;
+  stockCheckNotes?: string | null;
 }
 
 export async function updateProcurementRequest(

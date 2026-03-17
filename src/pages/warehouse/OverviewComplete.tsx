@@ -504,19 +504,29 @@ const OutboundDashboard = () => {
       </div>
 
       {selectedMRN && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/25">
-          <div className="h-full w-full max-w-105 bg-white border-l border-slate-200 shadow-2xl overflow-y-auto">
-            <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">Stock Request — {selectedMRN.mrnNo}</h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={closePickPanel}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mrn-modal-title"
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h2 id="mrn-modal-title" className="text-base font-bold text-slate-900">Stock Request — {selectedMRN.mrnNo}</h2>
               <button
                 onClick={closePickPanel}
-                className="h-7 w-7 rounded-md border border-slate-200 bg-slate-50 text-slate-500 hover:text-slate-700"
+                className="h-8 w-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg leading-none"
+                aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className="p-3 space-y-3">
+            <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               <div className="inline-flex px-2 py-0.5 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-semibold">
                 {selectedMRN.status}
               </div>
@@ -615,28 +625,28 @@ const OutboundDashboard = () => {
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 flex justify-end gap-2">
+            <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex flex-wrap justify-end gap-2">
               <button
                 onClick={handleSaveChanges}
-                className="px-3 py-1.5 rounded bg-slate-600 hover:bg-slate-700 text-white text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-700 text-white text-[11px] font-semibold"
               >
                 Save changes
               </button>
               <button
                 onClick={handleSavePick}
-                className="px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
               >
                 Save Pick
               </button>
               <button
                 onClick={handleInitiateTransfer}
-                className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
               >
                 Initiate Transfer
               </button>
               <button
                 onClick={closePickPanel}
-                className="px-3 py-1.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"
               >
                 Close
               </button>

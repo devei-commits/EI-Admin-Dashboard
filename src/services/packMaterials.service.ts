@@ -19,6 +19,13 @@ export interface PackMaterialFromApi {
   lead_time_days: number;
   print_status: string;
   products: string[];
+  /** Primary info for Zoho sync (TODO: implement Zoho integration) */
+  zoho_id?: string | null;
+  sku?: string | null;
+  hsn_code?: string | null;
+  unit?: string | null;
+  tax_pref?: string | null;
+  sales_purchase_account?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -37,6 +44,12 @@ export interface PackMaterialRecord {
   leadTimeDays: number;
   printStatus: string;
   products: string[];
+  zohoId: string | null;
+  sku: string | null;
+  hsnCode: string | null;
+  unit: string | null;
+  taxPref: string | null;
+  salesPurchaseAccount: string | null;
 }
 
 function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
@@ -54,6 +67,12 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     leadTimeDays: Number(row.lead_time_days) ?? 0,
     printStatus: row.print_status ?? '',
     products: Array.isArray(row.products) ? row.products : [],
+    zohoId: row.zoho_id ?? null,
+    sku: row.sku ?? null,
+    hsnCode: row.hsn_code ?? null,
+    unit: row.unit ?? null,
+    taxPref: row.tax_pref ?? null,
+    salesPurchaseAccount: row.sales_purchase_account ?? null,
   };
 }
 
@@ -100,6 +119,32 @@ export interface CreatePackMaterialPayload {
   print_status?: string;
   printStatus?: string;
   products?: string[];
+  /** Primary info for Zoho sync (TODO: implement Zoho integration) */
+  zohoId?: string | null;
+  zoho_id?: string | null;
+  sku?: string | null;
+  hsnCode?: string | null;
+  hsn_code?: string | null;
+  pkgHsn?: string | null;
+  unit?: string | null;
+  pkgUnit?: string | null;
+  taxPref?: string | null;
+  tax_pref?: string | null;
+  pkgTaxPreference?: string | null;
+  salesPurchaseAccount?: string | null;
+  sales_purchase_account?: string | null;
+}
+
+/**
+ * Get pack material by id for edit.
+ */
+export async function fetchPackMaterialById(id: string): Promise<PackMaterialRecord | null> {
+  try {
+    const row = await api.get<PackMaterialFromApi>(`/api/v1/pack-materials/${id}`);
+    return row ? mapApiToRecord(row) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -108,6 +153,21 @@ export interface CreatePackMaterialPayload {
 export async function createPackMaterial(payload: CreatePackMaterialPayload): Promise<PackMaterialRecord> {
   const row = await api.post<PackMaterialFromApi>('/api/v1/pack-materials', payload);
   return mapApiToRecord(row);
+}
+
+/**
+ * Update pack material by id.
+ */
+export async function updatePackMaterial(id: string, payload: CreatePackMaterialPayload): Promise<PackMaterialRecord> {
+  const row = await api.put<PackMaterialFromApi>(`/api/v1/pack-materials/${id}`, payload);
+  return mapApiToRecord(row);
+}
+
+/**
+ * Delete pack material by id.
+ */
+export async function deletePackMaterial(id: string): Promise<void> {
+  await api.delete(`/api/v1/pack-materials/${id}`);
 }
 
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */

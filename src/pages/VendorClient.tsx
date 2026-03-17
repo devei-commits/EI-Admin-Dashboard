@@ -351,6 +351,7 @@ const VendorClient: React.FC = () => {
          <tr>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Vendor</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
@@ -363,13 +364,14 @@ const VendorClient: React.FC = () => {
         <tbody>
          {filteredVendors.length === 0 ? (
           <tr>
-           <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
+           <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
           </tr>
          ) : (
           pagedVendors.map((v) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.zohoId || (v.data as any)?.zohoId || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.category || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
@@ -572,6 +574,7 @@ const VendorClient: React.FC = () => {
          <tr>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Client</th>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
           <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
@@ -584,13 +587,14 @@ const VendorClient: React.FC = () => {
         <tbody>
          {filteredClients.length === 0 ? (
           <tr>
-           <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
+           <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
           </tr>
          ) : (
           pagedClients.map((c) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.zohoId || (c.data as any)?.zohoId || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.category || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>

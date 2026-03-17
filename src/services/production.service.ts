@@ -120,6 +120,17 @@ export interface BatchRow {
   bulkBatchAccepted: boolean | null; fillBatchAccepted: boolean | null; fgBatchAccepted: boolean | null;
   qcSpecs: QCSpec[]; remarks: string; dueDate: string;
   compatibleVessels?: string[]; compatibleFillLines?: string[]; compatiblePackLines?: string[];
+  /** Required vessel volume in liters (from BOM specific gravity + batch size). */
+  requiredVolumeLiters?: number | null;
+  /** planning_batches.id — when set, batch can be used as base for rework (Create New Batch). */
+  planningBatchId?: number | null;
+}
+
+/** Sync production batches from sent planning batches (creates missing BMR/BPR rows). Idempotent. */
+export async function syncBatchesFromPlanning(): Promise<{ success: boolean; created?: number }> {
+  const res = await api.post<{ success: boolean; created?: number }>(`${BASE}/batches/sync-from-planning`);
+  const data = (res as any)?.data ?? res;
+  return data ?? { success: false };
 }
 
 export async function fetchBatches(): Promise<BatchRow[]> {
@@ -142,6 +153,12 @@ export async function createBatch(payload: Record<string, unknown>): Promise<Bat
   return (res as any)?.data ?? res;
 }
 
+/** Create a rework batch (BMR-YYYY-NNN-rw-01, rw-02, ...) from an existing batch. Same SO; optional reason stored in remarks. */
+export async function createRworkBatch(baseBatchId: number, reason?: string): Promise<BatchRow> {
+  const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, { baseBatchId, reason: reason ?? '' });
+  return (res as any)?.data ?? res;
+}
+
 export async function updateBatch(pk: number, payload: Record<string, unknown>): Promise<BatchRow> {
   const res = await api.patch<BatchRow>(`${BASE}/batches/${pk}`, payload);
   return (res as any)?.data ?? res;
@@ -150,4 +167,42 @@ export async function updateBatch(pk: number, payload: Record<string, unknown>):
 export async function deleteBatch(pk: number) {
   const res = await api.delete(`${BASE}/batches/${pk}`);
   return (res as any)?.data ?? res;
+}
+
+/** BOM for a production batch (batch-specific from planning when available, else product master BOM). */
+export interface BatchBOMResponse {
+  success: boolean;
+  data?: {
+    rmLines: Array<Record<string, unknown>>;
+    pmLines: Array<Record<string, unknown>>;
+    source: 'planning_batch' | 'product_bom';
+    /** When source is planning_batch, use this for RM/PM required (planned batch size in kg). */
+    batchSizeKg?: number | null;
+  };
+  error?: string;
+}
+
+export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMResponse> {
+  try {
+    const path = `${BASE}/batches/${batchPk}/bom`;
+    console.log('[BOM-DEBUG] Dashboard calling GET', path, '(production_batch id =', batchPk, ')');
+    const res = await api.get<{ success: boolean; data: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null } }>(path);
+    // Backend returns { success, data } directly; api.get returns that same object (not wrapped in .data).
+    const body = res as { success?: boolean; data?: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null } };
+    if (body?.success && body?.data) {
+      return {
+        success: true,
+        data: {
+          rmLines: Array.isArray(body.data.rmLines) ? body.data.rmLines : [],
+          pmLines: Array.isArray(body.data.pmLines) ? body.data.pmLines : [],
+          source: body.data.source === 'planning_batch' ? 'planning_batch' : 'product_bom',
+          batchSizeKg: body.data.batchSizeKg ?? undefined,
+        },
+      };
+    }
+    return { success: false, data: undefined, error: 'Invalid response' };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load batch BOM';
+    return { success: false, data: undefined, error: message };
+  }
 }

@@ -3,13 +3,11 @@ import { useToast } from '../context/ToastContext';
 import {
   fetchFacilityAreas,
   createFacilityArea,
-  updateFacilityArea,
-  deleteFacilityArea,
   createZone,
-  updateZone,
-  deleteZone,
+  createRack,
   type FacilityAreaDTO,
   type ZoneDTO,
+  type RackDTO,
 } from '../services/facilityAreas.service';
 
 /* ------------------------------------------------------------------ */
@@ -18,9 +16,11 @@ import {
 
 const AREA_FORM_EMPTY = { code: '', name: '', area_type: 'warehouse' as 'warehouse' | 'production', icon: '', description: '' };
 const ZONE_FORM_EMPTY = { code: '', name: '', zone_label: '', icon: '', area_sqm: '', description: '' };
+const RACK_FORM_EMPTY = { code: '', name: '', description: '', levels: '4', slots_total: '16' };
 
 type AreaForm = typeof AREA_FORM_EMPTY;
 type ZoneForm = typeof ZONE_FORM_EMPTY;
+type RackForm = typeof RACK_FORM_EMPTY;
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -34,20 +34,21 @@ const FacilityManagement: React.FC = () => {
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all' | 'warehouse' | 'production'>('all');
 
-  // area modal
+  // area modal (create only)
   const [showAreaModal, setShowAreaModal] = useState(false);
-  const [editingArea, setEditingArea] = useState<FacilityAreaDTO | null>(null);
   const [areaForm, setAreaForm] = useState<AreaForm>({ ...AREA_FORM_EMPTY });
   const [areaSaving, setAreaSaving] = useState(false);
 
-  // zone modal
+  // zone modal (create only)
   const [showZoneModal, setShowZoneModal] = useState(false);
-  const [editingZone, setEditingZone] = useState<ZoneDTO | null>(null);
   const [zoneForm, setZoneForm] = useState<ZoneForm>({ ...ZONE_FORM_EMPTY });
   const [zoneSaving, setZoneSaving] = useState(false);
 
-  // delete confirmation
-  const [confirmDelete, setConfirmDelete] = useState<{ type: 'area' | 'zone'; id: number; name: string } | null>(null);
+  // rack modal (create only)
+  const [showRackModal, setShowRackModal] = useState(false);
+  const [rackForm, setRackForm] = useState<RackForm>({ ...RACK_FORM_EMPTY });
+  const [rackSaving, setRackSaving] = useState(false);
+  const [rackZone, setRackZone] = useState<ZoneDTO | null>(null);
 
   /* --- Load -------------------------------------------------------- */
 
@@ -55,7 +56,7 @@ const FacilityManagement: React.FC = () => {
     setLoading(true);
     const res = await fetchFacilityAreas();
     if (res.success) setAreas(res.data);
-    else addToast(res.error || 'Failed to load areas', 'error');
+    else addToast('error', res.error || 'Failed to load areas');
     setLoading(false);
   }, [addToast]);
 
@@ -70,52 +71,27 @@ const FacilityManagement: React.FC = () => {
   /* --- Area CRUD --------------------------------------------------- */
 
   const openCreateArea = () => {
-    setEditingArea(null);
     setAreaForm({ ...AREA_FORM_EMPTY });
-    setShowAreaModal(true);
-  };
-
-  const openEditArea = (area: FacilityAreaDTO) => {
-    setEditingArea(area);
-    setAreaForm({
-      code: area.code,
-      name: area.name,
-      area_type: area.areaType,
-      icon: area.icon || '',
-      description: area.description || '',
-    });
     setShowAreaModal(true);
   };
 
   const saveArea = async () => {
     if (!areaForm.code.trim() || !areaForm.name.trim()) {
-      addToast('Code and Name are required', 'error');
+      addToast('error', 'Code and Name are required');
       return;
     }
     setAreaSaving(true);
-    if (editingArea) {
-      const res = await updateFacilityArea(editingArea.id, {
-        code: areaForm.code.trim(),
-        name: areaForm.name.trim(),
-        area_type: areaForm.area_type,
-        icon: areaForm.icon || undefined,
-        description: areaForm.description || undefined,
-      });
-      if (res.success) { addToast('Area updated', 'success'); }
-      else { addToast(res.error || 'Update failed', 'error'); }
-    } else {
-      const res = await createFacilityArea({
-        code: areaForm.code.trim(),
-        name: areaForm.name.trim(),
-        area_type: areaForm.area_type,
-        icon: areaForm.icon || undefined,
-        description: areaForm.description || undefined,
-      });
-      if (res.success) { addToast('Area created', 'success'); }
-      else { addToast(res.error || 'Create failed', 'error'); }
-    }
+    const res = await createFacilityArea({
+      code: areaForm.code.trim(),
+      name: areaForm.name.trim(),
+      area_type: areaForm.area_type,
+      icon: areaForm.icon || undefined,
+      description: areaForm.description || undefined,
+    });
     setAreaSaving(false);
     setShowAreaModal(false);
+    if (res.success) addToast('success', 'Area created');
+    else addToast('error', res.error || 'Create failed');
     loadAreas();
   };
 
@@ -123,77 +99,60 @@ const FacilityManagement: React.FC = () => {
 
   const openCreateZone = () => {
     if (!selectedArea) return;
-    setEditingZone(null);
     setZoneForm({ ...ZONE_FORM_EMPTY });
-    setShowZoneModal(true);
-  };
-
-  const openEditZone = (zone: ZoneDTO) => {
-    setEditingZone(zone);
-    setZoneForm({
-      code: zone.code,
-      name: zone.name,
-      zone_label: zone.zoneLabel || '',
-      icon: zone.icon || '',
-      area_sqm: zone.areaSqm != null ? String(zone.areaSqm) : '',
-      description: zone.description || '',
-    });
     setShowZoneModal(true);
   };
 
   const saveZone = async () => {
     if (!selectedArea) return;
     if (!zoneForm.code.trim() || !zoneForm.name.trim()) {
-      addToast('Code and Name are required', 'error');
+      addToast('error', 'Code and Name are required');
       return;
     }
     setZoneSaving(true);
-    if (editingZone) {
-      const res = await updateZone(editingZone.id, {
-        code: zoneForm.code.trim(),
-        name: zoneForm.name.trim(),
-        zone_label: zoneForm.zone_label || undefined,
-        icon: zoneForm.icon || undefined,
-        area_sqm: zoneForm.area_sqm ? parseInt(zoneForm.area_sqm, 10) : undefined,
-        description: zoneForm.description || undefined,
-      });
-      if (res.success) addToast('Zone updated', 'success');
-      else addToast(res.error || 'Update failed', 'error');
-    } else {
-      const res = await createZone({
-        code: zoneForm.code.trim(),
-        name: zoneForm.name.trim(),
-        area_id: selectedArea.id,
-        location_type: selectedArea.areaType,
-        zone_label: zoneForm.zone_label || undefined,
-        icon: zoneForm.icon || undefined,
-        area_sqm: zoneForm.area_sqm ? parseInt(zoneForm.area_sqm, 10) : undefined,
-        description: zoneForm.description || undefined,
-      });
-      if (res.success) addToast('Zone created', 'success');
-      else addToast(res.error || 'Create failed', 'error');
-    }
+    const res = await createZone({
+      code: zoneForm.code.trim(),
+      name: zoneForm.name.trim(),
+      area_id: selectedArea.id,
+      location_type: selectedArea.areaType,
+      zone_label: zoneForm.zone_label || undefined,
+      icon: zoneForm.icon || undefined,
+      area_sqm: zoneForm.area_sqm ? parseInt(zoneForm.area_sqm, 10) : undefined,
+      description: zoneForm.description || undefined,
+    });
     setZoneSaving(false);
     setShowZoneModal(false);
+    if (res.success) addToast('success', 'Zone created');
+    else addToast('error', res.error || 'Create failed');
     loadAreas();
   };
 
-  /* --- Delete ------------------------------------------------------ */
+  const openCreateRack = (zone: ZoneDTO) => {
+    setRackZone(zone);
+    setRackForm({ ...RACK_FORM_EMPTY });
+    setShowRackModal(true);
+  };
 
-  const confirmAndDelete = async () => {
-    if (!confirmDelete) return;
-    if (confirmDelete.type === 'area') {
-      const res = await deleteFacilityArea(confirmDelete.id);
-      if (res.success) {
-        addToast('Area deleted', 'success');
-        if (selectedAreaId === confirmDelete.id) setSelectedAreaId(null);
-      } else addToast(res.error || 'Delete failed', 'error');
-    } else {
-      const res = await deleteZone(confirmDelete.id);
-      if (res.success) addToast('Zone deleted', 'success');
-      else addToast(res.error || 'Delete failed', 'error');
+  const saveRack = async () => {
+    if (!rackZone) return;
+    if (!rackForm.code.trim()) {
+      addToast('error', 'Rack code is required');
+      return;
     }
-    setConfirmDelete(null);
+    setRackSaving(true);
+    const res = await createRack({
+      location_id: rackZone.id,
+      code: rackForm.code.trim(),
+      name: rackForm.name.trim() || undefined,
+      description: rackForm.description.trim() || undefined,
+      levels: rackForm.levels ? parseInt(rackForm.levels, 10) : 4,
+      slots_total: rackForm.slots_total ? parseInt(rackForm.slots_total, 10) : 16,
+    });
+    setRackSaving(false);
+    setShowRackModal(false);
+    setRackZone(null);
+    if (res.success) addToast('success', 'Rack created');
+    else addToast('error', res.error || 'Create failed');
     loadAreas();
   };
 
@@ -207,7 +166,7 @@ const FacilityManagement: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage facility areas and their zones</p>
+          <p className="text-sm text-gray-500 mt-1">Create only. Structure: Location (4) → Zones → Racks.</p>
         </div>
         <button
           onClick={openCreateArea}
@@ -277,26 +236,10 @@ const FacilityManagement: React.FC = () => {
                   {area.description && (
                     <p className="text-xs text-gray-400 mt-2 line-clamp-2">{area.description}</p>
                   )}
-                  <div className="flex items-center justify-between mt-3">
+                  <div className="mt-3">
                     <span className="text-xs text-gray-500">
                       {area.zones.length} zone{area.zones.length !== 1 ? 's' : ''}
                     </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditArea(area); }}
-                        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Edit area"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setConfirmDelete({ type: 'area', id: area.id, name: area.name }); }}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete area"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    </div>
                   </div>
                 </div>
               ))
@@ -338,7 +281,7 @@ const FacilityManagement: React.FC = () => {
                           <th className="px-4 py-3 font-medium">Label</th>
                           <th className="px-4 py-3 font-medium">Area (sqm)</th>
                           <th className="px-4 py-3 font-medium">Description</th>
-                          <th className="px-4 py-3 font-medium text-right">Actions</th>
+                          <th className="px-4 py-3 font-medium">Racks</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -351,20 +294,23 @@ const FacilityManagement: React.FC = () => {
                             <td className="px-4 py-3 text-gray-500">{zone.areaSqm != null ? zone.areaSqm : '—'}</td>
                             <td className="px-4 py-3 text-gray-400 max-w-[200px] truncate">{zone.description || '—'}</td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex flex-col gap-1">
+                                {(zone.racks || []).length === 0 ? (
+                                  <span className="text-xs text-gray-400">No racks</span>
+                                ) : (
+                                  (zone.racks || []).map((r) => (
+                                    <span key={r.id} className="text-xs font-mono text-gray-600">
+                                      {r.code}
+                                      {r.levels != null && r.slotsTotal != null ? ` (${r.levels}×${r.slotsTotal})` : ''}
+                                    </span>
+                                  ))
+                                )}
                                 <button
-                                  onClick={() => openEditZone(zone)}
-                                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                                  title="Edit zone"
+                                  type="button"
+                                  onClick={() => openCreateRack(zone)}
+                                  className="text-xs font-medium text-gray-700 hover:text-gray-900 mt-0.5"
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDelete({ type: 'zone', id: zone.id, name: zone.name })}
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Delete zone"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  + Add Rack
                                 </button>
                               </div>
                             </td>
@@ -390,9 +336,7 @@ const FacilityManagement: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingArea ? 'Edit Area' : 'Create Area'}
-              </h3>
+              <h3 className="text-lg font-semibold text-gray-900">Create Area</h3>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -461,7 +405,7 @@ const FacilityManagement: React.FC = () => {
                 disabled={areaSaving}
                 className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
-                {areaSaving ? 'Saving...' : editingArea ? 'Update' : 'Create'}
+                {areaSaving ? 'Saving...' : 'Create'}
               </button>
             </div>
           </div>
@@ -473,9 +417,7 @@ const FacilityManagement: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingZone ? 'Edit Zone' : 'Add Zone'} — {selectedArea.name}
-              </h3>
+              <h3 className="text-lg font-semibold text-gray-900">Add Zone — {selectedArea.name}</h3>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -555,40 +497,87 @@ const FacilityManagement: React.FC = () => {
                 disabled={zoneSaving}
                 className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
-                {zoneSaving ? 'Saving...' : editingZone ? 'Update' : 'Create'}
+                {zoneSaving ? 'Saving...' : 'Create'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirm */}
-      {confirmDelete && (
+      {/* Rack Modal (create only) */}
+      {showRackModal && rackZone && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 overflow-hidden">
-            <div className="px-6 py-5 text-center">
-              <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Add Rack — {rackZone.name}</h3>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                <input
+                  type="text"
+                  value={rackForm.code}
+                  onChange={(e) => setRackForm((f) => ({ ...f, code: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  placeholder="A1"
+                />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Delete {confirmDelete.type}?</h3>
-              <p className="text-sm text-gray-500">
-                Are you sure you want to delete <span className="font-medium text-gray-700">"{confirmDelete.name}"</span>?
-                {confirmDelete.type === 'area' && ' All zones within this area will also be deleted.'}
-                {' '}This action cannot be undone.
-              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={rackForm.name}
+                  onChange={(e) => setRackForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  placeholder="Rack A1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Levels</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={rackForm.levels}
+                    onChange={(e) => setRackForm((f) => ({ ...f, levels: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Slots total</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={rackForm.slots_total}
+                    onChange={(e) => setRackForm((f) => ({ ...f, slots_total: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={rackForm.description}
+                  onChange={(e) => setRackForm((f) => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
+                  rows={2}
+                  placeholder="Optional"
+                />
+              </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={() => setConfirmDelete(null)}
+                onClick={() => { setShowRackModal(false); setRackZone(null); }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={confirmAndDelete}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                onClick={saveRack}
+                disabled={rackSaving}
+                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
-                Delete
+                {rackSaving ? 'Saving...' : 'Create'}
               </button>
             </div>
           </div>

@@ -9,6 +9,14 @@ import type { ItemGroupRecord } from './itemGroups.service';
 
 export type WarehouseItemType = 'RM' | 'PM' | 'FG/PR';
 
+export interface InTransitBreakdownItem {
+  vendor: string;
+  poId: number | null;
+  poNo: string;
+  expectedDate: string | null;
+  quantity: number;
+}
+
 export interface WarehouseInventoryRow {
   id: string;
   code: string;
@@ -30,6 +38,10 @@ export interface WarehouseInventoryRow {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  /** In-transit lines from pending GRNs: vendor, PO id, expected date */
+  inTransitBreakdown?: InTransitBreakdownItem[];
+  /** Total quantity from purchase orders (vendor) */
+  poQuantity?: number;
   reorderPt: number;
   avgMo: number;
   status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
@@ -63,6 +75,8 @@ interface ApiWarehouseRow {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  inTransitBreakdown?: InTransitBreakdownItem[];
+  poQuantity?: number;
   reorderPt: number;
   avgMo: number;
   status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
@@ -95,6 +109,8 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       stockInHand: (Number(r.stockInHand) ?? (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock))) || 0,
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
+      inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
+      poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',
@@ -120,6 +136,33 @@ export interface UpdateWarehouseStockPayload {
   qc_status?: string;
 }
 
+export interface WarehouseLocationHistoryEntry {
+  id: number;
+  warehouseInventoryId: number;
+  itemType: WarehouseItemType;
+  rawMaterialId?: number | null;
+  packMaterialId?: number | null;
+  productId?: number | null;
+  fromZone?: string | null;
+  fromRack?: string | null;
+  toZone?: string | null;
+  toRack?: string | null;
+  qtyDelta?: number | null;
+  actionType?: string | null;
+  sourceGrnId?: number | null;
+  sourceMrnId?: number | null;
+  movedAt: string;
+  /** Reserved change from BMR/BPR; only set when actionType is BMR_RESERVED or BPR_RESERVED */
+  reservedDelta?: number | null;
+  reservedAfter?: number | null;
+  productionBatchId?: number | null;
+  batchNo?: string | null;
+  /** Optional, populated for consolidated history list */
+  code?: string;
+  name?: string;
+  subtitle?: string;
+}
+
 /** PATCH warehouse inventory row (adjust stock). Backend recomputes stock_in_hand = wh + ml1 + ml2. */
 export async function updateWarehouseStock(
   warehouseInventoryId: number,
@@ -141,5 +184,128 @@ export async function updateWarehouseStock(
     const message = e instanceof Error ? e.message : 'Failed to update warehouse stock';
     log('Update warehouse stock failed', { warehouseInventoryId, error: message });
     return { data: null as any, error: message, success: false };
+  }
+}
+
+/** Fetch internal movement history for a given warehouse inventory row (zone/rack changes). */
+export async function fetchWarehouseLocationHistory(
+  warehouseInventoryId: number
+): Promise<ServiceResult<{ history: WarehouseLocationHistoryEntry[] }>> {
+  try {
+    const res = await api.get<{ history: WarehouseLocationHistoryEntry[] }>(
+      `/api/v1/warehouse-inventory/${warehouseInventoryId}/location-history`
+    );
+    const data = res?.data ?? res;
+    return { data, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load location history';
+    log('Load location history failed', { warehouseInventoryId, error: message });
+    return { data: { history: [] }, error: message, success: false };
+  }
+}
+
+/** Fetch consolidated internal movement history for all items (for Inventory History tab). */
+export async function fetchAllWarehouseLocationHistory(): Promise<
+  ServiceResult<{ history: WarehouseLocationHistoryEntry[] }>
+> {
+  try {
+    const res = await api.get<{ history: WarehouseLocationHistoryEntry[] }>(
+      '/api/v1/warehouse-inventory/location-history'
+    );
+    const data = res?.data ?? res;
+    return { data, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load consolidated location history';
+    log('Load all location history failed', { error: message });
+    return { data: { history: [] }, error: message, success: false };
+  }
+}
+
+export interface RackLocationEntry {
+  locationId: number;
+  locationCode: string;
+  locationName: string;
+  rackId: number;
+  rackCode: string;
+}
+
+/** Fetch where in the warehouse this inventory item is stored (location + rack list). */
+export async function fetchRackLocations(
+  warehouseInventoryId: number
+): Promise<ServiceResult<{ locations: RackLocationEntry[] }>> {
+  try {
+    const res = await api.get<{ locations: RackLocationEntry[] }>(
+      `/api/v1/warehouse-inventory/${warehouseInventoryId}/rack-locations`
+    );
+    const data = res?.data ?? res;
+    return { data: data ?? { locations: [] }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load rack locations';
+    log('Load rack locations failed', { warehouseInventoryId, error: message });
+    return { data: { locations: [] }, error: message, success: false };
+  }
+}
+
+/** Low threshold = items where stockInHand <= reorderPt (for planning dashboard). */
+export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: WarehouseInventoryRow[] }>> {
+  try {
+    const res = await api.get<{ rows: ApiWarehouseRow[] }>('/api/v1/warehouse-inventory/low-threshold-alerts');
+    const data = res?.data ?? res;
+    const rawRows = Array.isArray(data?.rows) ? data.rows : [];
+    const rows: WarehouseInventoryRow[] = rawRows.map((r) => ({
+      id: r.id,
+      warehouseInventoryId: r.warehouseInventoryId,
+      code: r.code,
+      name: r.name,
+      subtitle: r.subtitle,
+      type: r.type,
+      sourceId: r.sourceId,
+      itemGroupNames: r.itemGroupNames ?? [],
+      itemGroupCodes: r.itemGroupCodes ?? [],
+      zone: r.zone ?? '—',
+      rack: r.rack ?? '—',
+      whStock: Number(r.whStock) || 0,
+      whUnit: r.whUnit ?? 'KG',
+      ml1Stock: Number(r.ml1Stock) || 0,
+      ml2Stock: Number(r.ml2Stock) || 0,
+      stockInHand: (Number(r.stockInHand) ?? 0) || 0,
+      reserved: Number(r.reserved) || 0,
+      inTransit: Number(r.inTransit) || 0,
+      inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
+      poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
+      reorderPt: Number(r.reorderPt) || 0,
+      avgMo: Number(r.avgMo) || 0,
+      status: r.status || 'In Stock',
+    }));
+    return { data: { rows }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load low threshold alerts';
+    return { data: { rows: [] }, error: message, success: false };
+  }
+}
+
+export interface UsageStatsRow {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  avgDay: number;
+  avgWeek: number;
+  avgMonth: number;
+  avgQuarter: number;
+  avgYear: number;
+  totalAllTime: number;
+}
+
+/** Usage (consumption) stats: avg per day/week/month/quarter/year and all-time total. */
+export async function fetchUsageStats(): Promise<ServiceResult<{ rows: UsageStatsRow[] }>> {
+  try {
+    const res = await api.get<{ rows: UsageStatsRow[] }>('/api/v1/warehouse-inventory/usage-stats');
+    const data = res?.data ?? res;
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    return { data: { rows }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load usage stats';
+    return { data: { rows: [] }, error: message, success: false };
   }
 }

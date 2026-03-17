@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { createBOM } from '../services/bom.service';
+import { fetchPRProductDetail, type PRProductDetail } from '../services/productsMaster.service';
 
 
 interface BOMFormState {
@@ -147,14 +148,80 @@ function mockBomForm(): BOMFormState {
   };
 }
 
+function productDetailToBomForm(p: PRProductDetail): BOMFormState {
+  const formulaIngredients: BOMFormState['formulaIngredients'] = [];
+  (p.formulaBom || []).forEach((phase, pi) => {
+    (phase.ingredients || []).forEach((ing, ii) => {
+      formulaIngredients.push({
+        id: `fi-${pi}-${ii}`,
+        inciName: ing.inci_name || '',
+        phase: phase.phase || '',
+        percentWW: String(ing.pct_w_w ?? ''),
+        uom: ing.uom || 'GM',
+      });
+    });
+  });
+  const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => ({
+    id: `pc-${i}`,
+    pmDescription: row.pm_description || '',
+    type: row.pack_type || '',
+    qtyUnit: String(row.qty_per_unit ?? ''),
+    uom: row.uom || 'PCS',
+  }));
+  const processSteps: BOMFormState['processSteps'] = (p.processSteps || []).map((step, i) => ({
+    id: `ps-${i}`,
+    stepNumber: String(step.step_number ?? ''),
+    instruction: step.description || '',
+    duration: String(step.duration_minutes ?? ''),
+  }));
+  return {
+    ...emptyBomForm(),
+    productName: p.product_name || '',
+    category: p.category || '',
+    productForm: p.form || '',
+    fillSize: p.fill_size || '',
+    skuCode: p.product_code || '',
+    mrp: p.mrp_price != null ? `₹${p.mrp_price}` : '',
+    formulaIngredients,
+    packingComponents,
+    processSteps,
+    phRange: p.ph_range || '',
+    viscosity: p.viscosity_range || '',
+    appearance: p.appearance || '',
+    odour: p.odour || '',
+    fillWeightSpec: p.fill_weight_spec || '',
+    approvedMarketingClaims: p.approved_claims || '',
+    longTermStability: p.stability_summary || '',
+  };
+}
+
 const BOMForm: React.FC = () => {
   const navigate = useNavigate();
+  const { id: productIdFromRoute } = useParams<{ id: string }>();
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
+  const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
+
+  // When route has :id, fetch product and fill form for edit
+  useEffect(() => {
+    if (!productIdFromRoute) return;
+    let cancelled = false;
+    setEditLoading(true);
+    fetchPRProductDetail(productIdFromRoute).then((res) => {
+      if (cancelled) return;
+      setEditLoading(false);
+      if (res.success && res.data) {
+        setFormData(productDetailToBomForm(res.data));
+      }
+    }).catch(() => {
+      if (!cancelled) setEditLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [productIdFromRoute]);
 
   const tabs = [
     { id: 0, label: 'Overview', icon: '1' },
@@ -265,6 +332,14 @@ const BOMForm: React.FC = () => {
     }
   };
 
+  if (editLoading) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/30 flex items-center justify-center z-50">
+        <p className="text-white bg-slate-800 px-4 py-2 rounded-lg">Loading product…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-900/30 flex items-start justify-center z-50 overflow-y-auto pt-8">
       <div className="w-full mx-auto bg-white rounded-2xl shadow-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
@@ -276,7 +351,7 @@ const BOMForm: React.FC = () => {
                 PR
               </div>
               <div>
-                <h1 className="text-lg font-bold text-slate-900">New Product Registration (PR Master)</h1>
+                <h1 className="text-lg font-bold text-slate-900">{productIdFromRoute ? 'Edit Product Registration' : 'New Product Registration (PR Master)'}</h1>
                 <p className="text-xs text-slate-600">Complete all 5 sections — identity, formula BOM, pack BOM, process steps & specs.</p>
               </div>
             </div>
