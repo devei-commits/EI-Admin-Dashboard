@@ -5,6 +5,7 @@
 
 import type { SaleOrder, SOProgress, BatchSplit, SOStatus } from '../types/orderFulfillment';
 import { DATE_FORMAT_OPTIONS } from '../constants/orderFulfillment';
+import { computeOrderItemExecutionPercent } from '../lib/fulfillmentExecutionPct';
 
 // ═══════════════════════════════════════════════════════════
 // DATE UTILITIES
@@ -113,7 +114,28 @@ export const calculateSOProgress = (saleOrder: SaleOrder): SOProgress => {
   const shippedPct = total > 0 ? Math.min(100, Math.round((shipped / total) * 100)) : 0;
   const batchesDonePct = batchesTotal > 0 ? Math.min(100, Math.round((batchesDone / batchesTotal) * 100)) : 0;
 
-  return { total, ready, shipped, readyPct, shippedPct, batchesDone, batchesTotal, batchesDonePct };
+  let lifecycleNum = 0;
+  let lifecycleDen = 0;
+  for (const item of saleOrder.items) {
+    const w = Math.max(0, item.orderedQty);
+    if (w <= 0) continue;
+    lifecycleDen += w;
+    lifecycleNum += w * (computeOrderItemExecutionPercent(item, null) / 100);
+  }
+  const fulfillmentLifecyclePct =
+    lifecycleDen > 0 ? Math.min(100, Math.round((lifecycleNum / lifecycleDen) * 100)) : 0;
+
+  return {
+    total,
+    ready,
+    shipped,
+    readyPct,
+    shippedPct,
+    batchesDone,
+    batchesTotal,
+    batchesDonePct,
+    fulfillmentLifecyclePct,
+  };
 };
 
 export const calculateOrderValue = (saleOrder: SaleOrder): number => {

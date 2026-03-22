@@ -118,3 +118,63 @@ export async function deliverFulfillmentSplits(id: number, data: Partial<Deliver
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/deliver`, data);
   return (res as any)?.data ?? res;
 }
+
+/* ── Planning availability for SO ── */
+
+export interface SoPlanningBatchAvailabilityRow {
+  sequence: number;
+  sent: boolean;
+  rmNeededTotalKg: number;
+  rmRequestedTotalKg: number;
+  rmRemainingTotalKg: number;
+  pmNeededTotalUnits: number;
+  pmRequestedTotalUnits: number;
+  pmRemainingTotalUnits: number;
+  rmStartable: boolean;
+  pmStartable: boolean;
+}
+
+export interface SoPlanningAvailabilityItem {
+  productName: string;
+  sku: string;
+  totalBatches: number;
+  sentCount: number;
+  rmStartableCount: number;
+  rmStartedCount: number;
+  pmStartableCount: number;
+  pmStartedCount: number;
+  rmLineAvailableCount?: number;
+  rmLineTotalCount?: number;
+  pmLineAvailableCount?: number;
+  pmLineTotalCount?: number;
+  batches: SoPlanningBatchAvailabilityRow[];
+}
+
+export interface SoPlanningAvailabilityResponse {
+  success: boolean;
+  soNo: string;
+  items: SoPlanningAvailabilityItem[];
+}
+
+export async function fetchSoPlanningAvailability(soNo: string): Promise<SoPlanningAvailabilityResponse> {
+  const res = await api.get<SoPlanningAvailabilityResponse>(`${BASE}/so-planning-availability?so_no=${encodeURIComponent(soNo)}`);
+  const raw = (res as any)?.data ?? res;
+  // Be defensive about response shape. Some endpoints in this codebase return wrapped payloads.
+  const payload =
+    (raw as any)?.items
+      ? raw
+      : ((raw as any)?.data?.items ? (raw as any).data : raw);
+
+  const normalized: SoPlanningAvailabilityResponse = {
+    success: Boolean((payload as any)?.success ?? true),
+    soNo: String((payload as any)?.soNo ?? soNo),
+    items: Array.isArray((payload as any)?.items) ? (payload as any).items : [],
+  };
+
+  console.log('[FULFILLMENT-AVAIL][FRONTEND][SERVICE] fetchSoPlanningAvailability', {
+    soNo,
+    raw,
+    normalized,
+  });
+  return normalized;
+}

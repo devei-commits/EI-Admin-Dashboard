@@ -124,6 +124,18 @@ export interface BatchRow {
   requiredVolumeLiters?: number | null;
   /** planning_batches.id — when set, batch can be used as base for rework (Create New Batch). */
   planningBatchId?: number | null;
+  /** Latest MU dispensing bundle (RM+PM qty consumed from ML1/ML2/WH in one PATCH). */
+  muDispensingBundleId?: string | null;
+  /** Audit trail of MU bundles with PR list + RM/PM line qty for that consumption event. */
+  muDispensingBundles?: MuDispensingBundleSnapshot[];
+}
+
+export interface MuDispensingBundleSnapshot {
+  bundleId: string;
+  at: string;
+  procurementRequests: { id: number; planningBatchId: number | null; status: string | null }[];
+  rm: { code: string; qty: number }[];
+  pm: { code: string; qty: number }[];
 }
 
 /** Sync production batches from sent planning batches (creates missing BMR/BPR rows). Idempotent. */
@@ -169,6 +181,23 @@ export async function deleteBatch(pk: number) {
   return (res as any)?.data ?? res;
 }
 
+/** RM/PM row from master with bulk quality specs (form_data) for BMR Bulk QC. */
+export interface QcIngredientBulkSpecRow {
+  type: 'RM' | 'PM';
+  id: number;
+  code: string;
+  name: string;
+  inci: string;
+  /** Label → value (e.g. "Assay / Purity %" → "NLT 98%"). */
+  specs: Record<string, string>;
+}
+
+/** Product Specs & Stability (BOM → FG) for BPR Pack QC. */
+export interface QcReferencePayload {
+  ingredientBulkSpecs: QcIngredientBulkSpecRow[];
+  fgProductSpecs: Record<string, string>;
+}
+
 /** BOM for a production batch (batch-specific from planning when available, else product master BOM). */
 export interface BatchBOMResponse {
   success: boolean;
@@ -178,6 +207,7 @@ export interface BatchBOMResponse {
     source: 'planning_batch' | 'product_bom';
     /** When source is planning_batch, use this for RM/PM required (planned batch size in kg). */
     batchSizeKg?: number | null;
+    qcReference?: QcReferencePayload;
   };
   error?: string;
 }
@@ -190,6 +220,15 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
     // Backend returns { success, data } directly; api.get returns that same object (not wrapped in .data).
     const body = res as { success?: boolean; data?: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null } };
     if (body?.success && body?.data) {
+      const qc = body.data.qcReference;
+      const qcReference: QcReferencePayload | undefined =
+        qc && typeof qc === 'object'
+          ? {
+              ingredientBulkSpecs: Array.isArray(qc.ingredientBulkSpecs) ? qc.ingredientBulkSpecs : [],
+              fgProductSpecs:
+                qc.fgProductSpecs && typeof qc.fgProductSpecs === 'object' ? (qc.fgProductSpecs as Record<string, string>) : {},
+            }
+          : undefined;
       return {
         success: true,
         data: {
@@ -197,6 +236,7 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
           pmLines: Array.isArray(body.data.pmLines) ? body.data.pmLines : [],
           source: body.data.source === 'planning_batch' ? 'planning_batch' : 'product_bom',
           batchSizeKg: body.data.batchSizeKg ?? undefined,
+          qcReference,
         },
       };
     }

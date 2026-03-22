@@ -895,12 +895,25 @@ const VendorClient: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
          <VendorClientField label="Payment Terms" value={viewing.data?.paymentTerms} />
          <VendorClientField label="Custom Terms" value={viewing.data?.customTerms} />
+
+         <VendorClientField
+          label="Advanced (%)"
+          value={viewing.data?.payablesAdvancedPct ?? viewing.data?.advanceRequired ?? ''}
+         />
+         <VendorClientField
+          label="Before dispatch (%)"
+          value={viewing.data?.payablesBeforeDispatchPct ?? ''}
+         />
+         <VendorClientField
+          label="After dispatch / On delivery (%)"
+          value={viewing.data?.payablesAfterDispatchPct ?? ''}
+         />
+         <VendorClientField label="Credit Type" value={viewing.data?.paymentCreditType ?? ''} />
+
          <VendorClientField label="Credit Limit" value={viewing.data?.creditLimit} />
          {viewing.type === 'vendor' ? (
           <VendorClientField label="Penalty" value={viewing.data?.penalty} />
-         ) : (
-          <VendorClientField label="Advance Required" value={viewing.data?.advanceRequired} />
-         )}
+         ) : null}
          <VendorClientField label="TDS Applicable" value={viewing.data?.tdsApplicable} />
          <VendorClientField label="Preferred Payment Mode" value={viewing.data?.preferredPaymentMode} />
          <VendorClientField label="Payment Notes" value={viewing.data?.paymentNotes} />

@@ -15,6 +15,9 @@ export type ItemDetail = {
   plannedPrice: number;
   leadTimeDays: number;
   estValue: number;
+  raw_material_id?: number;
+  pack_material_id?: number;
+  type?: 'RM' | 'PM' | 'FG';
 };
 
 export type StockSummary = {
@@ -54,10 +57,14 @@ export type ProcurementRequest = {
 
 export type QuoteLine = {
   item: string;
+  /** RM/PM master code from quotation line (itemId) */
+  itemId?: string;
   qty: string;
   pricePerUnit: number;
   totalValue: number;
   vsPlanned: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
 };
 
 export type VendorQuote = {
@@ -237,6 +244,9 @@ export type ReleaseToPlannedItem = {
   moq?: string;
   /** From itemDetails when available */
   reqQty?: number;
+  raw_material_id?: number;
+  pack_material_id?: number;
+  itemType?: 'RM' | 'PM';
 };
 
 /** A planned line (before Draft PO) — vendor, qty, price, terms chosen from quotations */

@@ -180,7 +180,7 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
                 <thead>
                   <tr>
                     <th style={thStyle}>Check</th>
-                    <th style={thStyle}>Specification</th>
+                    {/* <th style={thStyle}>Specification</th> */}
                     <th style={{ ...thStyle, minWidth: '80px' }}>Result</th>
                     <th style={{ ...thStyle, minWidth: '80px' }}>Pass/Fail</th>
                     <th style={{ ...thStyle, minWidth: '80px' }}>QC Sign</th>
@@ -190,7 +190,7 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
                   {qcChecks.map((c, i) => (
                     <tr key={i}>
                       <td style={cellStyle}>{c.check}</td>
-                      <td style={cellStyle}>{c.spec}</td>
+                      {/* <td style={cellStyle}>{c.spec}</td> */}
                       <td style={fillStyle}></td>
                       <td style={fillStyle}></td>
                       <td style={fillStyle}></td>

@@ -7,8 +7,15 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { AddSOModalProps } from '../../types/orderFulfillment';
-import { PAYMENT_TERMS } from '../../constants/orderFulfillment';
 import { getTodayISO, addDays } from '../../utils/orderFulfillmentUtils';
+import {
+  PAYMENT_TERMS_TYPE_OPTIONS,
+  formatPaymentTermsString,
+  parsePaymentTermsString,
+  paymentTermsTypeRequiresAdvancePercent,
+  validateAdvancePercentForType,
+  type PaymentTermsStructuredType,
+} from '../../lib/paymentTermsStructured';
 import {
   fetchNextSoNo,
   fetchCustomers,
@@ -25,7 +32,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const [dueDate, setDueDate] = useState(addDays(getTodayISO(), 30));
   const [priority, setPriority] = useState<'normal' | 'high'>('normal');
   const [shipAddress, setShipAddress] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('Net 30');
+  const [paymentTermsType, setPaymentTermsType] = useState<PaymentTermsStructuredType>('net_30');
+  const [advancePercent, setAdvancePercent] = useState('50');
   const [notes, setNotes] = useState('');
 
   const [items, setItems] = useState([{
@@ -71,7 +79,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     const selected = customers.find(c => c.name === name);
     if (selected) {
       setCustomerCity(selected.city || '');
-      if (selected.paymentTerms) setPaymentTerms(selected.paymentTerms);
+      if (selected.paymentTerms) {
+        const parsed = parsePaymentTermsString(selected.paymentTerms);
+        setPaymentTermsType(parsed.type);
+        setAdvancePercent(String(parsed.advancePercent || (paymentTermsTypeRequiresAdvancePercent(parsed.type) ? 50 : 0)));
+      }
       if (selected.shippingAddress) setShipAddress(selected.shippingAddress);
     }
   };
@@ -110,10 +122,15 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       if (item.unitPrice <= 0) newErrors.push(`Unit price for item #${index + 1} must be positive.`);
     });
 
+    const advErr = validateAdvancePercentForType(paymentTermsType, Number(advancePercent));
+    if (advErr) newErrors.push(advErr);
+
     if (newErrors.length > 0) {
       setErrors(newErrors);
       return;
     }
+
+    const paymentTerms = formatPaymentTermsString(paymentTermsType, Number(advancePercent));
 
     const saveData = {
       soNo,
@@ -140,7 +157,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setDueDate(addDays(getTodayISO(), 30));
     setPriority('normal');
     setShipAddress('');
-    setPaymentTerms('Net 30');
+    setPaymentTermsType('net_30');
+    setAdvancePercent('50');
     setNotes('');
     setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
     setErrors([]);
@@ -210,14 +228,24 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="space-y-3">
                   <Select
-                    label="Payment Terms"
-                    value={paymentTerms}
-                    onChange={(e) => setPaymentTerms(e.target.value)}
-                    options={PAYMENT_TERMS.map(term => ({ value: term, label: term }))}
+                    label="Payment terms (type)"
+                    value={paymentTermsType}
+                    onChange={(e) => setPaymentTermsType(e.target.value as PaymentTermsStructuredType)}
+                    options={PAYMENT_TERMS_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
+                  {paymentTermsTypeRequiresAdvancePercent(paymentTermsType) && (
+                    <Input
+                      label="Advance %"
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={advancePercent}
+                      onChange={(e) => setAdvancePercent(e.target.value)}
+                    />
+                  )}
+                  <p className="text-xs text-gray-500">Pre-filled from customer when possible; balance is implied (100% − advance).</p>
                 </div>
                 <Input label="Notes" placeholder="Optional notes or instructions" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>

@@ -125,6 +125,20 @@ export async function updateProcurementQuotation(
   }
 }
 
+export async function deleteProcurementQuotation(id: number): Promise<ServiceResult<null>> {
+  try {
+    await api.delete(`/api/v1/procurement-quotations/${id}`);
+    return { data: null, error: null, success: true };
+  } catch (e) {
+    let message = e instanceof Error ? e.message : 'Failed to delete quotation';
+    const body = (e as Error & { body?: { error?: string } }).body;
+    if (body && typeof body === 'object' && typeof body.error === 'string') {
+      message = body.error;
+    }
+    return { data: null, error: message, success: false };
+  }
+}
+
 /**
  * GET quote-line-defaults: PR items with pricePerUnit/totalValue from Items List for the given vendor.
  * Use when creating a quotation to pre-fill line prices from the price list.

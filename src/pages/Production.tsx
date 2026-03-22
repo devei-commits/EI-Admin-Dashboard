@@ -30,6 +30,7 @@ import {
   searchUsers as apiSearchUsers,
   type EquipmentData as APIEquipmentData, type BatchRow, type TeamMemberRow,
   type UserSearchResult,
+  type QcReferencePayload,
 } from '../services/production.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
@@ -107,6 +108,16 @@ interface Batch {
   _pk?: number;
   /** When set, batch is linked to planning; can be used as base for creating rework batch (BMR-*-rw-01). */
   planningBatchId?: number | null;
+  /** Latest bundle id for RM+PM quantities consumed from MU in one save. */
+  muDispensingBundleId?: string | null;
+  /** Snapshots: each save that consumes stock appends { bundleId, PRs, rm[], pm[] }. */
+  muDispensingBundles?: Array<{
+    bundleId: string;
+    at: string;
+    procurementRequests: { id: number; planningBatchId: number | null; status: string | null }[];
+    rm: { code: string; qty: number }[];
+    pm: { code: string; qty: number }[];
+  }>;
 }
 
 interface PipelineStep { key: string; label: string; icon: React.ReactNode; }
@@ -123,6 +134,88 @@ function getBatchFillPackUnits(b: Batch): { fillUnitsRequired: number; packUnits
   const total = (b.totalBatches && b.totalBatches > 0) ? b.totalBatches : 1;
   const units = Math.ceil((b.orderQty ?? 0) / total);
   return { fillUnitsRequired: units, packUnitsRequired: units };
+}
+
+/** BPR scheduling context: planned batch size vs actual bulk from BMR QC (when recorded). */
+function ScheduleYieldContextBanner({ batch }: { batch: Batch }) {
+  const plannedKg = batch.batchSize;
+  const bulk = batch.bulkYield != null ? Number(batch.bulkYield) : NaN;
+  const hasBulk = Number.isFinite(bulk) && bulk > 0;
+  const bmrCleared = batch.bmrStatus === 'cleared';
+  const fillY = batch.fillYield != null ? Number(batch.fillYield) : NaN;
+  const hasFill = Number.isFinite(fillY) && fillY > 0;
+  const fgY = batch.fgYield != null ? Number(batch.fgYield) : NaN;
+  const hasFg = Number.isFinite(fgY) && fgY > 0;
+  return (
+    <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3.5 mb-4 text-[11px] text-slate-700">
+      <div className="font-bold text-indigo-900 uppercase tracking-wider text-[10px] mb-1.5">Bulk &amp; BPR yields (for scheduling)</div>
+      <p className="mb-2">
+        <span className="text-slate-500">Planned batch size:</span>{' '}
+        <b>{plannedKg} KG</b>
+        {hasBulk ? (
+          <>
+            {' · '}
+            <span className="text-slate-500">Actual bulk (BMR QC):</span>{' '}
+            <b className="text-indigo-800">{bulk} KG</b>
+            {!bmrCleared && <span className="text-amber-700 font-medium"> (recorded; BMR not cleared yet)</span>}
+          </>
+        ) : (
+          <>
+            {' · '}
+            <span className="text-amber-800 font-medium">No bulk yield yet — fill/pack capacity below still uses order-based unit split until BMR bulk QC records actual KG.</span>
+          </>
+        )}
+      </p>
+      {(hasFill || hasFg) && (
+        <p className="text-slate-600 border-t border-indigo-100/80 pt-2 mt-2">
+          {hasFill && (
+            <span className="mr-3">
+              Fill QC yield: <b>{fillY}</b> units
+            </span>
+          )}
+          {hasFg && (
+            <span>
+              Pack / FG yield: <b>{fgY}</b> units
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Saving the schedule modal must not rewind BMR (e.g. bulk_qc → scheduled) — that broke workflows
+ * and made "Edit schedule" appear to do nothing or corrupt state.
+ */
+function bmrStatusAfterScheduleSave(batch: Batch, canMoveToScheduled: boolean): BMRStatus {
+  const locked: BMRStatus[] = ['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
+  if (locked.includes(batch.bmrStatus)) return batch.bmrStatus;
+  if (batch.bmrStatus === 'scheduled') return 'scheduled';
+  return canMoveToScheduled ? 'scheduled' : 'batch_confirmed';
+}
+
+/** Shift MFG / fill / pack / FG dates while BPR is active (e.g. waiting on BMR QC release). */
+function canRescheduleProductionDates(batch: Batch): boolean {
+  if (batch.bmrStatus === 'draft') return false;
+  if (batch.bprStatus === 'fg_ready') return false;
+  if (batch.mfgDate || batch.fillDate || batch.packDate || batch.fgDate) return true;
+  if (batch.bmrStatus === 'scheduled') return true;
+  if (['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'].includes(batch.bmrStatus)) return true;
+  return ['pm_reserved', 'pm_connected', 'pm_dispensing', 'scheduled', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'qc_failed'].includes(batch.bprStatus);
+}
+
+/** BPR is mid-flight before FG; used for copy in dispensing / schedule. */
+function bprAwaitingBmrRelease(batch: Batch): boolean {
+  return batch.bmrStatus !== 'cleared' && ['pm_dispensing', 'scheduled', 'filling'].includes(batch.bprStatus);
+}
+
+/** Footer: avoid duplicate Set Schedule + Reschedule when only first-time scheduling applies. */
+function canShowRescheduleFooterButton(batch: Batch): boolean {
+  if (!canRescheduleProductionDates(batch)) return false;
+  if (batch.mfgDate || batch.fillDate || batch.packDate || batch.fgDate) return true;
+  if (['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'].includes(batch.bmrStatus)) return true;
+  return ['pm_dispensing', 'scheduled', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'qc_failed'].includes(batch.bprStatus);
 }
 
 /** Batches that have schedule dates, with fill/pack units for capacity math. */
@@ -469,6 +562,8 @@ function apiBatchToBatch(r: BatchRow): Batch {
     requiredVolumeLiters: r.requiredVolumeLiters ?? undefined,
     _pk: r._pk,
     planningBatchId: r.planningBatchId ?? undefined,
+    muDispensingBundleId: r.muDispensingBundleId ?? null,
+    muDispensingBundles: Array.isArray(r.muDispensingBundles) ? r.muDispensingBundles : [],
   } as Batch & { _pk: number };
 }
 
@@ -1285,7 +1380,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     onSave({
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: canMoveToScheduled ? 'scheduled' : 'batch_confirmed',
+      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1303,7 +1398,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
       mainVessel: bestRecommendation.vessel,
       fillingLine: bestRecommendation.fillLine,
       packagingLine: bestRecommendation.packLine,
-      bmrStatus: canMoveToScheduled ? 'scheduled' : 'batch_confirmed',
+      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1386,6 +1481,12 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
       {batch && (
         <>
+          <ScheduleYieldContextBanner batch={batch} />
+          {bprAwaitingBmrRelease(batch) && (
+            <Tip color="amber" icon={<Calendar size={14} />}>
+              BMR is not cleared yet — you can still <b>move fill, pack, and FG dates</b> here if the BPR plan slips while waiting on bulk QC release.
+            </Tip>
+          )}
           {/* Recommended schedule from occupancy + volume (MV/FL/PL capacity vs batch volume) */}
           {bestRecommendation && !isScheduled && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4 mb-5">
@@ -1657,7 +1758,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
       mfgDate: recommendation.mfgDate, fillDate: recommendation.fillDate, packDate: recommendation.packDate, fgDate: recommendation.fgDate,
       rmConnectDate: recommendation.rmConnectDate, pmConnectDate: recommendation.pmConnectDate,
       mainVessel: recommendation.vessel, fillingLine: recommendation.fillLine, packagingLine: recommendation.packLine,
-      bmrStatus: canMoveToScheduled ? 'scheduled' : 'batch_confirmed',
+      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1668,7 +1769,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
     onSave({
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: canMoveToScheduled ? 'scheduled' : 'batch_confirmed',
+      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1737,6 +1838,13 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
             </div>
           </div>
 
+          {batch && <ScheduleYieldContextBanner batch={batch} />}
+          {batch && bprAwaitingBmrRelease(batch) && (
+            <div className="mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50/80 text-[11px] text-amber-900">
+              <span className="font-semibold">Awaiting BMR QC release</span> — you can still adjust <b>fill / pack / FG dates</b> (and MFG if shown) to absorb BPR-side delays.
+            </div>
+          )}
+
           {!batch && (
             <div className="flex justify-end pt-4 border-t border-gray-100">
               <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
@@ -1769,15 +1877,15 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                   </div>
                 </div>
                 {(batch?.requiredVolumeLiters != null || (recommendation.vessel && equipment.manufacturing.find(e => e.id === recommendation.vessel)?.cap != null)) && (
-                <div className="text-[10px] text-gray-600 mb-2">
-                  {batch?.requiredVolumeLiters != null && <span className="rec-item">Batch volume: <b>{batch.requiredVolumeLiters.toFixed(1)} L</b></span>}
-                  {recommendation.vessel && equipment.manufacturing.find(e => e.id === recommendation.vessel)?.cap != null && (
-                    <span className="ml-3 rec-item">Vessel capacity: <b>{equipment.manufacturing.find(e => e.id === recommendation.vessel)!.cap} L</b></span>
-                  )}
-                  {recommendation.vessel && vesselCap != null && batchVol != null && batchVol <= vesselCap && totalWithThis <= vesselCap && vesselCap > totalWithThis && (
-                    <div className="mt-1 rec-item font-medium text-emerald-600">{Math.round((vesselCap - totalWithThis) * 10) / 10} L more capacity left after scheduling.</div>
-                  )}
-                </div>
+                  <div className="text-[10px] text-gray-600 mb-2">
+                    {batch?.requiredVolumeLiters != null && <span className="rec-item">Batch volume: <b>{batch.requiredVolumeLiters.toFixed(1)} L</b></span>}
+                    {recommendation.vessel && equipment.manufacturing.find(e => e.id === recommendation.vessel)?.cap != null && (
+                      <span className="ml-3 rec-item">Vessel capacity: <b>{equipment.manufacturing.find(e => e.id === recommendation.vessel)!.cap} L</b></span>
+                    )}
+                    {recommendation.vessel && vesselCap != null && batchVol != null && batchVol <= vesselCap && totalWithThis <= vesselCap && vesselCap > totalWithThis && (
+                      <div className="mt-1 rec-item font-medium text-emerald-600">{Math.round((vesselCap - totalWithThis) * 10) / 10} L more capacity left after scheduling.</div>
+                    )}
+                  </div>
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] text-gray-600 mb-3">
                   <div className="rec-item">RM at WH: <b>{recommendation.rmConnectDate ?? '—'}</b></div>
@@ -1831,7 +1939,21 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                 {batchWithUnits && (batchWithUnits.fillUnitsRequired > 0 || batchWithUnits.packUnitsRequired > 0) && (equipment?.filling?.some(e => (e.speed ?? 0) > 0) || equipment?.packaging?.some(e => (e.speed ?? 0) > 0)) && (
                   <div className="mb-3 p-3 rounded-lg border border-purple-200 bg-purple-50/40 text-xs text-slate-700">
                     <div className="font-semibold mb-1.5">Filling & packaging capacity (units/day)</div>
-                    <p className="text-[10.5px] text-slate-600 mb-2">PM type: <b>{(batch?.fillingType ?? 'bottle').toUpperCase()}</b> · This batch: <b>{batchWithUnits.fillUnitsRequired} fill units</b>, <b>{batchWithUnits.packUnitsRequired} pack units</b></p>
+                    <p className="text-[10.5px] text-slate-600 mb-2">
+                      PM type: <b>{(batch?.fillingType ?? 'bottle').toUpperCase()}</b>
+                      {' · '}Planned split (order ÷ batches): <b>{batchWithUnits.fillUnitsRequired} fill</b>, <b>{batchWithUnits.packUnitsRequired} pack</b> units
+                      {batch?.bulkYield != null && Number(batch.bulkYield) > 0 && (
+                        <span className="block mt-1 text-indigo-800 font-medium">
+                          BMR bulk recorded: <b>{Number(batch.bulkYield)} KG</b> vs planned <b>{batch.batchSize} KG</b> — use fill/pack QC yields when available for true output.
+                        </span>
+                      )}
+                      {batch?.fillYield != null && Number(batch.fillYield) > 0 && (
+                        <span className="block mt-1 text-purple-800 font-medium">Fill QC yield on file: <b>{Number(batch.fillYield)}</b> units.</span>
+                      )}
+                      {batch?.fgYield != null && Number(batch.fgYield) > 0 && (
+                        <span className="block mt-1 text-emerald-800 font-medium">Pack QC / FG yield on file: <b>{Number(batch.fgYield)}</b> units.</span>
+                      )}
+                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {fillLine && fillDate && (() => {
                         const fillEquip = equipment.filling?.find(e => e.id === fillLine);
@@ -1933,8 +2055,10 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
 
 /* ──────────── DISPENSING MODAL ──────────────────────────────── */
 
-function DispensingModal({ batch, type, onClose, onSave }: {
+function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
   batch: Batch; type: 'rm' | 'pm'; onClose: () => void; onSave: (updates: Partial<Batch>) => void;
+  /** Open schedule modal to shift MFG / fill / pack dates (e.g. BPR delays while awaiting BMR QC). */
+  onReschedule?: () => void;
 }) {
   const items = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
   const [localItems, setLocalItems] = useState(items.map(i => ({ ...i })));
@@ -1972,7 +2096,7 @@ function DispensingModal({ batch, type, onClose, onSave }: {
       <Tip color="purple" icon={<Scale size={14} />}>Weigh and dispense each item exactly as specified. Record actual weight.</Tip>
       {bprBlockedByBmr && (
         <Tip color="amber" icon={<AlertTriangle size={14} />}>
-          BPR cannot proceed to Filling until BMR QC is completed. BMR status must be <strong>Cleared</strong>. Complete Bulk QC and clear the BMR first.
+          Awaiting BMR QC release — BPR cannot move to <strong>Filling</strong> until the BMR is <strong>Cleared</strong>. You can still push <strong>fill / pack / FG dates</strong> using <b>Reschedule dates</b> below if the BPR plan slips.
         </Tip>
       )}
       <div className="mb-4">
@@ -2002,8 +2126,13 @@ function DispensingModal({ batch, type, onClose, onSave }: {
           </div>
         ))}
       </div>
-      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+      <div className="flex flex-wrap justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+        {onReschedule && (
+          <button type="button" onClick={onReschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+            <Calendar size={13} /> Reschedule dates
+          </button>
+        )}
         <button onClick={handleSaveProgress} className="px-4 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Save Progress</button>
         {localItems.every(r => r.done) && (
           <button
@@ -2043,17 +2172,58 @@ const DEFAULT_QC_SPECS: Record<string, QCSpec[]> = {
   ],
 };
 
-function QCModal({ batch, qcType, team, onClose, onSave }: {
+function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
   batch: Batch; qcType: 'bmr' | 'fill' | 'pack'; team: TeamMember[];
+  /** Production batch DB id — loads master RM/PM bulk specs (BMR) and FG Specs & Stability (Pack QC). */
+  batchPk?: number;
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
 }) {
   const initialSpecs = batch.qcSpecs.length > 0 ? batch.qcSpecs : (DEFAULT_QC_SPECS[qcType] || []);
   const [specs, setSpecs] = useState(initialSpecs.map(s => ({ ...s })));
   const [yieldVal, setYieldVal] = useState('');
   const [remarks, setRemarks] = useState('');
+
+  useEffect(() => {
+    if (qcType === 'bmr') {
+      setYieldVal(batch.bulkYield != null && Number.isFinite(Number(batch.bulkYield)) ? String(batch.bulkYield) : '');
+    } else if (qcType === 'fill') {
+      setYieldVal(batch.fillYield != null && Number.isFinite(Number(batch.fillYield)) ? String(batch.fillYield) : '');
+    } else {
+      setYieldVal(batch.fgYield != null && Number.isFinite(Number(batch.fgYield)) ? String(batch.fgYield) : '');
+    }
+  }, [batch.bmrNo, qcType, batch.bulkYield, batch.fillYield, batch.fgYield]);
+  const [qcRef, setQcRef] = useState<QcReferencePayload | null>(null);
+  const [qcRefLoading, setQcRefLoading] = useState(false);
+  const [qcRefErr, setQcRefErr] = useState<string | null>(null);
   const titles: Record<string, string> = { bmr: 'Bulk QC Review', fill: 'Filling QC Review', pack: 'Packaging QC Review' };
-  const yieldLabels: Record<string, string> = { bmr: 'Bulk Yield (KG)', fill: 'Units Filled', pack: 'Units Packed' };
+  const yieldLabels: Record<string, string> = {
+    bmr: `Bulk yield (KG) — actual manufactured`,
+    fill: 'Fill yield — units filled',
+    pack: 'Pack yield — finished units',
+  };
   const qcOfficer = team.find(t => t.id === (qcType === 'bmr' ? batch.qcOfficerBMR : batch.qcOfficerBPR));
+
+  useEffect(() => {
+    if (!batchPk || (qcType !== 'bmr' && qcType !== 'pack')) {
+      setQcRef(null);
+      setQcRefLoading(false);
+      setQcRefErr(null);
+      return;
+    }
+    let cancelled = false;
+    setQcRefLoading(true);
+    setQcRefErr(null);
+    fetchBOMByBatchId(batchPk).then((res) => {
+      if (cancelled) return;
+      setQcRefLoading(false);
+      if (res.success && res.data?.qcReference) setQcRef(res.data.qcReference);
+      else {
+        setQcRef(null);
+        if (!res.success) setQcRefErr(res.error || 'Could not load reference specs');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [batchPk, qcType]);
 
   const passed = specs.filter(s => s.passed === true).length;
   const failed = specs.filter(s => s.passed === false).length;
@@ -2061,6 +2231,17 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
   const allReviewed = pending === 0 && specs.length > 0;
   const allPassed = allReviewed && failed === 0;
   const hasFails = failed > 0;
+
+  const trimmedYield = yieldVal.trim();
+  const parsedYieldNum = parseFloat(trimmedYield.replace(/,/g, ''));
+  const bulkYieldNum = parsedYieldNum;
+  const fillFgYieldNum = parsedYieldNum;
+  const yieldValid =
+    qcType === 'bmr'
+      ? Number.isFinite(bulkYieldNum) && bulkYieldNum > 0
+      : qcType === 'fill'
+        ? Number.isFinite(fillFgYieldNum) && fillFgYieldNum > 0
+        : Number.isFinite(fillFgYieldNum) && fillFgYieldNum > 0;
 
   const toggleResult = (idx: number) => {
     setSpecs(prev => prev.map((sp, j) => {
@@ -2072,14 +2253,15 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
   };
 
   const handleApprove = () => {
+    if (!yieldValid) return;
     const upd: Partial<Batch> = { qcSpecs: specs, remarks };
     if (qcType === 'bmr') {
-      upd.bulkYield = parseFloat(yieldVal) || null; upd.bulkBatchAccepted = true;
+      upd.bulkYield = bulkYieldNum; upd.bulkBatchAccepted = true;
       upd.bmrStatus = 'cleared'; upd.bprStatus = batch.bprStatus === 'draft' ? 'pm_reserved' : batch.bprStatus;
     } else if (qcType === 'fill') {
-      upd.fillYield = parseInt(yieldVal) || null; upd.fillBatchAccepted = true; upd.bprStatus = 'packaging';
+      upd.fillYield = fillFgYieldNum; upd.fillBatchAccepted = true; upd.bprStatus = 'packaging';
     } else {
-      upd.fgYield = parseInt(yieldVal) || null; upd.fgBatchAccepted = true; upd.bprStatus = 'fg_ready';
+      upd.fgYield = fillFgYieldNum; upd.fgBatchAccepted = true; upd.bprStatus = 'fg_ready';
     }
     onSave(upd); onClose();
   };
@@ -2096,9 +2278,80 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
     onSave(upd); onClose();
   };
 
+  const modalW = qcType === 'bmr' || qcType === 'pack' ? 'xl' : 'lg';
+  const fgSpecEntries = qcRef?.fgProductSpecs ? Object.entries(qcRef.fgProductSpecs) : [];
+  /** BMR bulk QC: show master specs for raw materials only (not packaging). */
+  const bmrBulkRmSpecs = (qcRef?.ingredientBulkSpecs ?? []).filter((row) => row.type === 'RM');
+
   return (
-    <Modal onClose={onClose} title={`${titles[qcType]} - ${qcType === 'bmr' ? batch.bmrNo : batch.bprNo}`} size="lg">
+    <Modal onClose={onClose} title={`${titles[qcType]} - ${qcType === 'bmr' ? batch.bmrNo : batch.bprNo}`} size={modalW}>
       <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{qcType === 'bmr' ? batch.bmrNo : batch.bprNo}</b>. Click each parameter to cycle: pending {'>'} pass {'>'} fail.</Tip>
+
+      {qcType === 'bmr' && (
+        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 mb-2">Master bulk quality (RM)</div>
+          {qcRefLoading && <p className="text-xs text-gray-500">Loading specs from item master…</p>}
+          {qcRefErr && !qcRefLoading && <p className="text-xs text-amber-700">{qcRefErr}</p>}
+          {!qcRefLoading && !batchPk && (
+            <p className="text-xs text-gray-500">Batch id missing — cannot load BOM-linked master specs.</p>
+          )}
+          {!qcRefLoading && batchPk && bmrBulkRmSpecs.length === 0 && (
+            <p className="text-xs text-gray-500">No RM lines on this batch BOM, or RMs could not be resolved / have no bulk quality in master.</p>
+          )}
+          {bmrBulkRmSpecs.length > 0 && (
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+              {bmrBulkRmSpecs.map((row) => {
+                const specEntries = Object.entries(row.specs || {});
+                return (
+                  <div key={`${row.type}-${row.id}`} className="rounded-lg border border-white/80 bg-white/70 p-2.5 text-xs">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="font-mono font-bold text-indigo-700">{row.code}</span>
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">RM</span>
+                      <span className="text-gray-700 font-medium truncate">{row.name || row.inci || '—'}</span>
+                    </div>
+                    {specEntries.length === 0 ? (
+                      <p className="text-[10px] text-gray-400">No bulk quality specs in master for this item.</p>
+                    ) : (
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+                        {specEntries.map(([k, v]) => (
+                          <div key={k} className="flex gap-1">
+                            <dt className="text-gray-500 shrink-0">{k}:</dt>
+                            <dd className="text-gray-800 font-medium">{v}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {qcType === 'pack' && (
+        <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-2">Finished product — Specs &amp; Stability (BOM / PR master)</div>
+          {qcRefLoading && <p className="text-xs text-gray-500">Loading product specs…</p>}
+          {qcRefErr && !qcRefLoading && <p className="text-xs text-amber-700">{qcRefErr}</p>}
+          {!qcRefLoading && !batchPk && (
+            <p className="text-xs text-gray-500">Batch id missing — cannot load product specs.</p>
+          )}
+          {!qcRefLoading && batchPk && fgSpecEntries.length === 0 && (
+            <p className="text-xs text-gray-500">No Specs &amp; Stability on file for this SKU. Edit the product under BOM → Specs &amp; Stability.</p>
+          )}
+          {fgSpecEntries.length > 0 && (
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-xs max-h-[200px] overflow-y-auto">
+              {fgSpecEntries.map(([k, v]) => (
+                <div key={k} className="flex flex-col sm:flex-row sm:gap-2 rounded-md bg-white/60 px-2 py-1 border border-white/90">
+                  <dt className="text-gray-500 shrink-0 font-semibold">{k}</dt>
+                  <dd className="text-gray-900">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
 
       {/* Summary bar */}
       <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50">
@@ -2114,7 +2367,7 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
 
       <div className="rounded-xl border border-gray-100 overflow-hidden mb-4">
         <div className="grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-          <div>Parameter</div><div>Specification</div><div>Result</div><div>Verdict</div>
+          <div>Parameter</div><div>Result</div><div>Verdict</div>
         </div>
         {specs.map((s, i) => {
           const rowBg = s.passed === true ? 'bg-emerald-50/40' : s.passed === false ? 'bg-red-50/40' : '';
@@ -2126,7 +2379,7 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
                 {s.passed === null && <CircleDot size={12} className="text-gray-300 shrink-0" />}
                 {s.param}
               </div>
-              <div className="text-xs text-gray-500 font-mono">{s.spec}</div>
+              {/* <div className="text-xs text-gray-500 font-mono">{s.spec}</div> */}
               <input className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white"
                 value={s.result} placeholder="Enter result..."
                 onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))} />
@@ -2144,14 +2397,38 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
         })}
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div><label className={LBL}>{yieldLabels[qcType]}</label><input className={INP} type="number" placeholder="Enter actual quantity" value={yieldVal} onChange={e => setYieldVal(e.target.value)} /></div>
+        <div>
+          <label className={LBL}>{yieldLabels[qcType]} <span className="text-red-500">*</span></label>
+          <input
+            className={`${INP} ${allPassed && !yieldValid ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
+            type="number"
+            min={qcType === 'bmr' ? 0.01 : 1}
+            step={qcType === 'bmr' ? '0.01' : 1}
+            placeholder={qcType === 'bmr' ? `e.g. ${batch.batchSize} (planned batch size KG)` : 'Enter count'}
+            value={yieldVal}
+            onChange={e => setYieldVal(e.target.value)}
+          />
+          {qcType === 'bmr' && (
+            <p className="text-[10px] text-gray-500 mt-1">Required to approve. Compare to planned batch size <b>{batch.batchSize} KG</b> (order line / formula).</p>
+          )}
+          {qcType === 'fill' && (
+            <p className="text-[10px] text-gray-500 mt-1">Required — how many sellable units were filled (feeds BPR / packaging planning).</p>
+          )}
+          {qcType === 'pack' && (
+            <p className="text-[10px] text-gray-500 mt-1">Required — finished good units after packaging QC.</p>
+          )}
+          {allPassed && !yieldValid && (
+            <p className="text-[10px] text-amber-700 mt-1 font-semibold">Enter a yield quantity greater than zero to approve.</p>
+          )}
+        </div>
         <div><label className={LBL}>QC Remarks</label><input className={INP} placeholder="Overall remarks..." value={remarks} onChange={e => setRemarks(e.target.value)} /></div>
       </div>
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
         <div className="text-[10px] text-gray-400">
           {!allReviewed && `${pending} parameter${pending !== 1 ? 's' : ''} still pending review`}
           {allReviewed && hasFails && `${failed} parameter${failed !== 1 ? 's' : ''} failed — reject to raise deviation`}
-          {allPassed && 'All parameters passed — ready to approve'}
+          {allPassed && yieldValid && 'All parameters passed — ready to approve'}
+          {allPassed && !yieldValid && 'All parameters passed — enter yield quantity to approve'}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
@@ -2159,13 +2436,44 @@ function QCModal({ batch, qcType, team, onClose, onSave }: {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <X size={12} /> Reject ({failed})
           </button>
-          <button onClick={handleApprove} disabled={!allPassed}
+          <button onClick={handleApprove} disabled={!allPassed || !yieldValid}
             className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <ShieldCheck size={13} /> Approve
           </button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Outbound MTR helpers — match backend lineItemsIndicateRm / lineItemsIndicatePm when ids are absent. */
+function mrnLineItemsLookLikeRm(m: Pick<MRNRecordFromApi, 'lineItems'>): boolean {
+  const items = m.lineItems ?? [];
+  return items.some((li) => li.raw_material_id != null || String(li.unit || '').toUpperCase() === 'KG');
+}
+function mrnLineItemsLookLikePm(m: Pick<MRNRecordFromApi, 'lineItems'>): boolean {
+  const items = m.lineItems ?? [];
+  const u = (s: string | undefined) => String(s || '').toUpperCase();
+  return items.some((li) => li.pack_material_id != null || u(li.unit) === 'PCS' || u(li.unit) === 'PC');
+}
+function batchHasOpenRmMtr(bmrNo: string, list: MRNRecordFromApi[]): boolean {
+  return list.some(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikeRm(m) &&
+      m.status !== 'Completed',
+  );
+}
+function batchHasOpenPmMtr(bmrNo: string, list: MRNRecordFromApi[]): boolean {
+  return list.some(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikePm(m) &&
+      m.status !== 'Completed',
   );
 }
 
@@ -2179,7 +2487,7 @@ const MU_TRANSFER_TO_OPTIONS = [
   { code: 'LOC-MU02', name: 'MU2' },
 ];
 
-function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilityRM, atFacilityPM, whStockOnlyRM, whStockOnlyPM, reservedRM, reservedPM, initialRmItems, onClose, onSave }: {
+function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilityRM, atFacilityPM, whStockOnlyRM, whStockOnlyPM, reservedRM, reservedPM, initialRmItems, onClose, onSave, onMtrCreated }: {
   batch: Batch; type: 'rm' | 'pm';
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   /** At facility (MU-1 + MU-2) by code — for "already at facility" and to-transfer = required - atFacility */
@@ -2190,6 +2498,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   /** When batch.dispensingRM is empty (e.g. opened from Reserve RM), pass RM list from planning */
   initialRmItems?: DispensingItem[] | null;
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
+  /** After outbound MRN is created (not when skipping MTR via “all at MU”) */
+  onMtrCreated?: () => void;
 }) {
   const batchItems = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
   const passedItems = type === 'rm' ? (initialRmItems ?? []) : [];
@@ -2240,9 +2550,9 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     const loadBatchBom = batchPk
       ? fetchBOMByBatchId(batchPk)
       : (batch.bmrNo ? fetchBatches().then((rows: BatchRow[]) => {
-          const r = rows.find((x) => x.bmrNo === batch.bmrNo);
-          return (r as { _pk?: number })?._pk ? fetchBOMByBatchId((r as { _pk: number })._pk) : { success: false as const, data: undefined };
-        }) : Promise.resolve({ success: false as const, data: undefined }));
+        const r = rows.find((x) => x.bmrNo === batch.bmrNo);
+        return (r as { _pk?: number })?._pk ? fetchBOMByBatchId((r as { _pk: number })._pk) : { success: false as const, data: undefined };
+      }) : Promise.resolve({ success: false as const, data: undefined }));
 
     // PM: use batch BOM (planning_batches) like ReserveMaterialModal so PM lines always show for this SO
     if (type === 'pm') {
@@ -2435,10 +2745,18 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         source: 'MTR',
         itemType: type,
       });
-      onSave(applyStepUpdates());
+      addToast(
+        'success',
+        'MTR raised. Warehouse will pick and send material. RM/PM dispensing unlocks after the transfer order is completed and MU stock is updated (Transfer orders → Complete transfer).',
+      );
+      onMtrCreated?.();
       onClose();
     } catch (err) {
-      addToast('error', (err as Error)?.message || 'Failed to create MTR (MRN).');
+      const e = err as Error & { body?: { error?: string }; status?: number };
+      const bodyErr = e.body && typeof e.body === 'object' && e.body && 'error' in e.body && typeof (e.body as { error?: string }).error === 'string'
+        ? (e.body as { error: string }).error
+        : null;
+      addToast('error', bodyErr || e.message || 'Failed to create MTR (MRN).');
     } finally {
       setSending(false);
     }
@@ -2777,7 +3095,7 @@ function MRNDetailModal({
             </section>
           )}
 
-          <section className="space-y-3">
+          {/* <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box for MU put-away)</h3>
             {mrn.lineItems && mrn.lineItems.length > 0 && (
               <div>
@@ -2803,9 +3121,9 @@ function MRNDetailModal({
               )}
             </div>
             {labelError && <p className="text-sm text-red-600">{labelError}</p>}
-          </section>
+          </section> */}
 
-          {labelsGenerated && labels && labels.length > 0 && (
+          {/* {labelsGenerated && labels && labels.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2825,14 +3143,14 @@ function MRNDetailModal({
                   );
                 })}
               </div>
-              {/* <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
+              <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
                 <h4 className="text-xs font-semibold text-slate-700 uppercase mb-2">On scan — simulate</h4>
                 <MRNScanSimulator mrnNo={mrn.mrnNo} />
-              </div> */}
+              </div>
             </section>
-          )}
+          )} */}
 
-          <section className="space-y-3">
+          {/* <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Movement history (MU)</h3>
             {historyLoading ? <p className="text-xs text-slate-500">Loading…</p> : locationHistory.length === 0 ? <p className="text-xs text-slate-500">No movement recorded yet. Complete this transfer with MU zone/rack to log put-away.</p> : (
               <div className="overflow-x-auto border border-slate-200 rounded-lg">
@@ -2860,7 +3178,7 @@ function MRNDetailModal({
                 </table>
               </div>
             )}
-          </section>
+        </section> */}
 
           {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{saveError}</div>}
 
@@ -2880,7 +3198,8 @@ function MRNDetailModal({
   );
 }
 
-function TransferOrdersView() {
+function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrnListChanged?: () => void }) {
+  const { onOutboundMtrCompleted, onMrnListChanged } = props ?? {};
   const [mrnList, setMrnList] = useState<MRNRecordFromApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignablePickers, setAssignablePickers] = useState<MRNAssignablePicker[]>([]);
@@ -2965,9 +3284,9 @@ function TransferOrdersView() {
                       <td className="px-4 py-3 text-sm text-slate-800">{m.requestedBy}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${m.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                            m.status === 'Received at MU' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                              m.status === 'In Transit' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                'bg-slate-100 text-slate-600 border-slate-200'
+                          m.status === 'Received at MU' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                            m.status === 'In Transit' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>{m.status}</span>
                       </td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-700">{m.bmrNo ?? '—'}</td>
@@ -2986,7 +3305,15 @@ function TransferOrdersView() {
             mrn={detailMRN ?? selectedMRN}
             assignablePickers={assignablePickers}
             onClose={() => { setSelectedMRN(null); setDetailMRN(null); }}
-            onSave={(updated) => { setMrnList((prev) => prev.map((m) => (m.id === updated.id ? updated : m))); setSelectedMRN(updated); setDetailMRN(updated); }}
+            onSave={(updated) => {
+              setMrnList((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+              setSelectedMRN(updated);
+              setDetailMRN(updated);
+              onMrnListChanged?.();
+              if (updated.status === 'Completed' && updated.source === 'MTR' && !updated.isInboundFromMu) {
+                onOutboundMtrCompleted?.();
+              }
+            }}
           />
         )}
       </div>
@@ -2996,10 +3323,11 @@ function TransferOrdersView() {
 
 /* ──────────── BATCH DETAIL MODAL — 6 tabs ──────────────────── */
 
-function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, onClose, onSave, onAction, initialTab = 'bmr' }: {
+function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, outboundMrns, onClose, onSave, onAction, initialTab = 'bmr' }: {
   batch: Batch; team: TeamMember[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   reservedRM: Record<string, number>; reservedPM: Record<string, number>;
+  outboundMrns: MRNRecordFromApi[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onAction: (action: string, batch: Batch, extra?: { mtrRmItems?: DispensingItem[]; mtrPmItems?: DispensingItem[] }) => void;
   initialTab?: 'bmr' | 'bpr';
@@ -3111,7 +3439,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
     ['Main Vessel', batch.mainVessel || '-'], ['Support Tanks', (batch.supportingTanks ?? []).length ? (batch.supportingTanks ?? []).join(', ') : 'None'],
     ['Filling Line', batch.fillingLine || '-'], ['Filling Type', (batch.fillingType ?? 'bottle').toUpperCase()],
     ['Pack Line', batch.packagingLine || '-'], ['Monocarton', batch.monocarton ? 'Yes' : 'No'],
-    ['Shrink', batch.shrink ? 'Yes' : 'No'], ['Due Date', batch.dueDate || '-'],
+    ['Shrink', batch.shrink ? 'Yes' : 'No'],     ['Due Date', batch.dueDate || '-'],
+    ['MU bundle (latest)', batch.muDispensingBundleId || '-'],
     ['Team (Mfg)', (team.filter(t => (batch.teamBMR ?? []).includes(t.id)).map(t => t.name).join(', ')) || '-'],
     ['Team (Fill)', (team.filter(t => (batch.teamBPR ?? []).includes(t.id)).map(t => t.name).join(', ')) || '-'],
   ];
@@ -3165,171 +3494,207 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           </div>
 
           <div id="bdm-content">
-      {tab === 'overview' && (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {overviewCards.map(([k, v]) => (
-              <div key={k} className="bg-black/5 border border-gray-200 rounded-md px-3 py-2.5">
-                <div className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">{k}</div>
-                <div className="text-xs font-semibold text-gray-800 break-words">{v || '-'}</div>
-              </div>
-            ))}
-          </div>
-          {batch.remarks && (
-            <div className="mt-2.5 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs"><div>{batch.remarks}</div></div>
-          )}
-        </>
-      )}
-
-      {tab === 'rmpm' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
-              {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-              {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
-                <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>
-              )}
-            </div>
-            {bomLoading ? (
-              <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
-            ) : (
-              <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
-                <table className="w-full">
-                  <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {(batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems).map((r, i) => {
-                      const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const ok = sih >= r.required;
-                      return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(r.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
-                    })}
-                  </tbody>
-                </table>
-                {(batch.dispensingRM.length === 0 && bomRmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No RM in BOM or product not found.</div>}
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
-              {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-              {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && (
-                <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>
-              )}
-            </div>
-            {bomLoading ? (
-              <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
-            ) : (
-              <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
-                <table className="w-full">
-                  <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {(batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems).map((p, i) => {
-                      const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const ok = sih >= p.required;
-                      return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
-                    })}
-                  </tbody>
-                </table>
-                {(batch.dispensingPM.length === 0 && bomPmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No PM in BOM or product not found.</div>}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {tab === 'schedule' && (
-        <div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
-            {([['Mfg Date', batch.mfgDate], ['Fill Date', batch.fillDate], ['Pack Date', batch.packDate],
-            ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
-            ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
-            ] as [string, string][]).map(([k, v]) => (
-              <div key={k}><div className="text-[10px] text-gray-400 font-medium">{k}</div><div className="text-sm font-semibold text-gray-800">{v || '-'}</div></div>
-            ))}
-          </div>
-          {(batch.bmrStatus === 'scheduled' || batch.mfgDate) && (
-            <button type="button" onClick={() => { onClose(); onAction('schedule', batch); }} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
-              <Calendar size={12} /> Edit schedule
-            </button>
-          )}
-        </div>
-      )}
-
-      {tab === 'dispensing' && (
-        <div className="space-y-5">
-          <div>
-            <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">RM Dispensing ({batch.dispensingRM.filter(r => r.done).length}/{batch.dispensingRM.length})</SectionLabel>
-            {batch.dispensingRM.map((r, i) => (
-              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${r.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
-                <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${r.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{r.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
-                <span className="text-xs font-semibold flex-1">{r.inci || r.code}</span>
-                <span className="text-xs font-mono text-gray-500">{r.required} KG</span>
-                {r.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {r.dispensed} KG</span>}
-              </div>
-            ))}
-          </div>
-          <div>
-            <SectionLabel icon={<Package size={12} />} color="text-purple-600">PM Dispensing ({batch.dispensingPM.filter(r => r.done).length}/{batch.dispensingPM.length})</SectionLabel>
-            {batch.dispensingPM.map((p, i) => (
-              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${p.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
-                <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${p.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{p.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
-                <span className="text-xs font-semibold flex-1">{p.name || p.code}</span>
-                <span className="text-xs font-mono text-gray-500">{fmt(p.required)} pcs</span>
-                {p.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {fmt(p.dispensed)} pcs</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === 'qc' && (
-        <div>
-          {batch.qcSpecs.length > 0 ? (
-            <div className="rounded-xl border border-gray-100 overflow-hidden">
-              <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
-              </div>
-              {batch.qcSpecs.map((s, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-gray-50 items-center text-xs">
-                  <div className="font-semibold">{s.param}</div>
-                  <div className="text-gray-500 font-mono">{s.spec}</div>
-                  <div className="font-mono">{s.result || '-'}</div>
-                  <div>{s.passed === true ? <Badge className="bg-emerald-100 text-emerald-700">Pass</Badge> : s.passed === false ? <Badge className="bg-red-100 text-red-600">Fail</Badge> : <span className="text-gray-400">-</span>}</div>
+            {tab === 'overview' && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {overviewCards.map(([k, v]) => (
+                    <div key={k} className="bg-black/5 border border-gray-200 rounded-md px-3 py-2.5">
+                      <div className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">{k}</div>
+                      <div className="text-xs font-semibold text-gray-800 break-words">{v || '-'}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10 text-gray-400 text-sm">No QC results yet. Submit batch for QC review.</div>
-          )}
-          {batch.bulkYield != null && <div className="mt-3 text-xs"><span className="text-gray-500">Bulk Yield:</span> <b>{batch.bulkYield} KG</b> {batch.bulkBatchAccepted ? <Badge className="bg-emerald-100 text-emerald-700">Accepted</Badge> : ''}</div>}
-          {batch.fillYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">Fill Yield:</span> <b>{fmt(batch.fillYield)} units</b></div>}
-          {batch.fgYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">FG Yield:</span> <b>{fmt(batch.fgYield)} units</b></div>}
-        </div>
-      )}
+                {batch.remarks && (
+                  <div className="mt-2.5 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs"><div>{batch.remarks}</div></div>
+                )}
+              </>
+            )}
 
-      {tab === 'stepper' && (
-        <div className="space-y-0.5">
-          {pipeline.map((p, i) => {
-            const state = i < pIdx ? 'done' : i === pIdx ? 'active' : 'pending';
-            return (
-              <div key={p.key} className="flex items-start gap-3">
-                <div className="flex flex-col items-center">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${state === 'done' ? 'bg-emerald-100 border-emerald-400 text-emerald-600' :
-                    state === 'active' ? 'bg-orange-100 border-orange-400 text-orange-600 ring-2 ring-orange-100' :
-                      'bg-gray-50 border-gray-200 text-gray-300'
-                    }`}>{state === 'done' ? <Check size={12} strokeWidth={3} /> : p.icon}</div>
-                  {i < pipeline.length - 1 && <div className={`w-0.5 h-6 ${i < pIdx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
-                </div>
-                <div className="pb-4">
-                  <div className={`text-xs font-bold ${state === 'done' ? 'text-emerald-600' : state === 'active' ? 'text-orange-600' : 'text-gray-400'}`}>{p.label}</div>
-                  <div className="text-[10px] text-gray-400">
-                    {state === 'pending' ? 'Awaiting previous step' : state === 'active' ? 'Currently at this stage' : 'Completed'}
+            {tab === 'rmpm' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
+                    {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
+                      <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>
+                    )}
                   </div>
+                  {bomLoading ? (
+                    <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
+                      <table className="w-full">
+                        <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {(batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems).map((r, i) => {
+                            const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const ok = sih >= r.required;
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(r.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                      {(batch.dispensingRM.length === 0 && bomRmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No RM in BOM or product not found.</div>}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
+                    {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && (
+                      <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>
+                    )}
+                  </div>
+                  {bomLoading ? (
+                    <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
+                      <table className="w-full">
+                        <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {(batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems).map((p, i) => {
+                            const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const ok = sih >= p.required;
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                      {(batch.dispensingPM.length === 0 && bomPmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No PM in BOM or product not found.</div>}
+                    </div>
+                  )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+
+            {tab === 'schedule' && (
+              <div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                  {([['Mfg Date', batch.mfgDate], ['Fill Date', batch.fillDate], ['Pack Date', batch.packDate],
+                  ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
+                  ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
+                  ] as [string, string][]).map(([k, v]) => (
+                    <div key={k}><div className="text-[10px] text-gray-400 font-medium">{k}</div><div className="text-sm font-semibold text-gray-800">{v || '-'}</div></div>
+                  ))}
+                </div>
+                {canRescheduleProductionDates(batch) && (
+                  <button type="button" onClick={() => { onClose(); onAction('schedule', batch); }} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+                    <Calendar size={12} /> {batch.mfgDate || batch.fillDate || batch.packDate ? 'Reschedule dates' : 'Set / adjust schedule'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {tab === 'dispensing' && (
+              <div className="space-y-5">
+                {(batch.muDispensingBundleId || (batch.muDispensingBundles && batch.muDispensingBundles.length > 0)) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
+                    <div className="font-bold text-slate-700 mb-1.5 flex items-center gap-2">
+                      <Package size={14} className="text-slate-500" /> MU consumption bundles (RM + PM qty from ML1/ML2/WH)
+                    </div>
+                    {batch.muDispensingBundleId && (
+                      <p className="text-slate-600 mb-2">
+                        <span className="text-slate-500">Latest bundle:</span>{' '}
+                        <span className="font-mono font-semibold text-indigo-800">{batch.muDispensingBundleId}</span>
+                      </p>
+                    )}
+                    <p className="text-[10px] text-slate-500 mb-2">Each bundle groups all RM/PM lines consumed in one dispensing save. Procurement requests (PR) for the same planning extract are listed for traceability.</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {([...(batch.muDispensingBundles || [])]).reverse().map((b) => (
+                        <div key={b.bundleId + b.at} className="rounded-lg border border-white/80 bg-white/90 p-2.5">
+                          <div className="font-mono text-[11px] font-bold text-indigo-800">{b.bundleId}</div>
+                          <div className="text-[10px] text-slate-500">{new Date(b.at).toLocaleString()}</div>
+                          {b.procurementRequests?.length > 0 && (
+                            <div className="mt-1.5 text-[10px]">
+                              <span className="text-slate-500 font-semibold">PRs:</span>{' '}
+                              {b.procurementRequests.map((pr) => (
+                                <span key={pr.id} className="inline-block mr-2">#{pr.id}{pr.status ? ` (${pr.status})` : ''}</span>
+                              ))}
+                            </div>
+                          )}
+                          {b.rm?.length > 0 && (
+                            <div className="mt-1 text-[10px] text-teal-800"><span className="font-semibold">RM:</span> {b.rm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
+                          )}
+                          {b.pm?.length > 0 && (
+                            <div className="mt-0.5 text-[10px] text-purple-800"><span className="font-semibold">PM:</span> {b.pm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">RM Dispensing ({batch.dispensingRM.filter(r => r.done).length}/{batch.dispensingRM.length})</SectionLabel>
+                  {batch.dispensingRM.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${r.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
+                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${r.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{r.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
+                      <span className="text-xs font-semibold flex-1">{r.inci || r.code}</span>
+                      <span className="text-xs font-mono text-gray-500">{r.required} KG</span>
+                      {r.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {r.dispensed} KG</span>}
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <SectionLabel icon={<Package size={12} />} color="text-purple-600">PM Dispensing ({batch.dispensingPM.filter(r => r.done).length}/{batch.dispensingPM.length})</SectionLabel>
+                  {batch.dispensingPM.map((p, i) => (
+                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${p.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
+                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${p.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{p.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
+                      <span className="text-xs font-semibold flex-1">{p.name || p.code}</span>
+                      <span className="text-xs font-mono text-gray-500">{fmt(p.required)} pcs</span>
+                      {p.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {fmt(p.dispensed)} pcs</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tab === 'qc' && (
+              <div>
+                {batch.qcSpecs.length > 0 ? (
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
+                    </div>
+                    {batch.qcSpecs.map((s, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-gray-50 items-center text-xs">
+                        <div className="font-semibold">{s.param}</div>
+                        <div className="text-gray-500 font-mono">{s.spec}</div>
+                        <div className="font-mono">{s.result || '-'}</div>
+                        <div>{s.passed === true ? <Badge className="bg-emerald-100 text-emerald-700">Pass</Badge> : s.passed === false ? <Badge className="bg-red-100 text-red-600">Fail</Badge> : <span className="text-gray-400">-</span>}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-gray-400 text-sm">No QC results yet. Submit batch for QC review.</div>
+                )}
+                {batch.bulkYield != null && <div className="mt-3 text-xs"><span className="text-gray-500">Bulk Yield:</span> <b>{batch.bulkYield} KG</b> {batch.bulkBatchAccepted ? <Badge className="bg-emerald-100 text-emerald-700">Accepted</Badge> : ''}</div>}
+                {batch.fillYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">Fill Yield:</span> <b>{fmt(batch.fillYield)} units</b></div>}
+                {batch.fgYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">FG Yield:</span> <b>{fmt(batch.fgYield)} units</b></div>}
+              </div>
+            )}
+
+            {tab === 'stepper' && (
+              <div className="space-y-0.5">
+                {pipeline.map((p, i) => {
+                  const state = i < pIdx ? 'done' : i === pIdx ? 'active' : 'pending';
+                  return (
+                    <div key={p.key} className="flex items-start gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${state === 'done' ? 'bg-emerald-100 border-emerald-400 text-emerald-600' :
+                          state === 'active' ? 'bg-orange-100 border-orange-400 text-orange-600 ring-2 ring-orange-100' :
+                            'bg-gray-50 border-gray-200 text-gray-300'
+                          }`}>{state === 'done' ? <Check size={12} strokeWidth={3} /> : p.icon}</div>
+                        {i < pipeline.length - 1 && <div className={`w-0.5 h-6 ${i < pIdx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
+                      </div>
+                      <div className="pb-4">
+                        <div className={`text-xs font-bold ${state === 'done' ? 'text-emerald-600' : state === 'active' ? 'text-orange-600' : 'text-gray-400'}`}>{p.label}</div>
+                        <div className="text-[10px] text-gray-400">
+                          {state === 'pending' ? 'Awaiting previous step' : state === 'active' ? 'Currently at this stage' : 'Completed'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
           </div>
         </div>
@@ -3340,12 +3705,22 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {batch.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>}
           {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
           {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
-          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && batch.rmReserved && batch.pmReserved && <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Set Schedule</Btn>}
-          {(batch.bmrStatus === 'scheduled' || batch.mfgDate) && <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Edit Schedule</Btn>}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && batch.rmReserved && batch.pmReserved && !batch.mfgDate && !batch.fillDate && !batch.packDate && (
+            <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Set Schedule</Btn>
+          )}
+          {canShowRescheduleFooterButton(batch) && (
+            <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Reschedule dates</Btn>
+          )}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !batchHasOpenRmMtr(batch.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && batchHasOpenRmMtr(batch.bmrNo, outboundMrns) && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={14} /> MTR in progress — complete transfer in Transfer orders to unlock dispensing</span>
+          )}
           {batch.rmConnected && batch.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !batchHasOpenPmMtr(batch.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && batchHasOpenPmMtr(batch.bmrNo, outboundMrns) && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={14} /> PM MTR in progress — complete transfer in Transfer orders</span>
+          )}
           {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>}
           {batch.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Fill QC</Btn>}
           {batch.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Pack QC</Btn>}
@@ -3512,8 +3887,9 @@ function CreateNewBatchModal({
 
 /* ──────────── BMR VIEW ─────────────────────────────────────── */
 
-function BMRView({ batches, onAction, onCreateBatch, onExportBMR }: {
+function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }: {
   batches: Batch[];
+  outboundMrns: MRNRecordFromApi[];
   onAction: (action: string, batch: Batch) => void;
   onCreateBatch?: () => void;
   onExportBMR?: () => void;
@@ -3631,8 +4007,16 @@ function BMRView({ batches, onAction, onCreateBatch, onExportBMR }: {
                     {b.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.pmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reservePM', b)}>Reserve PM</Btn>}
-                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && b.rmReserved && b.pmReserved && <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>}
-                    {b.bmrStatus === 'scheduled' && !b.rmConnected && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && b.rmReserved && b.pmReserved && !b.mfgDate && !b.fillDate && !b.packDate && (
+                      <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
+                    )}
+                    {canShowRescheduleFooterButton(b) && (
+                      <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Reschedule</Btn>
+                    )}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !batchHasOpenRmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && batchHasOpenRmMtr(b.bmrNo, outboundMrns) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={10} /> MTR pending</span>
+                    )}
                     {b.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
                     {b.bmrStatus === 'in_production' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Bulk QC</Btn>}
                     {b.bmrStatus === 'bulk_qc' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Review QC</Btn>}
@@ -3651,8 +4035,9 @@ function BMRView({ batches, onAction, onCreateBatch, onExportBMR }: {
 
 /* ──────────── BPR VIEW ─────────────────────────────────────── */
 
-function BPRView({ batches, onAction, onExportBPR }: {
+function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
   batches: Batch[];
+  outboundMrns: MRNRecordFromApi[];
   onAction: (action: string, batch: Batch) => void;
   onExportBPR?: () => void;
 }) {
@@ -3739,10 +4124,22 @@ function BPRView({ batches, onAction, onExportBPR }: {
                     <div><span className="text-gray-400">Pack:</span> <b>{b.packDate || '-'}</b></div>
                     <div><span className="text-gray-400">PM:</span> <b className="inline-flex items-center gap-0.5">{b.pmReserved ? <><Check size={10} className="text-emerald-600" /></> : '-'}</b></div>
                     <div><span className="text-gray-400">FG:</span> <b>{b.fgDate || '-'}</b></div>
+                    <div className="col-span-2 sm:col-span-4 min-w-0">
+                      <span className="text-gray-400">MU bundle:</span>{' '}
+                      <b className="font-mono text-[10px] text-gray-800 break-all" title={b.muDispensingBundleId || undefined}>
+                        {b.muDispensingBundleId || '—'}
+                      </b>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
-                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && !batchHasOpenPmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && batchHasOpenPmMtr(b.bmrNo, outboundMrns) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={10} /> PM MTR pending</span>
+                    )}
                     {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>}
+                    {canShowRescheduleFooterButton(b) && (
+                      <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Reschedule</Btn>
+                    )}
                     {b.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcFill', b)}>Fill QC</Btn>}
                     {b.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcPack', b)}>Pack QC</Btn>}
                     {b.bprStatus === 'qc_failed' && b.fillBatchAccepted === false && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcFill', b)}>Retry Fill QC</Btn>}
@@ -3856,7 +4253,7 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
     onManualSchedule(manualBatch, {
       mfgDate, fillDate, packDate, fgDate, rmConnectDate, pmConnectDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: canMoveToScheduled ? 'scheduled' : 'batch_confirmed',
+      bmrStatus: bmrStatusAfterScheduleSave(manualBatch, canMoveToScheduled),
     });
     setManualBatchId('');
   };
@@ -3965,24 +4362,24 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
                             <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-lg hover:bg-gray-50 hover:border-gray-300 transition-colors">+</div>
                           ) : (
                             <>
-                            {dayBatches.map((batch) => (
-                              <div
-                                key={batch.bmrNo}
-                                className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] ${cat === 'mfg' ? 'batch-block-mfg bg-teal-100/90 border-teal-400' : cat === 'fill' ? 'batch-block-fill bg-purple-100/90 border-purple-400' : 'batch-block-pack bg-emerald-100/90 border-emerald-400'} ${batch.processType === 'hot' ? 'border-l-orange-500' : 'border-l-sky-400'}`}
-                                style={{ borderLeftColor: batch.processType === 'hot' ? '#f97316' : '#38bdf8' }}
-                                onClick={e => { e.stopPropagation(); onBatchClick(batch); }}
-                                title={`${batch.bmrNo} · ${batch.productName} · ${batch.processType.toUpperCase()} process`}
-                              >
-                                <div className="flex items-center gap-1">
-                                  <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${batch.processType === 'hot' ? 'bg-orange-400' : 'bg-sky-400'}`} title={batch.processType === 'hot' ? 'Hot Process' : 'Cold Process'} aria-hidden />
-                                  {batch.bmrNo.replace(/^BMR-\d+-/, 'B')}
+                              {dayBatches.map((batch) => (
+                                <div
+                                  key={batch.bmrNo}
+                                  className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] ${cat === 'mfg' ? 'batch-block-mfg bg-teal-100/90 border-teal-400' : cat === 'fill' ? 'batch-block-fill bg-purple-100/90 border-purple-400' : 'batch-block-pack bg-emerald-100/90 border-emerald-400'} ${batch.processType === 'hot' ? 'border-l-orange-500' : 'border-l-sky-400'}`}
+                                  style={{ borderLeftColor: batch.processType === 'hot' ? '#f97316' : '#38bdf8' }}
+                                  onClick={e => { e.stopPropagation(); onBatchClick(batch); }}
+                                  title={`${batch.bmrNo} · ${batch.productName} · ${batch.processType.toUpperCase()} process`}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${batch.processType === 'hot' ? 'bg-orange-400' : 'bg-sky-400'}`} title={batch.processType === 'hot' ? 'Hot Process' : 'Cold Process'} aria-hidden />
+                                    {batch.bmrNo.replace(/^BMR-\d+-/, 'B')}
+                                  </div>
+                                  <div className="opacity-80 text-[8px]">{batchProductShort(batch)}</div>
                                 </div>
-                                <div className="opacity-80 text-[8px]">{batchProductShort(batch)}</div>
-                              </div>
-                            ))}
-                            {hasCapacityLeft && (
-                              <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-lg hover:bg-gray-50 hover:border-gray-300 transition-colors shrink-0" title="Add another batch (capacity left)">+</div>
-                            )}
+                              ))}
+                              {hasCapacityLeft && (
+                                <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-lg hover:bg-gray-50 hover:border-gray-300 transition-colors shrink-0" title="Add another batch (capacity left)">+</div>
+                              )}
                             </>
                           )}
                         </div>
@@ -4629,6 +5026,7 @@ const Production = () => {
 
   const [state, setState] = useState<ProductionState>(defaultState);
   const [whInventory, setWhInventory] = useState<WarehouseInventoryRow[]>([]);
+  const [outboundMrns, setOutboundMrns] = useState<MRNRecordFromApi[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modalBatch, setModalBatch] = useState<Batch | null>(null);
   const [modalType, setModalType] = useState<string | null>(null);
@@ -4652,8 +5050,16 @@ const Production = () => {
     loadedFromApi.current = true;
     syncBatchesFromPlanning()
       .catch(() => { /* ignore sync errors; still load batches */ })
-      .then(() => Promise.all([fetchBatches(), fetchEquipment(), fetchTeam(), fetchWarehouseInventory(), fetchDepartments(), fetchSentBatchSummary()]))
-      .then(([batchRows, equipData, teamRows, invResult, deptRows, sent]) => {
+      .then(() => Promise.all([
+        fetchBatches(),
+        fetchEquipment(),
+        fetchTeam(),
+        fetchWarehouseInventory(),
+        fetchDepartments(),
+        fetchSentBatchSummary(),
+        fetchMRNList({ transferType: 'outbound' }),
+      ]))
+      .then(([batchRows, equipData, teamRows, invResult, deptRows, sent, outboundList]) => {
         const batches = batchRows.length ? batchRows.map(apiBatchToBatch) : [];
         const equipment = apiEquipToEquipData(equipData);
         const team = teamRows.length ? apiTeamToTeam(teamRows) : DEFAULT_TEAM;
@@ -4661,6 +5067,7 @@ const Production = () => {
         if (invResult.success && invResult.data.rows.length) setWhInventory(invResult.data.rows);
         if (deptRows.length) setDeptList(deptRows.filter(d => d.is_active).map(d => d.name).sort());
         setSentSummary(Array.isArray(sent) ? sent : []);
+        setOutboundMrns(Array.isArray(outboundList) ? outboundList : []);
       })
       .catch(() => {
         setState(defaultState());
@@ -4692,13 +5099,144 @@ const Production = () => {
       .catch(() => { });
   }, []);
 
+  const refreshOutboundMrns = useCallback(() => {
+    fetchMRNList({ transferType: 'outbound' })
+      .then((list) => setOutboundMrns(Array.isArray(list) ? list : []))
+      .catch(() => { });
+  }, []);
+
+  const syncProductionAfterMrn = useCallback(() => {
+    refreshBatches();
+    refreshOutboundMrns();
+  }, [refreshBatches, refreshOutboundMrns]);
+
+  const DISPENDING_MU_ERR_TAG = '[dispending-mu-error]';
+
   const updateBatch = useCallback((bmrNo: string, updates: Partial<Batch>) => {
     const batch = state.batches.find(b => b.bmrNo === bmrNo) as (Batch & { _pk?: number }) | undefined;
+    const touchesDispensing =
+      updates.dispensingRM !== undefined || updates.dispensingPM !== undefined;
+    if (touchesDispensing) {
+      console.log(DISPENDING_MU_ERR_TAG, 'updateBatch: client about to PATCH', {
+        bmrNo,
+        batchPk: batch?._pk ?? null,
+        hasPk: !!batch?._pk,
+        updateKeys: Object.keys(updates),
+        dispensingRM: Array.isArray(updates.dispensingRM)
+          ? updates.dispensingRM.map((l) => ({ code: l.code, dispensed: l.dispensed, required: l.required, done: l.done }))
+          : undefined,
+        dispensingPM: Array.isArray(updates.dispensingPM)
+          ? updates.dispensingPM.map((l) => ({ code: l.code, dispensed: l.dispensed, required: l.required, done: l.done }))
+          : undefined,
+      });
+      if (!batch?._pk) {
+        console.warn(DISPENDING_MU_ERR_TAG, 'updateBatch: NO batch._pk — PATCH will not run; MU stock will not update', { bmrNo });
+      }
+    }
     if (batch?._pk) {
-      apiBatchUpdate(batch._pk, updates).catch(() => { });
+      const rmCodes = Array.isArray(updates.dispensingRM) ? updates.dispensingRM.map((l) => l.code) : [];
+      const pmCodes = Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => l.code) : [];
+      apiBatchUpdate(batch._pk, updates)
+        .then((patched: any) => {
+          if (touchesDispensing) {
+            console.log(DISPENDING_MU_ERR_TAG, 'updateBatch: PATCH success', {
+              batchPk: batch._pk,
+              bmrNo,
+              bmrStatus: patched?.bmrStatus ?? patched?.bmr_status,
+              bprStatus: patched?.bprStatus ?? patched?.bpr_status,
+              dispensingRMReturned: Array.isArray(patched?.dispensingRM)
+                ? patched.dispensingRM.map((l: { code?: string; dispensed?: number }) => ({ code: l?.code, dispensed: l?.dispensed }))
+                : Array.isArray(patched?.dispensing_rm)
+                  ? patched.dispensing_rm.map((l: { code?: string; dispensed?: number }) => ({ code: l?.code, dispensed: l?.dispensed }))
+                  : null,
+            });
+            // Log what backend returns and where inventory ended up.
+            console.log('[DISPENSING-TRACE] Frontend: PATCH /production/batches success', {
+              batchId: batch._pk,
+              bmrNo,
+              bmrStatus: patched?.bmrStatus ?? patched?.bmr_status,
+              bprStatus: patched?.bprStatus ?? patched?.bpr_status,
+              dispensingRM: Array.isArray(patched?.dispensingRM)
+                ? patched.dispensingRM.slice(0, 5)
+                : Array.isArray(patched?.dispensing_rm)
+                  ? patched.dispensing_rm.slice(0, 5)
+                  : undefined,
+              dispensingPM: Array.isArray(patched?.dispensingPM)
+                ? patched.dispensingPM.slice(0, 5)
+                : Array.isArray(patched?.dispensing_pm)
+                  ? patched.dispensing_pm.slice(0, 5)
+                  : undefined,
+              rmCodes,
+              pmCodes,
+              payload: {
+                dispensingRM_count: Array.isArray(updates.dispensingRM) ? updates.dispensingRM.length : 0,
+                dispensingPM_count: Array.isArray(updates.dispensingPM) ? updates.dispensingPM.length : 0,
+              },
+            });
+
+            return fetchWarehouseInventory().then((invResult) => {
+              if (invResult.success && invResult.data?.rows?.length) {
+                setWhInventory(invResult.data.rows);
+                const matches = invResult.data.rows.filter((r: WarehouseInventoryRow) => (
+                  (r.type === 'RM' && rmCodes.includes(r.code)) || (r.type === 'PM' && pmCodes.includes(r.code))
+                ));
+                console.log(DISPENDING_MU_ERR_TAG, 'updateBatch: after GET warehouse-inventory', {
+                  rowCount: invResult.data.rows.length,
+                  rmCodes,
+                  pmCodes,
+                  matchCount: matches.length,
+                  matches: matches.map((r: WarehouseInventoryRow) => ({
+                    type: r.type,
+                    code: r.code,
+                    whStock: r.whStock,
+                    ml1Stock: r.ml1Stock,
+                    ml2Stock: r.ml2Stock,
+                    stockInHand: r.stockInHand,
+                    reserved: r.reserved,
+                  })),
+                });
+                if ((rmCodes.length > 0 || pmCodes.length > 0) && matches.length === 0) {
+                  console.warn(DISPENDING_MU_ERR_TAG, 'updateBatch: no inventory rows matched dispensing codes — check code strings vs warehouse list', {
+                    rmCodes,
+                    pmCodes,
+                  });
+                }
+                console.log('[DISPENSING-TRACE] Frontend: after refetch warehouse-inventory (dispensing)', {
+                  matches: matches.map((r: WarehouseInventoryRow) => ({
+                    type: r.type,
+                    code: r.code,
+                    whStock: r.whStock,
+                    ml1Stock: r.ml1Stock,
+                    ml2Stock: r.ml2Stock,
+                    stockInHand: r.stockInHand,
+                    reserved: r.reserved,
+                    inTransit: r.inTransit,
+                  })),
+                });
+              } else if (touchesDispensing) {
+                console.warn(DISPENDING_MU_ERR_TAG, 'updateBatch: warehouse-inventory refetch failed or empty', {
+                  success: invResult.success,
+                  error: invResult.error,
+                });
+              }
+            });
+          }
+        })
+        .catch((err) => {
+          if (touchesDispensing) {
+            console.warn(DISPENDING_MU_ERR_TAG, 'updateBatch: PATCH failed', err);
+          }
+          const body = err && typeof err === 'object' && 'body' in err ? (err as { body?: unknown }).body : undefined;
+          const apiMsg =
+            body && typeof body === 'object' && body !== null && 'error' in body && typeof (body as { error: unknown }).error === 'string'
+              ? (body as { error: string }).error
+              : null;
+          addToast('error', apiMsg || (err instanceof Error ? err.message : 'Failed to save batch'));
+          refreshBatches();
+        });
     }
     setState(prev => ({ ...prev, batches: prev.batches.map(b => b.bmrNo === bmrNo ? { ...b, ...updates } : b) }));
-  }, [state.batches]);
+  }, [state.batches, addToast, refreshBatches]);
 
   const openScheduleWizard = useCallback((slot?: ScheduleSlot) => {
     setScheduleSlot(slot ?? null);
@@ -4712,6 +5250,24 @@ const Production = () => {
 
   const handleModalSave = useCallback((updates: Partial<Batch>) => {
     if (!modalBatch) return;
+    if (modalType === 'dispenseRM' || modalType === 'dispensePM') {
+      const pk = (modalBatch as Batch & { _pk?: number })?._pk;
+      console.log('[dispending-mu-error]', 'handleModalSave: dispensing submit', {
+        modalType,
+        bmrNo: modalBatch.bmrNo,
+        batchPk: pk ?? null,
+        bprNo: modalBatch.bprNo,
+        dispensingRM: Array.isArray(updates.dispensingRM) ? updates.dispensingRM.map((l) => ({ code: l.code, required: l.required, dispensed: l.dispensed, done: l.done })) : undefined,
+        dispensingPM: Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => ({ code: l.code, required: l.required, dispensed: l.dispensed, done: l.done })) : undefined,
+      });
+      console.log('[DISPENSING-TRACE] Frontend: submitting dispensing save', {
+        modalType,
+        bmrNo: modalBatch.bmrNo,
+        bprNo: modalBatch.bprNo,
+        dispensingRM: Array.isArray(updates.dispensingRM) ? updates.dispensingRM.map((l) => ({ code: l.code, required: l.required, dispensed: l.dispensed, done: l.done })) : undefined,
+        dispensingPM: Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => ({ code: l.code, required: l.required, dispensed: l.dispensed, done: l.done })) : undefined,
+      });
+    }
     if (modalType === 'reserveRM' || modalType === 'reservePM') {
       console.log('[RESERVE-DEBUG] Frontend: Reserve save', {
         type: modalType,
@@ -4730,7 +5286,8 @@ const Production = () => {
       console.log('[RESERVE-DEBUG] Frontend: PATCH /batches (then refetch warehouse-inventory). Available = SIH - reserved; after reserve: reserved_new = R + X, available_new = SIH - reserved_new.');
     }
     updateBatch(modalBatch.bmrNo, updates);
-    if (modalType === 'reserveRM' || modalType === 'reservePM') {
+    // Dispensing: warehouse refetch runs after PATCH succeeds inside updateBatch (ML1/ML2 delta applied on server).
+    if (modalType === 'reserveRM' || modalType === 'reservePM' || modalType === 'mtrRM' || modalType === 'mtrPM' || modalType === 'qcPack') {
       fetchWarehouseInventory().then((invResult) => {
         if (invResult.success && invResult.data?.rows?.length) {
           setWhInventory(invResult.data.rows);
@@ -4782,11 +5339,11 @@ const Production = () => {
           />
         );
       case 'bmr':
-        return <BMRView batches={state.batches} onAction={handleAction} onCreateBatch={() => setShowCreateBatchModal(true)} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
+        return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => setShowCreateBatchModal(true)} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
       case 'bpr':
-        return <BPRView batches={state.batches} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
+        return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
       case 'transfers':
-        return <TransferOrdersView />;
+        return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshOutboundMrns} />;
       case 'equipment':
         return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
       case 'team':
@@ -4860,19 +5417,31 @@ const Production = () => {
           onBatchChange={bmrNo => { const b = state.batches.find(x => x.bmrNo === bmrNo); if (b) setModalBatch(b); }} />
       )}
       {modalBatch && modalType === 'dispenseRM' && (
-        <DispensingModal batch={modalBatch} type="rm" onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <DispensingModal
+          batch={modalBatch}
+          type="rm"
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onReschedule={canShowRescheduleFooterButton(modalBatch) ? () => { setScheduleSlot(null); setModalType('schedule'); } : undefined}
+        />
       )}
       {modalBatch && modalType === 'dispensePM' && (
-        <DispensingModal batch={modalBatch} type="pm" onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <DispensingModal
+          batch={modalBatch}
+          type="pm"
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onReschedule={canShowRescheduleFooterButton(modalBatch) ? () => { setScheduleSlot(null); setModalType('schedule'); } : undefined}
+        />
       )}
       {modalBatch && modalType === 'qcBMR' && (
-        <QCModal batch={modalBatch} qcType="bmr" team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal batch={modalBatch} qcType="bmr" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'qcFill' && (
-        <QCModal batch={modalBatch} qcType="fill" team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal batch={modalBatch} qcType="fill" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'qcPack' && (
-        <QCModal batch={modalBatch} qcType="pack" team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal batch={modalBatch} qcType="pack" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && (modalType === 'mtrRM' || modalType === 'mtrPM') && (
         <MTRModal
@@ -4889,10 +5458,11 @@ const Production = () => {
           initialRmItems={modalType === 'mtrRM' ? pendingMtrItems : undefined}
           onClose={closeModal}
           onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onMtrCreated={refreshOutboundMrns}
         />
       )}
       {modalBatch && modalType === 'detail' && (
-        <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} onClose={closeModal}
+        <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} outboundMrns={outboundMrns} onClose={closeModal}
           onSave={updates => { handleModalSave(updates); }}
           onAction={(action, batch, extra) => { closeModal(); if (extra?.mtrRmItems) setPendingMtrItems(extra.mtrRmItems); else if (extra?.mtrPmItems) setPendingMtrItems(extra.mtrPmItems); else setPendingMtrItems(null); setTimeout(() => handleAction(action, batch), 100); }}
           initialTab={activeSection === 'bpr' ? 'bpr' : 'bmr'} />

@@ -14,8 +14,6 @@ export type QuoteStatsShape = {
   totalQuotes: number;
   confirmed: number;
   notSelected: number;
-  pendingReview: number;
-  quotesValue: number;
   urgent: number;
   pendingAction: number;
 };

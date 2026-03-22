@@ -41,17 +41,30 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     requestedBy: pr.requestedBy ?? undefined,
     preferredVendor: pr.preferredVendor ?? undefined,
     batchId: pr.planningBatchId != null ? String(pr.planningBatchId) : undefined,
-    itemDetails: items.map((i: { code?: string; name?: string; quantity_requested?: number; unit?: string }) => ({
-      itemCode: i?.code ?? '',
-      itemName: i?.name ?? '',
-      reqQty: i?.quantity_requested ?? 0,
-      unit: i?.unit ?? '',
-      moq: '',
-      packSize: '',
-      plannedPrice: 0,
-      leadTimeDays: 0,
-      estValue: 0,
-    })),
+    itemDetails: items.map(
+      (i: {
+        code?: string;
+        name?: string;
+        quantity_requested?: number;
+        unit?: string;
+        raw_material_id?: number;
+        pack_material_id?: number;
+        type?: string;
+      }) => ({
+        itemCode: i?.code ?? '',
+        itemName: i?.name ?? '',
+        reqQty: i?.quantity_requested ?? 0,
+        unit: i?.unit ?? '',
+        moq: '',
+        packSize: '',
+        plannedPrice: 0,
+        leadTimeDays: 0,
+        estValue: 0,
+        raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
+        pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
+        type: i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM',
+      })
+    ),
     stockSummary: {
       stockInHand: 0,
       openPOQty: 0,
@@ -75,10 +88,13 @@ export function mapBackendQuotationToQuote(
     const total = item.totalValue ?? item.orderQty * item.pricePerUnit;
     return {
       item: item.name,
+      itemId: item.itemId,
       qty: `${item.orderQty} ${item.uom}`,
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
+      raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
+      pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
     };
   });
   const prId = q.procurementRequestId;

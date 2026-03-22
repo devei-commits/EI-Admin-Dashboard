@@ -16,6 +16,11 @@ interface BOMFormState {
   packConfiguration: string;
   skuCode: string;
   mrp: string;
+  zohoId: string;
+  skuForZoho: string;
+  bomTaxPreference: string;
+  bomReturnable: boolean;
+  bomAssociateItems: string;
 
   // Formula BOM Tab
   formulaIngredients: Array<{
@@ -75,6 +80,11 @@ function emptyBomForm(): BOMFormState {
     packConfiguration: '',
     skuCode: '',
     mrp: '',
+    zohoId: '',
+    skuForZoho: '',
+    bomTaxPreference: 'Taxable',
+    bomReturnable: false,
+    bomAssociateItems: '',
     formulaIngredients: [],
     packingComponents: [],
     processSteps: [],
@@ -110,6 +120,11 @@ function mockBomForm(): BOMFormState {
     packConfiguration: 'Bottle + Cap',
     skuCode: 'EI-PR-00001',
     mrp: '₹499',
+    zohoId: '',
+    skuForZoho: '',
+    bomTaxPreference: 'Taxable',
+    bomReturnable: false,
+    bomAssociateItems: '',
     formulaIngredients: [
       { id: '1', inciName: 'Zinc Oxide', phase: 'Oil', percentWW: '15', uom: 'GM' },
       { id: '2', inciName: 'Titanium Dioxide', phase: 'Oil', percentWW: '10', uom: 'GM' },
@@ -313,13 +328,19 @@ const BOMForm: React.FC = () => {
       return;
     }
 
+    const bomCode = formData.skuCode || `PR-${Date.now()}`;
     const payload = {
       name: formData.productName,
       category: formData.category || undefined,
       type: formData.productForm || undefined,
       client: formData.brandClient || undefined,
       packSize: formData.fillSize || undefined,
-      bomCode: formData.skuCode || `PR-${Date.now()}`,
+      bomCode,
+      zohoId: formData.zohoId?.trim() || undefined,
+      bomSku: (formData.skuForZoho?.trim() ? formData.skuForZoho.trim() : bomCode) || undefined,
+      bomTaxPreference: formData.bomTaxPreference || undefined,
+      bomReturnable: formData.bomReturnable,
+      bomAssociateItems: formData.bomAssociateItems?.trim() || undefined,
       status: 'Draft',
     };
 
@@ -484,6 +505,56 @@ const BOMForm: React.FC = () => {
                       value={formData.mrp}
                       onChange={(e) => handleInputChange('mrp', e.target.value)}
                       className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+
+                  {/* Zoho + Tax / Returnable / Associate Items (Primary Info) */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Zoho item id (sync TODO)"
+                      value={formData.zohoId}
+                      onChange={(e) => handleInputChange('zohoId', e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <input
+                      type="text"
+                      placeholder="SKU (for Zoho) - optional (defaults to SKU)"
+                      value={formData.skuForZoho}
+                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <select
+                      value={formData.bomTaxPreference}
+                      onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">TAX PREFERENCE</option>
+                      {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+
+                    <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={formData.bomReturnable}
+                        onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
+                      />
+                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-1">
+                    <textarea
+                      value={formData.bomAssociateItems}
+                      onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
+                      rows={2}
+                      placeholder="Link related BOM / RM / packaging if any"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
                 </div>

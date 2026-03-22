@@ -69,6 +69,14 @@ interface ClientFormData {
   drugLicense: string;
   paymentTerms: string;
   customTerms: string;
+  /**
+   * Payment split percentages.
+   * Must add up to 100% (Advanced + Before dispatch + After dispatch/on delivery).
+   */
+  paymentCreditType: string;
+  payablesAdvancedPct: string;
+  payablesBeforeDispatchPct: string;
+  payablesAfterDispatchPct: string;
   creditLimit: string;
   advanceRequired: string;
   tdsApplicable: string;
@@ -159,6 +167,10 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     drugLicense: '',
     paymentTerms: '',
     customTerms: '',
+    paymentCreditType: 'Credit',
+    payablesAdvancedPct: '0',
+    payablesBeforeDispatchPct: '0',
+    payablesAfterDispatchPct: '100',
     creditLimit: '',
     advanceRequired: '',
     tdsApplicable: '',
@@ -220,10 +232,38 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         zohoId: data.zohoId ?? (existingClient as { zohoId?: string }).zohoId ?? '',
       };
 
+      const termsStr = String(data.paymentTerms ?? existingClient.paymentTerms ?? '');
+      const advFromData = data.payablesAdvancedPct ?? data.advanceRequired;
+      const advParsed =
+        advFromData != null && String(advFromData).trim() !== ''
+          ? Number(String(advFromData).trim())
+          : null;
+      const advPct =
+        advParsed != null && Number.isFinite(advParsed)
+          ? advParsed
+          : termsStr.includes('100% Advance')
+            ? 100
+            : termsStr.includes('50% Advance')
+              ? 50
+              : termsStr.toLowerCase().includes('on delivery')
+                ? 0
+                : 0;
+      const beforePct = data.payablesBeforeDispatchPct != null && String(data.payablesBeforeDispatchPct).trim() !== ''
+        ? Number(String(data.payablesBeforeDispatchPct).trim())
+        : 0;
+      const afterPct = Math.max(0, 100 - advPct - beforePct);
+      const creditTypeComputed =
+        data.paymentCreditType ??
+        (advPct > 0 && afterPct > 0 ? 'Mixed' : advPct >= 100 ? 'Advance' : 'Credit');
+
       setFormData(prev => ({
         ...prev,
         ...baseFormData,
         ...(data as any),
+        paymentCreditType: creditTypeComputed,
+        payablesAdvancedPct: data.payablesAdvancedPct ?? String(advPct),
+        payablesBeforeDispatchPct: data.payablesBeforeDispatchPct ?? String(beforePct),
+        payablesAfterDispatchPct: data.payablesAfterDispatchPct ?? String(afterPct),
         setupType: 'CLIENT',
         setupPrefix: 'CLI',
       }));
@@ -256,6 +296,22 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       if (!formData.primaryEmail.trim()) {
         newErrors.primaryEmail = 'Primary email is required';
         addToast('error', 'Primary email is required');
+      }
+
+      if (_stage === 5) {
+        if (!String(formData.paymentCreditType ?? '').trim()) {
+          newErrors.paymentCreditType = 'Credit type is required';
+          addToast('error', 'Credit type is required');
+        }
+        const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+        const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+        const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+        const sum = adv + before + after;
+        if (Math.abs(sum - 100) > 0.001) {
+          newErrors.paymentSplit =
+            'Payables times (Advanced + Before dispatch + After dispatch/on delivery) must add up to 100%';
+          addToast('error', 'Payables times must add up to 100%');
+        }
       }
     }
     if (Object.keys(newErrors).length > 0) {
@@ -315,7 +371,13 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       notes: 'Mock data for testing',
       gstin: '36AABCM5678B1Z2',
       pan: 'AABCM5678B',
-      paymentTerms: '45',
+      paymentTerms: 'Custom',
+      customTerms: '50% advance + 50% on delivery',
+      paymentCreditType: 'Mixed',
+      payablesAdvancedPct: '50',
+      payablesBeforeDispatchPct: '0',
+      payablesAfterDispatchPct: '50',
+      advanceRequired: '50',
     }));
     setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
     setPocs([{ name: 'Jane Smith', role: 'Account Manager', email: 'jane@mock.com', phone: '+91-9123456789', level: 'Primary', preferred: 'Email', notes: '' }]);
@@ -379,6 +441,11 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     if (!validateStage(currentStage, true)) return;
     setIsSaving(true);
 
+    const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+    const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+    const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+    const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+
     const payload = {
       name: formData.tradeName || formData.legalName,
       email: formData.primaryEmail,
@@ -386,9 +453,9 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       location: formData.state,
       country: formData.country,
       category: formData.setupCategory,
-      paymentTerms: formData.paymentTerms,
+      paymentTerms: computedPaymentTerms,
       notes: formData.notes,
-      data: { ...formData, documents, pocs, banks, productInterests },
+      data: { ...formData, paymentTerms: computedPaymentTerms, advanceRequired: String(adv), documents, pocs, banks, productInterests },
     };
 
     if (editingId && existingClient) {
@@ -449,7 +516,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         billingAddress: '', shippingAddress: '', state: '', country: 'India',
         website: '', segment: '', industry: '', businessType: '', notes: '',
         gstin: '', pan: '', tan: '', cin: '', fssaiLicense: '', drugLicense: '',
-        paymentTerms: '', customTerms: '', creditLimit: '', advanceRequired: '',
+        paymentTerms: '', customTerms: '', paymentCreditType: 'Credit', payablesAdvancedPct: '0', payablesBeforeDispatchPct: '0', payablesAfterDispatchPct: '100',
+        creditLimit: '', advanceRequired: '',
         tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
         agreementType: '', agreementStatus: '', startDate: '', endDate: '',
         agreementLink: '', owner: '', agreementNotes: '',
@@ -1010,23 +1078,52 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               <div className={sectionTitleClass}>Payment Terms & Credit</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelClass}>Payment Terms</label>
-                  <select name="paymentTerms" value={formData.paymentTerms} onChange={handleInputChange} className={inputClass}>
-                    <option value="">Select</option>
-                    <option>100% Advance</option>
-                    <option>50% Advance + 50% On Delivery</option>
-                    <option>On Delivery</option>
-                    <option>Net 7</option>
-                    <option>Net 15</option>
-                    <option>Net 30</option>
-                    <option>Net 45</option>
-                    <option>Net 60</option>
-                    <option>Custom</option>
-                  </select>
+                  <label className={labelClass}>Advanced (%)</label>
+                  <input
+                    type="number"
+                    name="payablesAdvancedPct"
+                    value={formData.payablesAdvancedPct}
+                    onChange={handleInputChange}
+                    step="0.01"
+                    min="0"
+                    className={inputClass}
+                  />
                 </div>
                 <div>
-                  <label className={labelClass}>Custom Terms (if any)</label>
-                  <input type="text" name="customTerms" value={formData.customTerms} onChange={handleInputChange} placeholder="e.g., 70% advance + 30% on dispatch" className={inputClass} />
+                  <label className={labelClass}>Before dispatch (%)</label>
+                  <input
+                    type="number"
+                    name="payablesBeforeDispatchPct"
+                    value={formData.payablesBeforeDispatchPct}
+                    onChange={handleInputChange}
+                    step="0.01"
+                    min="0"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>After dispatch / On delivery (%)</label>
+                  <input
+                    type="number"
+                    name="payablesAfterDispatchPct"
+                    value={formData.payablesAfterDispatchPct}
+                    onChange={handleInputChange}
+                    step="0.01"
+                    min="0"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Credit Type</label>
+                  <select name="paymentCreditType" value={formData.paymentCreditType} onChange={handleInputChange} className={inputClass}>
+                    <option value="">Select</option>
+                    <option>Credit</option>
+                    <option>Advance</option>
+                    <option>LC</option>
+                    <option>Mixed</option>
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1034,10 +1131,17 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <label className={labelClass}>Credit Limit (₹)</label>
                   <input type="number" name="creditLimit" value={formData.creditLimit} onChange={handleInputChange} placeholder="Maximum outstanding allowed" className={inputClass} />
                 </div>
-                <div>
-                  <label className={labelClass}>Advance Required (%)</label>
-                  <input type="number" name="advanceRequired" value={formData.advanceRequired} onChange={handleInputChange} placeholder="e.g., 50" className={inputClass} />
-                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Custom Terms (optional)</label>
+                <input
+                  type="text"
+                  name="customTerms"
+                  value={formData.customTerms}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 50% advance + 50% on delivery"
+                  className={inputClass}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

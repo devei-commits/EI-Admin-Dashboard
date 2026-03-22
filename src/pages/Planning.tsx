@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useLocation, NavLink } from 'react-router-dom';
+import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
@@ -26,16 +26,31 @@ import {
   type ProcurementRequestItem,
 } from '../services/procurement.service';
 import {
+  fetchProcurementQuotations,
+  type ProcurementQuotation,
+  type ProcurementQuotationItem,
+} from '../services/procurementQuotations.service';
+import {
   fetchBOMByProductId,
   type BOMRecord,
   type BOMRmLine,
   type BOMPmLine,
 } from '../services/bom.service';
+import { fetchBatches, type BatchRow } from '../services/production.service';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
+import { createPurchaseOrder, fetchPurchaseOrders, updatePurchaseOrder } from '../services/salesPurchase.service';
+import {
+  PAYMENT_TERMS_TYPE_OPTIONS,
+  formatPaymentTermsString,
+  parsePaymentTermsString,
+  paymentTermsTypeRequiresAdvancePercent,
+  validateAdvancePercentForType,
+  type PaymentTermsStructuredType,
+} from '../lib/paymentTermsStructured';
 
 interface RawMaterial {
   id: string;
@@ -89,10 +104,78 @@ interface ItemsInvolvedDisplayRow {
   unit: string;
   /** Warehouse-style columns (from warehouse_inventory) */
   reserved: string;
+  reservedNum: number;
+  plannedQty: string;
+  plannedQtyNum: number;
+  orderedQty: string;
+  orderedQtyNum: number;
+  net: string;
+  netNum: number;
   inTransit: string;
   reorderPt: string;
   avgMo: string;
   status: string;
+}
+
+type PlannedLine = {
+  createdAt: string;
+  planningExtractedId: number | null;
+  itemType: 'RM' | 'PM';
+  itemId: number | null;
+  itemCode: string;
+  itemName: string;
+  vendorId: number | null;
+  vendorName: string;
+  moq: number;
+  qty: number;
+  unitPrice: number;
+  paymentTerms: string;
+  leadTimeDays: number;
+  unit: string;
+  /** Backend purchase_orders.id (numeric string) when synced to Draft PO */
+  backendPoId?: string;
+};
+
+const PLANNING_DRAFT_PO_SOURCE = 'planning-items-involved';
+
+function buildPlannedGroupKey(vendorName: string, paymentTerms: string, leadTimeDays: number) {
+  return `${vendorName.trim().toLowerCase()}|||${paymentTerms.trim()}|||${Number(leadTimeDays) || 0}`;
+}
+
+/** Match stored planned line to Items Involved row — avoid empty-string / missing-id false positives. */
+function plannedLineMatchesItemsInvolvedRow(line: PlannedLine, item: ItemsInvolvedDisplayRow): boolean {
+  if (line.itemType !== item.itemType) return false;
+  const matId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+  const lineMatId = line.itemId != null ? Number(line.itemId) : NaN;
+  if (Number.isFinite(matId) && matId > 0) {
+    return Number.isFinite(lineMatId) && lineMatId === matId;
+  }
+  const codeItem = String(item.code ?? '').trim().toLowerCase();
+  const codeLine = String(line.itemCode ?? '').trim().toLowerCase();
+  if (codeItem.length > 0 && codeLine.length > 0 && codeItem === codeLine) return true;
+  const nameItem = String(item.name ?? '').trim().toLowerCase();
+  const nameLine = String(line.itemName ?? '').trim().toLowerCase();
+  return nameItem.length > 0 && nameLine.length > 0 && nameItem === nameLine;
+}
+
+function normalizeMaterialCode(code: string): string {
+  const c = (code ?? '').toString().trim().toLowerCase();
+  if (!c) return '';
+  // Examples: "EI-RM-UVF-001" -> "UVF-001"
+  return c
+    .replace(/^ei[-_]?rm[-_]?/i, '')
+    .replace(/^ei[-_]?pm[-_]?/i, '')
+    .replace(/^rm[-_]?/i, '')
+    .replace(/^pm[-_]?/i, '');
+}
+
+function poItemMergeKey(row: Record<string, unknown>): string {
+  const rid = row.raw_material_id;
+  const pid = row.pack_material_id;
+  if (rid != null && Number(rid) > 0) return `rm:${Number(rid)}`;
+  if (pid != null && Number(pid) > 0) return `pm:${Number(pid)}`;
+  const n = String(row.itemName ?? row.name ?? '').trim().toLowerCase();
+  return `n:${n}`;
 }
 
 /** Tab stats — all possible keys so we can access without `any` */
@@ -120,6 +203,8 @@ interface SalesOrder {
   soNumber: string;
   productName: string;
   productCode: string;
+  customerName?: string;
+  soStatus?: string;
   orderQty: string;
   totalKg: string;
   orderDate: string;
@@ -146,6 +231,8 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     soNumber: row.soNumber,
     productName: row.productName,
     productCode: row.productCode,
+    customerName: row.customerName ?? undefined,
+    soStatus: row.soStatus ?? undefined,
     orderQty: row.orderQty,
     totalKg: row.totalKg,
     orderDate: row.orderDate,
@@ -255,6 +342,7 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
 
 const Planning = () => {
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRowForDetail, setSelectedRowForDetail] = useState<SalesOrder | null>(null);
@@ -288,8 +376,6 @@ const Planning = () => {
   const [expandedBatchIndex, setExpandedBatchIndex] = useState<number | null>(null);
   /** Selected batch id (planning_batches.id) — drives BOM editor, swap/add, batch plan for this batch only */
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
-  /** Indices of batches selected (checked) to send this time */
-  const [batchesToSendIndices, setBatchesToSendIndices] = useState<number[]>([]);
   /** Preview qty (units) for Feasibility tab — drives req/max units and summary bar */
   const [feasibilityPreviewQty, setFeasibilityPreviewQty] = useState<number>(0);
   const location = useLocation();
@@ -299,6 +385,28 @@ const Planning = () => {
   const [itemsInvolvedCategoryFilter, setItemsInvolvedCategoryFilter] = useState<'all' | 'RM' | 'PM' | 'shortage' | 'available'>('all');
   const [itemsInvolvedProductFilter, setItemsInvolvedProductFilter] = useState<string>('all');
   const [itemsInvolvedSearchTerm, setItemsInvolvedSearchTerm] = useState('');
+  const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
+  const [releaseToPlanningItem, setReleaseToPlanningItem] = useState<ItemsInvolvedDisplayRow | null>(null);
+  const [releaseToPlanningForm, setReleaseToPlanningForm] = useState<{
+    vendorId: number | null;
+    vendorName: string;
+    moq: number;
+    qty: string;
+    unitPrice: string;
+    paymentTermsType: PaymentTermsStructuredType;
+    advancePercent: string;
+    leadTimeDays: number;
+  }>({
+    vendorId: null,
+    vendorName: '',
+    moq: 0,
+    qty: '',
+    unitPrice: '',
+    paymentTermsType: 'as_per_contract',
+    advancePercent: '50',
+    leadTimeDays: 0,
+  });
+  const [releaseToPlanningSaving, setReleaseToPlanningSaving] = useState(false);
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
   /** Raise PR confirmation popup from batch detail: { batch, row } so user can confirm and edit before sending. */
   const [batchPrModal, setBatchPrModal] = useState<{ batch: PlanningBatchAllRow; row: BatchDetailRowForPr } | null>(null);
@@ -315,6 +423,24 @@ const Planning = () => {
     queryKey: ['planning-extracted'],
     queryFn: fetchPlanningExtractedList,
     enabled: true,
+  });
+
+  // Used by Items Involved tab for "Planned line" badge + "Previous purchases" modal.
+  // Intentionally backend-driven (no localStorage cache) for production reliability.
+  const { data: purchaseOrders = [], isLoading: purchaseOrdersLoading } = useQuery({
+    queryKey: ['purchase-orders'],
+    queryFn: async () => {
+      const res = await fetchPurchaseOrders();
+      return res.success ? (res.data ?? []) : [];
+    },
+    enabled: activeMainTab === 'items-involved',
+  });
+
+  // Used for MFG Records column in "PIs Extracted" list.
+  const { data: productionBatches = [] } = useQuery({
+    queryKey: ['production-batches'],
+    queryFn: fetchBatches,
+    enabled: activeMainTab === 'pis-extracted',
   });
   const pisRows: SalesOrder[] = useMemo(
     () => planningExtractedList.map(apiRowToSalesOrder),
@@ -426,12 +552,15 @@ const Planning = () => {
   const warehouseRows = useMemo(() => warehouseResult?.rows ?? [], [warehouseResult?.rows]);
 
   // Procurement requests: for tab stats (prsRaised, availability-summary counts)
-  const { data: procurementListResult } = useQuery({
+  // Must return ProcurementRequest[] — same queryKey as Procurement page (shared cache).
+  const { data: procurementRequests = [] } = useQuery({
     queryKey: ['procurement-requests'],
-    queryFn: () => fetchProcurementRequests(),
+    queryFn: async () => {
+      const res = await fetchProcurementRequests();
+      return res.success ? (res.data ?? []) : [];
+    },
     enabled: true,
   });
-  const procurementRequests = procurementListResult?.data ?? [];
 
   const planningIdForBatch = selectedSOForBatch?.id ?? '';
   const { data: planningRowForBatch } = useQuery({
@@ -464,8 +593,9 @@ const Planning = () => {
   // only show batches that exist (B1 only → B-01 only), not placeholders from "batches required".
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch || !planningRowForBatch) return;
-    const row = planningRowForBatch as { batchCount?: number; batchSizeKg?: number; plannedStartDate?: string; productionLine?: string; customBatches?: { sizeKg: number }[] | null };
-    if (row.batchCount != null) setNumBatches(String(row.batchCount));
+    const row = planningRowForBatch as { batchCount?: number; batchesRequired?: number; batchSizeKg?: number; plannedStartDate?: string; productionLine?: string; customBatches?: { sizeKg: number }[] | null };
+    if (row.batchCount != null && row.batchCount > 0) setNumBatches(String(row.batchCount));
+    else if (row.batchesRequired != null && row.batchesRequired > 0) setNumBatches(String(row.batchesRequired));
     if (row.batchSizeKg != null) setBatchSizeKg(String(row.batchSizeKg));
     if (row.plannedStartDate) setPlannedStartDate(row.plannedStartDate);
     if (row.productionLine) setProductionLine(row.productionLine);
@@ -542,6 +672,8 @@ const Planning = () => {
   const prFromDetailShortagesRef = useRef(false);
   /** When set, PR is being raised for a specific batch (from "Raise PR for this batch"); used to send planningBatchId. */
   const prForBatchIndexRef = useRef<number | null>(null);
+  /** Dedupe Warehouse → Items Involved "Release to Planning" navigation (location.state). */
+  const warehouseReleaseHandledNonceRef = useRef<number | null>(null);
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch) return;
     if (selectedBatchId != null) return; // batch-first: BOM comes from selected batch (selectedBatchData effect)
@@ -915,18 +1047,37 @@ const Planning = () => {
     queryFn: fetchItemsInvolved,
     enabled: activeMainTab === 'items-involved' || activeMainTab === 'availability-summary',
   });
+  const { data: allPlanningBatches = [] } = useQuery({
+    queryKey: ['planning', 'batches', 'all', 'items-involved'],
+    queryFn: fetchAllBatches,
+    enabled: activeMainTab === 'items-involved',
+  });
+  const { data: procurementQuotations = [] } = useQuery({
+    queryKey: ['procurement-quotations', 'planning-items-involved'],
+    queryFn: async () => {
+      const res = await fetchProcurementQuotations();
+      return res.success ? (res.data ?? []) : [];
+    },
+    enabled: activeMainTab === 'items-involved',
+  });
   const itemsInvolved = useMemo(() => itemsInvolvedRows.map((row): ItemsInvolvedDisplayRow => {
     const shortage = row.surplusShortage < 0 ? Math.abs(row.surplusShortage) : 0;
     const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
-    const totalReqStr = `${Math.round(row.totalRequired).toLocaleString()}${row.unit === 'KG' ? ' KG' : 'pcs'}`;
+    const totalReqStr =
+      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
+        ? `${Number(row.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
+        : `${Math.round(row.totalRequired).toLocaleString()} pcs`;
     const sihStr = Math.round(row.sih).toLocaleString();
+    const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
+    const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
+    const netNum = Number(row.sih ?? 0) + plannedQtyNum + orderedQtyNum - Number(row.totalRequired ?? 0);
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     return {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
       name: row.name,
       code: row.code,
       category: row.type === 'PM' ? 'PM - Primary' : 'RM',
-      usedIn: String(row.usedInProducts?.length ?? 0),
+      usedIn: String(row.batchCount ?? 0),
       usedInProducts: row.usedInProducts ?? [],
       totalReq: totalReqStr,
       totalRequired: row.totalRequired,
@@ -947,6 +1098,13 @@ const Planning = () => {
       pack_material_id: row.pack_material_id ?? undefined,
       unit: row.unit,
       reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
+      reservedNum: Number(row.reserved ?? 0) || 0,
+      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
+      plannedQtyNum,
+      orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
+      orderedQtyNum,
+      net: `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`,
+      netNum,
       inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
       reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
       avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
@@ -964,8 +1122,8 @@ const Planning = () => {
     return itemsInvolved.filter((row) => {
       if (itemsInvolvedCategoryFilter === 'RM' && row.itemType !== 'RM') return false;
       if (itemsInvolvedCategoryFilter === 'PM' && row.itemType !== 'PM') return false;
-      if (itemsInvolvedCategoryFilter === 'shortage' && row.surplusShortageNum >= 0) return false;
-      if (itemsInvolvedCategoryFilter === 'available' && row.surplusShortageNum < 0) return false;
+      if (itemsInvolvedCategoryFilter === 'shortage' && row.netNum >= 0) return false;
+      if (itemsInvolvedCategoryFilter === 'available' && row.netNum < 0) return false;
       if (itemsInvolvedProductFilter !== 'all') {
         const usedIn = row.usedInProducts ?? [];
         if (!usedIn.includes(itemsInvolvedProductFilter)) return false;
@@ -1135,9 +1293,448 @@ const Planning = () => {
     setSelectedRowForDetail(null);
   };
 
+  const getUsedInBatchesForItem = (item: ItemsInvolvedDisplayRow) => {
+    const itemCode = String(item.code ?? '').trim().toLowerCase();
+    const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+    return (allPlanningBatches as PlanningBatchAllRow[])
+      .filter((b) => b.sent === true)
+      .filter((b) => {
+        const lines = item.itemType === 'RM' ? (b.rmLines ?? []) : (b.pmLines ?? []);
+        return lines.some((line: { raw_material_id?: number; pack_material_id?: number; rm_code?: string; pm_code?: string; code?: string }) => {
+          const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
+          const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
+          return (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
+        });
+      });
+  };
+
+  const getItemRequiredInBatch = (item: ItemsInvolvedDisplayRow, batch: PlanningBatchAllRow) => {
+    const sizeKg = Number(batch.sizeKg) || 0;
+    const lines = item.itemType === 'RM' ? (batch.rmLines ?? []) : (batch.pmLines ?? []);
+    const itemCode = String(item.code ?? '').trim().toLowerCase();
+    const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+    if (item.itemType === 'RM') {
+      return lines.reduce((sum, line: { raw_material_id?: number; rm_code?: string; code?: string; pct_w_w?: number; pct?: number; quantity?: number }) => {
+        const lineId = Number(line.raw_material_id);
+        const lineCode = String(line.rm_code ?? line.code ?? '').trim().toLowerCase();
+        const matches = (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
+        if (!matches) return sum;
+        const pct = Number(line.pct_w_w ?? line.pct ?? 0);
+        const qty = Number.isFinite(pct) && pct > 0 ? (sizeKg * pct) / 100 : (Number(line.quantity) || 0);
+        return sum + qty;
+      }, 0);
+    }
+    return lines.reduce((sum, line: { pack_material_id?: number; pm_code?: string; code?: string; qty_per_unit?: number; quantity?: number; value?: number }) => {
+      const lineId = Number(line.pack_material_id);
+      const lineCode = String(line.pm_code ?? line.code ?? '').trim().toLowerCase();
+      const matches = (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
+      if (!matches) return sum;
+      const qty = Number(line.quantity ?? line.qty_per_unit ?? line.value ?? 0) || 0;
+      return sum + qty;
+    }, 0);
+  };
+
+  const plannedLinesFromBackend: PlannedLine[] = useMemo(() => {
+    const parseTs = (dateStr: unknown): number | null => {
+      if (dateStr == null) return null;
+      const s = String(dateStr).trim();
+      if (!s) return null;
+      const ts = Date.parse(`${s}T00:00:00Z`);
+      return Number.isFinite(ts) ? ts : null;
+    };
+
+    const leadTimeDaysFromDates = (orderDate: unknown, expected: unknown): number => {
+      const t1 = parseTs(orderDate);
+      const t2 = parseTs(expected);
+      if (t1 == null || t2 == null) return 0;
+      return Math.max(0, Math.round((t2 - t1) / 86400000));
+    };
+
+    const out: PlannedLine[] = [];
+    for (const po of purchaseOrders as any[]) {
+      // Planning-created draft PO reference is like: "Planning PE-<planningExtractedId>"
+      const ref = String(po.reference ?? '');
+      const m = ref.match(/^Planning\\s+PE-(\\d+)/i);
+      if (!m) continue;
+      const planningExtractedId = Number(m[1]);
+      if (!Number.isFinite(planningExtractedId) || planningExtractedId <= 0) continue;
+
+      const createdAt = String(po.orderDate ?? '');
+      const paymentTerms = String(po.paymentTerms ?? '');
+      const vendorName = String(po.vendorName ?? '');
+      const expectedShipmentDate = po.expectedShipmentDate ?? '';
+
+      const items = Array.isArray(po.items) ? po.items : [];
+      for (const itemLine of items as any[]) {
+        const rawId = itemLine?.raw_material_id ?? itemLine?.rawMaterialId;
+        const packId = itemLine?.pack_material_id ?? itemLine?.packMaterialId;
+
+        const rawIdNum = rawId != null ? Number(rawId) : NaN;
+        const packIdNum = packId != null ? Number(packId) : NaN;
+
+        // Only include lines we can match to RM/PM rows from Items Involved.
+        if (Number.isFinite(rawIdNum) && rawIdNum > 0) {
+          const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
+          const unitPriceNum = Number(itemLine?.rate ?? itemLine?.price ?? 0) || 0;
+          out.push({
+            createdAt,
+            planningExtractedId,
+            itemType: 'RM',
+            itemId: rawIdNum,
+            itemCode: '',
+            itemName: '',
+            vendorId: null,
+            vendorName,
+            moq: 0,
+            qty: qtyNum,
+            unitPrice: unitPriceNum,
+            paymentTerms,
+            leadTimeDays: leadTimeDaysFromDates(po.orderDate, expectedShipmentDate),
+            unit: 'KG',
+          });
+        } else if (Number.isFinite(packIdNum) && packIdNum > 0) {
+          const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
+          const unitPriceNum = Number(itemLine?.rate ?? itemLine?.price ?? 0) || 0;
+          out.push({
+            createdAt,
+            planningExtractedId,
+            itemType: 'PM',
+            itemId: packIdNum,
+            itemCode: '',
+            itemName: '',
+            vendorId: null,
+            vendorName,
+            moq: 0,
+            qty: qtyNum,
+            unitPrice: unitPriceNum,
+            paymentTerms,
+            leadTimeDays: leadTimeDaysFromDates(po.orderDate, expectedShipmentDate),
+            unit: 'PCS',
+          });
+        } else {
+          // Fallback for partial payloads / legacy rows:
+          // Planning stores items as: "<itemName> (<itemCode>)"
+          const rawName = String(itemLine?.itemName ?? itemLine?.name ?? '').trim();
+          const parsedCode = rawName.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() ?? '';
+          if (!parsedCode) continue;
+
+          const parsedName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+          const codeLower = parsedCode.toLowerCase();
+          const itemTypeGuess: 'RM' | 'PM' =
+            codeLower.includes('pm-') || codeLower.includes('ei-pm') || codeLower.includes('-pm-') ? 'PM' : 'RM';
+
+          const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
+          const unitPriceNum = Number(itemLine?.rate ?? itemLine?.price ?? 0) || 0;
+
+          out.push({
+            createdAt,
+            planningExtractedId,
+            itemType: itemTypeGuess,
+            itemId: null,
+            itemCode: parsedCode,
+            itemName: parsedName,
+            vendorId: null,
+            vendorName,
+            moq: 0,
+            qty: qtyNum,
+            unitPrice: unitPriceNum,
+            paymentTerms,
+            leadTimeDays: leadTimeDaysFromDates(po.orderDate, expectedShipmentDate),
+            unit: itemTypeGuess === 'RM' ? 'KG' : 'PCS',
+          });
+        }
+      }
+    }
+
+    // Newest first (matches the old localStorage "preprend" behavior).
+    out.sort((a, b) => (parseTs(b.createdAt) ?? 0) - (parseTs(a.createdAt) ?? 0));
+    return out;
+  }, [purchaseOrders]);
+
+  const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) => {
+    const lines = plannedLinesFromBackend;
+    return lines.some((line) => {
+      if (Number(item.planningExtractedId) > 0 && Number(line.planningExtractedId) > 0 && Number(line.planningExtractedId) !== Number(item.planningExtractedId)) return false;
+      return plannedLineMatchesItemsInvolvedRow(line, item);
+    });
+  };
+
+  const getQuotationSlabsForItem = (item: ItemsInvolvedDisplayRow) => {
+    const rid = Number(item.raw_material_id);
+    const pid = Number(item.pack_material_id);
+    const codeNorm = String(item.code ?? '').trim().toLowerCase();
+    const nameNorm = String(item.name ?? '').trim().toLowerCase();
+    const hasRmId = item.itemType === 'RM' && Number.isFinite(rid) && rid > 0;
+    const hasPmId = item.itemType === 'PM' && Number.isFinite(pid) && pid > 0;
+    const normItemCode = normalizeMaterialCode(codeNorm);
+
+    type QuoteMatchDecision = { matched: boolean; reason?: string };
+    const quotationLineMatchDecision = (line: ProcurementQuotationItem): QuoteMatchDecision => {
+      const lineCode = String(line.itemId ?? '').trim().toLowerCase();
+      const lineName = String(line.name ?? '').trim().toLowerCase();
+      if (hasRmId) {
+        if (line.raw_material_id != null && Number(line.raw_material_id) === rid) return { matched: true, reason: 'rm_id' };
+        // Fallback only when quote line didn't store RM/PM ids (older data / partial payloads).
+        // Use exact normalized code/name equality only (avoid substring matching).
+        if (normItemCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) return { matched: true, reason: 'rm_code_fallback' };
+        if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) return { matched: true, reason: 'rm_name_fallback' };
+        return { matched: false };
+      }
+      if (hasPmId) {
+        if (line.pack_material_id != null && Number(line.pack_material_id) === pid) return { matched: true, reason: 'pm_id' };
+        // Fallback only when quote line didn't store RM/PM ids (older data / partial payloads).
+        if (normItemCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) return { matched: true, reason: 'pm_code_fallback' };
+        if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) return { matched: true, reason: 'pm_name_fallback' };
+        return { matched: false };
+      }
+      // Item doesn't have RM/PM ids: use exact normalized code/name equality only.
+      if (codeNorm.length > 0 && lineCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) {
+        return { matched: true, reason: 'code_fallback_no_ids_on_item' };
+      }
+      if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) {
+        return { matched: true, reason: 'name_fallback_no_ids_on_item' };
+      }
+      return { matched: false };
+    };
+
+    const slabs = (procurementQuotations as ProcurementQuotation[]).flatMap((q) => {
+      const evaluated = (q.items ?? []).map((line) => {
+        const decision = quotationLineMatchDecision(line);
+        return { line, decision };
+      });
+      return evaluated
+        .filter((x) => x.decision.matched)
+        .map(({ line, decision }) => ({
+          vendorId: Number(q.vendorId) || null,
+          vendorName: String(q.vendorName ?? `Vendor ${q.vendorId}`),
+          moq: Number(line.orderQty ?? 0) || 0,
+          unitPrice: Number(line.pricePerUnit ?? 0) || 0,
+          leadTimeDays: Number(q.leadTimeDays ?? 0) || 0,
+          paymentTerms: String(q.paymentTerms ?? 'As per contract'),
+          // Debug helpers: show what quote line matched in this modal.
+          __debugLine: {
+            item: String(line.name ?? '').trim(),
+            itemId: String(line.itemId ?? '').trim(),
+            raw_material_id: line.raw_material_id ?? null,
+            pack_material_id: line.pack_material_id ?? null,
+            orderQty: line.orderQty ?? 0,
+          },
+          __debugMatchReason: decision.reason,
+          __debugQuoteSource: {
+            quotationId: String((q as any).id ?? ''),
+            vendorId: String(q.vendorId ?? ''),
+            procurementRequestId: q.procurementRequestId != null ? String(q.procurementRequestId) : '',
+          },
+        }));
+    });
+    return slabs.sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.moq - b.moq || a.unitPrice - b.unitPrice);
+  };
+
+  const openReleaseToPlanningModal = (item: ItemsInvolvedDisplayRow, opts?: { preferSurplusQty?: number }) => {
+    const slabs = getQuotationSlabsForItem(item);
+    const first = slabs[0];
+    const debugRelease =
+      (typeof window !== 'undefined' && window.localStorage.getItem('eiadmin.debug.releaseToPlanning') === '1') || import.meta.env.DEV;
+    if (debugRelease) {
+      // eslint-disable-next-line no-console
+      console.groupCollapsed('[ReleaseToPlanning] matched quote lines for item');
+      // eslint-disable-next-line no-console
+      console.log('item', {
+        itemType: item.itemType,
+        code: item.code,
+        name: item.name,
+        raw_material_id: item.raw_material_id ?? null,
+        pack_material_id: item.pack_material_id ?? null,
+      });
+      // eslint-disable-next-line no-console
+      const debugSlabs = slabs.map((s: any) => ({
+        vendorName: s.vendorName,
+        moq: s.moq,
+        unitPrice: s.unitPrice,
+        matchReason: s.__debugMatchReason,
+        matchedQuoteLine: {
+          item: s.__debugLine?.item,
+          itemId: s.__debugLine?.itemId,
+          raw_material_id: s.__debugLine?.raw_material_id,
+          pack_material_id: s.__debugLine?.pack_material_id,
+          orderQty: s.__debugLine?.orderQty,
+        },
+        debugQuoteSource: s.__debugQuoteSource,
+      }));
+      // eslint-disable-next-line no-console
+      console.log('slabs-json', JSON.stringify(debugSlabs, null, 2));
+      // eslint-disable-next-line no-console
+      console.groupEnd();
+    }
+    const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum));
+    const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
+    const qtyStr =
+      surplus > 0 ? String(surplus) : shortfall > 0 ? String(Math.round(shortfall)) : '';
+    const parsedTerms = parsePaymentTermsString(first?.paymentTerms ?? 'As per contract');
+    setReleaseToPlanningItem(item);
+    setReleaseToPlanningForm({
+      vendorId: first?.vendorId ?? null,
+      vendorName: first?.vendorName ?? '',
+      moq: first?.moq ?? 0,
+      qty: qtyStr,
+      unitPrice: first ? String(first.unitPrice) : '',
+      paymentTermsType: parsedTerms.type,
+      advancePercent: String(
+        parsedTerms.advancePercent ||
+          (paymentTermsTypeRequiresAdvancePercent(parsedTerms.type) ? 50 : 0)
+      ),
+      leadTimeDays: first?.leadTimeDays ?? 0,
+    });
+  };
+
+  const addPlannedLine = async (): Promise<boolean> => {
+    if (!releaseToPlanningItem) return false;
+    const planningRow = releaseToPlanningItem;
+    const qty = Number(releaseToPlanningForm.qty || 0);
+    const unitPrice = Number(releaseToPlanningForm.unitPrice || 0);
+    if (!releaseToPlanningForm.vendorName || qty <= 0 || unitPrice <= 0) {
+      addToast('warning', 'Pick vendor and enter valid qty and unit price.');
+      return false;
+    }
+
+    const advErr = validateAdvancePercentForType(
+      releaseToPlanningForm.paymentTermsType,
+      Number(releaseToPlanningForm.advancePercent)
+    );
+    if (advErr) {
+      addToast('warning', advErr);
+      return false;
+    }
+
+    const vendorName = releaseToPlanningForm.vendorName.trim();
+    const paymentTerms = formatPaymentTermsString(
+      releaseToPlanningForm.paymentTermsType,
+      Number(releaseToPlanningForm.advancePercent)
+    ).trim();
+    const leadTimeDays = Number(releaseToPlanningForm.leadTimeDays || 0) || 0;
+    const groupKey = buildPlannedGroupKey(vendorName, paymentTerms, leadTimeDays);
+
+    const rmId =
+      planningRow.itemType === 'RM' && Number.isFinite(Number(planningRow.raw_material_id)) && Number(planningRow.raw_material_id) > 0
+        ? Number(planningRow.raw_material_id)
+        : undefined;
+    const pmId =
+      planningRow.itemType === 'PM' && Number.isFinite(Number(planningRow.pack_material_id)) && Number(planningRow.pack_material_id) > 0
+        ? Number(planningRow.pack_material_id)
+        : undefined;
+
+    const newApiItem: Record<string, unknown> = {
+      itemName: `${planningRow.name} (${planningRow.code})`,
+      quantity: qty,
+      rate: String(unitPrice),
+      tax: '18',
+    };
+    if (rmId != null) newApiItem.raw_material_id = rmId;
+    if (pmId != null) newApiItem.pack_material_id = pmId;
+
+    const listRes = await fetchPurchaseOrders();
+    if (!listRes.success || !listRes.data) {
+      addToast('error', typeof listRes.error === 'string' ? listRes.error : 'Failed to load purchase orders');
+      return false;
+    }
+
+    const drafts = listRes.data.filter((o) => String(o.status).toLowerCase() === 'draft');
+    const match = drafts.find((o) => {
+      const fd = (o.formData || {}) as Record<string, unknown>;
+      return fd.source === PLANNING_DRAFT_PO_SOURCE && String(fd.plannedGroupKey || '') === groupKey;
+    });
+
+    if (match) {
+      const backendPoId = String(match.id ?? '').replace(/^PO-/, '') || String(match.id);
+      const existingItems = Array.isArray(match.items) ? match.items.map((i) => ({ ...(i as object) })) : [];
+      const newKey = poItemMergeKey(newApiItem);
+      const idx = existingItems.findIndex((i) => poItemMergeKey(i as Record<string, unknown>) === newKey);
+      let merged: unknown[];
+      if (idx >= 0) {
+        const old = existingItems[idx] as Record<string, unknown>;
+        const qOld = Number(old.quantity) || 0;
+        const rOld = Number(old.rate ?? old.price) || 0;
+        const qNew = qOld + qty;
+        const rNew = qNew > 0 ? (qOld * rOld + qty * unitPrice) / qNew : unitPrice;
+        merged = [...existingItems];
+        merged[idx] = { ...old, quantity: qNew, rate: String(rNew) };
+      } else {
+        merged = [...existingItems, newApiItem];
+      }
+      const upd = await updatePurchaseOrder(backendPoId, { items: merged });
+      if (!upd.success) {
+        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update draft PO');
+        return false;
+      }
+    } else {
+      const today = new Date();
+      const createdDateStr = today.toISOString().split('T')[0];
+      const exp = new Date(today);
+      exp.setDate(exp.getDate() + leadTimeDays);
+      const expectedDeliveryStr = exp.toISOString().split('T')[0];
+      const orderId = `DPO-PLN-${Date.now()}`;
+      const peId = planningRow.planningExtractedId;
+      const createRes = await createPurchaseOrder({
+        orderId,
+        vendorName,
+        orderDate: createdDateStr,
+        expectedShipmentDate: expectedDeliveryStr,
+        reference: peId != null ? `Planning PE-${peId}` : 'Planning — Items Involved',
+        paymentTerms,
+        status: 'Draft',
+        formData: {
+          source: PLANNING_DRAFT_PO_SOURCE,
+          plannedGroupKey: groupKey,
+          requestCode: 'Planning',
+          requestId: '',
+        },
+        items: [newApiItem],
+      });
+      if (!createRes.success || !createRes.data) {
+        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create draft PO');
+        return false;
+      }
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+    setReleaseToPlanningItem(null);
+    addToast('success', 'Added to Draft PO for review (Procurement → Draft POs).');
+    return true;
+  };
+
+  // Warehouse inventory → Items Involved: open Release to Planning with optional surplus qty prefilled.
+  useEffect(() => {
+    if (activeMainTab !== 'items-involved') return;
+    const st = (location.state ?? null) as {
+      openReleasePlanning?: { itemType: 'RM' | 'PM'; sourceId: number; nonce: number; surplusQty?: number };
+    } | null;
+    const payload = st?.openReleasePlanning;
+    if (!payload?.nonce) return;
+    if (warehouseReleaseHandledNonceRef.current === payload.nonce) return;
+    if (itemsInvolvedLoading) return;
+
+    warehouseReleaseHandledNonceRef.current = payload.nonce;
+
+    const { itemType, sourceId, surplusQty } = payload;
+    const match = itemsInvolved.find(
+      (r) =>
+        r.itemType === itemType &&
+        (itemType === 'RM' ? Number(r.raw_material_id) === Number(sourceId) : Number(r.pack_material_id) === Number(sourceId))
+    );
+    navigate(location.pathname, { replace: true, state: {} });
+    if (match) {
+      openReleaseToPlanningModal(match, surplusQty != null && surplusQty > 0 ? { preferSurplusQty: surplusQty } : undefined);
+    } else {
+      addToast('warning', 'This item is not in Items Involved yet. Confirm BOM in Plan Batches first.');
+    }
+    // openReleaseToPlanningModal is stable enough for this one-shot navigation; omit from deps to avoid extra runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run when items-involved data or nav state changes
+  }, [activeMainTab, itemsInvolvedLoading, itemsInvolved, location.pathname, location.state, navigate]);
+
   const handlePlanBatches = (order: SalesOrder) => {
     setSelectedSOForBatch(order);
-    setBatchesToSendIndices([]);
     setBomFormula((order.rawMaterials ?? []).map((rm) => ({ ...rm, specificGravity: (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1 })));
     setBomPackaging(order.packagingMaterials);
     setIsReadyForProduction(false);
@@ -1165,9 +1762,15 @@ const Planning = () => {
   /** Build PR items for a single batch and open PR modal (PR is per batch, not bulk). */
   const handleRaisePRForBatch = (order: SalesOrder, batchIndex: number) => {
     const batchSizeKg = parseFloat(order.batchSize?.replace(/\D/g, '') || '') || 500;
+    const batchLen =
+      order.customBatches?.length
+        ? order.customBatches.length
+        : order.batchCount != null && order.batchCount > 0
+          ? order.batchCount
+          : order.batchesRequired || 1;
     const batches = order.customBatches?.length
       ? order.customBatches
-      : Array.from({ length: order.batchCount ?? order.batchesRequired ?? 1 }, () => ({ sizeKg: batchSizeKg }));
+      : Array.from({ length: batchLen }, () => ({ sizeKg: batchSizeKg }));
     const sizeKgForBatch = batches[batchIndex]?.sizeKg ?? batchSizeKg;
     const scale = sizeKgForBatch / batchSizeKg;
 
@@ -1552,8 +2155,47 @@ const Planning = () => {
     setIsReadyForProduction(false);
     setCustomBatches([]);
     setExpandedBatchIndex(null);
-    setBatchesToSendIndices([]);
     setSelectedBatchId(null);
+  };
+
+  // Individual send button inside each batch breakdown card.
+  const handleSendBatchToProductionIndividually = async (batchIndex: number) => {
+    if (!selectedSOForBatch || !canSendToProduction) return;
+    if (!Number.isFinite(batchIndex) || batchIndex < 0) return;
+    if (!customBatches || batchIndex >= customBatches.length) return;
+
+    const alreadySent = (selectedSOForBatch.sentBatchIndices ?? []).includes(batchIndex);
+    if (alreadySent) {
+      addToast('info', `B-${String(batchIndex + 1).padStart(2, '0')} is already sent to Production.`);
+      return;
+    }
+
+    const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
+    try {
+      await updatePlanningExtracted(selectedSOForBatch.id, {
+        batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
+        batchSizeKg: customBatches.length > 0 ? customBatches[0].sizeKg : (parseFloat(batchSizeKg) || 500),
+        plannedStartDate: plannedStartDate || undefined,
+        productionLine: productionLine || undefined,
+        bomStatus: 'Production Released',
+        customBatches: customBatches.length > 0 ? customBatches : undefined,
+        sentBatchIndices: mergedSent,
+      });
+
+      if (customBatches.length > 0) {
+        await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+
+      addToast('success', `B-${String(batchIndex + 1).padStart(2, '0')} sent to Production`);
+      setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to send to Production');
+    }
   };
 
   // const handleRaisePRFromBatch = () => {
@@ -1861,6 +2503,13 @@ const Planning = () => {
         {/* PIs Extracted Tab Content */}
         {activeMainTab === 'pis-extracted' && (
           <>
+            {/* Order Management Header */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Order Management</h2>
+                <div className="text-xs text-gray-500 mt-0.5">Client PO → Internal SO → Ordered Products → Items involved (syncs to procurement)</div>
+              </div>
+            </div>
             {/* Tabs and Filter */}
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1904,75 +2553,155 @@ const Planning = () => {
             {!planningLoading && filteredPisOrders.length === 0 && (
               <div className="py-8 text-center text-gray-500 border border-gray-200 rounded-lg bg-white">No PRs extracted. Create SOs and they will appear here.</div>
             )}
-            <div className="space-y-4">
-              {filteredPisOrders.map((order) => (
-                <div
-                  key={order.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openDetailModal(order)}
-                  onKeyDown={(e) => e.key === 'Enter' && openDetailModal(order)}
-                  className="bg-white rounded-lg border border-gray-200 overflow-hidden cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all"
-                >
-                  <div className="w-full p-4 flex items-center gap-4">
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${order.color === 'pink' ? 'bg-pink-400' : order.color === 'orange' ? 'bg-orange-400' : order.color === 'blue' ? 'bg-blue-400' : 'bg-purple-400'
-                        }`}
-                    >
-                      {order.productName.charAt(0)}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">{order.productName}</h3>
-                        <span className="text-xs text-gray-500">{order.soNumber}</span>
-                        <select
-                          value={order.bomStatus}
-                          onChange={async (e) => {
-                            e.stopPropagation();
-                            const newStatus = e.target.value as SalesOrder['bomStatus'];
-                            try {
-                              await updatePlanningExtracted(order.id, { bomStatus: newStatus });
-                              queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
-                              addToast('success', 'Status updated');
-                            } catch (err) {
-                              addToast('error', err instanceof Error ? err.message : 'Failed to update status');
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className={`text-xs px-2 py-1 rounded border-0 cursor-pointer font-medium ${getStatusBadgeColor(order.bomStatus)}`}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1100px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">SO No</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Units</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Internal Progress</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer Status</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">MFG Records</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-700"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPisOrders.map((order) => {
+                      const createdCount = typeof order.batchCount === 'number' ? order.batchCount : 0;
+                      const requiredCount = Math.max(0, Number(order.batchesRequired ?? 0));
+                      const sentCount = (order.sentBatchIndices ?? []).length;
+                      // Internal progress metric:
+                      // - FG ready in SO (Production Ready) => 100%
+                      // - Sent to production (Production Released / sent batches exist) => 50%
+                      // - Batch created (has saved batches but not sent yet) => 25%
+                      // - Planned/none => 0%
+                      const isFgReady = order.bomStatus === 'Production Ready';
+                      const isSentToProduction = sentCount > 0 || order.bomStatus === 'Production Released';
+                      const isBatchesCreated = createdCount > 0;
+                      const internalProgressPct = isFgReady ? 100 : isSentToProduction ? 50 : isBatchesCreated ? 25 : 0;
+
+                      // For the helper text only (sent x/y), still keep the fraction.
+                      const sentPct = requiredCount > 0 ? Math.max(0, Math.min(100, Math.round((sentCount / requiredCount) * 100))) : 0;
+
+                      const todayISO = new Date().toISOString().slice(0, 10);
+                      const dueToday = order.dueDate === todayISO;
+                      const orderDateDisplay = (() => {
+                        const d = order.orderDate ? new Date(order.orderDate) : null;
+                        if (!d || Number.isNaN(d.getTime())) return '—';
+                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                      })();
+                      const dueDateDisplay = (() => {
+                        const d = order.dueDate ? new Date(order.dueDate) : null;
+                        if (!d || Number.isNaN(d.getTime())) return order.dueDate ?? '—';
+                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                      })();
+
+                      const dueTagBg = dueToday ? 'bg-red-100 text-red-700 border-red-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+
+                      const internalTag = createdCount <= 0
+                        ? { text: 'Planned', dot: 'bg-red-500', badge: 'bg-gray-100 text-gray-700 border-gray-200' }
+                        : sentCount <= 0
+                          ? order.bomStatus === 'Production Ready'
+                            ? { text: 'Approved', dot: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-200' }
+                            : { text: 'Batch Created', dot: 'bg-green-500', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+                          : { text: 'In Production', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200' };
+
+                      const customerTag = order.bomStatus === 'Planned'
+                        ? { text: 'Planned', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700 border-gray-200' }
+                        : order.bomStatus === 'In Progress'
+                          ? { text: 'In Production', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200' }
+                          : { text: 'Confirmed', dot: 'bg-green-500', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+
+                      // MFG records from production batches for this SO number.
+                      const prodForSo = (productionBatches as BatchRow[])
+                        .filter((b) => String(b.soNo ?? '').trim() === String(order.soNumber ?? '').trim());
+                      const bmrCount = prodForSo.filter((b) => (b.bmrNo ?? '').toString().trim() !== '').length;
+                      const bprCount = prodForSo.filter((b) => (b.bprNo ?? '').toString().trim() !== '').length;
+
+                      return (
+                        <tr
+                          key={order.id}
+                          onClick={() => openDetailModal(order)}
+                          className="border-b border-gray-100 hover:bg-emerald-50/60 cursor-pointer transition-colors"
                         >
-                          <option value="Planned">Planned</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Production Ready">Production Ready</option>
-                          <option value="Production Released">Production Released</option>
-                        </select>
-                      </div>
-                      <p className="text-sm text-gray-600">{order.productCode} · SO: {order.soNumber}</p>
-                      {(order.batchCount != null || (order.sentBatchIndices?.length ?? 0) > 0) && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Target: <span className="font-medium text-gray-700">{order.orderQty}</span>
-                          {' · '}
-                          Batches sent: <span className="font-medium text-emerald-700">{order.sentBatchIndices?.length ?? 0}</span>
-                          {(order.batchCount != null || order.batchesRequired != null) && (
-                            <span> / {order.batchCount ?? order.batchesRequired}</span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-8 mr-4">
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-900">{order.orderQty}</p>
-                        <p className="text-xs text-gray-500">{order.totalKg} total</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-700">{order.daysLeft}</p>
-                        <p className="text-xs text-gray-500">Due {order.dueDate}</p>
-                      </div>
-                    </div>
-                    <ChevronDown className="w-5 h-5 text-gray-400" />
-                  </div>
-                </div>
-              ))}
+                          <td className="px-4 py-3">
+                            <div className="font-mono font-semibold text-gray-900">{order.soNumber}</div>
+                            <div className="text-xs text-gray-500">{orderDateDisplay}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
+                            <div className="text-xs text-gray-500">{order.soStatus ?? order.productCode}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900">{order.orderQty}</div>
+                            <div className="text-xs text-gray-500">{order.totalKg} total</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[80px]">
+                                <div
+                                  className={`h-2 rounded-full ${internalProgressPct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${internalProgressPct}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-600 whitespace-nowrap">{internalProgressPct}%</span>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${internalTag.badge}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${internalTag.dot}`} />
+                                {internalTag.text}
+                              </span>
+                              {requiredCount > 0 && createdCount > 0 && (
+                                <span className="text-xs text-gray-500 whitespace-nowrap">
+                                  {sentCount}/{createdCount} sent ({sentPct}%)
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${customerTag.badge}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${customerTag.dot}`} />
+                              {customerTag.text}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {dueToday ? (
+                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${dueTagBg}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                Today
+                                <span className="text-xs text-gray-500 border-l pl-2 border-gray-200">{dueDateDisplay}</span>
+                              </span>
+                            ) : (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-600">{order.daysLeft}</span>
+                                <span className="text-xs text-gray-500">Due {dueDateDisplay}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {bmrCount} BMR · {bprCount} BPR
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDetailModal(order);
+                              }}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+                            >
+                              Open →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* Detail popup: full order details, RM/PM, Plan Batches & Raise PR */}
@@ -2177,23 +2906,32 @@ const Planning = () => {
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CODE</th>
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CAT</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">USED IN</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">BATCHES</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">TOTAL REQ</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">
+                        <span className="block">TOTAL REQ</span>
+                        <span className="block text-[9px] font-normal text-gray-500">RM · kg · PM · pcs</span>
+                      </th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">STOCK IN HAND</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">RESERVED</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">PLANNED QTY</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">IN TRANSIT</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REORDER PT</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">AVG/MO</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">QC / STATUS</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">SURPLUS/<br />SHORTAGE</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">NET</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">COVERAGE</th>
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">WH BATCHES</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">EXPIRY</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">BOM FLAG</th>
+                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
+                      (() => {
+                        const shortfall = item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum);
+                        const hasShortfall = shortfall > 0;
+                        const hasExistingPlannedLine = hasPlannedLineForItem(item);
+                        return (
                       <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-2 py-2">
                           <div className="text-gray-900 font-medium text-xs">{item.name}</div>
@@ -2211,16 +2949,19 @@ const Planning = () => {
                           </span>
                         </td>
                         <td className="px-2 py-2 text-center">
-                          <div className="w-5 h-5 bg-pink-100 rounded-full flex items-center justify-center mx-auto">
+                          <button
+                            type="button"
+                            onClick={() => setUsedInModalItem(item)}
+                            className="w-5 h-5 bg-pink-100 hover:bg-pink-200 rounded-full flex items-center justify-center mx-auto transition-colors"
+                            title="Click to view batches using this item"
+                          >
                             <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-center text-gray-700 text-xs font-medium" title="Production batches using this item">
-                          {item.batchCount}
+                          </button>
                         </td>
                         <td className="px-2 py-2 text-right text-gray-900 text-xs">{item.totalReq}</td>
                         <td className="px-2 py-2 text-right text-orange-600 font-medium text-xs">{item.sih}</td>
                         <td className="px-2 py-2 text-right text-amber-700 text-xs">{item.reserved}</td>
+                        <td className="px-2 py-2 text-right text-blue-700 text-xs">{item.plannedQty}</td>
                         <td className="px-2 py-2 text-right text-rose-600 text-xs">{item.inTransit}</td>
                         <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.reorderPt}</td>
                         <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.avgMo}</td>
@@ -2231,9 +2972,9 @@ const Planning = () => {
                           {item.status === 'Out of Stock' && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>}
                           {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
                         </td>
-                        <td className={`px-2 py-2 text-right font-semibold text-xs ${item.surplusShortage.includes('-') ? 'text-red-600' : 'text-green-600'
+                        <td className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
                           }`}>
-                          {item.surplusShortage}
+                          {item.net}
                         </td>
                         <td className="px-2 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -2245,7 +2986,29 @@ const Planning = () => {
                         <td className="px-2 py-2 text-gray-900 text-xs">{item.whBatches}</td>
                         <td className="px-2 py-2 text-center text-gray-600 text-xs">{item.expiry}</td>
                         <td className="px-2 py-2 text-center text-gray-500 text-xs">{item.bomFlag}</td>
+                        <td className="px-2 py-2 text-center">
+                          <div className="flex flex-col items-center gap-1 min-w-[7rem]">
+                            {hasShortfall && hasExistingPlannedLine && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                title="At least one planned line exists for this item; you can add another release."
+                              >
+                                Planned line
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={!hasShortfall}
+                              onClick={() => openReleaseToPlanningModal(item)}
+                            >
+                              Release to Planning
+                            </button>
+                          </div>
+                        </td>
                       </tr>
+                        );
+                      })()
                     ))}
                   </tbody>
                 </table>
@@ -2302,7 +3065,6 @@ const Planning = () => {
 
                         // Set selected SO first
                         setSelectedSOForBatch(soToUse);
-                        setBatchesToSendIndices([]);
 
                         // Initialize batch data
                         setNumBatches(soToUse.batchesRequired.toString());
@@ -2342,6 +3104,312 @@ const Planning = () => {
 
       </div>
 
+      {/* Used In popup: list sent batches that consume selected RM/PM */}
+      {usedInModalItem && (() => {
+        const rows = getUsedInBatchesForItem(usedInModalItem);
+        return (
+          <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-4xl rounded-xl shadow-xl border border-gray-200 max-h-[85vh] overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Batches using {usedInModalItem.code}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{usedInModalItem.name} ({usedInModalItem.itemType})</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUsedInModalItem(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-4 overflow-auto max-h-[70vh]">
+                {rows.length === 0 ? (
+                  <div className="text-sm text-gray-500 p-6 text-center">No sent batches found for this item.</div>
+                ) : (
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Batch Code</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">SO</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Product</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Batch Size</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Required ({usedInModalItem.unit})</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, idx) => (
+                        <tr key={`${row.id}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-3 py-2 text-gray-900">{row.batchCode ?? `B-${idx + 1}`}</td>
+                          <td className="px-3 py-2 text-gray-700">{row.soNumber ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
+                          <td className="px-3 py-2 text-right text-gray-700">{(Number(row.sizeKg) || 0).toLocaleString()} KG</td>
+                          <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                            {Math.round(getItemRequiredInBatch(usedInModalItem, row)).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Release to Planned modal */}
+      {releaseToPlanningItem && (() => {
+        const item = releaseToPlanningItem;
+        const slabs = getQuotationSlabsForItem(item);
+        const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
+        const previous = plannedLinesFromBackend
+          .filter((l) => plannedLineMatchesItemsInvolvedRow(l, item))
+          .slice(0, 10);
+        const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum));
+        return (
+          <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Release to PO Planned Stage</h2>
+                  <p className="text-xs text-slate-600 mt-0.5">Pick vendor & MOQ price, choose qty, set payment terms. Creates planned lines grouped by vendor.</p>
+                </div>
+                <button type="button" onClick={() => setReleaseToPlanningItem(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
+              </div>
+              <div className="p-5 overflow-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="font-bold text-slate-900 text-sm mb-1">{item.name} <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.code}</span></h3>
+                    <p className="text-xs text-slate-500 mb-3">{item.itemType} · {item.unit} · Gap {Math.round(shortfall).toLocaleString()} {item.unit}</p>
+                    <div className="border-t border-slate-200 my-3" />
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500 border-b border-slate-200">
+                          <th className="text-left py-2 font-medium">Vendor</th>
+                          <th className="text-left py-2 font-medium">MOQ</th>
+                          <th className="text-right py-2 font-medium">Unit ₹</th>
+                          <th className="text-right py-2 font-medium">Lead</th>
+                          <th className="w-16" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {slabs.map((s, i) => (
+                          <tr key={`${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`} className="border-b border-slate-100">
+                            <td className="py-2 font-medium text-slate-900">{s.vendorName}</td>
+                            <td className="py-2 text-slate-700">{s.moq || '—'}</td>
+                            <td className="py-2 text-right font-medium">₹{s.unitPrice.toLocaleString('en-IN')}</td>
+                            <td className="py-2 text-right text-slate-700">{s.leadTimeDays}d</td>
+                            <td className="py-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const p = parsePaymentTermsString(s.paymentTerms || '');
+                                  setReleaseToPlanningForm((f) => ({
+                                    ...f,
+                                    vendorId: s.vendorId,
+                                    vendorName: s.vendorName,
+                                    moq: s.moq,
+                                    unitPrice: String(s.unitPrice),
+                                    paymentTermsType: p.type,
+                                    advancePercent: String(
+                                      p.advancePercent ||
+                                        (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                    ),
+                                    leadTimeDays: s.leadTimeDays,
+                                  }));
+                                }}
+                                className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
+                              >
+                                Pick
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {slabs.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-500">No quotations found for this item in Procurement &gt; Quotations.</td></tr>}
+                      </tbody>
+                    </table>
+                    <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
+                        <select
+                          value={releaseToPlanningForm.vendorName}
+                          onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, vendorName: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">— Select —</option>
+                          {vendorOptions.map((v) => (<option key={v} value={v}>{v}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={releaseToPlanningForm.moq || ''}
+                          onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, moq: Number(e.target.value || 0) }))}
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Quantity</label>
+                        <input type="number" min={0} value={releaseToPlanningForm.qty} onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, qty: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Unit price (₹)</label>
+                        <input type="number" min={0} value={releaseToPlanningForm.unitPrice} onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, unitPrice: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
+                        <select
+                          value={releaseToPlanningForm.paymentTermsType}
+                          onChange={(e) =>
+                            setReleaseToPlanningForm((f) => ({
+                              ...f,
+                              paymentTermsType: e.target.value as PaymentTermsStructuredType,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
+                        <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlanningForm.leadTimeDays} days</div>
+                      </div>
+                    </div>
+                    {paymentTermsTypeRequiresAdvancePercent(releaseToPlanningForm.paymentTermsType) && (
+                      <div className="mb-3">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Advance %</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={releaseToPlanningForm.advancePercent}
+                          onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, advancePercent: e.target.value }))}
+                          className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    )}
+                    {/* <div className="flex gap-2 mb-3">
+                      <button type="button" onClick={() => setReleaseToPlanningForm((f) => ({ ...f, qty: String(shortfall) }))} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">Prefill qty = Gap</button>
+                      <button
+                        type="button"
+                        disabled={releaseToPlanningSaving}
+                        onClick={async () => {
+                          setReleaseToPlanningSaving(true);
+                          try {
+                            await addPlannedLine();
+                          } finally {
+                            setReleaseToPlanningSaving(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        Add to Planned
+                      </button>
+                    </div> */}
+                    <div className="border-t border-slate-200 my-3" />
+                    <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500 border-b border-slate-200">
+                          <th className="text-left py-1 font-medium">Date</th>
+                          <th className="text-left py-1 font-medium">Vendor</th>
+                          <th className="text-right py-1 font-medium">Qty</th>
+                          <th className="text-right py-1 font-medium">Unit ₹</th>
+                          <th className="text-right py-1 font-medium">Pick</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previous.map((r, i) => (
+                          <tr key={`${r.createdAt}-${i}`} className="border-b border-slate-100">
+                            <td className="py-1.5 text-slate-700">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="py-1.5 text-slate-700">{r.vendorName}</td>
+                            <td className="py-1.5 text-right text-slate-700">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
+                            <td className="py-1.5 text-right font-medium">₹{r.unitPrice.toLocaleString('en-IN')}</td>
+                            <td className="py-1.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const p = parsePaymentTermsString(r.paymentTerms || '');
+                                  setReleaseToPlanningForm((f) => ({
+                                    ...f,
+                                    vendorId: r.vendorId,
+                                    vendorName: r.vendorName,
+                                    moq: r.moq,
+                                    qty: String(r.qty),
+                                    unitPrice: String(r.unitPrice),
+                                    paymentTermsType: p.type,
+                                    advancePercent: String(
+                                      p.advancePercent ||
+                                        (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                    ),
+                                    leadTimeDays: r.leadTimeDays,
+                                  }));
+                                }}
+                                className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
+                              >
+                                Pick
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {purchaseOrdersLoading && (
+                          <tr>
+                            <td colSpan={5} className="py-3 text-center text-slate-500">
+                              Loading previous picks...
+                            </td>
+                          </tr>
+                        )}
+                        {!purchaseOrdersLoading && previous.length === 0 && (
+                          <tr><td colSpan={5} className="py-3 text-center text-slate-500">No previous picks for this item.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                <p className="text-xs text-slate-500">Planned stage is the transition stage before Draft POs and splitting/releasing.</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setReleaseToPlanningItem(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+                  <button
+                    type="button"
+                    disabled={releaseToPlanningSaving}
+                    onClick={async () => {
+                      setReleaseToPlanningSaving(true);
+                      try {
+                        const ok = await addPlannedLine();
+                        if (ok) setReleaseToPlanningItem(null);
+                      } finally {
+                        setReleaseToPlanningSaving(false);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Add Planned Line
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Batch detail modal: items with SIH, Reserved, Available, Shortfall, PR per row (PR raised against batch id) */}
       {batchForDetailModal && (() => {
         const batch = batchForDetailModal;
@@ -2354,18 +3422,6 @@ const Planning = () => {
         const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
         type BatchDetailRow = { id: string; type: 'RM' | 'PM'; name: string; code: string; required: number; unit: string; sih: number; reserved: number; available: number; shortfall: number; raw_material_id?: number; pack_material_id?: number };
         const rows: BatchDetailRow[] = [];
-        const prRaisedForBatchItem = (row: BatchDetailRow) =>
-          procurementRequests.some(
-            (pr) =>
-              Number(pr.planningBatchId) === Number(batch.id) &&
-              Array.isArray(pr.items) &&
-              pr.items.some(
-                (item: { raw_material_id?: number; pack_material_id?: number }) =>
-                  row.type === 'RM'
-                    ? item.raw_material_id === row.raw_material_id
-                    : item.pack_material_id === row.pack_material_id
-              )
-          );
         (batch.rmLines || []).forEach((line: BatchRmLine, idx: number) => {
           const code = line.rm_code || (line as { code?: string }).code || '';
           const rm = rmByCode.get(code.toLowerCase()) ?? rawMaterialsList.find((r) => r.code === code || r.name === (line.inci_name ?? (line as { name?: string }).name));
@@ -2428,7 +3484,7 @@ const Planning = () => {
                 </button>
               </div>
               <p className="px-4 pt-2 text-xs text-gray-600">
-                {batch.productName ?? batch.productCode ?? '—'} · SO {batch.soNumber ?? '—'} · Size {sizeKg} kg · Raise PR for shortfalls (PR linked to this batch).
+                {batch.productName ?? batch.productCode ?? '—'} · SO {batch.soNumber ?? '—'} · Size {sizeKg} kg.
               </p>
               <div className="p-4 overflow-x-auto max-h-[70vh]">
                 <table className="w-full text-sm">
@@ -2441,7 +3497,6 @@ const Planning = () => {
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Available</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Shortfall</th>
-                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2459,33 +3514,6 @@ const Planning = () => {
                         <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.available.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono font-semibold">{row.shortfall > 0 ? <span className="text-red-600">{row.shortfall.toLocaleString()}</span> : '—'}</td>
-                        <td className="px-3 py-2 text-center">
-                          {row.shortfall > 0 && (row.raw_material_id != null || row.pack_material_id != null) ? (
-                            prRaisedForBatchItem(row) ? (
-                              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                PR raised
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBatchPrModal({ batch, row: { id: row.id, type: row.type, name: row.name, code: row.code, required: row.required, unit: row.unit, sih: row.sih, shortfall: row.shortfall, raw_material_id: row.raw_material_id, pack_material_id: row.pack_material_id } });
-                                  setBatchPrQty(row.shortfall);
-                                  setBatchPrPriority('High');
-                                  setBatchPrRequiredBy(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
-                                  setBatchPrNotes(`Batch ${batch.batchCode ?? `#${batch.id}`}: ${row.name} (${row.code})`);
-                                }}
-                                className="px-2 py-1 bg-amber-100 text-amber-800 rounded font-semibold text-xs hover:bg-amber-200"
-                              >
-                                Raise PR
-                              </button>
-                            )
-                          ) : row.shortfall > 0 ? (
-                            <span className="text-gray-400 text-xs">—</span>
-                          ) : (
-                            <span className="text-emerald-600 text-xs font-medium">OK</span>
-                          )}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -3046,19 +4074,6 @@ const Planning = () => {
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
                         <div className="flex items-center gap-2">
-                          {canSendToProduction && customBatches.some((_, idx) => !(selectedSOForBatch?.sentBatchIndices ?? []).includes(idx)) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const unsent = customBatches.map((_, i) => i).filter((i) => !(selectedSOForBatch?.sentBatchIndices ?? []).includes(i));
-                                const allSelected = unsent.every((i) => batchesToSendIndices.includes(i));
-                                setBatchesToSendIndices(allSelected ? [] : [...new Set([...batchesToSendIndices, ...unsent])]);
-                              }}
-                              className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
-                            >
-                              {customBatches.every((_, idx) => (selectedSOForBatch?.sentBatchIndices ?? []).includes(idx) || batchesToSendIndices.includes(idx)) ? 'Deselect all' : 'Select all unsent'}
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => addBatch()}
@@ -3085,24 +4100,12 @@ const Planning = () => {
                           const isExpanded = expandedBatchIndex === idx;
                           const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                           const isSent = sentBatchIndices.includes(idx);
-                          const isChecked = batchesToSendIndices.includes(idx);
                           const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
                           const rmReqs = isExpanded ? getBatchRmRequirementsForBatchIndex(batch.sizeKg, idx) : [];
                           const pmReqs = isExpanded ? getBatchPmRequirementsForBatchIndex(batch.sizeKg, idx) : [];
                           return (
                             <div key={idx} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
                               <div className="flex items-center gap-3 p-4">
-                                {canSendToProduction && !isSent && (
-                                  <label className="flex items-center gap-1.5 shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => setBatchesToSendIndices((prev) => prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx])}
-                                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <span className="text-xs font-medium text-gray-700">Send</span>
-                                  </label>
-                                )}
                                 {isSent && (
                                   <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
                                 )}
@@ -3132,11 +4135,23 @@ const Planning = () => {
                                     min={0}
                                   />
                                   <span className="text-xs font-semibold text-gray-600">units</span>
+                                  {!isSent && canSendToProduction && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSendBatchToProductionIndividually(idx);
+                                      }}
+                                      className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                      Send B-{String(idx + 1).padStart(2, '0')}
+                                    </button>
+                                  )}
                                   {!isSent && (
                                     <button
                                       type="button"
                                       onClick={() => removeBatch(idx)}
-                                      className="ml-2 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                      className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
                                     >
                                       <X size={14} />
                                     </button>
@@ -3360,7 +4375,7 @@ const Planning = () => {
             {/* Modal Footer */}
             <div className="border-t border-gray-200 p-6 flex gap-3 justify-between">
               <button
-                onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); setBatchesToSendIndices([]); }}
+                onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
                 className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
               >
                 Cancel
@@ -3369,27 +4384,18 @@ const Planning = () => {
                 {/* <button onClick={() => handleRaisePRFromBatch()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-yellow-500 hover:bg-yellow-600 transition-colors">
                   Raise PR for Shortages
                 </button> */}
-                <button onClick={() => handleConfirmBOM()} disabled={canSendToProduction} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                  {canSendToProduction ? 'BOM Confirmed' : 'Confirm BOM'}
-                </button>
-                {canSendToProduction && (() => {
-                  const sendSelectedIndex = selectedBatchId != null && planningBatches.length > 0
-                    ? (planningBatches as PlanningBatchRow[]).findIndex((b) => b.id === selectedBatchId)
-                    : -1;
-                  const sendLabel = sendSelectedIndex >= 0
-                    ? `Send B-${String(sendSelectedIndex + 1).padStart(2, '0')} to Production`
-                    : 'Send to Production';
-                  const alreadySent = sendSelectedIndex >= 0 && (selectedSOForBatch?.sentBatchIndices ?? []).includes(sendSelectedIndex);
-                  return (
-                    <button
-                      onClick={() => handleSendToProduction()}
-                      disabled={sendSelectedIndex < 0 || alreadySent}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {alreadySent ? `${sendLabel} (already sent)` : sendLabel}
-                    </button>
-                  );
-                })()}
+                {!canSendToProduction ? (
+                  <button
+                    onClick={() => handleConfirmBOM()}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                  >
+                    Confirm BOM
+                  </button>
+                ) : (
+                  <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
+                    BOM Confirmed
+                  </span>
+                )}
               </div>
             </div>
           </div>

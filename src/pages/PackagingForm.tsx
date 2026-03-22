@@ -80,6 +80,7 @@ const PackagingRefactored: React.FC = () => {
     qcGroup: '',
     subCategory: '',
     storeLoc: '',
+    zohoId: '',
     pkgSku: '',
     pkgUnit: 'PCS',
     pkgHsn: '',
@@ -112,6 +113,16 @@ const PackagingRefactored: React.FC = () => {
     specWeight: '',
     specWall: '',
     specLink: '',
+
+    // Bulk quality specifications (aligned with RM master — shown in Production BMR Bulk QC)
+    assayPurity: '',
+    appearanceSpec: '',
+    phSpec: '',
+    moistureLod: '',
+    heavyMetalsSpec: '',
+    microbialSpec: '',
+    odorColorSpec: '',
+    otherSpecs: '',
 
     // Section 3 – Aesthetics
     colorType: '',
@@ -322,8 +333,9 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const buildPayload = () => {
-    const code = generatedCode || formData.itemCode;
+    const code = formData.itemCode || generatedCode;
     const firstVendor = formData.vendors[0];
+    const skuForZoho = formData.pkgSku?.trim() ? formData.pkgSku.trim() : code;
     return {
       code,
       description: formData.name || `PM Item ${code}`,
@@ -336,11 +348,14 @@ const PackagingRefactored: React.FC = () => {
       moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
       lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
       print_status: formData.deco || undefined,
-      zohoId: formData.zohoId ?? undefined,
-      sku: formData.pkgSku ?? undefined,
-      hsnCode: formData.pkgHsn ?? undefined,
-      unit: formData.pkgUnit ?? undefined,
+      zohoId: formData.zohoId?.trim() ? formData.zohoId.trim() : undefined,
+      sku: skuForZoho,
+      hsnCode: formData.pkgHsn?.trim() ? formData.pkgHsn.trim() : undefined,
+      unit: formData.pkgUnit?.trim() ? formData.pkgUnit.trim() : undefined,
       taxPref: formData.pkgTaxPreference ?? undefined,
+      pkgReturnable: formData.pkgReturnable,
+      pkgAssociateItems: formData.pkgAssociateItems?.trim() ? formData.pkgAssociateItems.trim() : undefined,
+      form_data: { ...formData, itemCode: code },
     };
   };
 
@@ -476,11 +491,18 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Basic Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <InputField
-                  label="SKU / Internal Code"
-                  id="pkgSku"
-                  value={formData.pkgSku}
+                  label="SKU"
+                  id="itemCode"
+                  value={formData.itemCode}
                   onChange={handleInputChange}
-                  placeholder="Internal code used in ERP (e.g. PKG-000123)"
+                  placeholder="Internal code used in ERP (e.g. EI-PM-PRI-000123)"
+                />
+                <InputField
+                  label="Zoho ID"
+                  id="zohoId"
+                  value={formData.zohoId}
+                  onChange={handleInputChange}
+                  placeholder="Zoho item id (sync TODO)"
                 />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
@@ -489,6 +511,13 @@ const PackagingRefactored: React.FC = () => {
                     {['PCS', 'GM', 'ML', 'L', 'KG'].map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+                <InputField
+                  label="SKU (for Zoho)"
+                  id="pkgSku"
+                  value={formData.pkgSku}
+                  onChange={handleInputChange}
+                  placeholder="Optional; defaults to SKU above"
+                />
                 <InputField
                   label="HSN Code"
                   id="pkgHsn"
@@ -687,6 +716,20 @@ const PackagingRefactored: React.FC = () => {
                   onChange={handleInputChange}
                   placeholder="Link to drawing / spec sheet"
                 />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Bulk quality specifications</h3>
+              <p className="text-[11px] text-gray-500 mb-3">Same fields as raw materials; used as reference during BMR Bulk QC for this PM.</p>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField label="Assay / Purity %" id="assayPurity" value={formData.assayPurity} onChange={handleInputChange} placeholder="e.g. NLT 98%" />
+                <InputField label="Appearance spec" id="appearanceSpec" value={formData.appearanceSpec} onChange={handleInputChange} placeholder="e.g. Clear, no defects" />
+                <InputField label="pH range" id="phSpec" value={formData.phSpec} onChange={handleInputChange} placeholder="e.g. 5.0 – 7.0" />
+                <InputField label="Moisture / LOD %" id="moistureLod" value={formData.moistureLod} onChange={handleInputChange} placeholder="e.g. NMT 2%" />
+                <InputField label="Heavy metals" id="heavyMetalsSpec" value={formData.heavyMetalsSpec} onChange={handleInputChange} placeholder="e.g. Pb, As, Cd limits" />
+                <InputField label="Microbial" id="microbialSpec" value={formData.microbialSpec} onChange={handleInputChange} placeholder="e.g. TAMC / TYMC limits" />
+                <InputField label="Odor & color" id="odorColorSpec" value={formData.odorColorSpec} onChange={handleInputChange} placeholder="e.g. Characteristic odour" />
+                <InputField label="Other specifications" id="otherSpecs" value={formData.otherSpecs} onChange={handleInputChange} placeholder="Any additional criteria" />
               </div>
             </div>
           </div>
@@ -954,8 +997,10 @@ const PackagingRefactored: React.FC = () => {
       if (cancelled) return;
       setEditPmLoading(false);
       if (!pm) return;
+      const fd = 'form_data' in pm && pm.form_data && typeof pm.form_data === 'object' ? (pm.form_data as Record<string, unknown>) : null;
       setFormData((prev) => ({
         ...prev,
+        ...(fd ? (fd as typeof prev) : {}),
         itemCode: pm.code,
         name: pm.description || '',
         itemCategory: pm.type || '',
@@ -964,10 +1009,13 @@ const PackagingRefactored: React.FC = () => {
         matBody: pm.material || '',
         specNominal: pm.sizeSpec || '',
         deco: pm.printStatus || '',
+        zohoId: pm.zohoId ?? '',
         pkgSku: pm.sku ?? '',
         pkgHsn: pm.hsnCode ?? '',
         pkgUnit: pm.unit ?? 'PCS',
         pkgTaxPreference: pm.taxPref ?? 'Taxable',
+        pkgReturnable: pm.pkgReturnable ?? false,
+        pkgAssociateItems: pm.pkgAssociateItems ?? '',
         vendors: [{ name: '', location: '', moq: pm.moq ?? 0, price: pm.pricePerPc ?? 0, leadTime: pm.leadTimeDays ?? 0, approved: '', priceType: '', validTill: '', sampleCost: 0 }],
       }));
       setGeneratedCode(pm.code);

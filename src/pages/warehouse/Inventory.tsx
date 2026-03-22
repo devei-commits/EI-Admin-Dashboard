@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
 import {
   fetchWarehouseInventory,
@@ -6,6 +7,7 @@ import {
   fetchRackLocations,
   fetchUsageStats,
 } from '../../services/warehouseInventory.service';
+import { fetchItemsInvolved } from '../../services/planningExtracted.service';
 import type {
   WarehouseLocationHistoryEntry,
   RackLocationEntry,
@@ -41,6 +43,8 @@ export interface InventoryItem {
   itemGroupCodes?: string[];
   /** Backend warehouse_inventory.id for persisting adjust stock */
   warehouseInventoryId?: number;
+  /** raw_material_id (RM) or pack_material_id (PM) from warehouse row */
+  sourceId?: number;
   batchNumber?: string;
   expiryDate?: string;
   manufacturer?: string;
@@ -430,14 +434,14 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       alert('Location name is required');
       return;
     }
 
     onAdd(formData);
-    
+
     // Reset form
     setFormData({
       name: '',
@@ -448,7 +452,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
       maxCapacity: '',
       icon: '',
     });
-    
+
     onClose();
   };
 
@@ -485,7 +489,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Location Name *
                 </label>
-                <input 
+                <input
                   type="text"
                   name="name"
                   value={formData.name}
@@ -501,7 +505,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Zone Code
                 </label>
-                <input 
+                <input
                   type="text"
                   name="zoneCode"
                   value={formData.zoneCode}
@@ -537,7 +541,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Area (SQM)
                 </label>
-                <input 
+                <input
                   type="text"
                   name="area"
                   value={formData.area}
@@ -553,7 +557,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
               <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                 Temperature / Storage Conditions
               </label>
-              <input 
+              <input
                 type="text"
                 name="temperature"
                 value={formData.temperature}
@@ -569,7 +573,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Max Capacity (KG / UNITS)
                 </label>
-                <input 
+                <input
                   type="text"
                   name="maxCapacity"
                   value={formData.maxCapacity}
@@ -584,7 +588,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Icon
                 </label>
-                <input 
+                <input
                   type="text"
                   name="icon"
                   value={formData.icon}
@@ -598,7 +602,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
@@ -637,14 +641,14 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.zoneLocation || !formData.bayCode) {
       alert('Zone/Location and Bay Code are required');
       return;
     }
 
     onAdd(formData);
-    
+
     // Reset form
     setFormData({
       zoneLocation: '',
@@ -654,7 +658,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
       slotsPerLevel: 4,
       condition: 'ambient',
     });
-    
+
     onClose();
   };
 
@@ -724,7 +728,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Bay Code *
                 </label>
-                <input 
+                <input
                   type="text"
                   name="bayCode"
                   value={formData.bayCode}
@@ -741,7 +745,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
               <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                 Rack Name
               </label>
-              <input 
+              <input
                 type="text"
                 name="rackName"
                 value={formData.rackName}
@@ -757,7 +761,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   No. of Levels
                 </label>
-                <input 
+                <input
                   type="number"
                   name="levels"
                   value={formData.levels}
@@ -773,7 +777,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
                   Slots per Level
                 </label>
-                <input 
+                <input
                   type="number"
                   name="slotsPerLevel"
                   value={formData.slotsPerLevel}
@@ -806,7 +810,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
@@ -886,6 +890,7 @@ function rowToInventoryItem(row: {
   name: string;
   subtitle: string;
   type: 'RM' | 'PM' | 'FG/PR';
+  sourceId: number;
   itemGroupNames: string[];
   itemGroupCodes: string[];
   zone: string;
@@ -910,6 +915,7 @@ function rowToInventoryItem(row: {
     name: row.name,
     subtitle: row.subtitle,
     type: row.type,
+    sourceId: Number(row.sourceId) > 0 ? Number(row.sourceId) : undefined,
     zone: row.zone,
     rack: row.rack,
     whStock: row.whStock,
@@ -931,6 +937,7 @@ function rowToInventoryItem(row: {
 }
 
 const WarehouseInventory = () => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
   const [viewMode, setViewMode] = useState<'current' | 'history' | 'usage'>('current');
@@ -956,6 +963,10 @@ const WarehouseInventory = () => {
   } | null>(null);
   const [rackLocations, setRackLocations] = useState<RackLocationEntry[]>([]);
   const [rackLocationsLoading, setRackLocationsLoading] = useState(false);
+  /** Planning Items Involved totals keyed as RM-{id} / PM-{id} (matches warehouse sourceId). */
+  const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { totalRequired: number; unit: string }>>(
+    () => new Map()
+  );
   const hoverCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleLocationPopoverClose = () => {
@@ -992,13 +1003,13 @@ const WarehouseInventory = () => {
     };
   }, [locationPopover?.item?.id, locationPopover?.item?.warehouseInventoryId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetchWarehouseInventory()
+  const loadWarehouseInventory = useCallback((silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+    return fetchWarehouseInventory()
       .then((res) => {
-        if (cancelled) return;
         if (res.success && res.data) {
           const items = res.data.rows.map(rowToInventoryItem);
           setInventoryData(items);
@@ -1006,17 +1017,59 @@ const WarehouseInventory = () => {
             (res.data.itemGroups || []).map((g) => ({ id: g.id, code: g.code, name: g.name || g.code }))
           );
           if (typeof console !== 'undefined' && console.log) {
-            console.log('[Warehouse Inventory] Loaded', { count: items.length, sample: items[0] });
+            console.log('[Warehouse Inventory] Loaded', { count: items.length, sample: items[0], silent });
           }
-        } else {
+        } else if (!silent) {
           setError(res.error || 'Failed to load inventory');
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err?.message || 'Failed to load inventory');
+        if (!silent) setError(err?.message || 'Failed to load inventory');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!silent) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadWarehouseInventory(false);
+  }, [loadWarehouseInventory]);
+
+  // After BMR dispensing / MTR / GRN on another page or tab, refresh MU (ML1/ML2) without a full reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        loadWarehouseInventory(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadWarehouseInventory]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchItemsInvolved()
+      .then((rows) => {
+        if (cancelled) return;
+        const m = new Map<string, { totalRequired: number; unit: string }>();
+        for (const r of rows) {
+          if (r.type === 'RM' && r.raw_material_id != null) {
+            m.set(`RM-${Number(r.raw_material_id)}`, {
+              totalRequired: Number(r.totalRequired) || 0,
+              unit: String(r.unit || 'KG'),
+            });
+          }
+          if (r.type === 'PM' && r.pack_material_id != null) {
+            m.set(`PM-${Number(r.pack_material_id)}`, {
+              totalRequired: Number(r.totalRequired) || 0,
+              unit: String(r.unit || 'PCS'),
+            });
+          }
+        }
+        setPlanningTotalsByKey(m);
+      })
+      .catch(() => {
+        if (!cancelled) setPlanningTotalsByKey(new Map());
       });
     return () => {
       cancelled = true;
@@ -1272,33 +1325,30 @@ const WarehouseInventory = () => {
                 <button
                   type="button"
                   onClick={() => setViewMode('current')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-                    viewMode === 'current'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'current'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
                 >
                   Main Inventory
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('history')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-                    viewMode === 'history'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'history'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
                 >
                   Inventory History
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('usage')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-                    viewMode === 'usage'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'usage'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
                 >
                   Usage
                 </button>
@@ -1317,11 +1367,10 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                      activeFilter === filter.key
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
                   >
                     {filter.label}
                   </button>
@@ -1355,11 +1404,10 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                      activeFilter === filter.key
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
                   >
                     {filter.label}
                   </button>
@@ -1381,14 +1429,14 @@ const WarehouseInventory = () => {
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               </div>
-              <button 
+              <button
                 onClick={() => setIsLocationModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
               >
                 <MapPin className="w-4 h-4" />
                 Location
               </button>
-              <button 
+              <button
                 onClick={() => setIsRackModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
               >
@@ -1560,194 +1608,252 @@ const WarehouseInventory = () => {
             )}
           </div>
         ) : (
-        <>
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Code
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Item Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Item groups
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    WH Stock
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    ML1 Stock
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    ML2 Stock
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Stock in Hand
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Reserved
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    In Transit
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    PO Qty
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Reorder PT
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Avg/MO
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    QC / Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredItems.map(item => (
-                  <tr
-                    key={item.id}
-                    onClick={() => setSelectedItem(item)}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-cyan-600">{item.code}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-semibold text-gray-900">{item.name}</div>
-                      <div className="text-xs text-gray-500">{item.subtitle}</div>
-                    </td>
-                    <td className="px-4 py-3">{getTypeBadge(item.type)}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600">
-                        {item.itemGroupNames?.length ? item.itemGroupNames.join(', ') : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StockLocationCell
-                        item={item}
-                        type="wh"
-                        value={`${item.whStock} ${item.whUnit}`}
-                        className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer hover:ring-2 hover:ring-teal-300"
-                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                        onHoverLeave={scheduleLocationPopoverClose}
-                      />
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StockLocationCell
-                        item={item}
-                        type="ml1"
-                        value={String(item.ml1Stock)}
-                        className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer hover:ring-2 hover:ring-blue-300"
-                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                        onHoverLeave={scheduleLocationPopoverClose}
-                      />
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StockLocationCell
-                        item={item}
-                        type="ml2"
-                        value={String(item.ml2Stock)}
-                        className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer hover:ring-2 hover:ring-indigo-300"
-                        onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                        onHoverLeave={scheduleLocationPopoverClose}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
-                        <span className="font-semibold text-sm">{item.reserved}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="relative inline-block">
-                        <button
-                          type="button"
-                          onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
-                          className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+          <>
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Code
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Item Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Item groups
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        WH Stock
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        ML1 Stock
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        ML2 Stock
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <span className="block">Total req</span>
+                        <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">Planning · RM kg</span>
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Stock in Hand
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Reserved
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        In Transit
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        PO Qty
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Reorder PT
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Avg/MO
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        QC / Status
+                      </th>
+                      {/* <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Planning
+                      </th> */}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredItems.map((item) => {
+                      const planKey =
+                        (item.type === 'RM' || item.type === 'PM') && item.sourceId != null && item.sourceId > 0
+                          ? `${item.type}-${item.sourceId}`
+                          : null;
+                      const plan = planKey ? planningTotalsByKey.get(planKey) : undefined;
+                      const canReleaseToPlanning =
+                        plan != null && (item.type === 'RM' || item.type === 'PM') && plan.totalRequired < item.stockInHand;
+
+                      return (
+                        <tr
+                          key={item.id}
+                          onClick={() => setSelectedItem(item)}
+                          className="hover:bg-gray-50 transition-colors cursor-pointer"
                         >
-                          {item.inTransit} {item.whUnit}
-                          {(item.inTransitBreakdown?.length ?? 0) > 0 && (
-                            <span className="ml-1 text-red-500" aria-hidden>▼</span>
-                          )}
-                        </button>
-                        {inTransitPopoverItem?.id === item.id && (item.inTransitBreakdown?.length ?? 0) > 0 && (
-                          <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
-                            <div className="text-xs font-semibold text-gray-700 mb-2">Vendor · PO · Expected</div>
-                            <ul className="space-y-2">
-                              {item.inTransitBreakdown!.map((b, idx) => (
-                                <li key={idx} className="text-xs text-gray-600 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
-                                  <span className="font-medium text-gray-800">{b.vendor || '—'}</span>
-                                  <span className="mx-1">·</span>
-                                  <span>PO {b.poNo || (b.poId != null ? `#${b.poId}` : '—')}</span>
-                                  {b.expectedDate && (
-                                    <span className="block text-gray-500 mt-0.5">Expected: {b.expectedDate}</span>
-                                  )}
-                                  <span className="block text-red-600 font-medium mt-0.5">{b.quantity} {item.whUnit}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setInTransitPopoverItem(null); }}
-                              className="mt-2 text-xs text-gray-500 hover:text-gray-700"
-                            >
-                              Close
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-600">{item.poQuantity != null ? item.poQuantity : '—'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-600">{item.reorderPt}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-600">{item.avgMo}</div>
-                    </td>
-                    <td className="px-4 py-3">{getStatusBadge(item.status)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-cyan-600">{item.code}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-semibold text-gray-900">{item.name}</div>
+                            <div className="text-xs text-gray-500">{item.subtitle}</div>
+                          </td>
+                          <td className="px-4 py-3">{getTypeBadge(item.type)}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm text-gray-600">
+                              {item.itemGroupNames?.length ? item.itemGroupNames.join(', ') : '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <StockLocationCell
+                              item={item}
+                              type="wh"
+                              value={`${item.whStock} ${item.whUnit}`}
+                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer hover:ring-2 hover:ring-teal-300"
+                              onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                              onHoverLeave={scheduleLocationPopoverClose}
+                            />
+                          </td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <StockLocationCell
+                              item={item}
+                              type="ml1"
+                              value={String(item.ml1Stock)}
+                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer hover:ring-2 hover:ring-blue-300"
+                              onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                              onHoverLeave={scheduleLocationPopoverClose}
+                            />
+                          </td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <StockLocationCell
+                              item={item}
+                              type="ml2"
+                              value={String(item.ml2Stock)}
+                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer hover:ring-2 hover:ring-indigo-300"
+                              onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
+                              onHoverLeave={scheduleLocationPopoverClose}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            {plan ? (
+                              item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {Number(plan.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
+                                </div>
+                              ) : (
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {Math.round(plan.totalRequired).toLocaleString()}{' '}
+                                  <span className="text-xs font-normal text-gray-500">pcs (planning)</span>
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                              <span className="font-semibold text-sm">{item.reserved}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative inline-block">
+                              <button
+                                type="button"
+                                onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
+                                className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+                              >
+                                {item.inTransit} {item.whUnit}
+                                {(item.inTransitBreakdown?.length ?? 0) > 0 && (
+                                  <span className="ml-1 text-red-500" aria-hidden>▼</span>
+                                )}
+                              </button>
+                              {inTransitPopoverItem?.id === item.id && (item.inTransitBreakdown?.length ?? 0) > 0 && (
+                                <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
+                                  <div className="text-xs font-semibold text-gray-700 mb-2">Vendor · PO · Expected</div>
+                                  <ul className="space-y-2">
+                                    {item.inTransitBreakdown!.map((b, idx) => (
+                                      <li key={idx} className="text-xs text-gray-600 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                        <span className="font-medium text-gray-800">{b.vendor || '—'}</span>
+                                        <span className="mx-1">·</span>
+                                        <span>PO {b.poNo || (b.poId != null ? `#${b.poId}` : '—')}</span>
+                                        {b.expectedDate && (
+                                          <span className="block text-gray-500 mt-0.5">Expected: {b.expectedDate}</span>
+                                        )}
+                                        <span className="block text-red-600 font-medium mt-0.5">{b.quantity} {item.whUnit}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setInTransitPopoverItem(null); }}
+                                    className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                                  >
+                                    Close
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm text-gray-600">{item.poQuantity != null ? item.poQuantity : '—'}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm text-gray-600">{item.reorderPt}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm text-gray-600">{item.avgMo}</div>
+                          </td>
+                          <td className="px-4 py-3">{getStatusBadge(item.status)}</td>
+                          {/* <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            {canReleaseToPlanning && item.sourceId != null ? (
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-[11px] font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 whitespace-nowrap"
+                                onClick={() => {
+                                  const surplusQty = Math.max(0, item.stockInHand - (plan?.totalRequired ?? 0));
+                                  navigate('/planning/items-involved', {
+                                    state: {
+                                      openReleasePlanning: {
+                                        itemType: item.type as 'RM' | 'PM',
+                                        sourceId: item.sourceId!,
+                                        nonce: Date.now(),
+                                        surplusQty,
+                                      },
+                                    },
+                                  });
+                                }}
+                              >
+                                Release to Planning
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td> */}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Empty State */}
-          {filteredItems.length === 0 && (
-            <div className="py-16 text-center">
-              <div className="text-gray-400 text-5xl mb-4"></div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
-              <p className="text-gray-500 text-sm">
-                {searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
-              </p>
+              {/* Empty State */}
+              {filteredItems.length === 0 && (
+                <div className="py-16 text-center">
+                  <div className="text-gray-400 text-5xl mb-4"></div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
+                  <p className="text-gray-500 text-sm">
+                    {searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Footer Info */}
-        {filteredItems.length > 0 && (
-          <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-            <div>
-              Showing <span className="font-semibold text-gray-900">{filteredItems.length}</span> of{' '}
-              <span className="font-semibold text-gray-900">{inventoryData.length}</span> items
-            </div>
-            <div className="text-gray-500">
-              Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
-            </div>
-          </div>
-        )}
-        </>
+            {/* Footer Info */}
+            {filteredItems.length > 0 && (
+              <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+                <div>
+                  Showing <span className="font-semibold text-gray-900">{filteredItems.length}</span> of{' '}
+                  <span className="font-semibold text-gray-900">{inventoryData.length}</span> items
+                </div>
+                <div className="text-gray-500">
+                  Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1820,14 +1926,14 @@ const WarehouseInventory = () => {
         </div>
       )}
 
-      <AddLocationModal 
-        isOpen={isLocationModalOpen} 
-        onClose={() => setIsLocationModalOpen(false)} 
+      <AddLocationModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
         onAdd={addLocation}
       />
-      <AddRackModal 
-        isOpen={isRackModalOpen} 
-        onClose={() => setIsRackModalOpen(false)} 
+      <AddRackModal
+        isOpen={isRackModalOpen}
+        onClose={() => setIsRackModalOpen(false)}
         onAdd={addRack}
         locations={locations}
       />

@@ -177,7 +177,7 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
                 <thead>
                   <tr>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Parameter</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th>
+                    {/* <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th> */}
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Result</th>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Pass/Fail</th>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Analyst</th>
@@ -187,7 +187,7 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
                   {batchSpecs.map((s, i) => (
                     <tr key={i}>
                       <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.param}</td>
-                      <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.spec}</td>
+                      {/* <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.spec}</td> */}
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>

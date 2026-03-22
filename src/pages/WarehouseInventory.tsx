@@ -322,7 +322,6 @@ const WarehouseInventory: React.FC = () => {
               ))}
             </tbody>
           </table>
-        </div>
 
         {/* Results Info */}
         <div className="mt-2 flex items-center justify-between text-xs text-gray-500">

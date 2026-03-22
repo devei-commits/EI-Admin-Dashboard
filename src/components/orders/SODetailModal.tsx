@@ -3,12 +3,14 @@
  * Detailed view of a sale order with KPI grid, ship address, progress bar, and items with batch splits (reference layout).
  */
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Package, MapPin, FileText, Truck, CheckCircle } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
 import type { SODetailModalProps } from '../../types/orderFulfillment';
 import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
+import type { SoPlanningAvailabilityResponse, SoPlanningAvailabilityItem, SoPlanningBatchAvailabilityRow } from '../../services/fulfillment.service';
+import { fetchSoPlanningAvailability } from '../../services/fulfillment.service';
 import {
   formatDate,
   formatNumber,
@@ -46,6 +48,44 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
   const totalValue = calculateOrderValue(saleOrder);
   const daysLeft = getDaysLeft(saleOrder.dueDate);
   const daysLeftFormatted = formatDaysLeft(daysLeft);
+
+  const [planningAvailability, setPlanningAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
+  const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!isOpen || !saleOrder?.soNo) return;
+      try {
+        setPlanningAvailabilityLoading(true);
+        const res = await fetchSoPlanningAvailability(saleOrder.soNo);
+        if (!cancelled) setPlanningAvailability(res);
+      } catch (e) {
+        console.error('Failed to load SO planning availability', e);
+        if (!cancelled) setPlanningAvailability(null);
+      } finally {
+        if (!cancelled) setPlanningAvailabilityLoading(false);
+      }
+    }
+
+    load();
+    const interval = window.setInterval(load, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isOpen, saleOrder?.soNo]);
+
+  const availabilityMap = useMemo(() => {
+    const m = new Map<string, SoPlanningAvailabilityItem>();
+    const items = planningAvailability?.items ?? [];
+    for (const it of items) {
+      m.set(`${it.productName}__${it.sku}`, it);
+      // Fallback: if SKU isn't present in the fulfillment item, match by productName.
+      m.set(it.productName, it);
+    }
+    return m;
+  }, [planningAvailability]);
 
   const hasFGReady = saleOrder.items.some((i) =>
     i.batchSplits.some((sp) => sp.ffStatus === 'fg_ready')
@@ -111,6 +151,10 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             ) : (
               'Normal'
             )}
+          </KPI>
+          <KPI label="Exec (lifecycle)">
+            {progress.fulfillmentLifecyclePct}%
+            <span className="block text-[9px] font-normal text-gray-500 mt-0.5">plan → deliver</span>
           </KPI>
           <KPI label="FG Ready">
             {progress.readyPct}% · {progress.ready.toLocaleString('en-IN')} units
@@ -186,6 +230,8 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             item={item}
             soNo={saleOrder.soNo}
             onAction={onAction}
+            planningItem={availabilityMap.get(`${item.productName}__${item.sku}`) ?? availabilityMap.get(item.productName) ?? null}
+            planningAvailabilityLoading={planningAvailabilityLoading}
           />
         ))}
       </div>
@@ -197,10 +243,14 @@ function ItemWithBatches({
   item,
   soNo,
   onAction,
+  planningItem,
+  planningAvailabilityLoading,
 }: {
   item: OrderItem;
   soNo: string;
   onAction: (action: string, soNo: string, split?: BatchSplit) => void;
+  planningItem: SoPlanningAvailabilityItem | null;
+  planningAvailabilityLoading: boolean;
 }) {
   const readyQty = item.batchSplits.reduce(
     (sum, sp) =>
@@ -242,12 +292,34 @@ function ItemWithBatches({
           </div>
         </div>
       </div>
+
+      {/* RM/PM availability summary (from warehouse) */}
+      {(planningItem || planningAvailabilityLoading) && (
+        <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/20 border-b border-gray-200 dark:border-gray-700">
+          {planningAvailabilityLoading ? (
+            <div className="text-[11px] text-gray-600 dark:text-gray-300">Loading RM/PM availability…</div>
+          ) : planningItem ? (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-700 dark:text-gray-200">
+              <span>
+                RM: {planningItem.rmStartedCount}/{planningItem.rmStartableCount} started · {planningItem.rmStartableCount}/{planningItem.totalBatches} available
+              </span>
+              <span>
+                PM: {planningItem.pmStartedCount}/{planningItem.pmStartableCount} started · {planningItem.pmStartableCount}/{planningItem.totalBatches} available
+              </span>
+              <span>
+                Sent to production: {planningItem.sentCount}/{planningItem.totalBatches}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800/50">
               <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
-                BMR / BPR
+                Batch No
               </th>
               <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
                 Planned
@@ -284,7 +356,14 @@ function ItemWithBatches({
               </tr>
             ) : (
               item.batchSplits.map((sp, sidx) => (
-                <BatchRow key={sidx} split={sp} soNo={soNo} onAction={onAction} />
+                <BatchRow
+                  key={sidx}
+                  batchNo={sidx + 1}
+                  split={sp}
+                  soNo={soNo}
+                  onAction={onAction}
+                  planningBatch={planningItem?.batches?.find((b) => b.sequence === sidx + 1) ?? null}
+                />
               ))
             )}
           </tbody>
@@ -295,13 +374,17 @@ function ItemWithBatches({
 }
 
 function BatchRow({
+  batchNo,
   split,
   soNo,
   onAction,
+  planningBatch,
 }: {
+  batchNo: number;
   split: BatchSplit;
   soNo: string;
   onAction: (action: string, soNo: string, split?: BatchSplit) => void;
+  planningBatch: SoPlanningBatchAvailabilityRow | null;
 }) {
   const isFGReady = split.ffStatus === 'fg_ready';
   const isPicking = split.ffStatus === 'picking';
@@ -313,12 +396,18 @@ function BatchRow({
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
       <td className="py-2 px-3">
-        <div className="font-mono text-[10px] text-blue-600 dark:text-blue-400">
-          {split.bmrNo}
+        <div className="font-mono text-[10px] text-gray-700 dark:text-gray-200">
+          Batch {batchNo}
         </div>
-        <div className="font-mono text-[10px] text-purple-600 dark:text-purple-400">
-          {split.bprNo}
-        </div>
+        {planningBatch ? (
+          <div className="mt-1 text-[9.3px] text-gray-500 dark:text-gray-400">
+            RM: {formatNumber(planningBatch.rmNeededTotalKg)} / {formatNumber(planningBatch.rmRequestedTotalKg)} KG · rem{' '}
+            {formatNumber(planningBatch.rmRemainingTotalKg)}
+            <br />
+            PM: {formatNumber(planningBatch.pmNeededTotalUnits)} / {formatNumber(planningBatch.pmRequestedTotalUnits)} PCS · rem{' '}
+            {formatNumber(planningBatch.pmRemainingTotalUnits)}
+          </div>
+        ) : null}
       </td>
       <td className="py-2 px-3 font-mono">{formatNumber(split.plannedQty)}</td>
       <td className="py-2 px-3 font-mono font-bold">

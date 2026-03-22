@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -7,7 +7,12 @@ import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
 import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem } from '../../services/procurement.service';
-import { fetchProcurementQuotations, fetchQuoteLineDefaults, createProcurementQuotation, updateProcurementQuotation } from '../../services/procurementQuotations.service';
+import {
+  fetchProcurementQuotations,
+  fetchQuoteLineDefaults,
+  createProcurementQuotation,
+  deleteProcurementQuotation,
+} from '../../services/procurementQuotations.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
@@ -44,14 +49,63 @@ import type {
   ItemTrackerRow,
   LiveProcurementState,
   ReleaseToPlannedItem,
-  PlannedLine,
+  QuoteLine,
 } from '../../types/procurement.types';
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
+import {
+  PAYMENT_TERMS_TYPE_OPTIONS,
+  formatPaymentTermsString,
+  parsePaymentTermsString,
+  paymentTermsTypeRequiresAdvancePercent,
+  validateAdvancePercentForType,
+  type PaymentTermsStructuredType,
+} from '../../lib/paymentTermsStructured';
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
+const DEBUG_PROC_RELEASE = import.meta.env.DEV;
+
+/** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
+function coerceProcurementRequestRows(value: unknown): { id: string }[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value as { id: string }[];
+  if (typeof value === 'object' && value !== null) {
+    const o = value as Record<string, unknown>;
+    if (Array.isArray(o.data)) return o.data as { id: string }[];
+    if (Array.isArray(o.requests)) return o.requests as { id: string }[];
+  }
+  return [];
+}
+
+/** Vendor quote line vs PR line in Release to PO Planned Stage — RM/PM id match only when IDs exist on the PR line. */
+function quoteLineMatchesReleaseTarget(line: QuoteLine, rel: ReleaseToPlannedItem): boolean {
+  const rm = rel.raw_material_id;
+  const pm = rel.pack_material_id;
+  if (Number.isFinite(Number(rm)) && Number(rm) > 0 && line.raw_material_id != null && Number(line.raw_material_id) === Number(rm)) {
+    return true;
+  }
+  if (Number.isFinite(Number(pm)) && Number(pm) > 0 && line.pack_material_id != null && Number(line.pack_material_id) === Number(pm)) {
+    return true;
+  }
+  const nameKey = (rel.itemName ?? '').trim().toLowerCase();
+  const codeKey = (rel.itemCode ?? '').trim().toLowerCase();
+  const lineName = (line.item ?? '').trim().toLowerCase();
+  const lineCode = (line.itemId ?? '').trim().toLowerCase();
+  // Fallback matching (only when both sides have non-empty strings).
+  // Use guarded "includes" so small formatting differences don't hide the vendor,
+  // while avoiding the old bug where `includes('')` matched everything.
+  if (nameKey.length > 0 && lineName.length > 0) {
+    if (lineName === nameKey) return true;
+    if (lineName.includes(nameKey) || nameKey.includes(lineName)) return true;
+  }
+  if (codeKey.length > 0 && lineCode.length > 0) {
+    if (lineCode === codeKey) return true;
+    if (lineCode.includes(codeKey) || codeKey.includes(lineCode)) return true;
+  }
+  return false;
+}
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
 const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
@@ -231,14 +285,16 @@ const Procurement: React.FC = () => {
     quoteDate: string;
     validTill: string;
     leadTimeDays: string;
-    paymentTerms: string;
+    paymentTermsType: PaymentTermsStructuredType;
+    advancePercent: string;
     notes: string;
   }>({
     vendorId: '',
     quoteDate: '',
     validTill: '',
     leadTimeDays: '',
-    paymentTerms: '',
+    paymentTermsType: 'as_per_contract',
+    advancePercent: '50',
     notes: '',
   });
   const [recordQuoteLines, setRecordQuoteLines] = useState<
@@ -293,26 +349,51 @@ const Procurement: React.FC = () => {
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
   const [itemTrackerSearch, setItemTrackerSearch] = useState('');
   const [releaseToPlannedTarget, setReleaseToPlannedTarget] = useState<{ request: ProcurementRequest; item: ReleaseToPlannedItem } | null>(null);
-  const [plannedLines, setPlannedLines] = useState<PlannedLine[]>([]);
   const [releaseToPlannedForm, setReleaseToPlannedForm] = useState<{
     vendor: string;
     moqDisplay: string;
     qty: string;
     unitPrice: string;
-    paymentTerms: string;
+    paymentTermsType: PaymentTermsStructuredType;
+    advancePercent: string;
     leadTimeDays: number;
-  }>({ vendor: '', moqDisplay: '', qty: '', unitPrice: '', paymentTerms: '', leadTimeDays: 0 });
+  }>({
+    vendor: '',
+    moqDisplay: '',
+    qty: '',
+    unitPrice: '',
+    paymentTermsType: 'as_per_contract',
+    advancePercent: '50',
+    leadTimeDays: 0,
+  });
+
+  /**
+   * For Draft POs created from Planning > Items Involved, we release a purchase order without
+   * having a linked backend `procurement_requests` row. Those PO entries still show up in
+   * "Issued POs", but timeline visuals must be driven by the actions that update po-tracking.
+   *
+   * Keyed by backend purchase_orders.id without the `PO-` prefix (i.e. the id used in `po-tracking` calls).
+   */
+  const [unlinkedPoTimelineOverrides, setUnlinkedPoTimelineOverrides] = useState<
+    Record<string, { shipped: boolean; delivered: boolean; underGrn: boolean }>
+  >({});
 
   const queryClient = useQueryClient();
   const { dispatch: globalDispatch } = useGlobalState();
+
+  // Prevent double-click / race conditions from creating multiple GRNs for the same PO.
+  // Keyed by `record.poNumber`.
+  const receiveGrnLockRef = useRef<Record<string, boolean>>({});
 
   const { data: backendPrResult } = useQuery({
     queryKey: ['procurement-requests'],
     queryFn: async () => {
       const res = await fetchProcurementRequestsApi();
-      return res.success ? (res.data ?? []) : [];
+      return res.success ? coerceProcurementRequestRows(res.data) : [];
     },
   });
+
+  const backendPrArray = useMemo(() => coerceProcurementRequestRows(backendPrResult), [backendPrResult]);
 
   const { data: quotationsResult } = useQuery({
     queryKey: ['procurement-quotations'],
@@ -365,8 +446,8 @@ const Procurement: React.FC = () => {
   });
 
   const requestsFromApi = useMemo(
-    () => (backendPrResult ?? []).map(mapBackendPrToRequest),
-    [backendPrResult]
+    () => backendPrArray.map(mapBackendPrToRequest),
+    [backendPrArray]
   );
 
   const quotesFromApi = useMemo(() => {
@@ -386,6 +467,45 @@ const Procurement: React.FC = () => {
     () => (purchaseOrdersRaw ?? []).map((row: any) => mapOrderToPurchaseOrder(row)),
     [purchaseOrdersRaw]
   );
+
+  // For Planning-created / unlinked POs: the card timeline should be driven by po-tracking
+  // persisted in backend (not just the in-memory click overrides).
+  const unlinkedReleasedPoIds = useMemo(() => {
+    // A released PO is considered "linked" if it matches at least one procurement_request row
+    // via formData.requestId OR formData.requestCode.
+    const getLinked = (p: PurchaseOrder) =>
+      requests.some(
+        (r) =>
+          (String(p.formData?.requestId) &&
+            String(p.formData?.requestId) === String(r.id)) ||
+          (String(p.formData?.requestCode).toUpperCase() &&
+            String(p.formData?.requestCode).toUpperCase() === String(r.code).toUpperCase()),
+      );
+
+    return purchaseOrders
+      .filter((p) => p.status === 'Released')
+      .filter((p) => !getLinked(p))
+      .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
+      .filter((id) => /^\d+$/.test(id));
+  }, [purchaseOrders, requests]);
+
+  const { data: unlinkedPoTrackingByBackendId } = useQuery({
+    queryKey: ['po-tracking-unlinked-map', unlinkedReleasedPoIds.join(',')],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        unlinkedReleasedPoIds.map(async (id) => {
+          const res = await fetchPoTracking(id);
+          return { id, tracking: res.success ? res.data : null };
+        }),
+      );
+      return entries.reduce((acc, e) => {
+        if (e.tracking) acc[e.id] = e.tracking;
+        return acc;
+      }, {} as Record<string, PoTrackingRecord>);
+    },
+    enabled: sideSection === 'Issued POs' && unlinkedReleasedPoIds.length > 0,
+    staleTime: 30_000,
+  });
 
   const draftPOsFromApi = useMemo(() => {
     const reqs = requestsFromApi;
@@ -506,7 +626,7 @@ const Procurement: React.FC = () => {
 
   useEffect(() => {
     if (!editRequestTarget) return;
-    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === editRequestTarget.id) as { items?: BackendPRItem[]; preferredVendor?: string } | undefined;
+    const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === editRequestTarget.id) as { items?: BackendPRItem[]; preferredVendor?: string } | undefined;
     const items = Array.isArray(backendPr?.items) ? backendPr.items.map((i) => ({ ...i })) : [];
     setEditRequestForm({
       priority: editRequestTarget.priority,
@@ -517,7 +637,7 @@ const Procurement: React.FC = () => {
       selectedQuotationId: '',
       items,
     });
-  }, [editRequestTarget, backendPrResult]);
+  }, [editRequestTarget, backendPrArray]);
 
   useEffect(() => {
     if (!selectedRequest) {
@@ -530,11 +650,11 @@ const Procurement: React.FC = () => {
   }, [selectedRequest, quotes]);
 
   useEffect(() => {
-    if (!selectedRequest || !backendPrResult) {
+    if (!selectedRequest || backendPrResult === undefined) {
       setStockCheckForm({ assignedTo: '', status: '', dueDate: '', notes: '' });
       return;
     }
-    const pr = backendPrResult.find((p: { id: string }) => String(p.id) === selectedRequest.id) as {
+    const pr = backendPrArray.find((p: { id: string }) => String(p.id) === selectedRequest.id) as {
       stockCheckAssignedTo?: string | null;
       stockCheckStatus?: string | null;
       stockCheckDueDate?: string | null;
@@ -546,7 +666,7 @@ const Procurement: React.FC = () => {
       dueDate: pr?.stockCheckDueDate?.toString().slice(0, 10) ?? '',
       notes: pr?.stockCheckNotes ?? '',
     });
-  }, [selectedRequest, backendPrResult]);
+  }, [selectedRequest, backendPrResult, backendPrArray]);
 
   useEffect(() => {
     if (!poTrackingData) {
@@ -591,7 +711,7 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const backendPrs = backendPrResult ?? [];
+  const backendPrs = backendPrArray;
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
     const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
@@ -936,7 +1056,7 @@ const Procurement: React.FC = () => {
     });
   }, [draftPOs, categoryFilter, vendorFilter, draftPOStatusFilter]);
 
-  /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from Quotations) */
+  /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from PR modal + quotations) */
   const requestsPODraftNoDraftPO = useMemo(() => {
     const linkedRequestIds = new Set(draftPOs.map((d) => d.requestId));
     return requests.filter(
@@ -948,18 +1068,11 @@ const Procurement: React.FC = () => {
     const totalQuotes = filteredQuotes.length;
     const confirmed = filteredQuotes.filter((quote) => quote.status === 'Confirmed').length;
     const notSelected = filteredQuotes.filter((quote) => quote.status === 'Not Selected').length;
-    const pendingReview = filteredQuotes.filter((quote) => quote.status === 'Pending Review').length;
-    const quotesValue = filteredQuotes.reduce(
-      (sum, quote) => sum + quote.lines.reduce((lineSum, line) => lineSum + line.totalValue, 0),
-      0,
-    );
 
     return {
       totalQuotes,
       confirmed,
       notSelected,
-      pendingReview,
-      quotesValue,
       urgent: requests.filter((request) => request.priority === 'High' && request.status === 'New').length,
       pendingAction: requests.filter((request) => request.status === 'New' || request.status === 'Quoted').length,
     };
@@ -967,8 +1080,7 @@ const Procurement: React.FC = () => {
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
-
-    return requests
+    const requestRecords = requests
       .filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending')
       .map((request) => {
         const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
@@ -1065,7 +1177,86 @@ const Procurement: React.FC = () => {
           paymentTerms: linkedDraftPO?.paymentTerms ?? linkedPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
         };
       });
-  }, [draftPOs, purchaseOrders, quotes, requests]);
+
+    // Include released PO records even when there is no linked procurement request.
+    // This happens for Draft POs created from Planning > Items Involved.
+    const requestPoNumbers = new Set(requestRecords.map((r) => r.poNumber));
+
+    const unlinkedReleasedPOs = purchaseOrders
+      .filter((p) => p.status === 'Released')
+      .filter((p) => {
+        const poNumber = String(p.poNumber ?? '').replace('DPO', 'PO');
+        if (requestPoNumbers.has(poNumber)) return false;
+
+        const linked = requests.some((r) =>
+          (String(p.formData?.requestId) && String(p.formData?.requestId) === String(r.id)) ||
+          (String(p.formData?.requestCode) && String(p.formData?.requestCode).toUpperCase() === String(r.code).toUpperCase())
+        );
+        return !linked;
+      });
+
+    const unlinkedRecords = unlinkedReleasedPOs.map((po) => {
+      const rawItems = Array.isArray(po.rawItems) ? (po.rawItems as any[]) : [];
+      const inferredType: RequestType = rawItems.some((it) => it?.pack_material_id != null) ? 'PM' : 'RM';
+      const backendPoId = String(po.id ?? '').replace(/^PO-/, '');
+      const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+      const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
+
+      const lineItems = rawItems.map((i: any, idx: number) => {
+        const qty = Number(i.quantity) || 0;
+        const rate = Number(i.rate ?? i.price ?? 0);
+        const gstPct = Number(i.tax) || 18;
+        const subtotal = qty * rate;
+        const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+        const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+        return {
+          item: i.itemName ?? i.name ?? '',
+          itemCode: `EI-${inferredType}-${String(idx + 1).padStart(3, '0')}`,
+          type: inferredType,
+          qty: String(i.quantity ?? ''),
+          pricePerUnit: rate,
+          gstPercent: gstPct,
+          gstAmount,
+          lineTotal,
+        };
+      });
+
+      const grandTotal = Number(po.value ?? 0) || lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+      const expected = po.expectedShipmentDate || po.date || today.toISOString().slice(0, 10);
+      const etaDays = Math.ceil((new Date(expected).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+      const placeholderRequest: ProcurementRequest = {
+        id: String(po.formData?.requestId ?? ''),
+        code: String(po.formData?.requestCode ?? po.reference ?? po.poNumber ?? 'Planning'),
+        type: inferredType,
+        priority: 'Medium',
+        status: 'PO Released',
+        items: lineItems.map((l) => l.item).filter(Boolean),
+        dueDate: expected,
+        createdDate: po.date ?? '',
+        source: 'Planning Team',
+        preferredVendor: null,
+      };
+
+      return {
+        request: placeholderRequest,
+        poNumber: String(po.poNumber ?? po.reference ?? '').replace('DPO', 'PO'),
+        vendor: po.vendorName ?? 'Unassigned Vendor',
+        status: (ov?.shipped || ov?.delivered || ov?.underGrn || tracking?.shippedAt || tracking?.deliveredAt || tracking?.underGrnAt || tracking?.grnCompleteAt)
+          ? ('In Transit' as const)
+          : ('Released' as const),
+        backendPoId,
+        etaDays,
+        lineItems,
+        grandTotal,
+        requestCode: placeholderRequest.code,
+        createdDate: po.date ?? '',
+        paymentTerms: po.paymentTerms ?? 'As per contract',
+      };
+    });
+
+    return [...requestRecords, ...unlinkedRecords];
+  }, [draftPOs, purchaseOrders, quotes, requests, unlinkedPoTimelineOverrides, unlinkedPoTrackingByBackendId]);
 
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
@@ -1097,6 +1288,8 @@ const Procurement: React.FC = () => {
       (p) => p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO')
     );
     const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
+    const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
+    const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
     setSelectedPO({
       id: record.poNumber,
       vendorId: record.vendor,
@@ -1115,124 +1308,275 @@ const Procurement: React.FC = () => {
       timeline: [
         { stage: 'PO Released', done: true, timestamp: record.createdDate, actor: 'Procurement', note: 'PO shared with vendor' },
         { stage: 'Vendor Confirmed', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'Shipped', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'Delivered', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'Under GRN', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'GRN Complete', done: false, timestamp: null, actor: null, note: null },
+        { stage: 'Shipped', done: !!(ov?.shipped || tracking?.shippedAt), timestamp: null, actor: null, note: null },
+        { stage: 'Delivered', done: !!(ov?.delivered || tracking?.deliveredAt), timestamp: null, actor: null, note: null },
+        { stage: 'Under GRN', done: !!(ov?.underGrn || tracking?.underGrnAt), timestamp: null, actor: null, note: null },
+        { stage: 'GRN Complete', done: !!(tracking?.grnCompleteAt), timestamp: null, actor: null, note: null },
       ],
     });
   };
 
-  const markIssuedPOInTransit = (requestId: string, requestCode: string) => {
-    updateRequestStatus(requestId, 'Delivery Pending');
-    addToast('success', `${requestCode} moved to In Transit`);
-  };
+  const markIssuedPOInTransit = (record: any) => {
+    const requestId = record?.request?.id as string | undefined;
+    const requestCode = record?.requestCode as string | undefined;
 
-  const receiveIssuedPOGRN = async (requestId: string, requestCode: string) => {
-    const record = issuedPORecords.find((r) => r.request.id === requestId && r.requestCode === requestCode);
-    if (!record) {
-      addToast('error', 'PO record not found');
+    // Normal path for linked POs.
+    if (requestId) {
+      updateRequestStatus(requestId, 'Delivery Pending');
+      addToast('success', `${requestCode ?? 'PO'} moved to In Transit`);
       return;
     }
-    let linkedPO = purchaseOrders.find(
-      (p) =>
-        p.status === 'Released' &&
-        (String(p.formData?.requestId) === String(requestId) ||
-          String(p.formData?.requestCode).toUpperCase() === String(requestCode).toUpperCase())
-    );
-    if (!linkedPO) {
-      linkedPO = purchaseOrders.find(
+
+    // Fallback for unlinked Planning POs: update PO tracking (shippedAt).
+    const linkedPO =
+      purchaseOrders.find((p) => p.status === 'Released' && (p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO'))) ??
+      purchaseOrders.find(
         (p) =>
           p.status === 'Released' &&
-          (p.poNumber === record.poNumber ||
-            p.poNumber === record.poNumber.replace(/^PO/, 'DPO') ||
-            (p as { orderId?: string }).orderId === record.poNumber ||
-            (p as { orderId?: string }).orderId === record.poNumber.replace(/^PO/, 'DPO'))
+          String(p.formData?.requestCode).toUpperCase() === String(record.requestCode).toUpperCase(),
       );
-    }
+
     const backendPoId = linkedPO ? String(linkedPO.id).replace(/^PO-/, '') : null;
     if (!backendPoId) {
-      addToast('error', 'Linked purchase order not found. Cannot mark delivered.');
+      addToast('error', 'Linked purchase order not found. Cannot mark In Transit.');
       return;
     }
+
     const today = new Date().toISOString().split('T')[0];
-    const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === requestId);
-    const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
-
-    const trackingRes = await updatePoTracking(backendPoId, {
-      deliveredAt: today,
-      deliveredNote: 'Marked delivered at WH from Procurement',
-      underGrnAt: today,
-      underGrnNote: 'GRN created from Procurement',
+    updatePoTracking(backendPoId, {
+      shippedAt: today,
+      shippedNote: 'Marked In Transit (unlinked Planning PO) from Procurement',
+    }).then((trackingRes) => {
+      if (!trackingRes.success) {
+        addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      setUnlinkedPoTimelineOverrides((prev) => ({
+        ...prev,
+        [backendPoId]: {
+          shipped: true,
+          delivered: prev[backendPoId]?.delivered ?? false,
+          underGrn: prev[backendPoId]?.underGrn ?? false,
+        },
+      }));
+      addToast('success', `${record.poNumber} marked In Transit (tracking updated).`);
     });
-    if (!trackingRes.success) {
-      addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
-      return;
-    }
-
-    try {
-      await createGRN({
-        grnNo: `GRN-${record.poNumber}-${Date.now()}`,
-        purchase_order_id: parseInt(backendPoId, 10),
-        poNo: record.poNumber,
-        vendor: record.vendor,
-        type: record.request.type as 'RM' | 'PM',
-        items: record.lineItems.length,
-        poValue: record.grandTotal ?? 0,
-        status: 'Under GRN',
-        receivedDate: today,
-        lineItems: record.lineItems.map((line, idx) => {
-          const prItem = items[idx];
-          return {
-            id: `line-${idx}`,
-            item: String(line.item ?? ''),
-            itemCode: prItem?.code ?? line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
-            poQty: Number(line.qty) || 0,
-            rcvdQty: 0,
-            invoiceQty: 0,
-            unitPrice: Number(line.pricePerUnit) || 0,
-            diff: 0,
-            qcStatus: 'Pending',
-            qcBy: '',
-            raw_material_id: prItem?.raw_material_id,
-            pack_material_id: prItem?.pack_material_id,
-            product_id: prItem?.product_id,
-          };
-        }),
-      });
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
-      return;
-    }
-
-    const statusRes = await updateProcurementRequestApi(requestId, { status: 'Under GRN' as RequestStatus, items });
-    if (!statusRes.success) {
-      addToast('error', typeof statusRes.error === 'string' ? statusRes.error : (statusRes.error?.message ?? 'Failed to update request status'));
-      return;
-    }
-    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
-    queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
-    queryClient.invalidateQueries({ queryKey: ['grn-list'] });
-    updateProcurementState((current) => ({
-      requests: current.requests.map((req) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
-    }));
-    addToast('success', `${requestCode} marked delivered at WH. GRN created — see Warehouse > Inbound.`);
   };
 
-  const updateQuoteStatus = async (quoteId: string, status: QuoteStatus) => {
-    const backendStatus = status === 'Confirmed' ? 'confirmed' : status === 'Not Selected' ? 'not_selected' : 'pending';
-    const id = parseInt(quoteId, 10);
-    if (Number.isNaN(id)) {
-      addToast('error', 'Invalid quote id');
+  const receiveIssuedPOGRN = async (record: any) => {
+    const requestId = record?.request?.id as string | undefined;
+    const requestCode = record?.requestCode as string | undefined;
+    const poNo = String(record?.poNumber ?? '').trim();
+
+    if (!poNo) {
+      addToast('error', 'PO not found. Cannot mark delivered.');
       return;
     }
-    const res = await updateProcurementQuotation(id, { status: backendStatus });
-    if (!res.success) {
-      addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update quote status');
+
+    if (receiveGrnLockRef.current[poNo]) {
+      addToast('info', 'GRN creation already in progress for this PO.');
       return;
     }
-    queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
-    addToast('success', `Quote status updated to ${status}`);
+
+    receiveGrnLockRef.current[poNo] = true;
+    try {
+      const hasUnderOrCompleteGrnForPo = async () => {
+        const existingGrns = await fetchGRNList();
+        return existingGrns.some(
+          (g) => String(g.poNo ?? '').trim().toUpperCase() === poNo.toUpperCase() && (g.status === 'Under GRN' || g.status === 'GRN Complete'),
+        );
+      };
+
+      // Linked path: update procurement request + create GRN.
+      if (requestId) {
+        let linkedPO = purchaseOrders.find(
+          (p) =>
+            p.status === 'Released' &&
+            (String(p.formData?.requestId) === String(requestId) ||
+              String(p.formData?.requestCode).toUpperCase() === String(requestCode).toUpperCase()),
+        );
+        if (!linkedPO) {
+          linkedPO = purchaseOrders.find(
+            (p) =>
+              p.status === 'Released' &&
+              (p.poNumber === record.poNumber ||
+                p.poNumber === record.poNumber.replace(/^PO/, 'DPO') ||
+                (p as { orderId?: string }).orderId === record.poNumber ||
+                (p as { orderId?: string }).orderId === record.poNumber.replace(/^PO/, 'DPO')),
+          );
+        }
+
+        const backendPoId = linkedPO ? String(linkedPO.id).replace(/^PO-/, '') : null;
+        if (!backendPoId) {
+          addToast('error', 'Linked purchase order not found. Cannot mark delivered.');
+          return;
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === String(requestId));
+        const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
+
+        const trackingRes = await updatePoTracking(backendPoId, {
+          deliveredAt: today,
+          deliveredNote: 'Marked delivered at WH from Procurement',
+          underGrnAt: today,
+          underGrnNote: 'GRN created from Procurement',
+        });
+        if (!trackingRes.success) {
+          addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
+          return;
+        }
+
+        let grnCreated = false;
+        try {
+          const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
+          if (!alreadyHasGrn) {
+            await createGRN({
+              grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+              purchase_order_id: parseInt(backendPoId, 10),
+              poNo: record.poNumber,
+              vendor: record.vendor,
+              type: record.request.type as 'RM' | 'PM',
+              items: record.lineItems.length,
+              poValue: record.grandTotal ?? 0,
+              status: 'Under GRN',
+              receivedDate: today,
+              lineItems: record.lineItems.map((line: any, idx: number) => {
+                const prItem = items[idx];
+                return {
+                  id: `line-${idx}`,
+                  item: String(line.item ?? ''),
+                  itemCode: prItem?.code ?? line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
+                  poQty: Number(line.qty) || 0,
+                  rcvdQty: 0,
+                  invoiceQty: 0,
+                  unitPrice: Number(line.pricePerUnit) || 0,
+                  diff: 0,
+                  qcStatus: 'Pending',
+                  qcBy: '',
+                  raw_material_id: prItem?.raw_material_id,
+                  pack_material_id: prItem?.pack_material_id,
+                  product_id: prItem?.product_id,
+                };
+              }),
+            });
+            grnCreated = true;
+          } else {
+            addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+          }
+        } catch (e) {
+          addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
+          return;
+        }
+
+        const statusRes = await updateProcurementRequestApi(requestId, { status: 'Under GRN' as RequestStatus, items });
+        if (!statusRes.success) {
+          addToast('error', typeof statusRes.error === 'string' ? statusRes.error : (statusRes.error?.message ?? 'Failed to update request status'));
+          return;
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+        queryClient.invalidateQueries({ queryKey: ['grn-list'] });
+        updateProcurementState((current: any) => ({
+          requests: current.requests.map((req: any) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
+        }));
+        addToast(
+          'success',
+          grnCreated
+            ? `${requestCode ?? record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+            : `${requestCode ?? record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+        );
+        return;
+      }
+
+      // Unlinked path: only update PO tracking + create GRN.
+      const linkedPO =
+        purchaseOrders.find(
+          (p) => p.status === 'Released' && (p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO')),
+        ) ??
+        purchaseOrders.find(
+          (p) => p.status === 'Released' && String(p.formData?.requestCode).toUpperCase() === String(record.requestCode).toUpperCase(),
+        );
+
+      const backendPoId = linkedPO ? String(linkedPO.id).replace(/^PO-/, '') : null;
+      if (!backendPoId) {
+        addToast('error', 'Linked purchase order not found. Cannot mark delivered.');
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const trackingRes = await updatePoTracking(backendPoId, {
+        deliveredAt: today,
+        deliveredNote: 'Marked delivered at WH (unlinked Planning PO) from Procurement',
+        underGrnAt: today,
+        underGrnNote: 'GRN created from Procurement (unlinked Planning PO)',
+      });
+      if (!trackingRes.success) {
+        addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
+        return;
+      }
+
+      setUnlinkedPoTimelineOverrides((prev) => ({
+        ...prev,
+        [backendPoId]: {
+          shipped: true,
+          delivered: true,
+          underGrn: true,
+        },
+      }));
+
+      let unlinkedGrnCreated = false;
+      try {
+        const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
+        if (!alreadyHasGrn) {
+          await createGRN({
+            grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+            purchase_order_id: parseInt(backendPoId, 10),
+            poNo: record.poNumber,
+            vendor: record.vendor,
+            type: (record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
+            items: record.lineItems.length,
+            poValue: record.grandTotal ?? 0,
+            status: 'Under GRN',
+            receivedDate: today,
+            lineItems: record.lineItems.map((line: any, idx: number) => ({
+              id: `line-${idx}`,
+              item: String(line.item ?? ''),
+              itemCode: line.itemCode ?? `EI-${(record.request?.type ?? 'RM')}-${String(idx + 1).padStart(3, '0')}`,
+              poQty: Number(line.qty) || 0,
+              rcvdQty: 0,
+              invoiceQty: 0,
+              unitPrice: Number(line.pricePerUnit) || 0,
+              diff: 0,
+              qcStatus: 'Pending',
+              qcBy: '',
+              raw_material_id: undefined,
+              pack_material_id: undefined,
+              product_id: undefined,
+            })),
+          });
+          unlinkedGrnCreated = true;
+        } else {
+          addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+        }
+      } catch (e) {
+        addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['grn-list'] });
+      addToast(
+        'success',
+        unlinkedGrnCreated
+          ? `${record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+          : `${record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+      );
+    } finally {
+      delete receiveGrnLockRef.current[poNo];
+    }
   };
 
   const [showCreatePoFromQuoteModal, setShowCreatePoFromQuoteModal] = useState(false);
@@ -1246,10 +1590,6 @@ const Procurement: React.FC = () => {
     const selectedQuote = quotes.find((quote) => quote.id === quoteId);
     if (!selectedQuote) {
       addToast('error', 'Quote not found');
-      return;
-    }
-    if (selectedQuote.status !== 'Confirmed') {
-      addToast('warning', 'Confirm this quote before creating a draft PO. Use "Confirm Quote" first.');
       return;
     }
     const relatedRequest = requests.find((req) => req.id === selectedQuote.requestId);
@@ -1279,10 +1619,10 @@ const Procurement: React.FC = () => {
       addToast('warning', 'Add at least one line item to the request to create a draft PO.');
       return false;
     }
-    const confirmedQuote = quotes.find((q) => q.requestId === requestId && q.status === 'Confirmed');
     const quoteToUse = preferredQuotationId
       ? quotes.find((q) => q.id === preferredQuotationId)
-      : confirmedQuote;
+      : quotes.find((q) => q.requestId === requestId && q.status === 'Confirmed')
+        ?? quotes.find((q) => q.requestId === requestId);
     const vendor = preferredVendor?.trim() || quoteToUse?.vendor?.trim() || 'Unassigned';
     const vendorId = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase())?.id;
 
@@ -1441,6 +1781,26 @@ const Procurement: React.FC = () => {
     addToast('success', `${target.dpoNumber} approved`);
   };
 
+  const resolveBackendProcurementRequestId = (draft: DraftPO): string => {
+    // Backend PATCH /api/v1/procurement/:id expects the numeric procurement_requests.id.
+    const direct = draft.requestId ?? '';
+    if (typeof direct === 'string' && /^\d+$/.test(direct.trim())) return direct.trim();
+
+    // Fallback: resolve by requestCode (what we show in the UI).
+    if (draft.requestCode) {
+      const byCode = requests.find((r) => String(r.code).toUpperCase() === String(draft.requestCode).toUpperCase());
+      if (byCode?.id) return String(byCode.id);
+    }
+
+    // Last resort: try extracting digits from whatever is stored.
+    const digits = String(direct).match(/\d+/)?.[0];
+    if (digits) {
+      const byId = requests.find((r) => String(r.id) === String(digits));
+      if (byId?.id) return String(byId.id);
+    }
+    return '';
+  };
+
   const releaseDraftPOToVendor = async (draftPoId: string) => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
@@ -1454,7 +1814,32 @@ const Procurement: React.FC = () => {
       return;
     }
 
-    await updateRequestStatus(target.requestId, 'PO Released');
+    const backendRequestId = resolveBackendProcurementRequestId(target);
+    if (DEBUG_PROC_RELEASE) {
+      console.log('[PROC-RELEASE] resolveBackendProcurementRequestId', {
+        dpoId: target.id,
+        dpoNumber: target.dpoNumber,
+        target_requestId: target.requestId,
+        target_requestCode: target.requestCode,
+        resolved_backendRequestId: backendRequestId,
+        requestCodes_in_state_sample: requests.slice(0, 5).map((r) => ({ id: r.id, code: r.code, status: r.status })),
+      });
+    }
+    if (!backendRequestId) {
+      // Planning-created draft POs (from Planning > Items Involved) may not be linked to a procurement_requests row.
+      // In that case, we can still release the underlying purchase order and show it in "Issued POs".
+      addToast('warning', `${target.dpoNumber} released (no backend procurement request link; created from Planning).`);
+      applyRouteState('Procurement', 'Issued POs');
+      return;
+    }
+
+    if (DEBUG_PROC_RELEASE) {
+      console.log('[PROC-RELEASE] calling updateRequestStatus', {
+        backendRequestId,
+        status: 'PO Released',
+      });
+    }
+    await updateRequestStatus(backendRequestId, 'PO Released');
     applyRouteState('Procurement', 'Issued POs');
   };
 
@@ -1488,13 +1873,40 @@ const Procurement: React.FC = () => {
     }
 
     const draft = releasePOTarget;
+    if (DEBUG_PROC_RELEASE) {
+      console.log('[PROC-RELEASE] submitReleasePO called', {
+        dpoId: draft.id,
+        dpoNumber: draft.dpoNumber,
+        draft_requestId: draft.requestId,
+        draft_requestCode: draft.requestCode,
+        draft_backendPoId: draft.backendPoId,
+        draft_status: draft.status,
+      });
+    }
 
     // Update PO table: set status to Released and ensure request link is stored
     if (draft.backendPoId) {
+      const backendRequestId = resolveBackendProcurementRequestId(draft);
+      if (DEBUG_PROC_RELEASE) {
+        console.log('[PROC-RELEASE] updatePurchaseOrder formData request linkage', {
+          backendPoId: draft.backendPoId,
+          dpoNumber: draft.dpoNumber,
+          draft_requestId: draft.requestId,
+          draft_requestCode: draft.requestCode,
+          resolved_backendRequestId: backendRequestId,
+        });
+      }
       const updateResult = await updatePurchaseOrder(draft.backendPoId, {
         status: 'Released',
-        formData: { requestId: draft.requestId, requestCode: draft.requestCode },
+        formData: { requestId: backendRequestId || draft.requestId, requestCode: draft.requestCode },
       });
+      if (DEBUG_PROC_RELEASE) {
+        console.log('[PROC-RELEASE] updatePurchaseOrder result', {
+          backendPoId: draft.backendPoId,
+          success: updateResult.success,
+          error: updateResult.error,
+        });
+      }
       if (!updateResult.success) {
         const err = updateResult.error;
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update purchase order'));
@@ -1641,12 +2053,16 @@ const Procurement: React.FC = () => {
     }
     const defaultVendor = vendors[0];
     const todayStr = new Date().toISOString().slice(0, 10);
+    const parsed = parsePaymentTermsString(defaultVendor.paymentTerms ?? '');
     setRecordQuoteForm({
       vendorId: defaultVendor.id,
       quoteDate: todayStr,
       validTill: '',
       leadTimeDays: '',
-      paymentTerms: defaultVendor.paymentTerms ?? '',
+      paymentTermsType: parsed.type,
+      advancePercent: String(
+        parsed.advancePercent || (paymentTermsTypeRequiresAdvancePercent(parsed.type) ? 50 : 0)
+      ),
       notes: '',
     });
     setRecordQuoteLines([]);
@@ -1709,19 +2125,49 @@ const Procurement: React.FC = () => {
     closeNewRequestModal();
   };
 
-  const deleteQuote = (quoteId: string) => {
-    updateProcurementState((current) => ({
-      quotes: current.quotes.filter((quote) => quote.id !== quoteId),
-    }));
-    addToast('info', `Quote ${quoteId} removed`);
+  const deleteQuote = async (quoteId: string) => {
+    const id = parseInt(quoteId, 10);
+    if (Number.isNaN(id)) {
+      addToast('error', 'Invalid quotation id');
+      return;
+    }
+    const res = await deleteProcurementQuotation(id);
+    if (!res.success) {
+      addToast('error', typeof res.error === 'string' ? res.error : 'Failed to delete quotation');
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+    addToast('success', `Quotation ${quoteId} deleted`);
   };
 
   const updateRequestStatus = async (requestId: string, status: RequestStatus, opts?: { skipItems?: boolean }) => {
     const payload = opts?.skipItems
       ? { status }
-      : { status, items: (backendPrResult?.find((p: { id: string }) => String(p.id) === requestId) as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]) };
+      : {
+        status,
+        items:
+          (backendPrArray.find((p: { id: string }) => String(p.id) === requestId) as { items?: BackendPRItem[] } | undefined)?.items ??
+          ([] as BackendPRItem[]),
+      };
+    if (DEBUG_PROC_RELEASE) {
+      console.log('[PROC-RELEASE] PATCH /api/v1/procurement/:id about to run', {
+        requestId,
+        status,
+        payload: {
+          status: payload.status,
+          itemsCount: Array.isArray((payload as any).items) ? (payload as any).items.length : null,
+        },
+      });
+    }
     const res = await updateProcurementRequestApi(requestId, payload);
     if (!res.success) {
+      if (DEBUG_PROC_RELEASE) {
+        console.log('[PROC-RELEASE] PATCH /api/v1/procurement/:id failed', {
+          requestId,
+          status,
+          error: res.error,
+        });
+      }
       addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
       return;
     }
@@ -1914,13 +2360,11 @@ const Procurement: React.FC = () => {
 
           <main className="px-5 md:px-7 py-5 space-y-4">
             {sideSection !== 'Overview' && (
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
                   { label: 'TOTAL QUOTES', value: quoteStats.totalQuotes, color: 'text-yellow-700' },
                   { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
                   { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
-                  { label: 'PENDING REVIEW', value: quoteStats.pendingReview, color: 'text-cyan-600' },
-                  { label: 'QUOTES VALUE', value: `₹${quoteStats.quotesValue.toLocaleString('en-IN')}`, color: 'text-cyan-700' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
                     <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
@@ -1970,7 +2414,6 @@ const Procurement: React.FC = () => {
                     <option value="All Statuses">All Statuses</option>
                     <option value="Confirmed">Confirmed</option>
                     <option value="Not Selected">Not Selected</option>
-                    <option value="Pending Review">Pending Review</option>
                   </select>
                 </div>
 
@@ -1988,6 +2431,9 @@ const Procurement: React.FC = () => {
                     + Record Quote
                   </button>
                 </div>
+                <p className="text-[11px] text-slate-500 px-1 pt-2 border-t border-slate-100 mt-2">
+                  Record vendor quotes and pricing here for reference in Planning and PR. Draft POs are created from the PR / Draft POs flow, not from individual quote cards.
+                </p>
               </div>
             )}
 
@@ -2377,6 +2823,11 @@ const Procurement: React.FC = () => {
                           const dueDate = new Date(req.dueDate);
                           const today = new Date('2026-02-28');
                           const daysLeft = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                          const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
+                          const prefVendorDisplay =
+                            req.preferredVendor?.trim() ||
+                            firstQuoteForReq?.vendor?.trim() ||
+                            '—';
 
                           return (
                             <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
@@ -2470,7 +2921,9 @@ const Procurement: React.FC = () => {
                                       </div>
                                       <div>
                                         <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
-                                        <p className="font-semibold text-indigo-600 truncate">Chemspec India Pvt Ltd</p>
+                                        <p className="font-semibold text-indigo-600 truncate" title={prefVendorDisplay}>
+                                          {prefVendorDisplay}
+                                        </p>
                                       </div>
                                     </div>
 
@@ -2519,30 +2972,36 @@ const Procurement: React.FC = () => {
                                     onClick={() => {
                                       if (req.itemDetails && req.itemDetails.length > 0) {
                                         const item = req.itemDetails[0];
-                                        setReleaseToPlannedTarget({
-                                          request: req,
-                                          item: {
-                                            itemName: item.itemName,
-                                            itemCode: item.itemCode,
-                                            idx: 0,
-                                            qty: item.reqQty,
-                                            unit: item.unit,
-                                            plannedPrice: item.plannedPrice,
-                                            moq: item.moq,
-                                            reqQty: item.reqQty,
-                                          },
-                                        });
+                                        const relItem: ReleaseToPlannedItem = {
+                                          itemName: item.itemName,
+                                          itemCode: item.itemCode,
+                                          idx: 0,
+                                          qty: item.reqQty,
+                                          unit: item.unit,
+                                          plannedPrice: item.plannedPrice,
+                                          moq: item.moq,
+                                          reqQty: item.reqQty,
+                                          raw_material_id: item.raw_material_id,
+                                          pack_material_id: item.pack_material_id,
+                                          itemType: item.type === 'PM' ? 'PM' : 'RM',
+                                        };
+                                        setReleaseToPlannedTarget({ request: req, item: relItem });
                                         const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim() === (item.itemName ?? '').trim())
+                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
                                         );
                                         const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => (l.item ?? '').trim() === (item.itemName ?? '').trim());
+                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+                                        const pt0 = parsePaymentTermsString(first?.terms ?? 'As per contract');
                                         setReleaseToPlannedForm({
                                           vendor: first?.vendor ?? '',
                                           moqDisplay: item.moq ? `${item.moq} (₹${firstLine?.pricePerUnit ?? 0} · ${first?.leadTimeDays ?? 0}d)` : '',
                                           qty: String(item.reqQty ?? item.qty ?? 0),
                                           unitPrice: String(firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
-                                          paymentTerms: first?.terms ?? 'As per contract',
+                                          paymentTermsType: pt0.type,
+                                          advancePercent: String(
+                                            pt0.advancePercent ||
+                                              (paymentTermsTypeRequiresAdvancePercent(pt0.type) ? 50 : 0)
+                                          ),
                                           leadTimeDays: first?.leadTimeDays ?? item.leadTimeDays ?? 0,
                                         });
                                       } else if (req.items && req.items.length > 0) {
@@ -2551,21 +3010,39 @@ const Procurement: React.FC = () => {
                                         const price = req.plannedPrices?.[0] ?? 0;
                                         const unit = req.units?.[0] ?? 'KG';
                                         const spec = req.specifications?.[0];
-                                        setReleaseToPlannedTarget({
-                                          request: req,
-                                          item: { itemName, idx: 0, qty, unit, spec, plannedPrice: price },
-                                        });
+                                        const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
+                                          | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
+                                          | undefined;
+                                        const line0 = prRow?.items?.[0];
+                                        const relItem: ReleaseToPlannedItem = {
+                                          itemName,
+                                          itemCode: line0?.code,
+                                          idx: 0,
+                                          qty,
+                                          unit,
+                                          spec,
+                                          plannedPrice: price,
+                                          raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+                                          pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+                                          itemType: line0?.type === 'PM' ? 'PM' : 'RM',
+                                        };
+                                        setReleaseToPlannedTarget({ request: req, item: relItem });
                                         const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim() === (itemName ?? '').trim())
+                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
                                         );
                                         const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => (l.item ?? '').trim() === (itemName ?? '').trim());
+                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+                                        const pt1 = parsePaymentTermsString(first?.terms ?? 'As per contract');
                                         setReleaseToPlannedForm({
                                           vendor: first?.vendor ?? '',
                                           moqDisplay: '',
                                           qty: String(qty ?? 0),
                                           unitPrice: String(firstLine?.pricePerUnit ?? price ?? 0),
-                                          paymentTerms: first?.terms ?? 'As per contract',
+                                          paymentTermsType: pt1.type,
+                                          advancePercent: String(
+                                            pt1.advancePercent ||
+                                              (paymentTermsTypeRequiresAdvancePercent(pt1.type) ? 50 : 0)
+                                          ),
                                           leadTimeDays: first?.leadTimeDays ?? 0,
                                         });
                                       } else {
@@ -2592,7 +3069,7 @@ const Procurement: React.FC = () => {
                                           if (linkedDraft?.backendPoId) {
                                             openReleasePOModal(linkedDraft.id);
                                           } else {
-                                            addToast('warning', 'Create a Draft PO from Quotations first, then release from Draft POs.');
+                                            addToast('warning', 'Create a Draft PO from the PR (select a recorded quotation), then release from Draft POs.');
                                           }
                                         }}
                                         className="px-4 py-1.5 rounded-lg bg-amber-400 text-slate-900 text-xs font-bold hover:bg-amber-500 shadow-md transition-all"
@@ -2624,7 +3101,6 @@ const Procurement: React.FC = () => {
                     </div>
                   ) : (
                     filteredQuotes.map((quote) => {
-                      const totalValue = quote.lines.reduce((sum, line) => sum + line.totalValue, 0);
                       const isExpanded = expandedQuoteId === quote.id;
 
                       return (
@@ -2640,9 +3116,11 @@ const Procurement: React.FC = () => {
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[quote.requestType]}`}>
                                     {quote.requestType}
                                   </span>
-                                  <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border ${statusClass[quote.status]}`}>
-                                    {quote.status}
-                                  </span>
+                                  {quote.status !== 'Pending Review' && (
+                                    <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border ${statusClass[quote.status]}`}>
+                                      {quote.status}
+                                    </span>
+                                  )}
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-1">{quote.vendor}</h3>
                                 <div className="flex items-center gap-3 text-xs text-slate-600">
@@ -2655,10 +3133,6 @@ const Procurement: React.FC = () => {
                                   <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <div className="text-xs text-slate-500 mb-1">TOTAL VALUE</div>
-                                <div className="text-2xl font-bold text-amber-600">₹{totalValue.toLocaleString('en-IN')}</div>
-                              </div>
                             </div>
                           </div>
 
@@ -2670,7 +3144,6 @@ const Procurement: React.FC = () => {
                                   <th className="px-4 py-2.5 font-semibold">ITEM</th>
                                   <th className="px-4 py-2.5 font-semibold">ORDER QTY</th>
                                   <th className="px-4 py-2.5 font-semibold text-right">PRICE / UNIT</th>
-                                  <th className="px-4 py-2.5 font-semibold text-right">TOTAL VALUE</th>
                                   <th className="px-4 py-2.5 font-semibold text-right">VS PLANNED</th>
                                 </tr>
                               </thead>
@@ -2687,9 +3160,6 @@ const Procurement: React.FC = () => {
                                     </td>
                                     <td className="px-4 py-3 text-right text-slate-700">
                                       ₹{line.pricePerUnit.toLocaleString('en-IN')}
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-bold text-slate-900">
-                                      ₹{line.totalValue.toLocaleString('en-IN')}
                                     </td>
                                     <td className={`px-4 py-3 text-right font-bold ${line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
                                       }`}>
@@ -2759,8 +3229,8 @@ const Procurement: React.FC = () => {
                             </div>
                           )}
 
-                          {/* Action Buttons */}
-                          <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-between">
+                          {/* Action Buttons — quotations are record-only; draft POs are created from PR / Draft POs flow */}
+                          <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-end">
                             <button
                               onClick={() => {
                                 if (window.confirm(`Are you sure you want to delete quote ${quote.id}?`)) {
@@ -2771,30 +3241,6 @@ const Procurement: React.FC = () => {
                             >
                               Delete
                             </button>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => updateQuoteStatus(quote.id, quote.status === 'Confirmed' ? 'Not Selected' : 'Confirmed')}
-                                className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${quote.status === 'Confirmed'
-                                  ? 'border border-slate-300 text-slate-700 hover:bg-slate-50'
-                                  : 'border border-emerald-400 text-emerald-700 hover:bg-emerald-50'
-                                  }`}
-                              >
-                                {quote.status === 'Confirmed' ? 'Mark Not Selected' : 'Confirm Quote'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => createDraftPO(quote.id)}
-                                disabled={quote.status !== 'Confirmed'}
-                                title={quote.status !== 'Confirmed' ? 'Confirm this quote first to create a draft PO' : undefined}
-                                className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${quote.status === 'Confirmed'
-                                  ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
-                                  : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                  }`}
-                              >
-                                Create Draft PO
-                              </button>
-                            </div>
                           </div>
                         </article>
                       );
@@ -2854,10 +3300,10 @@ const Procurement: React.FC = () => {
                     />
                   </div>
 
-                  {/* Requests marked PO Draft but no Draft PO yet — create from Quotations */}
+                  {/* Requests marked PO Draft but no Draft PO yet — open PR modal to pick quotation & create draft */}
                   {requestsPODraftNoDraftPO.length > 0 && (
                     <div className="space-y-2 mb-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — create draft PO from Quotations</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO (use recorded quotations)</p>
                       {requestsPODraftNoDraftPO.map((req) => (
                         <article key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
                           <div className="flex items-center gap-3">
@@ -2867,10 +3313,10 @@ const Procurement: React.FC = () => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => { setMainTab('Procurement'); setSideSection('Quotations'); setSelectedRequest(req); }}
+                            onClick={() => { setMainTab('Procurement'); setSideSection('Draft POs'); setSelectedRequest(req); }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
                           >
-                            Create Draft PO from Quotations
+                            Open PR & create Draft PO
                           </button>
                         </article>
                       ))}
@@ -2884,7 +3330,7 @@ const Procurement: React.FC = () => {
                         {draftPOs.length === 0 && requestsPODraftNoDraftPO.length === 0
                           ? 'No draft purchase orders.'
                           : draftPOs.length === 0
-                            ? 'No draft POs yet. Create one from the Quotations tab (or use the cards above).'
+                            ? 'No draft POs yet. Use the cards above to open the PR and create a Draft PO from recorded quotations.'
                             : 'No draft POs match the current filters.'}
                       </div>
                     ) : (
@@ -3047,6 +3493,18 @@ const Procurement: React.FC = () => {
                   if (status === 'At Risk') return 3;
                   return 0;
                 };
+
+                    const getTimelineCompletedIndexForRecord = (record: any) => {
+                      const backendPoId = record?.backendPoId ? String(record.backendPoId) : '';
+                      const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+                      const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
+
+                      if (tracking?.grnCompleteAt) return 6;
+                      if (ov?.underGrn || tracking?.underGrnAt) return 5;
+                      if (ov?.delivered || tracking?.deliveredAt) return 4;
+                      if (ov?.shipped || tracking?.shippedAt) return 3;
+                      return getTimelineCompletedIndex(record.status);
+                    };
 
                 return (
                   <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
@@ -3251,7 +3709,7 @@ const Procurement: React.FC = () => {
                     {/* Tracking cards under the itemised view */}
                     <div className="space-y-3">
                       {filteredIssuedPORecords.map(record => {
-                        const completedIndex = getTimelineCompletedIndex(record.status);
+                        const completedIndex = getTimelineCompletedIndexForRecord(record);
 
                         return (
                           <div
@@ -3367,14 +3825,14 @@ const Procurement: React.FC = () => {
                                 Full Timeline
                               </button>
                               <button
-                                onClick={() => markIssuedPOInTransit(record.request.id, record.requestCode)}
+                                onClick={() => markIssuedPOInTransit(record)}
                                 disabled={record.status === 'In Transit'}
                                 className={`px-3 py-1.5 rounded border text-[11px] font-semibold ${record.status === 'In Transit' ? 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed' : 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
                               >
                                 Mark In Transit
                               </button>
                               <button
-                                onClick={() => receiveIssuedPOGRN(record.request.id, record.requestCode)}
+                                onClick={() => receiveIssuedPOGRN(record)}
                                 className="px-3 py-1.5 rounded border border-emerald-400 text-emerald-700 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100"
                               >
                                 Mark Delivered at WH
@@ -5133,7 +5591,7 @@ const Procurement: React.FC = () => {
                     <button
                       onClick={async () => {
                         const selectedQuote = quotes.find((q) => q.id === selectedQuoteIdInPrView);
-                        const backendPr = backendPrResult?.find((p: { id: string }) => String(p.id) === req.id) as { items?: BackendPRItem[] } | undefined;
+                        const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as { items?: BackendPRItem[] } | undefined;
                         const items = Array.isArray(backendPr?.items) ? backendPr.items : [];
                         if (!items.length) {
                           addToast('warning', 'Request has no line items. Add items in Edit Request first.');
@@ -5355,9 +5813,11 @@ const Procurement: React.FC = () => {
                                   <span className="font-semibold text-slate-900">{q.vendor}</span>
                                   <span className="text-xs text-slate-500">{q.quotedOn || '—'}</span>
                                   {q.requestCode && <span className="text-[10px] text-slate-500">Link: {q.requestCode}</span>}
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${q.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' :
-                                    q.status === 'Not Selected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'
-                                    }`}>{q.status}</span>
+                                  {q.status !== 'Pending Review' && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${q.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' :
+                                      q.status === 'Not Selected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'
+                                      }`}>{q.status}</span>
+                                  )}
                                 </div>
                                 <table className="w-full text-xs">
                                   <thead>
@@ -5365,7 +5825,6 @@ const Procurement: React.FC = () => {
                                       <th className="text-left py-1 font-medium">Item</th>
                                       <th className="text-right py-1 font-medium">Qty</th>
                                       <th className="text-right py-1 font-medium">Price/unit</th>
-                                      <th className="text-right py-1 font-medium">Total</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -5374,7 +5833,6 @@ const Procurement: React.FC = () => {
                                         <td className="py-1 text-slate-800">{line.item}</td>
                                         <td className="py-1 text-right text-slate-700">{line.qty}</td>
                                         <td className="py-1 text-right font-medium">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : line.pricePerUnit}</td>
-                                        <td className="py-1 text-right font-medium">₹{typeof line.totalValue === 'number' ? line.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : line.totalValue}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -5471,38 +5929,46 @@ const Procurement: React.FC = () => {
         const itemCode = item.itemCode ?? (req.type === 'RM' ? 'RI-RM-001-001' : 'PI-PM-002-001');
         const spec = item.spec ?? `${req.type} · ${item.unit}`;
         const reqQuotesForItem = quotes.filter(
-          (q) => q.requestId === req.id && q.lines.some((l) => (l.item ?? '').trim().toLowerCase() === (itemName ?? '').trim().toLowerCase())
+          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, item))
         );
         const vendorSlabs = reqQuotesForItem.flatMap((q) => {
-          const line = q.lines.find((l) => (l.item ?? '').trim().toLowerCase() === (itemName ?? '').trim().toLowerCase());
+          const line = q.lines.find((l) => quoteLineMatchesReleaseTarget(l, item));
           if (!line) return [];
           const moqFromQty = typeof line.qty === 'string' ? parseInt(line.qty, 10) : line.qty;
           return [{ vendor: q.vendor, moq: Number.isNaN(moqFromQty) ? item.moq ?? '—' : moqFromQty, unitPrice: line.pricePerUnit, leadDays: q.leadTimeDays, terms: q.terms }];
         });
         const uniqueVendors = Array.from(new Set(vendorSlabs.map((s) => s.vendor)));
-        const paymentTermsOptions = [
-          '50% Advance, 50% on delivery',
-          '30% Advance, 70% before dispatch',
-          'No advance, Net 15',
-          'No advance, Net 30',
-          'As per contract',
-        ];
-        const existingTerms = vendorSlabs.map((s) => s.terms).filter(Boolean);
-        const allTerms = Array.from(new Set([...existingTerms, ...paymentTermsOptions]));
-        const previousPurchases = (purchaseOrders ?? []).filter((po) => {
-          const raw = po.rawItems ?? [];
-          return raw.some((r: any) => (r?.itemName ?? r?.name ?? '').toString().toLowerCase().includes((itemName ?? '').toLowerCase()));
-        }).map((po) => {
-          const raw = (po.rawItems ?? []) as { itemName?: string; name?: string; quantity?: number; rate?: number; price?: number }[];
-          const row = raw.find((r) => (r?.itemName ?? r?.name ?? '').toString().toLowerCase().includes((itemName ?? '').toLowerCase()));
-          return {
-            date: po.date ?? '',
-            vendor: po.vendorName ?? '',
-            qty: row?.quantity ?? 0,
-            unitPrice: row?.rate ?? row?.price ?? 0,
-            unit: item.unit,
-          };
-        }).filter((r) => r.qty > 0).slice(0, 10);
+        /** PO line matches this PR line — never use empty substring (.includes('') matches everything). */
+        const nameKey = (itemName ?? '').trim().toLowerCase();
+        const codeKey = (itemCode ?? '').trim().toLowerCase();
+        const hasMatchKey = nameKey.length > 0 || codeKey.length > 0;
+        const poLineMatches = (r: { itemName?: string; name?: string; itemCode?: string; code?: string }) => {
+          const rn = (r?.itemName ?? r?.name ?? '').toString().trim().toLowerCase();
+          const rc = (r?.itemCode ?? r?.code ?? '').toString().trim().toLowerCase();
+          if (nameKey.length > 0 && rn.length > 0 && rn === nameKey) return true;
+          if (codeKey.length > 0 && rc.length > 0 && rc === codeKey) return true;
+          return false;
+        };
+        const previousPurchases = !hasMatchKey
+          ? []
+          : (purchaseOrders ?? [])
+              .filter((po) => {
+                const raw = po.rawItems ?? [];
+                return raw.some((r: any) => poLineMatches(r));
+              })
+              .map((po) => {
+                const raw = (po.rawItems ?? []) as { itemName?: string; name?: string; itemCode?: string; code?: string; quantity?: number; rate?: number; price?: number }[];
+                const row = raw.find((r) => poLineMatches(r));
+                return {
+                  date: po.date ?? '',
+                  vendor: po.vendorName ?? '',
+                  qty: row?.quantity ?? 0,
+                  unitPrice: row?.rate ?? row?.price ?? 0,
+                  unit: item.unit,
+                };
+              })
+              .filter((r) => r.qty > 0)
+              .slice(0, 10);
         const gapQty = req.stockSummary ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0)) : item.qty;
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setReleaseToPlannedTarget(null)}>
@@ -5542,12 +6008,17 @@ const Procurement: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  const p = parsePaymentTermsString(s.terms || '');
                                   setReleaseToPlannedForm((f) => ({
                                     ...f,
                                     vendor: s.vendor,
                                     moqDisplay: `${s.moq} (₹${s.unitPrice} · ${s.leadDays}d)`,
                                     unitPrice: String(s.unitPrice),
-                                    paymentTerms: s.terms || f.paymentTerms,
+                                    paymentTermsType: p.type,
+                                    advancePercent: String(
+                                      p.advancePercent ||
+                                        (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                    ),
                                     leadTimeDays: s.leadDays,
                                   }));
                                 }}
@@ -5584,7 +6055,26 @@ const Procurement: React.FC = () => {
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ slab</label>
                         <select
                           value={releaseToPlannedForm.moqDisplay}
-                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, moqDisplay: e.target.value }))}
+                          onChange={(e) => {
+                            const opt = e.target.value;
+                            setReleaseToPlannedForm((f) => {
+                              const slab = vendorSlabs.find(
+                                (s) =>
+                                  s.vendor === f.vendor &&
+                                  `${s.moq} (₹${s.unitPrice} · ${s.leadDays}d)` === opt
+                              );
+                              const next = { ...f, moqDisplay: opt };
+                              if (slab?.terms) {
+                                const p = parsePaymentTermsString(slab.terms);
+                                next.paymentTermsType = p.type;
+                                next.advancePercent = String(
+                                  p.advancePercent ||
+                                    (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                );
+                              }
+                              return next;
+                            });
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         >
                           <option value="">— Select slab —</option>
@@ -5624,23 +6114,43 @@ const Procurement: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment Terms</label>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
                         <select
-                          value={releaseToPlannedForm.paymentTerms}
-                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                          value={releaseToPlannedForm.paymentTermsType}
+                          onChange={(e) =>
+                            setReleaseToPlannedForm((f) => ({
+                              ...f,
+                              paymentTermsType: e.target.value as PaymentTermsStructuredType,
+                            }))
+                          }
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         >
-                          {allTerms.map((t) => (
-                            <option key={t} value={t}>{t}</option>
+                          {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-slate-500 mt-1">Advance % decides Treasury request on draft release.</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Advance % drives Treasury on draft release.</p>
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
                         <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlannedForm.leadTimeDays} days</div>
                       </div>
                     </div>
+                    {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) && (
+                      <div className="mb-3">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Advance %</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={releaseToPlannedForm.advancePercent}
+                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, advancePercent: e.target.value }))}
+                          className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    )}
                     <div className="border-t border-slate-200 my-3" />
                     <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
                     <table className="w-full text-xs">
@@ -5681,6 +6191,20 @@ const Procurement: React.FC = () => {
                         return;
                       }
 
+                      const advErr = validateAdvancePercentForType(
+                        releaseToPlannedForm.paymentTermsType,
+                        Number(releaseToPlannedForm.advancePercent)
+                      );
+                      if (advErr) {
+                        addToast('warning', advErr);
+                        return;
+                      }
+
+                      const composedReleasePaymentTerms = formatPaymentTermsString(
+                        releaseToPlannedForm.paymentTermsType,
+                        Number(releaseToPlannedForm.advancePercent)
+                      );
+
                       const today = new Date();
                       const expectedDelivery = new Date(today);
                       expectedDelivery.setDate(
@@ -5717,7 +6241,7 @@ const Procurement: React.FC = () => {
                         orderDate: createdDateStr,
                         expectedShipmentDate: expectedDeliveryStr,
                         reference: req.code,
-                        paymentTerms: releaseToPlannedForm.paymentTerms || undefined,
+                        paymentTerms: composedReleasePaymentTerms || undefined,
                         status: 'Draft',
                         formData: {
                           requestId: req.id,
@@ -5760,7 +6284,7 @@ const Procurement: React.FC = () => {
                         status: 'Pending Approval',
                         createdDate: createdDateStr,
                         createdBy: 'Procurement — Admin',
-                        paymentTerms: releaseToPlannedForm.paymentTerms || 'As per contract',
+                        paymentTerms: composedReleasePaymentTerms || 'As per contract',
                         expectedDelivery: expectedDeliveryStr,
                         deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
                         vendorRating: 0,
@@ -6518,7 +7042,6 @@ const Procurement: React.FC = () => {
                   <div className="flex-1 min-w-[200px]">ITEM (RM/PM from masters)</div>
                   <div className="w-24 text-right">QTY</div>
                   <div className="w-28 text-right">PRICE / UNIT</div>
-                  <div className="w-28 text-right">TOTAL VALUE</div>
                   <div className="w-16" />
                 </div>
                 <div className="max-h-64 overflow-auto divide-y divide-slate-100">
@@ -6575,10 +7098,6 @@ const Procurement: React.FC = () => {
                             className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
                           />
                         </div>
-                        <div className="w-28 text-right pl-1 text-slate-800">
-                          ₹{line.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                          <span className="block text-[10px] text-slate-500">{line.uom}</span>
-                        </div>
                         <div className="w-16 shrink-0">
                           <button
                             type="button"
@@ -6605,7 +7124,19 @@ const Procurement: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-500 mb-1">Vendor</label>
               <select
                 value={recordQuoteForm.vendorId}
-                onChange={(e) => setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }))}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const v = vendors.find((x) => String(x.id) === id);
+                  const p = parsePaymentTermsString(v?.paymentTerms ?? '');
+                  setRecordQuoteForm((f) => ({
+                    ...f,
+                    vendorId: id,
+                    paymentTermsType: p.type,
+                    advancePercent: String(
+                      p.advancePercent || (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                    ),
+                  }));
+                }}
                 className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
               >
                 {vendors.map((v) => (
@@ -6648,14 +7179,40 @@ const Procurement: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Payment Terms</label>
-              <textarea
-                value={recordQuoteForm.paymentTerms}
-                onChange={(e) => setRecordQuoteForm((f) => ({ ...f, paymentTerms: e.target.value }))}
-                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
-                rows={2}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Payment terms (type)</label>
+                <select
+                  value={recordQuoteForm.paymentTermsType}
+                  onChange={(e) =>
+                    setRecordQuoteForm((f) => ({
+                      ...f,
+                      paymentTermsType: e.target.value as PaymentTermsStructuredType,
+                    }))
+                  }
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                >
+                  {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {paymentTermsTypeRequiresAdvancePercent(recordQuoteForm.paymentTermsType) && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Advance %</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={recordQuoteForm.advancePercent}
+                    onChange={(e) => setRecordQuoteForm((f) => ({ ...f, advancePercent: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">Balance is 100% − advance (on delivery or before dispatch).</p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -6670,8 +7227,7 @@ const Procurement: React.FC = () => {
 
             <div className="flex justify-between items-center pt-2">
               <p className="text-[11px] text-slate-500">
-                Status will start as <span className="font-semibold">Pending Review</span>. You can mark it Confirmed / Not
-                Selected from the Quotations list.
+                New quotes are saved with default status for internal tracking.
               </p>
               <div className="flex gap-2">
                 <button
@@ -6699,6 +7255,20 @@ const Procurement: React.FC = () => {
                       return;
                     }
 
+                    const advErr = validateAdvancePercentForType(
+                      recordQuoteForm.paymentTermsType,
+                      Number(recordQuoteForm.advancePercent)
+                    );
+                    if (advErr) {
+                      addToast('error', advErr);
+                      return;
+                    }
+
+                    const composedPaymentTerms = formatPaymentTermsString(
+                      recordQuoteForm.paymentTermsType,
+                      Number(recordQuoteForm.advancePercent)
+                    );
+
                     const items = recordQuoteLines.map((l) => {
                       const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
                       const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
@@ -6723,7 +7293,7 @@ const Procurement: React.FC = () => {
                       leadTimeDays: recordQuoteForm.leadTimeDays
                         ? Number(recordQuoteForm.leadTimeDays)
                         : null,
-                      paymentTerms: recordQuoteForm.paymentTerms || null,
+                      paymentTerms: composedPaymentTerms || null,
                       notes: recordQuoteForm.notes || null,
                       status: 'pending',
                       items,
@@ -6762,7 +7332,7 @@ const Procurement: React.FC = () => {
             {(() => {
               const selectedQuote = quotes.find((q) => q.id === createPoFromQuoteState.quoteId);
               const backendPr =
-                backendPrResult?.find((p: { id: string }) => String(p.id) === createPoFromQuoteState.requestId) ??
+                backendPrArray.find((p: { id: string }) => String(p.id) === createPoFromQuoteState.requestId) ??
                 null;
               const prItems: BackendPRItem[] = Array.isArray((backendPr as any)?.items)
                 ? ((backendPr as any).items as BackendPRItem[])

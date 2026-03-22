@@ -68,6 +68,14 @@ interface VendorFormData {
  iec: string;
  paymentTerms: string;
  customTerms: string;
+  /**
+   * Payment split percentages.
+   * Must add up to 100% (Advanced + Before dispatch + After dispatch/on delivery).
+   */
+  paymentCreditType: string;
+  payablesAdvancedPct: string;
+  payablesBeforeDispatchPct: string;
+  payablesAfterDispatchPct: string;
  creditLimit: string;
  penalty: string;
  tdsApplicable: string;
@@ -146,6 +154,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   iec: '',
   paymentTerms: '',
   customTerms: '',
+    paymentCreditType: 'Credit',
+    payablesAdvancedPct: '0',
+    payablesBeforeDispatchPct: '0',
+    payablesAfterDispatchPct: '100',
   creditLimit: '',
   penalty: '',
   tdsApplicable: '',
@@ -185,6 +197,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         data.contactId ||
         existingVendor.id;
 
+     const termsStr = String(data.paymentTerms ?? existingVendor.paymentTerms ?? '');
+     const isAdvance = /advance/i.test(termsStr) && !/on delivery/i.test(termsStr);
+     const isOnDelivery = /on delivery/i.test(termsStr) || /after dispatch/i.test(termsStr);
+
      const baseFormData = {
         legalName: data.legalName || existingVendor.name,
         tradeName: data.tradeName || existingVendor.name,
@@ -197,6 +213,25 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         notes: data.notes || existingVendor.notes,
         entityCode: String(entityCode || ''),
         zohoId: data.zohoId ?? (existingVendor as { zohoId?: string }).zohoId ?? '',
+        paymentCreditType: data.paymentCreditType ?? (isAdvance ? 'Advance' : 'Credit'),
+        payablesAdvancedPct:
+          data.payablesAdvancedPct != null && String(data.payablesAdvancedPct).trim() !== ''
+            ? String(data.payablesAdvancedPct)
+            : isAdvance
+              ? '100'
+              : '0',
+        payablesBeforeDispatchPct:
+          data.payablesBeforeDispatchPct != null && String(data.payablesBeforeDispatchPct).trim() !== ''
+            ? String(data.payablesBeforeDispatchPct)
+            : '0',
+        payablesAfterDispatchPct:
+          data.payablesAfterDispatchPct != null && String(data.payablesAfterDispatchPct).trim() !== ''
+            ? String(data.payablesAfterDispatchPct)
+            : isAdvance
+              ? '0'
+              : isOnDelivery
+                ? '100'
+                : '100',
      };
 
      setFormData(prev => ({
@@ -236,6 +271,21 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     newErrors.primaryEmail = 'Primary email is required';
     addToast('error', 'Primary email is required');
    }
+
+    if (_stage === 5) {
+      if (!String(formData.paymentCreditType ?? '').trim()) {
+        newErrors.paymentCreditType = 'Credit type is required';
+        addToast('error', 'Credit type is required');
+      }
+      const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+      const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+      const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+      const sum = adv + before + after;
+      if (Math.abs(sum - 100) > 0.001) {
+        newErrors.paymentSplit = 'Payables times (Advanced + Before dispatch + After dispatch/on delivery) must add up to 100%';
+        addToast('error', 'Payables times must add up to 100%');
+      }
+    }
   }
   if (Object.keys(newErrors).length > 0) {
    setErrors(newErrors);
@@ -299,7 +349,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    notes: 'Mock data for testing',
    gstin: '27AABCM1234A1Z1',
    pan: 'AABCM1234A',
-   paymentTerms: '30',
+   paymentTerms: 'Custom',
+   customTerms: '50% advance + 50% on delivery',
+   paymentCreditType: 'Mixed',
+   payablesAdvancedPct: '50',
+   payablesBeforeDispatchPct: '0',
+   payablesAfterDispatchPct: '50',
   }));
   setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
   setPocs([{ name: 'John Doe', role: 'Manager', email: 'john@mock.com', phone: '+91-9876543210', level: 'Primary', preferred: 'Email', notes: '' }]);
@@ -363,6 +418,11 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   if (!validateStage(currentStage, true)) return;
   setIsSaving(true);
 
+    const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+    const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+    const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+    const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+
   const payload = {
    name: formData.tradeName || formData.legalName,
    email: formData.primaryEmail,
@@ -370,9 +430,9 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    location: formData.state,
    country: formData.country,
    category: formData.setupCategory,
-   paymentTerms: formData.paymentTerms,
+      paymentTerms: computedPaymentTerms,
    notes: formData.notes,
-   data: { ...formData, documents, pocs, banks, vendorItems },
+      data: { ...formData, paymentTerms: computedPaymentTerms, documents, pocs, banks, vendorItems },
   };
 
   if (editingId && existingVendor) {
@@ -423,6 +483,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     billingAddress: '', shippingAddress: '', state: '', country: 'India',
     website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
     paymentTerms: '', customTerms: '', creditLimit: '', penalty: '',
+    paymentCreditType: 'Credit',
+    payablesAdvancedPct: '0',
+    payablesBeforeDispatchPct: '0',
+    payablesAfterDispatchPct: '100',
     tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
     agreementType: '', agreementStatus: '', startDate: '', endDate: '',
     agreementLink: '', owner: '', agreementNotes: '',
@@ -912,23 +976,64 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className={sectionTitleClass}>Payment Terms & Credit</div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Payment Terms</label>
-         <select name="paymentTerms" value={formData.paymentTerms} onChange={handleInputChange} className={inputClass}>
-          <option value="">Select</option>
-          <option>Advance</option>
-          <option>On Delivery</option>
-          <option>Net 7</option>
-          <option>Net 15</option>
-          <option>Net 30</option>
-          <option>Net 45</option>
-          <option>Net 60</option>
-          <option>Custom</option>
-         </select>
+         <label className={labelClass}>Advanced (%)</label>
+         <input
+          type="number"
+          name="payablesAdvancedPct"
+          value={formData.payablesAdvancedPct}
+          onChange={handleInputChange}
+          step="0.01"
+          min="0"
+          className={inputClass}
+         />
         </div>
         <div>
-         <label className={labelClass}>Custom Terms (if any)</label>
-         <input type="text" name="customTerms" value={formData.customTerms} onChange={handleInputChange} placeholder="e.g., 50% advance + 50% on delivery" className={inputClass} />
+         <label className={labelClass}>Before dispatch (%)</label>
+         <input
+          type="number"
+          name="payablesBeforeDispatchPct"
+          value={formData.payablesBeforeDispatchPct}
+          onChange={handleInputChange}
+          step="0.01"
+          min="0"
+          className={inputClass}
+         />
         </div>
+       </div>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+         <label className={labelClass}>After dispatch / On delivery (%)</label>
+         <input
+          type="number"
+          name="payablesAfterDispatchPct"
+          value={formData.payablesAfterDispatchPct}
+          onChange={handleInputChange}
+          step="0.01"
+          min="0"
+          className={inputClass}
+         />
+        </div>
+        <div>
+         <label className={labelClass}>Credit Type</label>
+         <select name="paymentCreditType" value={formData.paymentCreditType} onChange={handleInputChange} className={inputClass}>
+          <option value="">Select</option>
+          <option>Credit</option>
+          <option>Advance</option>
+          <option>LC</option>
+          <option>Mixed</option>
+         </select>
+        </div>
+       </div>
+       <div>
+        <label className={labelClass}>Custom Terms (optional)</label>
+        <input
+         type="text"
+         name="customTerms"
+         value={formData.customTerms}
+         onChange={handleInputChange}
+         placeholder="e.g., 50% advance + 50% on delivery"
+         className={inputClass}
+        />
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>

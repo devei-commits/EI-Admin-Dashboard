@@ -26,8 +26,12 @@ export interface PackMaterialFromApi {
   unit?: string | null;
   tax_pref?: string | null;
   sales_purchase_account?: string | null;
+  pkg_returnable?: boolean | null;
+  pkg_associate_items?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** Full form snapshot (create/update) — includes bulk quality specs for PM. */
+  form_data?: Record<string, unknown> | null;
 }
 
 export interface PackMaterialRecord {
@@ -50,6 +54,9 @@ export interface PackMaterialRecord {
   unit: string | null;
   taxPref: string | null;
   salesPurchaseAccount: string | null;
+  pkgReturnable: boolean | null;
+  pkgAssociateItems: string | null;
+  form_data?: Record<string, unknown> | null;
 }
 
 function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
@@ -73,6 +80,9 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     unit: row.unit ?? null,
     taxPref: row.tax_pref ?? null,
     salesPurchaseAccount: row.sales_purchase_account ?? null,
+    pkgReturnable: row.pkg_returnable ?? null,
+    pkgAssociateItems: row.pkg_associate_items ?? null,
+    form_data: row.form_data ?? null,
   };
 }
 
@@ -133,6 +143,11 @@ export interface CreatePackMaterialPayload {
   pkgTaxPreference?: string | null;
   salesPurchaseAccount?: string | null;
   sales_purchase_account?: string | null;
+  pkgReturnable?: boolean | null;
+  pkg_returnable?: boolean | null;
+  pkgAssociateItems?: string | null;
+  pkg_associate_items?: string | null;
+  form_data?: Record<string, unknown> | null;
 }
 
 /**

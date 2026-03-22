@@ -288,6 +288,8 @@ export interface ItemsInvolvedRow {
   expiryDate: string | null;
   /** From warehouse_inventory — same as Warehouse -> Inventory */
   reserved?: number;
+  /** Planned quantity captured from production (BMR/BPR-linked reserved_batch_items). */
+  plannedQty?: number;
   inTransit?: number;
   reorderPt?: number;
   avgMo?: number;

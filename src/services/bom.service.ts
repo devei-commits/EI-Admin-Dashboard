@@ -30,12 +30,16 @@ export interface BOMRecord {
   id: string;
   bomCode: string;
   bomSku: string;
+  zohoId?: string | null;
   name: string;
   type: string;
   status: string;
   version: string;
   client: string;
   bomCategory?: string;
+  bomTaxPreference?: string | null;
+  bomReturnable?: boolean | null;
+  bomAssociateItems?: string | null;
   packSize?: string;
   dosage?: string;
   site?: string;
@@ -85,6 +89,7 @@ export async function fetchBOMById(id: string): Promise<ServiceResult<BOMRecord>
 export interface CreateBOMPayload {
   bomCode: string;
   bomSku?: string;
+  zohoId?: string | null;
   bomCategory?: string;
   bomUnit?: string;
   bomHsn?: string;

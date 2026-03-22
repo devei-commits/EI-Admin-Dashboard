@@ -37,7 +37,8 @@ export type SOStatus =
 
 export type Priority = 'normal' | 'high';
 
-export type PaymentTerms = 'Net 30' | 'Net 45' | 'Net 60' | 'Advance' | 'COD' | 'Advance Payment';
+/** Single stored/display string (structured via `lib/paymentTermsStructured` or legacy labels). */
+export type PaymentTerms = string;
 
 // ═══════════════════════════════════════════════════════════
 // DATA INTERFACES
@@ -111,6 +112,11 @@ export interface SOProgress {
   batchesTotal: number;
   /** batchesDone / batchesTotal as percentage (0–100). */
   batchesDonePct: number;
+  /**
+   * End-to-end fulfillment % (plan → procurement → production → pick → invoice → ship → deliver),
+   * weighted by ordered qty per line and planned qty per batch. Not 100% until delivered/closed.
+   */
+  fulfillmentLifecyclePct: number;
 }
 
 export interface KPIData {
