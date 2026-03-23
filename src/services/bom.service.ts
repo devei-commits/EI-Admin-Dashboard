@@ -86,6 +86,12 @@ export async function fetchBOMById(id: string): Promise<ServiceResult<BOMRecord>
   }
 }
 
+export async function fetchNextBomCode(prefix: string): Promise<string> {
+  const p = encodeURIComponent(prefix.trim());
+  const res = await api.get<{ nextCode: string }>(`/api/v1/bom/next-code?prefix=${p}`);
+  return res?.nextCode ?? `${prefix}-00001`;
+}
+
 export interface CreateBOMPayload {
   bomCode: string;
   bomSku?: string;

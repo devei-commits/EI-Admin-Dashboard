@@ -1,26 +1,35 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import eilogofull from "../assets/logo/eilogofull.svg";
 import { useAuth } from "../context/AuthContext";
 import { usePermissions } from "../hooks/usePermissions";
 import { preloadRoute } from "../lib/preloadRoutes";
+import { prefetchCriticalRouteData } from "../lib/routeDataPrefetch";
 
 /** NavLink that prefetches the route chunk on hover for faster navigation. */
 const PreloadNavLink = ({
   to,
   onMouseEnter,
   ...rest
-}: React.ComponentProps<typeof NavLink>) => (
-  <NavLink
-    to={to}
-    onMouseEnter={(e) => {
-      const path = typeof to === "string" ? to : (to as { pathname?: string }).pathname ?? "";
-      preloadRoute(path);
-      onMouseEnter?.(e);
-    }}
-    {...rest}
-  />
-);
+}: React.ComponentProps<typeof NavLink>) => {
+  const queryClient = useQueryClient();
+  const path = typeof to === "string" ? to : (to as { pathname?: string }).pathname ?? "";
+
+  return (
+    <NavLink
+      to={to}
+      onMouseEnter={(e) => {
+        // 1) Start chunk download
+        preloadRoute(path);
+        // 2) Start route's critical data prefetch (e.g. page 1 for masters lists)
+        prefetchCriticalRouteData(path, queryClient);
+        onMouseEnter?.(e);
+      }}
+      {...rest}
+    />
+  );
+};
 
 const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(false);

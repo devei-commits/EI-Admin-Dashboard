@@ -170,18 +170,26 @@ export async function fetchPlanningBatches(planningExtractedId: string): Promise
   }
 }
 
+function errorMessageFromApiCatch(e: unknown, fallback: string): string {
+  const err = e as Error & { body?: { error?: string } };
+  if (err.body && typeof err.body === 'object' && err.body !== null && 'error' in err.body) {
+    const msg = (err.body as { error: unknown }).error;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return err.message && err.message !== 'Failed to fetch' ? err.message : fallback;
+}
+
 export async function createOrUpdatePlanningBatches(
   planningExtractedId: string,
   batches: { sizeKg: number }[]
 ): Promise<PlanningBatchRow[]> {
   try {
-    const res = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, {
+    const data = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, {
       batches: batches.map((b) => ({ sizeKg: b.sizeKg })),
     });
-    const data = res?.data ?? res;
     return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
+  } catch (e: unknown) {
+    throw new Error(errorMessageFromApiCatch(e, 'Failed to save batches'));
   }
 }
 
@@ -195,13 +203,14 @@ export async function fetchBatchById(planningExtractedId: string, batchId: numbe
   }
 }
 
-/** Add one batch with BOM from product master (not override). Returns the new batch. */
+/** Add one batch with BOM from product master (not override). Returns the new batch. Throws on API error body. */
 export async function addOneBatchFromMaster(planningExtractedId: string): Promise<PlanningBatchRow | null> {
   try {
-    const res = await api.post<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/add-one`, {});
-    const data = res?.data ?? res;
+    const data = await api.post<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/add-one`, {});
     return data ?? null;
-  } catch {
+  } catch (e: unknown) {
+    const msg = errorMessageFromApiCatch(e, '');
+    if (msg) throw new Error(msg);
     return null;
   }
 }

@@ -230,7 +230,20 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
   const handleSaveOnly = () => persistUpdate({});
 
+  const completionBlockers: string[] = [];
+  if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
+  if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
+  if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
+  if (!(labelsGenerated || currentWorkflowSteps.includes('Label Generation'))) {
+    completionBlockers.push('QR labels must be generated.');
+  }
+  const canMarkComplete = completionBlockers.length === 0;
+
   const handleCompleteGRN = () => {
+    if (!canMarkComplete) {
+      setSaveError(`Cannot mark complete yet: ${completionBlockers.join(' ')}`);
+      return;
+    }
     persistUpdate({
       status: 'GRN Complete',
       qcStatus: 'Passed',
@@ -692,12 +705,17 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             </button>
             <button
               onClick={handleCompleteGRN}
-              disabled={saving}
+              disabled={saving || !canMarkComplete}
               className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
                 }`}
             >
               {grn.status === 'In Transit' ? 'Complete GRN & Initiate Stock' : 'Mark complete'}
             </button>
+            {!canMarkComplete && (
+              <p className="w-full text-right text-xs text-amber-700">
+                Mark complete is disabled until: {completionBlockers.join(' ')}
+              </p>
+            )}
           </div>
         </div>
       </div>

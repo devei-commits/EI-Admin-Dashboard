@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import {
-  fetchItemGroups,
+  fetchItemGroupsPage,
   fetchNextItemGroupCode,
   createItemGroup,
   updateItemGroup,
@@ -26,12 +27,13 @@ const EMPTY_FORM = {
 
 const ItemGroups: React.FC = () => {
   const { addToast } = useToast();
-  const [itemGroups, setItemGroups] = useState<ItemGroupRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
   const [typeFilter, setTypeFilter] = useState<'All' | 'RM' | 'PM'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [selectedGroup, setSelectedGroup] = useState<ItemGroupRecord | null>(null);
@@ -40,22 +42,32 @@ const ItemGroups: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchItemGroups().then(res => {
-      if (cancelled) return;
-      if (res.success && res.data) setItemGroups(res.data);
-      else setItemGroups([]);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
     Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()]).then(([rms, pms]) => {
       setRawMaterials(rms ?? []);
       setPackMaterials(pms ?? []);
     });
   }, []);
+
+  useEffect(() => {
+    // Reset to page 1 when filters change.
+    setCurrentPage(1);
+  }, [typeFilter, searchQuery]);
+
+  const offset = (currentPage - 1) * pageSize;
+  const apiType = typeFilter === 'All' ? undefined : typeFilter;
+  const trimmedSearch = searchQuery.trim();
+
+  const { data: itemGroupsPage, isLoading: loading, error } = useQuery({
+    queryKey: ['item-groups-page', apiType, trimmedSearch, pageSize, offset],
+    queryFn: () =>
+      fetchItemGroupsPage({
+        type: apiType,
+        search: trimmedSearch || undefined,
+        limit: pageSize,
+        offset,
+      }),
+    staleTime: 2 * 60 * 1000,
+  });
 
   const primaryItemOptions = useMemo(() => {
     if (form.type === 'PM') return packMaterials.map(p => ({ id: p.id, name: p.description || p.code }));
@@ -86,7 +98,8 @@ const ItemGroups: React.FC = () => {
     };
     const res = await createItemGroup(payload);
     if (res.success && res.data) {
-      setItemGroups(prev => [...prev, res.data!]);
+      setSelectedGroup(res.data);
+      queryClient.invalidateQueries({ queryKey: ['item-groups-page'] });
       setForm(EMPTY_FORM);
       setShowCreateModal(false);
       addToast('success', `Item Group "${res.data.name}" created`);
@@ -168,25 +181,20 @@ const ItemGroups: React.FC = () => {
     });
     setSaving(false);
     if (res.success && res.data) {
-      setItemGroups(prev => prev.map(g => g.id === res.data!.id ? res.data! : g));
       setSelectedGroup(res.data);
       setEditingGroup(null);
+      queryClient.invalidateQueries({ queryKey: ['item-groups-page'] });
       addToast('success', 'Group updated');
     } else {
       addToast('error', res.error?.message ?? 'Failed to update group');
     }
   };
 
-  const filtered = itemGroups.filter(ig => {
-    const matchType = typeFilter === 'All' || ig.type === typeFilter;
-    const matchSearch = !searchQuery ||
-      ig.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ig.code.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchType && matchSearch;
-  });
+  const itemGroups: ItemGroupRecord[] = itemGroupsPage?.rows ?? [];
+  const filtered = itemGroups; // server-side filtered when using pagination
 
   const stats = {
-    totalGroups: itemGroups.length,
+    totalGroups: itemGroupsPage?.total ?? 0,
     rmGroups: itemGroups.filter(ig => ig.type === 'RM').length,
     pmGroups: itemGroups.filter(ig => ig.type === 'PM').length,
     alternates: itemGroups.reduce((sum, ig) => sum + ig.proposedAlternates.length, 0),
@@ -198,6 +206,13 @@ const ItemGroups: React.FC = () => {
     { label: 'PM GROUPS', value: stats.pmGroups, sub: 'Packaging', accent: 'border-l-green-500', num: 'text-green-600' },
     { label: 'ALTERNATES', value: stats.alternates, sub: 'Approved + Proposed', accent: 'border-l-amber-500', num: 'text-amber-600' },
   ];
+
+  const totalPages = Math.max(1, Math.ceil(stats.totalGroups / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -232,7 +247,9 @@ const ItemGroups: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-gray-800">Item Groups</span>
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{filtered.length} / {itemGroups.length}</span>
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">
+                {filtered.length} / {stats.totalGroups}
+              </span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <input
@@ -330,6 +347,45 @@ const ItemGroups: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {!loading && stats.totalGroups > 0 && (
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4 px-6 py-0">
+            <div className="text-sm text-gray-600">
+              Page {safeCurrentPage} of {totalPages} • Showing {filtered.length} of {stats.totalGroups}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(parseInt(e.target.value, 10));
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={safeCurrentPage <= 1}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={safeCurrentPage >= totalPages}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
 

@@ -4,6 +4,7 @@ import { PlusCircle, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type PackBomRow, type ProcessStep } from '../services/productsMaster.service';
+import BOMForm from './BOMForm';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
 
@@ -24,6 +25,9 @@ const BOMDashboard: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState<Partial<PRProductDetail> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [bomEditPopupId, setBomEditPopupId] = useState<string | null>(null);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -228,12 +232,23 @@ const BOMDashboard: React.FC = () => {
     loadProducts();
   }, [loadProducts]);
 
+  useEffect(() => {
+    // Reset to page 1 whenever filters/search/page size change.
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory, selectedStatus, pageSize]);
+
   const filteredList = list.filter((p) => {
     const matchSearch = !searchTerm.trim() || [p.product_name, p.product_code, p.product_sku].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
     const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
     return matchSearch && matchCat && matchStatus;
   });
+
+  const totalFiltered = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const pagedFilteredList = filteredList.slice(startIndex, startIndex + pageSize);
 
   const statCardData = [
     { label: 'TOTAL PRODUCTS', value: list.length, sub: 'Registered PR masters', accent: 'border-l-blue-500', num: 'text-blue-600' },
@@ -344,8 +359,9 @@ const BOMDashboard: React.FC = () => {
               <span className="animate-pulse">Loading Products…</span>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CODE</th>
@@ -372,7 +388,7 @@ const BOMDashboard: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredList.map((p) => (
+                    pagedFilteredList.map((p) => (
                       <tr key={p.product_id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewItem(p)}>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">{p.product_code || '—'}</td>
                         <td className="px-4 py-3">
@@ -405,12 +421,13 @@ const BOMDashboard: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <Link
-                            to={`/bom/${p.product_id}`}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setBomEditPopupId(String(p.product_id)); }}
                             className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline mr-2"
                           >
                             Edit
-                          </Link>
+                          </button>
                           <button
                             type="button"
                             onClick={async () => {
@@ -433,8 +450,52 @@ const BOMDashboard: React.FC = () => {
                     ))
                   )}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 bg-white">
+                  <div className="text-xs text-gray-600">
+                    Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
+                    <span className="font-semibold text-gray-900">{totalPages}</span> • Showing{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>{' '}
+                    -{' '}
+                    <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -448,12 +509,13 @@ const BOMDashboard: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-900">{selectedProduct?.product_name ?? 'Product'}</h2>
             </div>
             <div className="flex items-center gap-2">
-              <Link
-                to={selectedProduct ? `/bom/${selectedProduct.product_id}` : '/bom'}
+              <button
+                type="button"
+                onClick={() => selectedProduct && setBomEditPopupId(String(selectedProduct.product_id))}
                 className="text-xs font-semibold text-blue-600 hover:underline"
               >
                 Edit page
-              </Link>
+              </button>
               {selectedProduct && (
                 <button
                   type="button"
@@ -763,7 +825,14 @@ const BOMDashboard: React.FC = () => {
                 ) : (
                   <>
                     <button onClick={handleClosePanel} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-                    {canEdit && <button onClick={startEdit} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Edit</button>}
+                    {canEdit && selectedProduct && (
+                      <button
+                        onClick={() => { setBomEditPopupId(String(selectedProduct.product_id)); }}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -771,6 +840,23 @@ const BOMDashboard: React.FC = () => {
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">Failed to load detail</div>
           )}
+        </div>
+      )}
+      {bomEditPopupId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={() => setBomEditPopupId(null)}
+        >
+          <div
+            className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BOMForm
+              productId={bomEditPopupId}
+              onClose={() => setBomEditPopupId(null)}
+              onSaved={() => loadProducts()}
+            />
+          </div>
         </div>
       )}
     </div>

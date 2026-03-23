@@ -333,7 +333,7 @@ function BatchRow({
               Ship
             </Button>
           )}
-          {['shipped', 'delivered', 'closed'].includes(split.ffStatus) && (
+          {split.ffStatus === 'shipped' && (
             <Button size="sm" variant="secondary" onClick={onTrack} className="whitespace-nowrap">
               <MapPin className="h-3.5 w-3.5 mr-1" />
               Track

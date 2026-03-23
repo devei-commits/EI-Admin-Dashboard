@@ -110,4 +110,68 @@ describe('fulfillmentExecutionPct', () => {
     expect(pct).toBeGreaterThan(30);
     expect(pct).toBeLessThan(100);
   });
+
+  it('line Exec% uses orderedQty as denominator when planned covers only part of the line', () => {
+    const split: BatchSplit = {
+      bmrNo: 'BMR-1',
+      bprNo: 'BPR-1',
+      plannedQty: 10,
+      fgQty: 10,
+      fgLocation: null,
+      ffStatus: 'closed',
+      pickedQty: 10,
+      pickerName: null,
+      pickDate: null,
+      pickSlipNo: null,
+      remarks: null,
+      invoiceNo: 'INV-1',
+      awbNo: 'AWB',
+      courier: 'X',
+      dispatchDate: '2026-01-01',
+      etaDate: null,
+    };
+    const item: OrderItem = {
+      itemNo: '001',
+      sku: 'S',
+      productName: 'P',
+      pack: '—',
+      orderedQty: 100,
+      rate: 1,
+      unitPrice: 1,
+      batchSplits: [split],
+    };
+    expect(computeOrderItemExecutionPercent(item, null)).toBe(10);
+  });
+
+  it('over-allocated planned qty vs ordered scales so line does not exceed 100%', () => {
+    const mk = (planned: number, st: BatchSplit['ffStatus']): BatchSplit => ({
+      bmrNo: 'BMR',
+      bprNo: 'BPR',
+      plannedQty: planned,
+      fgQty: planned,
+      fgLocation: null,
+      ffStatus: st,
+      pickedQty: planned,
+      pickerName: null,
+      pickDate: null,
+      pickSlipNo: null,
+      remarks: null,
+      invoiceNo: null,
+      awbNo: null,
+      courier: null,
+      dispatchDate: null,
+      etaDate: null,
+    });
+    const item: OrderItem = {
+      itemNo: '001',
+      sku: 'S',
+      productName: 'P',
+      pack: '—',
+      orderedQty: 100,
+      rate: 1,
+      unitPrice: 1,
+      batchSplits: [mk(60, 'closed'), mk(60, 'closed')],
+    };
+    expect(computeOrderItemExecutionPercent(item, null)).toBe(100);
+  });
 });

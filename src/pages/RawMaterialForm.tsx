@@ -1,20 +1,64 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
-import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+
+// ─── RM Category Code Series (industry buckets) ───────────────────────────────
+const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
+  ACT:  { label: 'Actives / API', prefix: 'EI-RM-ACT' },
+  EMOL: { label: 'Emollients / Oils / Esters', prefix: 'EI-RM-EMOL' },
+  SURF: { label: 'Surfactants / Cleansing', prefix: 'EI-RM-SURF' },
+  PRES: { label: 'Preservatives / Chelators', prefix: 'EI-RM-PRES' },
+  FRAG: { label: 'Fragrance / Essential oils', prefix: 'EI-RM-FRAG' },
+  THIC: { label: 'Thickeners / Polymers / Gums', prefix: 'EI-RM-THIC' },
+  COL:  { label: 'Colorants / Pigments', prefix: 'EI-RM-COL' },
+  BUF:  { label: 'Buffers / pH adjusters', prefix: 'EI-RM-BUF' },
+  SOLV: { label: 'Solvents / Glycols / Alcohols', prefix: 'EI-RM-SOLV' },
+  MISC: { label: 'Miscellaneous / Others', prefix: 'EI-RM-MISC' },
+};
+
+const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
+const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+
+function inferRmCategoryKeyFromCode(code: string): string {
+  if (!code) return '';
+  for (const [k, v] of Object.entries(RM_CATEGORIES)) {
+    if (code.startsWith(`${v.prefix}-`) || code === v.prefix) return k;
+  }
+  return '';
+}
+
+function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
+  if (input == null) return null;
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (!s) return null;
+    try {
+      const parsed: unknown = JSON.parse(s);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+  if (typeof input === 'object' && !Array.isArray(input)) return input as Record<string, unknown>;
+  return null;
+}
 
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
+ const queryClient = useQueryClient();
  const { addToast } = useToast();
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [currentStage, setCurrentStage] = useState(0);
  const [pageTab, setPageTab] = useState<'dashboard' | 'form'>('dashboard');
- const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
  const [editRmLoading, setEditRmLoading] = useState(false);
+ const [generatedRmCode, setGeneratedRmCode] = useState('');
 
  const [formData, setFormData] = useState({
   // Primary Info (incl. for Zoho sync — TODO: implement Zoho integration)
@@ -26,11 +70,13 @@ const RawMaterialRefactored: React.FC = () => {
   rmAssociateItems: '',
 
   // QC Categorisation & Coding
+  rmCategoryKey: '',
   rmCategory: '',
   qcInspectionGroup: '',
   subCategory: '',
   hazardHandlingClass: '',
   seriesPrefix: '',
+  rmDefaultStorageType: '',
   
   // Identity
   inciName: '',
@@ -125,14 +171,18 @@ const RawMaterialRefactored: React.FC = () => {
  /** Mock form data for testing submit (Fill mock values). */
  const RM_MOCK_FORM = {
   rmSku: 'EI-RM-MOCK-001',
+  zohoId: '',
+  sku: '',
   rmTaxPreference: 'Taxable',
   rmReturnable: false,
   rmAssociateItems: '',
-  rmCategory: 'ACTIVE',
+  rmCategoryKey: 'ACT',
+  rmCategory: 'Actives / API',
   qcInspectionGroup: 'Chemical QC',
   subCategory: 'Actives',
   hazardHandlingClass: '',
   seriesPrefix: 'EI-RM-ACT',
+  rmDefaultStorageType: 'Ambient – Dry',
   inciName: 'Glycerin',
   tradeCommercialName: 'Glycerin USP',
   functionRole: 'Humectant',
@@ -214,10 +264,51 @@ const RawMaterialRefactored: React.FC = () => {
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
+  if (id === 'rmCategoryKey') {
+   const cat = value ? RM_CATEGORIES[value] : null;
+   setFormData(prev => ({
+    ...prev,
+    rmCategoryKey: value,
+    rmCategory: cat ? cat.label : prev.rmCategory,
+    seriesPrefix: cat ? cat.prefix : prev.seriesPrefix,
+   }));
+   return;
+  }
   setFormData(prev => ({
    ...prev,
    [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
   }));
+ };
+
+ const getRmCodePreview = () => {
+  const cat = formData.rmCategoryKey ? RM_CATEGORIES[formData.rmCategoryKey] : null;
+  if (!cat) return { prefix: '—', next: '—' };
+  if (generatedRmCode && generatedRmCode.startsWith(cat.prefix)) {
+   const suffix = generatedRmCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
+   return { prefix: cat.prefix, next: suffix };
+  }
+  return { prefix: cat.prefix, next: '…' };
+ };
+
+ const generateRmCode = async (confirm = false) => {
+  if (!formData.rmCategoryKey) {
+   addToast('error', 'Select an RM Category first');
+   return;
+  }
+  if (generatedRmCode && !confirm) {
+   const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
+   if (!ok) return;
+  }
+  const cat = RM_CATEGORIES[formData.rmCategoryKey];
+  try {
+   const code = await fetchNextRawMaterialCode(cat.prefix);
+   setGeneratedRmCode(code);
+   setFormData(prev => ({ ...prev, rmSku: code }));
+   addToast('success', `Code generated: ${code}`);
+  } catch (err) {
+   console.error(err);
+   addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
+  }
  };
 
  // Vendor operations
@@ -308,6 +399,18 @@ const RawMaterialRefactored: React.FC = () => {
  };
 
  const handleSubmit = async () => {
+  if (!existingRmId) {
+   if (!formData.rmCategoryKey?.trim()) {
+    addToast('error', 'Select an RM Category (QC Categorisation step)');
+    setCurrentStage(1);
+    return;
+   }
+   if (!formData.rmSku?.trim()) {
+    addToast('error', 'Generate or enter SKU / RM code before submitting');
+    setCurrentStage(1);
+    return;
+   }
+  }
   const validation = validatePrimaryFields(formData, 'rawMaterial');
   if (!validation.valid) {
    setErrors(validation.errors);
@@ -323,7 +426,7 @@ const RawMaterialRefactored: React.FC = () => {
     await createRawMaterial(formData as Record<string, unknown>);
     addToast('success', 'Raw Material saved successfully!');
    }
-   setDashboardRefreshKey(k => k + 1);
+   queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
    setPageTab('dashboard');
   } catch (err) {
    console.error(err);
@@ -381,46 +484,131 @@ const RawMaterialRefactored: React.FC = () => {
    </div>
   );
 
-  case 1: // QC Categorisation
-  return (
-   <div className="space-y-4">
-    <InputField
-     label="Category"
-     id="rmCategory"
-     value={formData.rmCategory}
-     onChange={handleInputChange}
-     placeholder="e.g. Emollient, Active, Preservative"
-    />
-    <InputField
-     label="QC Inspection Group"
-     id="qcInspectionGroup"
-     value={formData.qcInspectionGroup}
-     onChange={handleInputChange}
-     placeholder="Which QC lab evaluates this RM"
-    />
-    <InputField
-     label="Sub Category"
-     id="subCategory"
-     value={formData.subCategory}
-     onChange={handleInputChange}
-     placeholder="Optional finer bucket (e.g. Silicone emollient)"
-    />
-    <InputField
-     label="Hazard Handling Class"
-     id="hazardHandlingClass"
-     value={formData.hazardHandlingClass}
-     onChange={handleInputChange}
-     placeholder="e.g. Flammable, Corrosive, General"
-    />
-    <InputField
-     label="Series Prefix"
-     id="seriesPrefix"
-     value={formData.seriesPrefix}
-     onChange={handleInputChange}
-     placeholder="Code prefix used in ERP / labels"
-    />
-   </div>
-  );
+  case 1: // QC Categorisation & coding (aligned with PM master)
+  {
+   const { prefix, next } = getRmCodePreview();
+   return (
+    <div className="space-y-6">
+     <div>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Category (Industry Buckets)</h3>
+      <div className="grid grid-cols-2 gap-4">
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category</label>
+        <select
+         id="rmCategoryKey"
+         value={formData.rmCategoryKey}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {Object.entries(RM_CATEGORIES).map(([k, v]) => (
+          <option key={k} value={k}>{v.label}</option>
+         ))}
+        </select>
+       </div>
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+        <select
+         id="qcInspectionGroup"
+         value={formData.qcInspectionGroup}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {RM_QC_GROUPS.map((g) => (
+          <option key={g} value={g}>{g}</option>
+         ))}
+        </select>
+       </div>
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
+        <input
+         type="text"
+         id="subCategory"
+         value={formData.subCategory}
+         onChange={handleInputChange}
+         placeholder="e.g. Silicone emollient / Glycolic acid / Paraben blend"
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+       </div>
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
+        <select
+         id="rmDefaultStorageType"
+         value={formData.rmDefaultStorageType}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {RM_STORAGE_TYPES.map((s) => (
+          <option key={s} value={s}>{s}</option>
+         ))}
+        </select>
+       </div>
+      </div>
+     </div>
+
+     <div>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
+      <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+       <div className="flex items-center gap-6 mb-4 flex-wrap">
+        <div>
+         <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
+         <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
+        </div>
+        <div>
+         <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
+         <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
+        </div>
+       </div>
+       <div className="flex flex-wrap gap-2">
+        <button
+         type="button"
+         onClick={() => generateRmCode()}
+         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+        >
+         Generate Code Now
+        </button>
+        {generatedRmCode && (
+         <button
+          type="button"
+          onClick={() => generateRmCode(true)}
+          className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
+         >
+          Regenerate (change category)
+         </button>
+        )}
+       </div>
+       <p className="text-xs text-gray-500 mt-3">Generated code is applied to SKU in Primary Info. You can still edit SKU there if needed.</p>
+      </div>
+     </div>
+
+     <div className="space-y-4">
+      <InputField
+       label="Category label (derived)"
+       id="rmCategory"
+       value={formData.rmCategory}
+       onChange={handleInputChange}
+       placeholder="Updates when you pick RM Category above"
+      />
+      <InputField
+       label="Hazard Handling Class"
+       id="hazardHandlingClass"
+       value={formData.hazardHandlingClass}
+       onChange={handleInputChange}
+       placeholder="e.g. Flammable, Corrosive, General"
+      />
+      <InputField
+       label="Series Prefix (derived)"
+       id="seriesPrefix"
+       value={formData.seriesPrefix}
+       onChange={handleInputChange}
+       placeholder="From RM Category; editable if needed"
+      />
+     </div>
+    </div>
+   );
+  }
 
   case 2: // Identity
   return (
@@ -860,89 +1048,239 @@ const RawMaterialRefactored: React.FC = () => {
  // Load existing RM when editing — always populate from API; use form_data if present, else map from record
  useEffect(() => {
   if (pageTab !== 'form' || !existingRmId) return;
+  setCurrentStage(0);
   let cancelled = false;
   setEditRmLoading(true);
   fetchRawMaterialById(existingRmId).then((result) => {
    if (cancelled) return;
    setEditRmLoading(false);
    if (!result) return;
-   const fd = result.form_data as Record<string, unknown> | null | undefined;
-   if (fd && typeof fd === 'object' && Object.keys(fd).length > 0) {
-    setFormData(prev => ({ ...prev, ...fd }));
-    return;
+   const fdObj = safeParseMaybeJsonObject(result.form_data);
+   const vendorsVal = (fdObj as any)?.vendors;
+   const docsVal = (fdObj as any)?.documents;
+   const testsVal = (fdObj as any)?.tests;
+
+   // Normalize array item key variants (older persisted shapes) into the current UI shape.
+   // UI expects:
+   //  - vendors: { id, name, location, moq, unitPrice, leadTime, approved, priceValidTill }
+   //  - documents: { id, type, link, date }
+   //  - tests: { id, name, result, date, approvedBy, remarks }
+   let fdNormalized = fdObj as Record<string, unknown> | null;
+   if (fdNormalized) {
+     if (Array.isArray(vendorsVal)) {
+       fdNormalized = {
+         ...fdNormalized,
+         vendors: vendorsVal.map((v: any, idx: number) => ({
+           id: String(v?.id ?? v?.vendorId ?? idx),
+           name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
+           location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
+           moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
+           unitPrice: Number(v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
+           leadTime: Number(v?.leadTime ?? v?.venLT ?? v?.leadTimeDays ?? 0),
+           approved: String(v?.approved ?? v?.venApproved ?? ''),
+           priceValidTill: String(v?.priceValidTill ?? v?.venValid ?? v?.validTill ?? ''),
+         })),
+       };
+     }
+     if (Array.isArray(docsVal)) {
+       fdNormalized = {
+         ...fdNormalized,
+         documents: docsVal.map((d: any, idx: number) => ({
+           id: String(d?.id ?? d?.documentId ?? idx),
+           type: String(d?.type ?? d?.documentType ?? ''),
+           link: String(d?.link ?? d?.documentLink ?? d?.path ?? ''),
+           date: String(d?.date ?? d?.documentDate ?? ''),
+         })),
+       };
+     }
+     if (Array.isArray(testsVal)) {
+       fdNormalized = {
+         ...fdNormalized,
+         tests: testsVal.map((t: any, idx: number) => ({
+           id: String(t?.id ?? t?.testId ?? idx),
+           name: String(t?.name ?? t?.testName ?? ''),
+           result: String(t?.result ?? t?.testResult ?? ''),
+           date: String(t?.date ?? t?.testDate ?? ''),
+           approvedBy: String(t?.approvedBy ?? t?.testBy ?? ''),
+           remarks: String(t?.remarks ?? t?.testRemarks ?? ''),
+         })),
+       };
+     }
    }
-   // Fallback: map list-view record to form fields so form is never empty when editing
+
    const r = result.record;
-   setFormData(prev => ({
-    ...prev,
-    rmSku: r.code ?? prev.rmSku,
-    inciName: r.inci ?? prev.inciName,
-    tradeCommercialName: r.name ?? prev.tradeCommercialName,
-    rmCategory: r.category ?? prev.rmCategory,
-    rmType: r.rmType ?? prev.rmType,
-    primaryUom: r.uom ?? prev.primaryUom,
-    gst: String(r.gst ?? prev.gst ?? ''),
-    shelfLife: r.shelf ?? prev.shelfLife,
-    group: r.group ?? prev.group,
-    zohoId: r.zohoId ?? prev.zohoId,
-    sku: r.sku ?? prev.sku,
-    hsnCode: r.hsnCode ?? prev.hsnCode,
-    rmTaxPreference: r.taxPref ?? prev.rmTaxPreference,
-    accountingCategory: r.salesPurchaseAccount ?? prev.accountingCategory,
-   }));
+   const recordCode = r.code ?? '';
+
+   const fdDebug = {
+     existingRmId,
+     recordCode,
+     recordInci: r.inci ?? null,
+     recordName: r.name ?? null,
+     recordCategory: r.category ?? null,
+     recordRmType: r.rmType ?? null,
+     formDataKeys: fdObj ? Object.keys(fdObj) : null,
+     rmSku: (fdObj as any)?.rmSku ?? null,
+     inciName: (fdObj as any)?.inciName ?? null,
+     rmCategoryKey: (fdObj as any)?.rmCategoryKey ?? null,
+     vendorsIsArray: Array.isArray(vendorsVal),
+     vendorsLen: Array.isArray(vendorsVal) ? vendorsVal.length : null,
+     documentsIsArray: Array.isArray(docsVal),
+     documentsLen: Array.isArray(docsVal) ? docsVal.length : null,
+     testsIsArray: Array.isArray(testsVal),
+     testsLen: Array.isArray(testsVal) ? testsVal.length : null,
+   };
+   console.log('[RM Edit Populate Debug]', JSON.stringify(fdDebug, null, 2));
+
+   if (fdObj && Object.keys(fdObj).length > 0) {
+     const arraysOk = Array.isArray(vendorsVal) || Array.isArray(docsVal) || Array.isArray(testsVal);
+     if (!arraysOk) {
+       window.alert(
+         `RM form_data for id=${existingRmId} did not include vendors/documents/tests arrays.\n` +
+           `See console log [RM Edit Populate Debug] for fd keys.`
+       );
+     }
+   }
+
+   // Always seed from the list-view record, because partial/empty `form_data` can override defaults.
+   const recordMapped = {
+     rmSku: recordCode || '',
+     inciName: r.inci ?? '',
+     tradeCommercialName: r.name ?? '',
+     rmCategory: r.category ?? '',
+     rmCategoryKey: inferRmCategoryKeyFromCode(recordCode) || '',
+     seriesPrefix: (() => {
+       const inf = inferRmCategoryKeyFromCode(recordCode);
+       return inf ? RM_CATEGORIES[inf]?.prefix ?? '' : '';
+     })(),
+     rmType: r.rmType ?? '',
+     primaryUom: r.uom ?? '',
+     gst: String(r.gst ?? ''),
+     shelfLife: r.shelf ?? '',
+     zohoId: r.zohoId ?? '',
+     sku: r.sku ?? '',
+     hsnCode: r.hsnCode ?? '',
+     rmTaxPreference: r.taxPref ?? 'Taxable',
+     accountingCategory: r.salesPurchaseAccount ?? '',
+   };
+
+   // Overlay only non-nullish `form_data` keys.
+   const fdToOverlay = (fdNormalized ?? fdObj) as Record<string, unknown> | null;
+   const fdCleanOverlay =
+     fdToOverlay && typeof fdToOverlay === 'object'
+       ? Object.fromEntries(Object.entries(fdToOverlay).filter(([, v]) => v !== null && v !== undefined))
+       : null;
+
+   const skuFromFd = fdCleanOverlay ? String((fdCleanOverlay as any).rmSku ?? (fdCleanOverlay as any).sku ?? '') : '';
+   const finalSku = skuFromFd?.trim() ? skuFromFd.trim() : recordCode;
+   if (finalSku) setGeneratedRmCode(finalSku);
+
+   setFormData((prev) => {
+     const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
+
+     // Scalar key normalization for older persisted shapes.
+     const anyFd: any = fdCleanOverlay ?? fdNormalized ?? fdObj ?? {};
+     if (!merged.rmSku) merged.rmSku = String(anyFd?.sku ?? anyFd?.code ?? '');
+     if (!merged.inciName) merged.inciName = String(anyFd?.inciName ?? anyFd?.inci ?? anyFd?.inci_name ?? '');
+     if (!merged.tradeCommercialName) {
+       merged.tradeCommercialName = String(anyFd?.tradeCommercialName ?? anyFd?.trade_commercial_name ?? anyFd?.name ?? merged.tradeCommercialName ?? '');
+     }
+     if (!merged.rmType) merged.rmType = String(anyFd?.rmType ?? anyFd?.rm_type ?? merged.rmType ?? '');
+     if (!merged.primaryUom) merged.primaryUom = String(anyFd?.primaryUom ?? anyFd?.uom ?? merged.primaryUom ?? '');
+
+     const sku = String(merged.rmSku || '').trim();
+     if (!merged.rmCategoryKey && sku) {
+       const inferred = inferRmCategoryKeyFromCode(sku);
+       if (inferred) {
+         merged.rmCategoryKey = inferred;
+         merged.seriesPrefix = RM_CATEGORIES[inferred]?.prefix ?? merged.seriesPrefix;
+       }
+     }
+     return merged;
+   });
   });
   return () => { cancelled = true; };
  }, [pageTab, existingRmId]);
 
- // When editing, show loading until RM data is fetched
- if (pageTab === 'form' && existingRmId && editRmLoading) {
-  return (
-   <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center">
-    <p className="text-gray-500">Loading raw material…</p>
-   </div>
+  const dashboardNode = (
+    <RawMaterialDashboard
+      refreshKey={0}
+      onSwitchToForm={() => { setExistingRmId(null); setPageTab('form'); setCurrentStage(0); }}
+      onEditRm={(rm) => { setExistingRmId(rm.id); setPageTab('form'); setCurrentStage(0); }}
+      onDeleteRm={async (rm) => {
+        if (!window.confirm(`Delete raw material "${rm.name}" (${rm.code})? This cannot be undone.`)) return;
+        try {
+          await deleteRawMaterial(rm.id);
+          addToast('success', 'Raw material deleted');
+          queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
+        } catch (e) {
+          addToast('error', e instanceof Error ? e.message : 'Failed to delete');
+        }
+      }}
+    />
   );
- }
 
- // If on dashboard tab, show dashboard instead of form
-if (pageTab === 'dashboard') {
+  if (pageTab === 'dashboard') {
+    return dashboardNode;
+  }
+
+  const isEditLoading = pageTab === 'form' && !!existingRmId && editRmLoading;
+  const isEditing = !!existingRmId;
+
   return (
-   <RawMaterialDashboard
-    refreshKey={dashboardRefreshKey}
-    onSwitchToForm={() => { setExistingRmId(null); setPageTab('form'); }}
-    onEditRm={(rm) => { setExistingRmId(rm.id); setPageTab('form'); }}
-    onDeleteRm={async (rm) => {
-     if (!window.confirm(`Delete raw material "${rm.name}" (${rm.code})? This cannot be undone.`)) return;
-     try {
-      await deleteRawMaterial(rm.id);
-      addToast('success', 'Raw material deleted');
-      setDashboardRefreshKey(k => k + 1);
-     } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Failed to delete');
-     }
-    }}
-   />
-  );
-}
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+      {dashboardNode}
+      {pageTab === 'form' && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4"
+          onClick={() => { setExistingRmId(null); setPageTab('dashboard'); setEditRmLoading(false); setCurrentStage(0); }}
+        >
+          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+              <div className="text-sm font-semibold text-gray-800">
+                {isEditing ? 'Edit Raw Material' : 'New Raw Material'}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setExistingRmId(null); setPageTab('dashboard'); setEditRmLoading(false); setCurrentStage(0); }}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              >
+                ✕
+              </button>
+            </div>
 
- return (
-  <MasterFormBase
-   title="Raw Material Master Data"
-   stages={stages}
-   currentStage={currentStage}
-   onStageChange={setCurrentStage}
-   errors={errors}
-   formData={formData}
-   onInputChange={handleInputChange}
-   primaryFields={getPrimaryFields('rawMaterial')}
-   onFillMock={() => setFormData(RM_MOCK_FORM)}
-   onSave={() => {
-    addToast('success', 'Draft saved (session only)');
-   }}
-   onSubmit={handleSubmit}
-  >
-   {renderStageContent()}
-  </MasterFormBase>
- );
+            <div className="max-h-[88vh] overflow-y-auto">
+              {isEditLoading ? (
+                <div className="min-h-[60vh] bg-[#f9fafb] flex items-center justify-center">
+                  <p className="text-gray-500">Loading raw material…</p>
+                </div>
+              ) : (
+                <MasterFormBase
+                  title="Raw Material Master Data"
+                  stages={stages}
+                  currentStage={currentStage}
+                  onStageChange={setCurrentStage}
+                  errors={errors}
+                  formData={formData}
+                  onInputChange={handleInputChange}
+                  primaryFields={getPrimaryFields('rawMaterial')}
+                  onFillMock={() => {
+                    setFormData(RM_MOCK_FORM);
+                    setGeneratedRmCode(RM_MOCK_FORM.rmSku);
+                  }}
+                  onSave={() => {
+                    addToast('success', 'Draft saved (session only)');
+                  }}
+                  onSubmit={handleSubmit}
+                >
+                  {renderStageContent()}
+                </MasterFormBase>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 type RawMaterialDashboardProps = {
@@ -1000,48 +1338,43 @@ function GroupChip({ group }: { group: string }) {
 
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
  const [search, setSearch] = useState('');
- const [catFilter, setCatFilter] = useState('');
- const [sortAsc, setSortAsc] = useState(true);
- const [allRMs, setAllRMs] = useState<RawMaterialRecord[]>([]);
- const [loading, setLoading] = useState(true);
- const [loadError, setLoadError] = useState<string | null>(null);
- const [reservedModal, setReservedModal] = useState<{ rm: RawMaterialRecord; data: ReservedStockResponse } | null>(null);
- const [reservedLoading, setReservedLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
- const loadRawMaterials = useCallback(async () => {
-  setLoading(true);
-  setLoadError(null);
-  try {
-   const list = await fetchRawMaterialsList();
-   setAllRMs(list);
-  } catch (e) {
-   setLoadError(e instanceof Error ? e.message : 'Failed to load raw materials');
-   setAllRMs([]);
-  } finally {
-   setLoading(false);
-  }
- }, []);
+  const offset = (currentPage - 1) * pageSize;
+  const searchTrim = search.trim();
 
- useEffect(() => {
-  loadRawMaterials();
- }, [loadRawMaterials, refreshKey]);
+  const {
+    data: pageData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['raw-materials-page', searchTrim, pageSize, offset, refreshKey],
+    queryFn: () => fetchRawMaterialsPage({ search: searchTrim || undefined, limit: pageSize, offset }),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 
- const allCategories = Array.from(new Set(allRMs.map(r => r.category))).filter(Boolean).sort();
+  const rows = pageData?.rows ?? [];
+  const totalFiltered = pageData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
 
- const filtered = allRMs.filter(rm => {
-  const q = search.toLowerCase();
-  const matchQ = !q || rm.name.toLowerCase().includes(q) || rm.inci.toLowerCase().includes(q) || rm.code.toLowerCase().includes(q);
-  const matchCat = !catFilter || rm.category === catFilter;
-  return matchQ && matchCat;
- }).sort((a, b) => sortAsc ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code));
+  // Reset to page 1 whenever search/page size changes.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, pageSize, refreshKey]);
 
- const stats = {
-  total:       allRMs.length,
-  active:      allRMs.filter(r => r.status === 'Active').length,
-  uvFilters:   allRMs.filter(r => r.category === 'UV FILTER').length,
-  surfactants: allRMs.filter(r => r.category === 'SURFACTANT').length,
-  categories:  new Set(allRMs.map(r => r.category)).size,
- };
+  const stats = {
+    total: totalFiltered,
+    // Best-effort stats based on the current page.
+    active: rows.filter((r) => String(r.status).toLowerCase() === 'active').length,
+    uvFilters: rows.filter((r) => (r.category || '') === 'UV FILTER').length,
+    surfactants: rows.filter((r) => (r.category || '') === 'SURFACTANT').length,
+    categories: new Set(rows.map((r) => r.category).filter(Boolean)).size,
+  };
 
  const statCards = [
   { label: 'TOTAL RMS',   value: stats.total,       sub: 'Unique raw materials',  accent: 'border-l-teal-500',   num: 'text-teal-600' },
@@ -1050,19 +1383,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   { label: 'SURFACTANTS', value: stats.surfactants, sub: 'Facewash actives',       accent: 'border-l-violet-500', num: 'text-violet-600' },
   { label: 'CATEGORIES',  value: stats.categories,  sub: 'Distinct types',         accent: 'border-l-rose-500',   num: 'text-rose-600' },
  ];
-
- const openReservedModal = async (rm: RawMaterialRecord) => {
-  setReservedLoading(true);
-  setReservedModal(null);
-  try {
-   const data = await fetchReservedStock(rm.id);
-   setReservedModal({ rm, data });
-  } catch {
-   setReservedModal({ rm, data: { actual: 0, reserved: 0, available: 0, unit: rm.uom || 'KG' } });
-  } finally {
-   setReservedLoading(false);
-  }
- };
 
  return (
   <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -1082,19 +1402,19 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     </div>
 
     {/* ── Loading / Error ── */}
-    {loading && (
+    {isLoading && (
      <div className="flex items-center justify-center py-12 text-gray-500">
       <span className="animate-pulse">Loading raw materials…</span>
      </div>
     )}
-    {!loading && loadError && (
+    {!isLoading && error && (
      <div className="py-8 text-center">
-      <p className="text-red-600 mb-2">{loadError}</p>
-      <button type="button" onClick={loadRawMaterials} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
+     <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load raw materials'}</p>
+     <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
      </div>
     )}
 
-    {!loading && !loadError && (
+    {!isLoading && !error && (
      <>
     {/* ── Stat Cards ── */}
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1117,7 +1437,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
       <div className="flex items-center gap-2 min-w-0">
        <span className="text-sm font-semibold text-gray-900">Raw Material Masters</span>
-       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{filtered.length} / {allRMs.length}</span>
+       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{rows.length} / {totalFiltered}</span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
        {/* search */}
@@ -1132,15 +1452,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all w-52"
         />
        </div>
-       {/* category filter */}
-       <select
-        value={catFilter}
-        onChange={e => setCatFilter(e.target.value)}
-        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all hover:bg-gray-100"
-       >
-        <option value="">All Categories</option>
-        {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
-       </select>
+      {/* category filter removed (server-side pagination uses search + backend ordering) */}
        {/* new RM button */}
        <button
         onClick={onSwitchToForm}
@@ -1156,11 +1468,8 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       <table className="w-full text-xs">
        <thead>
         <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-         <th
-          className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
-          onClick={() => setSortAsc(p => !p)}
-         >
-          CODE <span className="text-teal-500">{sortAsc ? 'Asc' : 'Desc'}</span>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors">
+          CODE <span className="text-teal-500">Asc</span>
          </th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>
@@ -1172,14 +1481,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Shelf</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
         </tr>
        </thead>
        <tbody className="divide-y divide-gray-50">
-        {filtered.length === 0 ? (
+        {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={13} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1188,7 +1496,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
            </div>
           </td>
          </tr>
-        ) : filtered.map((rm, _idx) => {
+       ) : rows.map((rm, _idx) => {
          const catStyle = getCategoryStyle(rm.category);
          return (
           <tr key={rm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
@@ -1234,17 +1542,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              ))}
             </div>
            </td>
-           {/* Show reserved */}
-           <td className="px-4 py-3.5 text-right">
-            <button
-             type="button"
-             onClick={() => openReservedModal(rm)}
-             disabled={reservedLoading}
-             className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline disabled:opacity-50"
-            >
-             {reservedLoading ? '…' : 'Show reserved'}
-            </button>
-           </td>
            {/* Actions */}
            <td className="px-4 py-3.5 text-right whitespace-nowrap">
             <button
@@ -1268,44 +1565,50 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        </tbody>
       </table>
      </div>
-    </div>
 
-    {/* Reserved stock modal */}
-    {(reservedModal || reservedLoading) && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
-      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
-       {reservedLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
-       ) : reservedModal ? (
-        <>
-         <div className="flex justify-between items-start mb-4">
-          <div>
-           <p className="font-bold text-gray-900">{reservedModal.rm.code}</p>
-           <p className="text-xs text-gray-500">{reservedModal.rm.name}</p>
-          </div>
-          <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-         </div>
-         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
-         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-           <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
-           <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-           <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
-           <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-           <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
-           <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-         </div>
-         <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
-        </>
-       ) : null}
+     {/* Pagination */}
+     {totalPages > 1 && (
+      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 bg-white">
+       <div className="text-xs text-gray-600">
+        Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
+        <span className="font-semibold text-gray-900">{totalPages}</span> • Showing{' '}
+        <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
+        <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+        <span className="font-semibold text-gray-900">{totalFiltered}</span>
+       </div>
+       <div className="flex items-center gap-3">
+        <select
+         value={pageSize}
+         onChange={(e) => {
+          setPageSize(Number(e.target.value));
+          setCurrentPage(1);
+         }}
+         className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+        >
+         <option value={10}>10</option>
+         <option value={25}>25</option>
+         <option value={50}>50</option>
+        </select>
+        <button
+         type="button"
+         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+         disabled={safeCurrentPage <= 1}
+         className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+         Prev
+        </button>
+        <button
+         type="button"
+         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+         disabled={safeCurrentPage >= totalPages}
+         className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+         Next
+        </button>
+       </div>
       </div>
-     </div>
-    )}
+     )}
+    </div>
 
      </>
     )}

@@ -24,6 +24,13 @@ export interface PRProductListItem {
   open_sos_count: number;
 }
 
+export interface PaginatedRowsResponse<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface FormulaBomPhase {
   phase: string;
   ingredients: { inci_name: string; rm_code: string; pct_w_w: number; uom: string }[];
@@ -85,6 +92,31 @@ export async function fetchPRProducts(): Promise<ServiceResult<PRProductListItem
   }
 }
 
+export async function fetchPRProductsPage(opts: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  rows: PRProductListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const limit = opts.limit ?? 20;
+  const offset = opts.offset ?? 0;
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+
+  const path = `/api/v1/products?${params.toString()}`;
+  const resp = await api.get<PaginatedRowsResponse<PRProductListItem>>(path);
+  return {
+    rows: resp?.rows ?? [],
+    total: resp?.total ?? 0,
+    limit: resp?.limit ?? limit,
+    offset: resp?.offset ?? offset,
+  };
+}
+
 export async function fetchPRProductDetail(productId: number | string): Promise<ServiceResult<PRProductDetail>> {
   try {
     const detail = await api.get<PRProductDetail>(`/api/v1/products/${productId}/detail`);
@@ -92,6 +124,35 @@ export async function fetchPRProductDetail(productId: number | string): Promise<
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load product detail';
     return { data: null, error: message, success: false };
+  }
+}
+
+export interface PRRegistrationResponse {
+  product: Record<string, unknown>;
+  bom: { id: string; bom_code: string; product_id: number };
+}
+
+/** Create Product + linked BOM (PR Master wizard). Backend: POST /api/v1/products/pr-registration */
+function messageFromApiError(e: unknown): string {
+  if (e instanceof Error) {
+    const body = (e as Error & { body?: unknown }).body;
+    if (body && typeof body === 'object' && body !== null && 'error' in body) {
+      const msg = (body as { error?: string }).error;
+      if (msg && typeof msg === 'string') return msg;
+    }
+    return e.message;
+  }
+  return 'Failed to register product';
+}
+
+export async function createPRRegistration(
+  payload: Record<string, unknown>
+): Promise<ServiceResult<PRRegistrationResponse>> {
+  try {
+    const data = await api.post<PRRegistrationResponse>('/api/v1/products/pr-registration', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    return { data: null, error: messageFromApiError(e), success: false };
   }
 }
 

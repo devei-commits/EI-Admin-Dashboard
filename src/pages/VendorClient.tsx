@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useVendorClient, type VendorClient as VendorClientType } from '../context/VendorClientContext';
-import { fetchVendorClients } from '../services/vendorClient.service';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { VendorClient as VendorClientType } from '../context/VendorClientContext';
+import { fetchVendorClientsPage, updateVendorClient as updateVendorClientApi, deleteVendorClient as deleteVendorClientApi } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
@@ -26,35 +27,8 @@ const VendorClientSection: React.FC<{ title: string; icon?: string; children: Re
 );
 
 const VendorClient: React.FC = () => {
- const { deleteVendorClient, updateVendorClient } = useVendorClient();
  const { addToast } = useToast();
- const [apiVendors, setApiVendors] = useState<VendorClientType[]>([]);
- const [apiClients, setApiClients] = useState<VendorClientType[]>([]);
- const [loading, setLoading] = useState(true);
- const [useApi, setUseApi] = useState(true);
-
- const loadFromApi = useCallback(async () => {
-  setLoading(true);
-  const [vRes, cRes] = await Promise.all([
-   fetchVendorClients('vendor'),
-   fetchVendorClients('client'),
-  ]);
-  if (vRes.success && vRes.data) setApiVendors(vRes.data as VendorClientType[]);
-  else setApiVendors([]);
-  if (cRes.success && cRes.data) setApiClients(cRes.data as VendorClientType[]);
-  else setApiClients([]);
-  if (!vRes.success || !cRes.success) {
-   setUseApi(false);
-   addToast('error', 'Could not load from server; showing local data.');
-  }
-  setLoading(false);
- }, [addToast]);
-
- useEffect(() => {
-  loadFromApi();
- }, [loadFromApi]);
-
- const vendorClients = [...apiVendors, ...apiClients];
+  const queryClient = useQueryClient();
  const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master' | 'vendor-form' | 'client-form'>('vendor-master');
  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
  const [editingClientId, setEditingClientId] = useState<string | null>(null);
@@ -105,15 +79,42 @@ const VendorClient: React.FC = () => {
   { id: 'client-form', label: 'Client Form', icon: '' },
  ] as const;
 
- const vendors = useMemo(
-  () => vendorClients.filter(v => v.type === 'vendor'),
-  [vendorClients]
- );
+ const vendorOffset = (vendorPage - 1) * vendorPageSize;
+ const clientOffset = (clientPage - 1) * clientPageSize;
 
- const clients = useMemo(
-  () => vendorClients.filter(v => v.type === 'client'),
-  [vendorClients]
- );
+ const trimmedVendorSearch = vendorSearch.trim();
+ const trimmedClientSearch = clientSearch.trim();
+
+ const { data: vendorPageData } = useQuery({
+  queryKey: ['vendor-client-page', 'vendor', trimmedVendorSearch, vendorStatus, vendorCategory, vendorPageSize, vendorOffset],
+  queryFn: () =>
+   fetchVendorClientsPage({
+    type: 'vendor',
+    search: trimmedVendorSearch || undefined,
+    status: vendorStatus,
+    category: vendorCategory,
+    limit: vendorPageSize,
+    offset: vendorOffset,
+   }),
+  staleTime: 2 * 60 * 1000,
+ });
+
+ const { data: clientPageData } = useQuery({
+  queryKey: ['vendor-client-page', 'client', trimmedClientSearch, clientStatus, clientCategory, clientPageSize, clientOffset],
+  queryFn: () =>
+   fetchVendorClientsPage({
+    type: 'client',
+    search: trimmedClientSearch || undefined,
+    status: clientStatus,
+    category: clientCategory,
+    limit: clientPageSize,
+    offset: clientOffset,
+   }),
+  staleTime: 2 * 60 * 1000,
+ });
+
+ const vendors = vendorPageData?.rows ?? [];
+ const clients = clientPageData?.rows ?? [];
 
  const vendorCategories = useMemo(() => {
   const cats = Array.from(new Set(vendors.map(v => v.category).filter(Boolean))).sort();
@@ -125,62 +126,26 @@ const VendorClient: React.FC = () => {
   return cats;
  }, [clients]);
 
- const filteredVendors = useMemo(() => {
-  const q = vendorSearch.trim().toLowerCase();
-  const result = vendors
-   .filter(v => (vendorStatus === 'all' ? true : v.status === vendorStatus))
-   .filter(v => (vendorCategory === 'all' ? true : v.category === vendorCategory))
-   .filter(v => {
-    if (!q) return true;
-    const code = String(v.data?.entityCode || '').toLowerCase();
-    return (
-     v.name.toLowerCase().includes(q) ||
-     v.email.toLowerCase().includes(q) ||
-     v.phone.toLowerCase().includes(q) ||
-     v.location.toLowerCase().includes(q) ||
-     v.category.toLowerCase().includes(q) ||
-     code.includes(q)
-    );
-   })
-   .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
-  return result;
- }, [vendors, vendorSearch, vendorStatus, vendorCategory]);
+ const filteredVendors = vendors;
+ const filteredClients = clients;
 
- const filteredClients = useMemo(() => {
-  const q = clientSearch.trim().toLowerCase();
-  const result = clients
-   .filter(v => (clientStatus === 'all' ? true : v.status === clientStatus))
-   .filter(v => (clientCategory === 'all' ? true : v.category === clientCategory))
-   .filter(v => {
-    if (!q) return true;
-    const code = String(v.data?.entityCode || '').toLowerCase();
-    return (
-     v.name.toLowerCase().includes(q) ||
-     v.email.toLowerCase().includes(q) ||
-     v.phone.toLowerCase().includes(q) ||
-     v.location.toLowerCase().includes(q) ||
-     v.category.toLowerCase().includes(q) ||
-     code.includes(q)
-    );
-   })
-   .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
-  return result;
- }, [clients, clientSearch, clientStatus, clientCategory]);
+ const vendorTotal = vendorPageData?.total ?? 0;
+ const clientTotal = clientPageData?.total ?? 0;
 
- const vendorTotalPages = useMemo(() => Math.max(1, Math.ceil(filteredVendors.length / vendorPageSize)), [filteredVendors.length, vendorPageSize]);
- const clientTotalPages = useMemo(() => Math.max(1, Math.ceil(filteredClients.length / clientPageSize)), [filteredClients.length, clientPageSize]);
+ const vendorTotalPages = Math.max(1, Math.ceil(vendorTotal / vendorPageSize));
+ const clientTotalPages = Math.max(1, Math.ceil(clientTotal / clientPageSize));
 
- const pagedVendors = useMemo(() => {
-  const safePage = Math.min(vendorPage, vendorTotalPages);
-  const start = (safePage - 1) * vendorPageSize;
-  return filteredVendors.slice(start, start + vendorPageSize);
- }, [filteredVendors, vendorPage, vendorPageSize, vendorTotalPages]);
+ // Server returns rows for the requested page (so no additional slicing).
+ const pagedVendors = filteredVendors;
+ const pagedClients = filteredClients;
 
- const pagedClients = useMemo(() => {
-  const safePage = Math.min(clientPage, clientTotalPages);
-  const start = (safePage - 1) * clientPageSize;
-  return filteredClients.slice(start, start + clientPageSize);
- }, [filteredClients, clientPage, clientPageSize, clientTotalPages]);
+ useEffect(() => {
+  if (vendorPage > vendorTotalPages) setVendorPage(vendorTotalPages);
+ }, [vendorPage, vendorTotalPages]);
+
+ useEffect(() => {
+  if (clientPage > clientTotalPages) setClientPage(clientTotalPages);
+ }, [clientPage, clientTotalPages]);
 
  const openVendorCreate = () => {
   setEditingVendorId(null);
@@ -204,14 +169,39 @@ const VendorClient: React.FC = () => {
   setEditing({ id, type: 'client' });
  };
 
- const handleDelete = (id: string) => {
+ const handleDelete = async (id: string) => {
   const ok = window.confirm('Delete this record? This cannot be undone.');
   if (!ok) return;
-  deleteVendorClient(id);
+
+  const res = await deleteVendorClientApi(id);
+  if (!res.success) {
+   addToast('error', res.error?.message ?? 'Failed to delete');
+   return;
+  }
+
+  // Close details panel if the deleted record is being viewed/edited.
+  if (viewing?.id === id) setViewing(null);
+  if (editingVendorId === id) setEditingVendorId(null);
+  if (editingClientId === id) setEditingClientId(null);
+
+  await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+  addToast('success', 'Record deleted');
  };
 
- const handleStatusChange = (id: string, status: VendorClientType['status']) => {
-  updateVendorClient(id, { status });
+ const handleStatusChange = async (id: string, status: VendorClientType['status']) => {
+  const res = await updateVendorClientApi(id, { status });
+  if (!res.success) {
+   addToast('error', res.error?.message ?? 'Failed to update status');
+   return;
+  }
+
+  // Keep side panel in sync if the same record is open.
+  if (viewing?.id === id) {
+   setViewing(prev => (prev && prev.id === id ? { ...prev, status } : prev));
+  }
+
+  await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+  addToast('success', 'Status updated');
  };
 
  const openView = (vc: VendorClientType) => {
@@ -723,7 +713,7 @@ const VendorClient: React.FC = () => {
     <VendorForm
     editingId={editingVendorId}
     onSaved={() => {
-     loadFromApi();
+     void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
      setEditingVendorId(null);
      setActiveTab('vendor-master');
     }}
@@ -734,7 +724,7 @@ const VendorClient: React.FC = () => {
     <ClientForm
     editingId={editingClientId}
     onSaved={() => {
-     loadFromApi();
+     void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
      setEditingClientId(null);
      setActiveTab('client-master');
     }}
@@ -1016,7 +1006,7 @@ const VendorClient: React.FC = () => {
       <VendorForm
       editingId={editing.id}
       onSaved={() => {
-       loadFromApi();
+       void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
        closeEdit();
        setActiveTab('vendor-master');
       }}
@@ -1025,7 +1015,7 @@ const VendorClient: React.FC = () => {
       <ClientForm
       editingId={editing.id}
       onSaved={() => {
-       loadFromApi();
+       void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
        closeEdit();
        setActiveTab('client-master');
       }}

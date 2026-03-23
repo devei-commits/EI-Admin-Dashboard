@@ -564,7 +564,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                           {execPct}%
                         </div>
                         <div className="text-[10px] text-gray-500 font-normal">
-                          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
+                          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · planned vs {formatNumber(item.orderedQty)} ordered
                         </div>
                       </td>
                       {/* <td className="px-4 py-3 align-top">

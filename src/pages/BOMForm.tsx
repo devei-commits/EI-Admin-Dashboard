@@ -1,12 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
-import { X, Plus, Trash2 } from 'lucide-react';
-import { createBOM } from '../services/bom.service';
-import { fetchPRProductDetail, type PRProductDetail } from '../services/productsMaster.service';
+import { Plus, Trash2 } from 'lucide-react';
+import MasterFormBase from '../components/MasterFormBase';
+import { fetchNextBomCode } from '../services/bom.service';
+import {
+  createPRRegistration,
+  fetchPRProductDetail,
+  updatePRProduct,
+  type PRProductDetail,
+} from '../services/productsMaster.service';
 
+// ─── PR Category Code Series (finished goods / PR master) ────────────────────
+const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
+  SKC: { label: 'Skincare (FG)', prefix: 'EI-PR-SKC' },
+  HRC: { label: 'Haircare (FG)', prefix: 'EI-PR-HRC' },
+  BDY: { label: 'Bodycare (FG)', prefix: 'EI-PR-BDY' },
+  SUN: { label: 'Sun care (FG)', prefix: 'EI-PR-SUN' },
+  OTC: { label: 'OTC / Derma (FG)', prefix: 'EI-PR-OTC' },
+  COL: { label: 'Colour cosmetics (FG)', prefix: 'EI-PR-COL' },
+  MISC: { label: 'Miscellaneous (FG)', prefix: 'EI-PR-MISC' },
+};
+
+const PR_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
+const PR_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
 interface BOMFormState {
+  // Identity & coding (step 0)
+  prCategoryKey: string;
+  prQcGroup: string;
+  prSubCategory: string;
+  prDefaultStorageType: string;
   // Overview Tab
   productName: string;
   category: string;
@@ -72,6 +96,10 @@ interface BOMFormState {
 
 function emptyBomForm(): BOMFormState {
   return {
+    prCategoryKey: '',
+    prQcGroup: '',
+    prSubCategory: '',
+    prDefaultStorageType: '',
     productName: '',
     category: '',
     productForm: '',
@@ -112,13 +140,17 @@ function emptyBomForm(): BOMFormState {
 
 function mockBomForm(): BOMFormState {
   return {
+    prCategoryKey: 'SUN',
+    prQcGroup: 'Chemical QC',
+    prSubCategory: 'Broad spectrum lotion',
+    prDefaultStorageType: 'Ambient – Cool',
     productName: 'EI Sunscreen Lotion SPF50+ PA++++',
     category: 'Sunscreen',
     productForm: 'Lotion',
     brandClient: 'Esthetic Insights',
     fillSize: '50ml',
     packConfiguration: 'Bottle + Cap',
-    skuCode: 'EI-PR-00001',
+    skuCode: 'EI-PR-SUN-00001',
     mrp: '₹499',
     zohoId: '',
     skuForZoho: '',
@@ -163,6 +195,142 @@ function mockBomForm(): BOMFormState {
   };
 }
 
+interface BOMFormProps {
+  /** When provided, used instead of route param `:id` (enables modal editing). */
+  productId?: string;
+  onClose?: () => void;
+  onSaved?: () => void;
+}
+
+function inferPrCategoryKeyFromCode(code: string): string {
+  if (!code) return '';
+  for (const [k, v] of Object.entries(PR_CATEGORIES)) {
+    if (code.startsWith(`${v.prefix}-`) || code === v.prefix) return k;
+  }
+  return '';
+}
+
+function hasMeaningfulFormulaLine(fd: BOMFormState): boolean {
+  return fd.formulaIngredients.some((ing) => {
+    const inci = ing.inciName.trim();
+    const pct =
+      ing.percentWW.trim() !== ''
+        ? parseFloat(ing.percentWW.replace(/[^\d.-]/g, ''))
+        : NaN;
+    return Boolean(inci || (!Number.isNaN(pct) && pct > 0));
+  });
+}
+
+function hasMeaningfulPackLine(fd: BOMFormState): boolean {
+  return fd.packingComponents.some((c) => Boolean(c.pmDescription.trim()));
+}
+
+function bomFormToRmLines(fd: BOMFormState) {
+  return fd.formulaIngredients.map((ing) => ({
+    phase: ing.phase,
+    inci_name: ing.inciName,
+    rm_code: '',
+    pct_w_w: parseFloat(ing.percentWW) || 0,
+    uom: ing.uom,
+  }));
+}
+
+function bomFormToPmLines(fd: BOMFormState) {
+  return fd.packingComponents.map((c) => ({
+    pm_code: '',
+    description: c.pmDescription,
+    pack_type: c.type,
+    qty_per_unit: parseFloat(c.qtyUnit) || 1,
+    uom: c.uom || 'PCS',
+  }));
+}
+
+function bomFormToProcessSteps(fd: BOMFormState) {
+  return fd.processSteps.map((s, i) => {
+    const stepNum = parseInt(String(s.stepNumber).replace(/\D/g, ''), 10);
+    const durNum = parseInt(String(s.duration).replace(/\D/g, ''), 10);
+    return {
+      step_number: Number.isNaN(stepNum) ? i + 1 : stepNum,
+      description: s.instruction,
+      duration_minutes: Number.isNaN(durNum) ? 0 : durNum,
+    };
+  });
+}
+
+function parseMrpNumber(mrp: string): number | undefined {
+  if (!mrp?.trim()) return undefined;
+  const n = parseFloat(mrp.replace(/[^\d.]/g, ''));
+  return Number.isNaN(n) ? undefined : n;
+}
+
+function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
+  const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
+  return {
+    product_name: fd.productName.trim(),
+    name: fd.productName.trim(),
+    product_code: fd.skuCode.trim(),
+    bomCode: fd.skuCode.trim(),
+    category: fd.category || null,
+    form: fd.productForm || null,
+    type: fd.productForm || null,
+    client: fd.brandClient || null,
+    fill_size: fd.fillSize || null,
+    packSize: fd.fillSize || null,
+    product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    bomSku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    zoho_id: fd.zohoId?.trim() || null,
+    bom_tax_preference: fd.bomTaxPreference || null,
+    bom_returnable: fd.bomReturnable,
+    bom_associate_items: fd.bomAssociateItems?.trim() || null,
+    status: 'Draft',
+    pr_qc_group: fd.prQcGroup || null,
+    pr_sub_category: fd.prSubCategory || null,
+    storage_conditions: fd.prDefaultStorageType || null,
+    mrp: fd.mrp || null,
+    rm_lines: bomFormToRmLines(fd),
+    pm_lines: bomFormToPmLines(fd),
+    process_steps: bomFormToProcessSteps(fd),
+    ph_range: fd.phRange || null,
+    viscosity_range: fd.viscosity || null,
+    appearance: fd.appearance || null,
+    odour: fd.odour || null,
+    fill_weight_spec: fd.fillWeightSpec || null,
+    stability_summary: stabilityParts.length ? stabilityParts.join('; ') : fd.longTermStability || null,
+    approved_claims: fd.approvedMarketingClaims || null,
+    regulatory: fd.applicableRegulation || null,
+    desc: fd.claimsSubstantiation || null,
+  };
+}
+
+function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
+  const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
+  const mrp = parseMrpNumber(fd.mrp);
+  return {
+    product_name: fd.productName.trim(),
+    product_code: fd.skuCode.trim(),
+    product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    category: fd.category || null,
+    form: fd.productForm || null,
+    fill_size: fd.fillSize || null,
+    storage_conditions: fd.prDefaultStorageType || null,
+    approved_claims: fd.approvedMarketingClaims || null,
+    ph_range: fd.phRange || null,
+    viscosity_range: fd.viscosity || null,
+    appearance: fd.appearance || null,
+    odour: fd.odour || null,
+    fill_weight_spec: fd.fillWeightSpec || null,
+    stability_summary: stabilityParts.length ? stabilityParts.join('; ') : fd.longTermStability || null,
+    ...(mrp !== undefined ? { mrp_price: mrp } : {}),
+    bom: {
+      rm_lines: bomFormToRmLines(fd),
+      pm_lines: bomFormToPmLines(fd),
+      process_steps: bomFormToProcessSteps(fd),
+      ph_range: fd.phRange || null,
+      stability_summary: fd.longTermStability || null,
+    },
+  };
+}
+
 function productDetailToBomForm(p: PRProductDetail): BOMFormState {
   const formulaIngredients: BOMFormState['formulaIngredients'] = [];
   (p.formulaBom || []).forEach((phase, pi) => {
@@ -189,13 +357,16 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     instruction: step.description || '',
     duration: String(step.duration_minutes ?? ''),
   }));
+  const skuCode = p.product_code || '';
+  const inferred = inferPrCategoryKeyFromCode(skuCode);
   return {
     ...emptyBomForm(),
+    prCategoryKey: inferred,
     productName: p.product_name || '',
     category: p.category || '',
     productForm: p.form || '',
     fillSize: p.fill_size || '',
-    skuCode: p.product_code || '',
+    skuCode,
     mrp: p.mrp_price != null ? `₹${p.mrp_price}` : '',
     formulaIngredients,
     packingComponents,
@@ -210,27 +381,56 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
   };
 }
 
-const BOMForm: React.FC = () => {
+const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, onSaved }) => {
   const navigate = useNavigate();
-  const { id: productIdFromRoute } = useParams<{ id: string }>();
+  const { id: productIdFromParams } = useParams<{ id: string }>();
+  const productIdFromRoute = productIdProp ?? productIdFromParams;
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState(0);
+  const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generatedPrCode, setGeneratedPrCode] = useState('');
   const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
 
+  const stages = [
+    'Identity & coding',
+    'Formula BOM',
+    'Pack BOM',
+    'Process Steps',
+    'Specs & Regulatory',
+  ];
+
   // When route has :id, fetch product and fill form for edit
   useEffect(() => {
     if (!productIdFromRoute) return;
+    setCurrentStage(0);
     let cancelled = false;
     setEditLoading(true);
     fetchPRProductDetail(productIdFromRoute).then((res) => {
       if (cancelled) return;
       setEditLoading(false);
       if (res.success && res.data) {
-        setFormData(productDetailToBomForm(res.data));
+        const d = res.data;
+        const dbg = {
+          productIdFromRoute,
+          formulaBomPhases: Array.isArray(d.formulaBom) ? d.formulaBom.length : null,
+          formulaBomIngredientsTotal: Array.isArray(d.formulaBom)
+            ? d.formulaBom.reduce((sum: number, ph: any) => sum + (Array.isArray(ph.ingredients) ? ph.ingredients.length : 0), 0)
+            : null,
+          packBomRows: Array.isArray(d.packBom) ? d.packBom.length : null,
+          processSteps: Array.isArray(d.processSteps) ? d.processSteps.length : null,
+          scalarKeysSample: d ? Object.keys(d).slice(0, 20) : null,
+        };
+        console.log('[PR Edit Populate Debug]', JSON.stringify(dbg, null, 2));
+        if ((dbg.formulaBomPhases ?? 0) === 0 && (dbg.packBomRows ?? 0) === 0) {
+          window.alert(`PR edit populate looks empty for id=${productIdFromRoute}. See console log [PR Edit Populate Debug].`);
+        }
+        const next = productDetailToBomForm(d);
+        setFormData(next);
+        setGeneratedPrCode(next.skuCode || '');
       }
     }).catch(() => {
       if (!cancelled) setEditLoading(false);
@@ -238,21 +438,49 @@ const BOMForm: React.FC = () => {
     return () => { cancelled = true; };
   }, [productIdFromRoute]);
 
-  const tabs = [
-    { id: 0, label: 'Overview', icon: '1' },
-    { id: 1, label: 'Formula BOM', icon: '2' },
-    { id: 2, label: 'Pack BOM', icon: '3' },
-    { id: 3, label: 'Process Steps', icon: '4' },
-    { id: 4, label: 'Specs & Regulatory', icon: '5' },
-  ];
+  const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
+    if (field === 'prCategoryKey') {
+      setFormData((prev) => ({ ...prev, prCategoryKey: value as string }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
-  const handleInputChange = (field: keyof BOMFormState, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const getPrCodePreview = () => {
+    const cat = formData.prCategoryKey ? PR_CATEGORIES[formData.prCategoryKey] : null;
+    if (!cat) return { prefix: '—', next: '—' };
+    if (generatedPrCode && generatedPrCode.startsWith(cat.prefix)) {
+      const suffix = generatedPrCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
+      return { prefix: cat.prefix, next: suffix };
+    }
+    return { prefix: cat.prefix, next: '…' };
+  };
+
+  const generatePrCode = async (confirm = false) => {
+    if (!formData.prCategoryKey) {
+      addToast('error', 'Select a PR Category first');
+      return;
+    }
+    if (generatedPrCode && !confirm) {
+      const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
+      if (!ok) return;
+    }
+    const cat = PR_CATEGORIES[formData.prCategoryKey];
+    try {
+      const code = await fetchNextBomCode(cat.prefix);
+      setGeneratedPrCode(code);
+      setFormData((prev) => ({ ...prev, skuCode: code }));
+      addToast('success', `Code generated: ${code}`);
+    } catch (err) {
+      console.error(err);
+      addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
+    }
   };
 
   const fillMockData = () => {
     const mock = mockBomForm();
     setFormData(mock);
+    setGeneratedPrCode(mock.skuCode);
     addToast('success', 'Form filled with mock data for testing!');
   };
 
@@ -323,247 +551,310 @@ const BOMForm: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    setErrors({});
+    if (!productIdFromRoute) {
+      if (!formData.prCategoryKey.trim()) {
+        setErrors({ prCategoryKey: 'Select a PR Category' });
+        addToast('error', 'Select a PR Category (Identity & coding)');
+        setCurrentStage(0);
+        return;
+      }
+      if (!formData.skuCode.trim()) {
+        setErrors({ skuCode: 'Generate or enter PR / BOM code' });
+        addToast('error', 'Generate or enter PR code before submitting');
+        setCurrentStage(0);
+        return;
+      }
+    }
     if (!formData.productName.trim()) {
       addToast('error', 'Product Name is required');
+      setCurrentStage(0);
       return;
     }
 
-    const bomCode = formData.skuCode || `PR-${Date.now()}`;
-    const payload = {
-      name: formData.productName,
-      category: formData.category || undefined,
-      type: formData.productForm || undefined,
-      client: formData.brandClient || undefined,
-      packSize: formData.fillSize || undefined,
-      bomCode,
-      zohoId: formData.zohoId?.trim() || undefined,
-      bomSku: (formData.skuForZoho?.trim() ? formData.skuForZoho.trim() : bomCode) || undefined,
-      bomTaxPreference: formData.bomTaxPreference || undefined,
-      bomReturnable: formData.bomReturnable,
-      bomAssociateItems: formData.bomAssociateItems?.trim() || undefined,
-      status: 'Draft',
-    };
+    if (!hasMeaningfulFormulaLine(formData)) {
+      addToast('error', 'Add at least one formula ingredient (INCI name or % w/w) in Formula BOM.');
+      setCurrentStage(1);
+      return;
+    }
+    if (!hasMeaningfulPackLine(formData)) {
+      addToast('error', 'Add at least one packaging component (description) in Pack BOM.');
+      setCurrentStage(2);
+      return;
+    }
 
-    const result = await createBOM(payload);
-    if (result.success) {
-      addToast('success', 'Product saved successfully!');
-      navigate('/bom');
-    } else {
-      addToast('error', result.error || 'Failed to save product');
+    try {
+      if (productIdFromRoute) {
+        const res = await updatePRProduct(productIdFromRoute, buildPrUpdateBody(formData));
+        if (res.success) {
+          addToast('success', 'Product updated successfully!');
+          onSaved?.();
+          if (onClose) onClose();
+          else navigate('/bom');
+        } else {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update product');
+        }
+        return;
+      }
+
+      const res = await createPRRegistration(buildPrRegistrationBody(formData));
+      if (res.success) {
+        addToast('success', 'Product registered — saved to Products (PR) master.');
+        onSaved?.();
+        if (onClose) onClose();
+        else navigate('/bom');
+      } else {
+        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to register product');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('error', err instanceof Error ? err.message : 'Save failed');
     }
   };
 
-  if (editLoading) {
-    return (
-      <div className="fixed inset-0 bg-slate-900/30 flex items-center justify-center z-50">
-        <p className="text-white bg-slate-800 px-4 py-2 rounded-lg">Loading product…</p>
-      </div>
-    );
-  }
+  const renderStageContent = () => {
+    const { prefix, next } = getPrCodePreview();
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/30 flex items-start justify-center z-50 overflow-y-auto pt-8">
-      <div className="w-full mx-auto bg-white rounded-2xl shadow-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-                PR
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">{productIdFromRoute ? 'Edit Product Registration' : 'New Product Registration (PR Master)'}</h1>
-                <p className="text-xs text-slate-600">Complete all 5 sections — identity, formula BOM, pack BOM, process steps & specs.</p>
-              </div>
+    switch (currentStage) {
+      case 0:
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => { if (onClose) onClose(); else navigate('/bom'); }}
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+              >
+                ← Back to PR Master list
+              </button>
+              <p className="text-xs text-slate-500">
+                {productIdFromRoute ? 'Editing linked PR / BOM registration' : 'Stepwise flow — same pattern as Raw Material master'}
+              </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={fillMockData}
-              className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              Add Mock Data
-            </button>
-            <button onClick={() => navigate('/bom')} className="text-slate-600 hover:text-slate-900">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="border-b border-slate-200 px-6">
-          <div className="flex gap-1">
-            {tabs.map(tab => {
-              const isActive = activeTab === tab.id;
-              const isCompleted = activeTab > tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : isCompleted
-                      ? 'border-green-500 text-green-600'
-                      : 'border-transparent text-slate-600 hover:text-slate-900'
-                    }`}
-                >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold ${isActive
-                    ? 'bg-blue-600 text-white'
-                    : isCompleted
-                      ? 'bg-green-500 text-white'
-                      : 'bg-slate-200 text-slate-600'
-                    }`}>
-                    {isCompleted ? 'Done' : tab.icon}
-                  </span>
-                  <span className="text-sm font-medium">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Tab 0: Overview */}
-          {activeTab === 0 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
-                <div className="space-y-4 border-t pt-4">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category (Industry Buckets)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PR Category</label>
+                  <select
+                    value={formData.prCategoryKey}
+                    onChange={(e) => handleInputChange('prCategoryKey', e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {Object.entries(PR_CATEGORIES).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+                  <select
+                    value={formData.prQcGroup}
+                    onChange={(e) => handleInputChange('prQcGroup', e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {PR_QC_GROUPS.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
                   <input
                     type="text"
-                    placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
-                    value={formData.productName}
-                    onChange={(e) => handleInputChange('productName', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={formData.prSubCategory}
+                    onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
+                    placeholder="e.g. Anti‑acne serum / Kids shampoo / SPF 50 lotion"
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      value={formData.category}
-                      onChange={(e) => handleInputChange('category', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">CATEGORY</option>
-                      <option value="Sunscreen">Sunscreen</option>
-                      <option value="Face Wash">Face Wash</option>
-                      <option value="Serum">Serum</option>
-                      <option value="Cream">Cream</option>
-                    </select>
-                    <select
-                      value={formData.productForm}
-                      onChange={(e) => handleInputChange('productForm', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">PRODUCT FORM</option>
-                      <option value="Lotion/Cream">Lotion/Cream</option>
-                      <option value="Gel">Gel</option>
-                      <option value="Serum">Serum</option>
-                      <option value="Oil">Oil</option>
-                    </select>
-                  </div>
-
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
                   <select
-                    value={formData.brandClient}
-                    onChange={(e) => handleInputChange('brandClient', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={formData.prDefaultStorageType}
+                    onChange={(e) => handleInputChange('prDefaultStorageType', e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="">BRAND / CLIENT</option>
-                    <option value="EI Own Brand">EI Own Brand</option>
-                    <option value="Client A">Client A</option>
-                    <option value="Client B">Client B</option>
+                    <option value="">Select</option>
+                    {PR_STORAGE_TYPES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      placeholder="e.g. 50g"
-                      value={formData.fillSize}
-                      onChange={(e) => handleInputChange('fillSize', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                    <input
-                      type="text"
-                      placeholder="e.g. 1x50 tube"
-                      value={formData.packConfiguration}
-                      onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      placeholder="e.g. EI-SUN-50G-001"
-                      value={formData.skuCode}
-                      onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                    <input
-                      type="text"
-                      placeholder="e.g. Rs.499"
-                      value={formData.mrp}
-                      onChange={(e) => handleInputChange('mrp', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-
-                  {/* Zoho + Tax / Returnable / Associate Items (Primary Info) */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Zoho item id (sync TODO)"
-                      value={formData.zohoId}
-                      onChange={(e) => handleInputChange('zohoId', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                    <input
-                      type="text"
-                      placeholder="SKU (for Zoho) - optional (defaults to SKU)"
-                      value={formData.skuForZoho}
-                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      value={formData.bomTaxPreference}
-                      onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
-                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">TAX PREFERENCE</option>
-                      {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-
-                    <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
-                      <input
-                        type="checkbox"
-                        checked={formData.bomReturnable}
-                        onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
-                      />
-                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-1">
-                    <textarea
-                      value={formData.bomAssociateItems}
-                      onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
-                      rows={2}
-                      placeholder="Link related BOM / RM / packaging if any"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Tab 1: Formula BOM */}
-          {activeTab === 1 && (
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
+              <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center gap-6 mb-4 flex-wrap">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
+                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
+                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => generatePrCode()}
+                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                  >
+                    Generate Code Now
+                  </button>
+                  {generatedPrCode && (
+                    <button
+                      type="button"
+                      onClick={() => generatePrCode(true)}
+                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
+                    >
+                      Regenerate (change category)
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-3">Code is stored as PR / BOM code (bom_code). Edit below if needed.</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
+              <div className="space-y-4 border-t border-slate-200 pt-4">
+                <input
+                  type="text"
+                  placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
+                  value={formData.productName}
+                  onChange={(e) => handleInputChange('productName', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <select
+                    value={formData.category}
+                    onChange={(e) => handleInputChange('category', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">CATEGORY (formulation)</option>
+                    <option value="Sunscreen">Sunscreen</option>
+                    <option value="Face Wash">Face Wash</option>
+                    <option value="Serum">Serum</option>
+                    <option value="Cream">Cream</option>
+                  </select>
+                  <select
+                    value={formData.productForm}
+                    onChange={(e) => handleInputChange('productForm', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">PRODUCT FORM</option>
+                    <option value="Lotion/Cream">Lotion/Cream</option>
+                    <option value="Gel">Gel</option>
+                    <option value="Serum">Serum</option>
+                    <option value="Oil">Oil</option>
+                  </select>
+                </div>
+
+                <select
+                  value={formData.brandClient}
+                  onChange={(e) => handleInputChange('brandClient', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">BRAND / CLIENT</option>
+                  <option value="EI Own Brand">EI Own Brand</option>
+                  <option value="Client A">Client A</option>
+                  <option value="Client B">Client B</option>
+                </select>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="e.g. 50g"
+                    value={formData.fillSize}
+                    onChange={(e) => handleInputChange('fillSize', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="e.g. 1x50 tube"
+                    value={formData.packConfiguration}
+                    onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="PR / BOM code (generate above)"
+                    value={formData.skuCode}
+                    onChange={(e) => handleInputChange('skuCode', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="e.g. Rs.499"
+                    value={formData.mrp}
+                    onChange={(e) => handleInputChange('mrp', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Zoho item id (sync TODO)"
+                    value={formData.zohoId}
+                    onChange={(e) => handleInputChange('zohoId', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="SKU (for Zoho) - optional (defaults to PR code)"
+                    value={formData.skuForZoho}
+                    onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <select
+                    value={formData.bomTaxPreference}
+                    onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">TAX PREFERENCE</option>
+                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={formData.bomReturnable}
+                      onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
+                    />
+                    <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                  </div>
+                </div>
+
+                <textarea
+                  value={formData.bomAssociateItems}
+                  onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
+                  rows={2}
+                  placeholder="Link related BOM / RM / packaging if any"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      case 1:
+        return (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
@@ -638,10 +929,9 @@ const BOMForm: React.FC = () => {
                 <p className="text-xs text-slate-600 mt-3">Total: <span className="font-semibold text-blue-600">0.00%</span></p>
               </div>
             </div>
-          )}
-
-          {/* Tab 2: Pack BOM */}
-          {activeTab === 2 && (
+        );
+      case 2:
+        return (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
@@ -703,10 +993,9 @@ const BOMForm: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Tab 3: Process Steps */}
-          {activeTab === 3 && (
+        );
+      case 3:
+        return (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">MANUFACTURING PROCESS STEPS</label>
@@ -767,10 +1056,9 @@ const BOMForm: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Tab 4: Specs & Regulatory */}
-          {activeTab === 4 && (
+        );
+      case 4:
+        return (
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FINISHED PRODUCT SPECIFICATIONS</label>
@@ -823,29 +1111,34 @@ const BOMForm: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
-        </div>
+        );
+      default:
+        return null;
+    }
+  };
 
-        {/* Footer Navigation */}
-        <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex justify-between">
-          <button onClick={() => activeTab > 0 && setActiveTab(activeTab - 1)} className="px-4 py-2 text-slate-600 hover:text-slate-900">
-            Prev
-          </button>
-          <button onClick={() => navigate('/bom')} className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium">
-            Cancel
-          </button>
-          {activeTab < tabs.length - 1 ? (
-            <button onClick={() => setActiveTab(activeTab + 1)} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-              Next
-            </button>
-          ) : (
-            <button onClick={handleSubmit} className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
-              Save PR
-            </button>
-          )}
-        </div>
+  if (editLoading) {
+    return (
+      <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center">
+        <p className="text-gray-500">Loading product…</p>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <MasterFormBase
+      title={productIdFromRoute ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
+      stages={stages}
+      currentStage={currentStage}
+      onStageChange={setCurrentStage}
+      errors={errors}
+      formData={formData as unknown as Record<string, unknown>}
+      onInputChange={() => {}}
+      onFillMock={fillMockData}
+      onSubmit={handleSubmit}
+    >
+      {renderStageContent()}
+    </MasterFormBase>
   );
 };
 

@@ -59,6 +59,13 @@ export interface PackMaterialRecord {
   form_data?: Record<string, unknown> | null;
 }
 
+export interface PaginatedRowsResponse<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
   return {
     id: row.id ?? '',
@@ -95,6 +102,32 @@ export async function fetchPackMaterialsList(search?: string): Promise<PackMater
   const path = `/api/v1/pack-materials${params.toString() ? `?${params.toString()}` : ''}`;
   const list = await api.get<PackMaterialFromApi[]>(path);
   return (list ?? []).map(mapApiToRecord);
+}
+
+export async function fetchPackMaterialsPage(opts: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  rows: PackMaterialRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const params = new URLSearchParams();
+  if (opts.search != null && opts.search.trim()) params.set('search', opts.search.trim());
+  params.set('limit', String(opts.limit ?? 20));
+  params.set('offset', String(opts.offset ?? 0));
+
+  const path = `/api/v1/pack-materials?${params.toString()}`;
+  const resp = await api.get<PaginatedRowsResponse<PackMaterialFromApi>>(path);
+  const rows = (resp?.rows ?? []).map(mapApiToRecord);
+  return {
+    rows,
+    total: resp?.total ?? 0,
+    limit: resp?.limit ?? (opts.limit ?? 20),
+    offset: resp?.offset ?? (opts.offset ?? 0),
+  };
 }
 
 /**
@@ -182,7 +215,18 @@ export async function updatePackMaterial(id: string, payload: CreatePackMaterial
  * Delete pack material by id.
  */
 export async function deletePackMaterial(id: string): Promise<void> {
-  await api.delete(`/api/v1/pack-materials/${id}`);
+  try {
+    await api.delete(`/api/v1/pack-materials/${id}`);
+  } catch (e) {
+    const body = (e as Error & { body?: unknown }).body;
+    const msg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string'
+        ? (body as any).error
+        : e instanceof Error
+          ? e.message
+          : 'Failed to delete pack material';
+    throw new Error(msg);
+  }
 }
 
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */

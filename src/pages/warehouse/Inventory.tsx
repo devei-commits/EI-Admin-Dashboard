@@ -942,6 +942,8 @@ const WarehouseInventory = () => {
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
   const [viewMode, setViewMode] = useState<'current' | 'history' | 'usage'>('current');
   const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
   const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
@@ -1186,6 +1188,17 @@ const WarehouseInventory = () => {
 
     return items;
   }, [searchQuery, activeFilter, itemGroupFilter, inventoryData]);
+
+  useEffect(() => {
+    // Keep pagination consistent with filters/search.
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter, itemGroupFilter, pageSize]);
+
+  const totalFiltered = filteredItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const pagedItems = filteredItems.slice(startIndex, startIndex + pageSize);
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -1666,7 +1679,7 @@ const WarehouseInventory = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredItems.map((item) => {
+                    {pagedItems.map((item) => {
                       const planKey =
                         (item.type === 'RM' || item.type === 'PM') && item.sourceId != null && item.sourceId > 0
                           ? `${item.type}-${item.sourceId}`
@@ -1843,14 +1856,58 @@ const WarehouseInventory = () => {
 
             {/* Footer Info */}
             {filteredItems.length > 0 && (
-              <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-                <div>
-                  Showing <span className="font-semibold text-gray-900">{filteredItems.length}</span> of{' '}
-                  <span className="font-semibold text-gray-900">{inventoryData.length}</span> items
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <div>
+                    Showing{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
+                    <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered}</span> (filtered) • Total{' '}
+                    <span className="font-semibold text-gray-900">{inventoryData.length}</span> items
+                  </div>
+                  <div className="text-gray-500">
+                    Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
+                  </div>
                 </div>
-                <div className="text-gray-500">
-                  Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
-                </div>
+
+                {totalPages > 1 && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-gray-500">
+                      Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
+                      <span className="font-semibold text-gray-900">{totalPages}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <select
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={safeCurrentPage <= 1}
+                        className="px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={safeCurrentPage >= totalPages}
+                        className="px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

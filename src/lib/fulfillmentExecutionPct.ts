@@ -160,7 +160,11 @@ export function computeBatchSplitExecutionFraction(
   return clamp01(score);
 }
 
-/** 0–100 for one order line, weighted by plannedQty per batch. */
+/**
+ * 0–100 for one order line.
+ * Weight each batch by plannedQty; divide by line orderedQty so unallocated quantity counts as 0% progress.
+ * If planned totals exceed orderedQty, scale down (over-allocation) so the line cannot exceed 100%.
+ */
 export function computeOrderItemExecutionPercent(
   item: OrderItem,
   planning: ExecPlanningItem | null | undefined
@@ -168,15 +172,38 @@ export function computeOrderItemExecutionPercent(
   const splits = item.batchSplits || [];
   if (splits.length === 0) return 0;
 
-  let sumW = 0;
-  let sumS = 0;
+  const ordered = Math.max(0, Number(item.orderedQty) || 0);
   const n = splits.length;
-  splits.forEach((split, i) => {
-    const weight = Math.max(1, Number(split.plannedQty) || 0);
-    sumW += weight;
-    sumS += weight * computeBatchSplitExecutionFraction(split, i, n, planning);
-  });
+  const plannedWeights = splits.map((sp) => Math.max(0, Number(sp.plannedQty) || 0));
+  const sumPlanned = plannedWeights.reduce((a, b) => a + b, 0);
 
-  if (sumW <= 0) return 0;
-  return Math.round(clamp01(sumS / sumW) * 100);
+  const scoreSplit = (i: number) =>
+    computeBatchSplitExecutionFraction(splits[i], i, n, planning);
+
+  if (sumPlanned <= 0) {
+    if (ordered <= 0) {
+      let sumF = 0;
+      for (let i = 0; i < n; i++) sumF += scoreSplit(i);
+      return Math.round(clamp01(sumF / n) * 100);
+    }
+    const wEach = ordered / n;
+    let sumS = 0;
+    for (let i = 0; i < n; i++) sumS += wEach * scoreSplit(i);
+    return Math.round(clamp01(sumS / ordered) * 100);
+  }
+
+  let sumS = 0;
+  for (let i = 0; i < n; i++) {
+    sumS += plannedWeights[i] * scoreSplit(i);
+  }
+
+  if (ordered <= 0) {
+    return Math.round(clamp01(sumS / sumPlanned) * 100);
+  }
+
+  if (sumPlanned > ordered) {
+    sumS *= ordered / sumPlanned;
+  }
+
+  return Math.round(clamp01(sumS / ordered) * 100);
 }

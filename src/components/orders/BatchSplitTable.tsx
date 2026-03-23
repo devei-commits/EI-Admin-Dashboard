@@ -150,7 +150,7 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
                         <span className="hidden sm:inline">Ship</span>
                       </Button>
                     )}
-                    {(split.ffStatus === 'shipped' || split.ffStatus === 'delivered' || split.ffStatus === 'closed') && (
+                    {split.ffStatus === 'shipped' && (
                       <Button
                         size="sm"
                         variant="secondary"

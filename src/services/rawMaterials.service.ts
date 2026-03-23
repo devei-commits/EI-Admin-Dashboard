@@ -50,6 +50,13 @@ export interface RawMaterialRecord {
   salesPurchaseAccount: string | null;
 }
 
+export interface PaginatedRowsResponse<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
   return {
     id: row.id ?? '',
@@ -84,6 +91,32 @@ export async function fetchRawMaterialsList(search?: string): Promise<RawMateria
   return (list ?? []).map(mapApiToRecord);
 }
 
+export async function fetchRawMaterialsPage(opts: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  rows: RawMaterialRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const params = new URLSearchParams();
+  if (opts.search != null && opts.search.trim()) params.set('search', opts.search.trim());
+  params.set('limit', String(opts.limit ?? 20));
+  params.set('offset', String(opts.offset ?? 0));
+
+  const path = `/api/v1/raw-materials?${params.toString()}`;
+  const resp = await api.get<PaginatedRowsResponse<RawMaterialFromApi>>(path);
+  const rows = (resp?.rows ?? []).map(mapApiToRecord);
+  return {
+    rows,
+    total: resp?.total ?? 0,
+    limit: resp?.limit ?? (opts.limit ?? 20),
+    offset: resp?.offset ?? (opts.offset ?? 0),
+  };
+}
+
 /** API response for get-by-id includes form_data for edit. */
 export interface RawMaterialFullFromApi extends RawMaterialFromApi {
   form_data?: Record<string, unknown> | null;
@@ -105,6 +138,13 @@ export async function fetchRawMaterialById(id: string): Promise<{ record: RawMat
 /** Full form payload for create/update (matches formData shape). */
 export type RawMaterialFormPayload = Record<string, unknown>;
 
+/** Next RM code for a series prefix (e.g. EI-RM-ACT → EI-RM-ACT-00001). */
+export async function fetchNextRawMaterialCode(prefix: string): Promise<string> {
+  const p = encodeURIComponent(prefix.trim());
+  const res = await api.get<{ nextCode: string }>(`/api/v1/raw-materials/next-code?prefix=${p}`);
+  return res?.nextCode ?? `${prefix}-00001`;
+}
+
 /**
  * Create raw material. Body: full form payload (formData).
  */
@@ -125,7 +165,18 @@ export async function updateRawMaterial(id: string, payload: RawMaterialFormPayl
  * Delete raw material by id.
  */
 export async function deleteRawMaterial(id: string): Promise<void> {
-  await api.delete(`/api/v1/raw-materials/${id}`);
+  try {
+    await api.delete(`/api/v1/raw-materials/${id}`);
+  } catch (e) {
+    const body = (e as Error & { body?: unknown }).body;
+    const msg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string'
+        ? (body as any).error
+        : e instanceof Error
+          ? e.message
+          : 'Failed to delete raw material';
+    throw new Error(msg);
+  }
 }
 
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */

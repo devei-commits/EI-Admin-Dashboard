@@ -581,6 +581,11 @@ const Planning = () => {
     enabled: planBatchesModalOpen && !!planningIdForBatch,
   });
 
+  /** Require the current last batch to be sent to production before adding another (matches backend). */
+  const canAddAnotherPlanningBatch =
+    planningBatches.length === 0 ||
+    (selectedSOForBatch?.sentBatchIndices ?? []).some((x) => Number(x) === planningBatches.length - 1);
+
   /** Selected batch detail — drives BOM (bomFormula/bomPackaging) for this batch */
   const { data: selectedBatchData } = useQuery({
     queryKey: ['planning-batch', planningIdForBatch, selectedBatchId],
@@ -611,12 +616,18 @@ const Planning = () => {
     if (!planBatchesModalOpen || !planningIdForBatch) return;
     if (planningBatches.length === 0 && !addedOneBatchRef.current) {
       addedOneBatchRef.current = true;
-      addOneBatchFromMaster(planningIdForBatch).then((newBatch) => {
-        if (newBatch) {
-          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-          setSelectedBatchId(newBatch.id);
-        }
-      });
+      addOneBatchFromMaster(planningIdForBatch)
+        .then((newBatch) => {
+          if (newBatch) {
+            queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+            setSelectedBatchId(newBatch.id);
+          } else {
+            addedOneBatchRef.current = false;
+          }
+        })
+        .catch(() => {
+          addedOneBatchRef.current = false;
+        });
       return;
     }
     if (planningBatches.length > 0) {
@@ -3739,18 +3750,31 @@ const Planning = () => {
                   </select>
                   <button
                     type="button"
+                    disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
                     onClick={async () => {
-                      const newBatch = await addOneBatchFromMaster(planningIdForBatch);
-                      if (newBatch) {
-                        queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                        setSelectedBatchId(newBatch.id);
-                        addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
-                      } else {
-                        addToast('error', 'Failed to add batch');
+                      if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                        addToast('error', 'Send the latest batch to production before adding another.');
+                        return;
+                      }
+                      try {
+                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                        if (newBatch) {
+                          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                          setSelectedBatchId(newBatch.id);
+                          addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
+                        } else {
+                          addToast('error', 'Failed to add batch');
+                        }
+                      } catch (e) {
+                        addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
                       }
                     }}
-                    className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200"
-                    title="Add new batch (BOM from product master)"
+                    className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title={
+                      planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                        ? 'Send the latest batch to production before adding another'
+                        : 'Add new batch (BOM from product master)'
+                    }
                   >
                     + Add
                   </button>
@@ -3980,11 +4004,21 @@ const Planning = () => {
                 const remaining = orderTotalKg - batchTotal;
                 const remainingUnits = kgPerUnit > 0 ? remaining / kgPerUnit : 0;
                 const addBatch = async () => {
-                  const newBatch = await addOneBatchFromMaster(selectedSOForBatch.id);
-                  if (newBatch) {
-                    queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-                    setSelectedBatchId(newBatch.id);
-                    addToast('success', `Added ${newBatch.batchCode ?? 'batch'} (BOM from master).`);
+                  if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                    addToast('error', 'Send the latest batch to production before adding another.');
+                    return;
+                  }
+                  try {
+                    const newBatch = await addOneBatchFromMaster(selectedSOForBatch.id);
+                    if (newBatch) {
+                      queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+                      setSelectedBatchId(newBatch.id);
+                      addToast('success', `Added ${newBatch.batchCode ?? 'batch'} (BOM from master).`);
+                    } else {
+                      addToast('error', 'Failed to add batch');
+                    }
+                  } catch (e) {
+                    addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
                   }
                 };
                 const removeBatch = (idx: number) => {
@@ -3992,16 +4026,10 @@ const Planning = () => {
                   if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
                   else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
                 };
-                /** Update batch by quantity (units to be made); persists sizeKg to backend when batch has id */
+                /** Update batch units locally; persist with Save Batch Plan or Send to Production (same as Feasibility preview math). */
                 const updateBatchUnits = (idx: number, units: number) => {
                   const sizeKg = units * kgPerUnit;
-                  setCustomBatches(customBatches.map((b, i) => i === idx ? { ...b, sizeKg } : b));
-                  const batchRow = (planningBatches as PlanningBatchRow[])[idx];
-                  if (batchRow?.id && selectedSOForBatch) {
-                    updatePlanningBatch(selectedSOForBatch.id, batchRow.id, { sizeKg }).then(() => {
-                      queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-                    });
-                  }
+                  setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
                 };
 
                 /** Per-batch requirements in BATCH BREAKDOWN: use that batch's own BOM (planningBatches[batchIndex]), not the selected batch. */
@@ -4076,8 +4104,14 @@ const Planning = () => {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
+                            disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
                             onClick={() => addBatch()}
-                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors"
+                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-100"
+                            title={
+                              planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                                ? 'Send the latest batch to production first'
+                                : undefined
+                            }
                           >
                             + Add Batch
                           </button>
@@ -4088,7 +4122,17 @@ const Planning = () => {
                         <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
                           <p className="text-sm text-gray-500">No batches defined. Click "+ Add Batch" to split the SO quantity.</p>
                           {orderQtyNum > 0 && (
-                            <button type="button" onClick={() => addBatch()} className="mt-3 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700">
+                            <button
+                              type="button"
+                              disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                              onClick={() => addBatch()}
+                              className="mt-3 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={
+                                planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                                  ? 'Send the latest batch to production first'
+                                  : undefined
+                              }
+                            >
                               Create single batch ({orderQtyNum.toLocaleString()} units)
                             </button>
                           )}

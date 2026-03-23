@@ -125,6 +125,67 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
   }
 }
 
+export interface WarehouseInventoryPage {
+  rows: WarehouseInventoryRow[];
+  itemGroups: ItemGroupRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function fetchWarehouseInventoryPage(opts: {
+  limit?: number;
+  offset?: number;
+}): Promise<ServiceResult<WarehouseInventoryPage>> {
+  try {
+    const limit = opts.limit ?? 20;
+    const offset = opts.offset ?? 0;
+    const qs = new URLSearchParams();
+    qs.set('limit', String(limit));
+    qs.set('offset', String(offset));
+
+    const res = await api.get<{ rows: ApiWarehouseRow[]; itemGroups: ItemGroupRecord[]; total: number; limit: number; offset: number }>(
+      `/api/v1/warehouse-inventory?${qs.toString()}`
+    );
+    const data = res?.data ?? res;
+    const rawRows = (data && Array.isArray(data.rows)) ? data.rows : [];
+
+    const rows: WarehouseInventoryRow[] = rawRows.map((r) => ({
+      id: r.id,
+      warehouseInventoryId: r.warehouseInventoryId,
+      code: r.code,
+      name: r.name,
+      subtitle: r.subtitle,
+      type: r.type,
+      sourceId: r.sourceId,
+      itemGroupNames: r.itemGroupNames ?? [],
+      itemGroupCodes: r.itemGroupCodes ?? [],
+      zone: r.zone ?? '—',
+      rack: r.rack ?? '—',
+      whStock: Number(r.whStock) || 0,
+      whUnit: r.whUnit ?? 'KG',
+      ml1Stock: Number(r.ml1Stock) || 0,
+      ml2Stock: Number(r.ml2Stock) || 0,
+      stockInHand: (Number(r.stockInHand) ?? (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock))) || 0,
+      reserved: Number(r.reserved) || 0,
+      inTransit: Number(r.inTransit) || 0,
+      inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
+      poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
+      reorderPt: Number(r.reorderPt) || 0,
+      avgMo: Number(r.avgMo) || 0,
+      status: r.status || 'In Stock',
+    }));
+
+    const itemGroups = Array.isArray(data?.itemGroups) ? data.itemGroups : [];
+    const total = typeof data?.total === 'number' ? data.total : rows.length;
+
+    return { data: { rows, itemGroups, total, limit: data?.limit ?? limit, offset: data?.offset ?? offset }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load warehouse inventory page';
+    return { data: { rows: [], itemGroups: [], total: 0, limit: opts.limit ?? 20, offset: opts.offset ?? 0 }, error: message, success: false };
+  }
+}
+
 export interface UpdateWarehouseStockPayload {
   wh_stock?: number;
   ml1_stock?: number;

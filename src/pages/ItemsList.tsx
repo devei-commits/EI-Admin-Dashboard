@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import {
   fetchPriceListPage,
@@ -33,13 +34,10 @@ const EMPTY_TIERS: PriceTierRow[] = [
 
 const ItemsList: React.FC = () => {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'rm' | 'pm' | 'pr'>('rm');
-  const [pageItems, setPageItems] = useState<PriceListItemPage[]>([]);
-  const [products, setProducts] = useState<PRProductListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [vendors, setVendors] = useState<VendorClientRecord[]>([]);
-
   const [showAddTierModal, setShowAddTierModal] = useState(false);
+
   const [tierTarget, setTierTarget] = useState<PriceListItemPage | null>(null);
   const [resolvedItemsListId, setResolvedItemsListId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<VendorClientRecord | null>(null);
@@ -69,29 +67,43 @@ const ItemsList: React.FC = () => {
   const [editTierNote, setEditTierNote] = useState('');
   const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (activeTab === 'rm' || activeTab === 'pm') {
-      fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM').then((res) => {
-        if (cancelled) return;
-        setPageItems(res.success && res.data ? res.data : []);
-        setLoading(false);
-      });
-    } else {
-      fetchPRProducts().then((res) => {
-        if (cancelled) return;
-        setProducts(res.success && res.data ? res.data : []);
-        setLoading(false);
-      });
-    }
-    return () => { cancelled = true; };
-  }, [activeTab]);
+  const itemsPageQuery = useQuery({
+    queryKey: ['items-list-pageitems', activeTab],
+    enabled: activeTab === 'rm' || activeTab === 'pm',
+    queryFn: async (): Promise<PriceListItemPage[]> => {
+      const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load items list');
+      return res.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    fetchVendorClients('vendor').then((r) => {
-      setVendors(r.success && r.data ? r.data : []);
-    });
-  }, []);
+  const prProductsQuery = useQuery({
+    queryKey: ['items-list-pr-products'],
+    enabled: activeTab === 'pr',
+    queryFn: async (): Promise<PRProductListItem[]> => {
+      const res = await fetchPRProducts();
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load PR products');
+      return res.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const vendorsQuery = useQuery({
+    queryKey: ['items-list-vendors', 'vendor'],
+    queryFn: async (): Promise<VendorClientRecord[]> => {
+      const res = await fetchVendorClients('vendor');
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load vendors');
+      return res.data as VendorClientRecord[];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const pageItems: PriceListItemPage[] =
+    activeTab === 'rm' || activeTab === 'pm' ? (itemsPageQuery.data ?? []) : [];
+  const products: PRProductListItem[] = activeTab === 'pr' ? (prProductsQuery.data ?? []) : [];
+  const vendors: VendorClientRecord[] = vendorsQuery.data ?? [];
+  const loading = vendorsQuery.isLoading || (activeTab === 'pr' ? prProductsQuery.isLoading : itemsPageQuery.isLoading);
 
   const filteredPageItems = useMemo(() => {
     if (activeTab !== 'rm' && activeTab !== 'pm') return pageItems;
@@ -234,12 +246,10 @@ const ItemsList: React.FC = () => {
       setTierTarget(null);
       setAddPriceListMode(false);
       if (activeTab === 'rm' || activeTab === 'pm') {
-        const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
-        if (res.success && res.data) setPageItems(res.data);
+        await itemsPageQuery.refetch();
       }
       if (activeTab === 'pr') {
-        const res = await fetchPRProducts();
-        if (res.success && res.data) setProducts(res.data);
+        await prProductsQuery.refetch();
       }
     } catch (e) {
       addToast('error', 'Failed to save tiers');
@@ -249,9 +259,10 @@ const ItemsList: React.FC = () => {
 
   const refetchPage = () => {
     if (activeTab === 'rm' || activeTab === 'pm') {
-      fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM').then((res) => {
-        if (res.success && res.data) setPageItems(res.data);
-      });
+      void itemsPageQuery.refetch();
+    }
+    if (activeTab === 'pr') {
+      void prProductsQuery.refetch();
     }
   };
 

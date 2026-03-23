@@ -2231,6 +2231,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
   const allReviewed = pending === 0 && specs.length > 0;
   const allPassed = allReviewed && failed === 0;
   const hasFails = failed > 0;
+  const allResultsFilled = specs.length > 0 && specs.every((s) => String(s.result ?? '').trim().length > 0);
 
   const trimmedYield = yieldVal.trim();
   const parsedYieldNum = parseFloat(trimmedYield.replace(/,/g, ''));
@@ -2253,7 +2254,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
   };
 
   const handleApprove = () => {
-    if (!yieldValid) return;
+    if (!yieldValid || !allResultsFilled) return;
     const upd: Partial<Batch> = { qcSpecs: specs, remarks };
     if (qcType === 'bmr') {
       upd.bulkYield = bulkYieldNum; upd.bulkBatchAccepted = true;
@@ -2267,6 +2268,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
   };
 
   const handleReject = () => {
+    if (!allResultsFilled) return;
     const upd: Partial<Batch> = { qcSpecs: specs, remarks: remarks || 'Rejected - deviation raised' };
     if (qcType === 'bmr') {
       upd.bulkBatchAccepted = false; upd.bmrStatus = 'qc_failed';
@@ -2367,7 +2369,9 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 
       <div className="rounded-xl border border-gray-100 overflow-hidden mb-4">
         <div className="grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-          <div>Parameter</div><div>Result</div><div>Verdict</div>
+          <div>Parameter</div>
+          <div>Result <span className="text-red-500">*</span></div>
+          <div>Verdict</div>
         </div>
         {specs.map((s, i) => {
           const rowBg = s.passed === true ? 'bg-emerald-50/40' : s.passed === false ? 'bg-red-50/40' : '';
@@ -2380,9 +2384,12 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
                 {s.param}
               </div>
               {/* <div className="text-xs text-gray-500 font-mono">{s.spec}</div> */}
-              <input className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white"
-                value={s.result} placeholder="Enter result..."
-                onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))} />
+              <input
+                className={`border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white ${String(s.result ?? '').trim() ? 'border-gray-200' : 'border-amber-300 ring-1 ring-amber-100'}`}
+                value={s.result}
+                placeholder="Required — enter measured result"
+                onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))}
+              />
               <button
                 onClick={() => toggleResult(i)}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${s.passed === true ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' :
@@ -2426,17 +2433,19 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
         <div className="text-[10px] text-gray-400">
           {!allReviewed && `${pending} parameter${pending !== 1 ? 's' : ''} still pending review`}
-          {allReviewed && hasFails && `${failed} parameter${failed !== 1 ? 's' : ''} failed — reject to raise deviation`}
-          {allPassed && yieldValid && 'All parameters passed — ready to approve'}
-          {allPassed && !yieldValid && 'All parameters passed — enter yield quantity to approve'}
+          {allReviewed && !allResultsFilled && 'Enter a Result for every parameter before Approve or Reject.'}
+          {allReviewed && allResultsFilled && hasFails && `${failed} parameter${failed !== 1 ? 's' : ''} failed — reject to raise deviation`}
+          {allPassed && allResultsFilled && yieldValid && 'All parameters passed — ready to approve'}
+          {allPassed && allResultsFilled && !yieldValid && 'All parameters passed — enter yield quantity to approve'}
+          {allPassed && !allResultsFilled && 'Enter a Result for each parameter to approve.'}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-          <button onClick={handleReject} disabled={!allReviewed || !hasFails}
+          <button onClick={handleReject} disabled={!allReviewed || !hasFails || !allResultsFilled}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <X size={12} /> Reject ({failed})
           </button>
-          <button onClick={handleApprove} disabled={!allPassed || !yieldValid}
+          <button onClick={handleApprove} disabled={!allPassed || !yieldValid || !allResultsFilled}
             className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <ShieldCheck size={13} /> Approve
           </button>
@@ -2955,7 +2964,26 @@ function MRNDetailModal({
       .finally(() => setHistoryLoading(false));
   }, [mrn.id]);
 
+  const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
+  const muStorageFilled = Boolean(muReceiveZone.trim() && muReceiveRack.trim());
+  const canCompleteOutboundTransfer =
+    isOutboundMtr && status === 'Received at MU' && muStorageFilled;
+
   const persistUpdate = async (payload: Partial<MRNRecordFromApi>) => {
+    const nextStatus = payload.status !== undefined ? payload.status : status;
+    if (nextStatus === 'Completed' && mrn.status !== 'Completed' && isOutboundMtr) {
+      const z = String((payload.muReceiveZone !== undefined ? payload.muReceiveZone : muReceiveZone) || '').trim();
+      const r = String((payload.muReceiveRack !== undefined ? payload.muReceiveRack : muReceiveRack) || '').trim();
+      if (!z || !r) {
+        setSaveError('Enter MU zone and MU rack before completing the transfer.');
+        return;
+      }
+      if (mrn.status !== 'Received at MU') {
+        setSaveError('Set status to Received at MU first (use “Verify / Received at MU”), then complete.');
+        return;
+      }
+    }
+
     setSaveError(null);
     setSaving(true);
     try {
@@ -3182,6 +3210,12 @@ function MRNDetailModal({
 
           {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{saveError}</div>}
 
+          {isOutboundMtr && status !== 'Completed' && (
+            <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              To <strong>complete</strong> this transfer: set status to <strong>Received at MU</strong> (use Verify if needed), enter <strong>MU zone</strong> and <strong>MU rack</strong>, then click Complete transfer.
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 disabled:opacity-50">Close</button>
             <button onClick={() => persistUpdate({})} disabled={saving} className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
@@ -3189,7 +3223,29 @@ function MRNDetailModal({
               <button onClick={() => persistUpdate({ status: 'Received at MU', receivedAtMu: receivedAtMu || new Date().toISOString().slice(0, 10) })} disabled={saving} className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50">Verify / Received at MU</button>
             )}
             {status !== 'Completed' && (
-              <button onClick={() => persistUpdate({ status: 'Completed', muReceiveZone: muReceiveZone || undefined, muReceiveRack: muReceiveRack || undefined })} disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50">Complete transfer</button>
+              <button
+                type="button"
+                onClick={() =>
+                  persistUpdate({
+                    status: 'Completed',
+                    muReceiveZone: muReceiveZone.trim() || undefined,
+                    muReceiveRack: muReceiveRack.trim() || undefined,
+                  })
+                }
+                disabled={saving || (isOutboundMtr && !canCompleteOutboundTransfer)}
+                title={
+                  isOutboundMtr && !canCompleteOutboundTransfer
+                    ? status !== 'Received at MU'
+                      ? 'Mark as Received at MU first, then enter MU zone and rack.'
+                      : !muStorageFilled
+                        ? 'Enter MU zone and MU rack before completing.'
+                        : undefined
+                    : undefined
+                }
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Complete transfer
+              </button>
             )}
           </div>
         </div>

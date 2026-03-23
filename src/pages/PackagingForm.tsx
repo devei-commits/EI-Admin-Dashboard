@@ -1,28 +1,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
+import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
-  PRI:  { label: 'Primary Container (Bottle/Jar/Tube)',   prefix: 'EI-PM-PRI' },
-  SLBL: { label: 'Self-adhesive Label',                    prefix: 'EI-PM-SLBL' },
-  MONO: { label: 'Mono Carton / Folding Box',              prefix: 'EI-PM-MONO' },
-  SHIP: { label: 'Shipper / Master Carton',                prefix: 'EI-PM-SHIP' },
-  CLSR: { label: 'Closure / Cap / Pump',                   prefix: 'EI-PM-CLSR' },
-  SACH: { label: 'Sachet / Pouch / Stick Pack',            prefix: 'EI-PM-SACH' },
-  FIOL: { label: 'Ampoule / Vial / Fiolax',                prefix: 'EI-PM-FIOL' },
-  ALUM: { label: 'Aluminium Tube / Blister',               prefix: 'EI-PM-ALUM' },
-  AIRLS: { label: 'Airless / Vacuum Dispenser',            prefix: 'EI-PM-AIRLS' },
-  TAPE: { label: 'Tape / Rubber Band / Twistie',           prefix: 'EI-PM-TAPE' },
-  GIFT: { label: 'Gift Box / Rigid Box / Set',             prefix: 'EI-PM-GIFT' },
-  MISC: { label: 'Miscellaneous / Others',                  prefix: 'EI-PM-MISC' },
+  PRI: { label: 'Primary Container (Bottle/Jar/Tube)', prefix: 'EI-PM-PRI' },
+  SLBL: { label: 'Self-adhesive Label', prefix: 'EI-PM-SLBL' },
+  MONO: { label: 'Mono Carton / Folding Box', prefix: 'EI-PM-MONO' },
+  SHIP: { label: 'Shipper / Master Carton', prefix: 'EI-PM-SHIP' },
+  CLSR: { label: 'Closure / Cap / Pump', prefix: 'EI-PM-CLSR' },
+  SACH: { label: 'Sachet / Pouch / Stick Pack', prefix: 'EI-PM-SACH' },
+  FIOL: { label: 'Ampoule / Vial / Fiolax', prefix: 'EI-PM-FIOL' },
+  ALUM: { label: 'Aluminium Tube / Blister', prefix: 'EI-PM-ALUM' },
+  AIRLS: { label: 'Airless / Vacuum Dispenser', prefix: 'EI-PM-AIRLS' },
+  TAPE: { label: 'Tape / Rubber Band / Twistie', prefix: 'EI-PM-TAPE' },
+  GIFT: { label: 'Gift Box / Rigid Box / Set', prefix: 'EI-PM-GIFT' },
+  MISC: { label: 'Miscellaneous / Others', prefix: 'EI-PM-MISC' },
 };
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+
+function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
+  if (input == null) return null;
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (!s) return null;
+    try {
+      const parsed: unknown = JSON.parse(s);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+  if (typeof input === 'object' && !Array.isArray(input)) return input as Record<string, unknown>;
+  return null;
+}
 
 /** Mock form data for testing (Pack Materials / BPR form). */
 const PACKAGING_FORM_MOCK = {
@@ -60,8 +78,8 @@ const SECTIONS = [
 const PackagingRefactored: React.FC = () => {
   const { addItem: _addItem } = useItems(); // BPR submit posts to API; addItem unused here
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
-  const [bprRefreshKey, setBprRefreshKey] = useState(0);
   const [existingPmId, setExistingPmId] = useState<string | null>(null);
   const [editPmLoading, setEditPmLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -373,7 +391,7 @@ const PackagingRefactored: React.FC = () => {
         addToast('success', 'Packaging item saved!');
       }
       localStorage.removeItem('packaging_draft_new');
-      setBprRefreshKey(k => k + 1);
+      queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
       setPageTab('bpr');
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
@@ -991,16 +1009,17 @@ const PackagingRefactored: React.FC = () => {
   // Load existing PM when editing — show loading until data is in, then fill form
   useEffect(() => {
     if (pageTab !== 'form' || !existingPmId) return;
+    setCurrentSection(0);
     let cancelled = false;
     setEditPmLoading(true);
     fetchPackMaterialById(existingPmId).then((pm) => {
       if (cancelled) return;
       setEditPmLoading(false);
       if (!pm) return;
-      const fd = 'form_data' in pm && pm.form_data && typeof pm.form_data === 'object' ? (pm.form_data as Record<string, unknown>) : null;
-      setFormData((prev) => ({
-        ...prev,
-        ...(fd ? (fd as typeof prev) : {}),
+      const fdObj = safeParseMaybeJsonObject(pm.form_data);
+      const fdNormalizedRaw: any = fdObj ?? null;
+
+      const baseFromRecord = {
         itemCode: pm.code,
         name: pm.description || '',
         itemCategory: pm.type || '',
@@ -1016,8 +1035,49 @@ const PackagingRefactored: React.FC = () => {
         pkgTaxPreference: pm.taxPref ?? 'Taxable',
         pkgReturnable: pm.pkgReturnable ?? false,
         pkgAssociateItems: pm.pkgAssociateItems ?? '',
-        vendors: [{ name: '', location: '', moq: pm.moq ?? 0, price: pm.pricePerPc ?? 0, leadTime: pm.leadTimeDays ?? 0, approved: '', priceType: '', validTill: '', sampleCost: 0 }],
+      };
+
+      const vendorsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).vendors : undefined;
+      const variantsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).variants : undefined;
+      const testsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).tests : undefined;
+
+      const fdNormalized = fdNormalizedRaw
+        ? {
+          ...(fdNormalizedRaw as typeof formData),
+          vendors: normalizePmVendors(vendorsVal),
+          variants: normalizePmVariants(variantsVal),
+          tests: normalizePmTests(testsVal),
+        }
+        : null;
+
+      const fdOverlay = fdNormalized ? removeNullish(fdNormalized as any) : null;
+
+      const debugPayload = {
+        existingPmId,
+        fdKeys: fdObj ? Object.keys(fdObj).slice(0, 30) : null,
+        fdKeysCount: fdObj ? Object.keys(fdObj).length : 0,
+        vendorsIsArray: Array.isArray(vendorsVal),
+        vendorsLen: Array.isArray(vendorsVal) ? vendorsVal.length : null,
+        variantsIsArray: Array.isArray(variantsVal),
+        variantsLen: Array.isArray(variantsVal) ? variantsVal.length : null,
+        testsIsArray: Array.isArray(testsVal),
+        testsLen: Array.isArray(testsVal) ? testsVal.length : null,
+      };
+      console.log('[PM Edit Populate Debug]', JSON.stringify(debugPayload, null, 2));
+      if (fdObj && Object.keys(fdObj).length <= 5) {
+        window.alert(
+          `PM edit populate seems partial for id=${existingPmId}.\n` +
+          `form_data keys=${Object.keys(fdObj).length}\n` +
+          `See console log [PM Edit Populate Debug].`
+        );
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        ...baseFromRecord,
+        ...(fdOverlay ? (fdOverlay as typeof prev) : {}),
       }));
+
       setGeneratedCode(pm.code);
     });
     return () => { cancelled = true; };
@@ -1026,235 +1086,303 @@ const PackagingRefactored: React.FC = () => {
   // When editing PM, show loading until data is fetched
   if (pageTab === 'form' && existingPmId && editPmLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading pack material…</p>
+      <div className="min-h-screen bg-gray-50">
+        <BprDashboard
+          refreshKey={0}
+          onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); setCurrentSection(0); }}
+          onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
+          onDeletePm={async (pm) => {
+            if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
+            try {
+              await deletePackMaterial(pm.id);
+              addToast('success', 'Pack material deleted');
+              queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+            } catch (e) {
+              addToast('error', e instanceof Error ? e.message : 'Failed to delete');
+            }
+          }}
+        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <p className="text-gray-200">Loading pack material…</p>
+        </div>
       </div>
     );
   }
 
   // ── BPR tab ──────────────────────────────────────────────────────────────────
-  if (pageTab === 'bpr') {
-    return (
-      <BprDashboard
-        refreshKey={bprRefreshKey}
-        onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); }}
-        onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); }}
-        onDeletePm={async (pm) => {
-          if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
-          try {
-            await deletePackMaterial(pm.id);
-            addToast('success', 'Pack material deleted');
-            setBprRefreshKey((k) => k + 1);
-          } catch (e) {
-            addToast('error', e instanceof Error ? e.message : 'Failed to delete');
-          }
-        }}
-      />
-    );
-  }
+  const bprNode = (
+    <BprDashboard
+      refreshKey={0}
+      onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); setCurrentSection(0); }}
+      onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
+      onDeletePm={async (pm) => {
+        if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
+        try {
+          await deletePackMaterial(pm.id);
+          addToast('success', 'Pack material deleted');
+          queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+        } catch (e) {
+          addToast('error', e instanceof Error ? e.message : 'Failed to delete');
+        }
+      }}
+    />
+  );
+
+  if (pageTab === 'bpr') return bprNode;
 
   // ── Main two-panel layout ────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => setPageTab('bpr')}
-              className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
-            >
-              BPR Dashboard
-            </button>
-            <span className="text-gray-300">|</span>
-            <h1 className="text-base font-bold text-gray-800 leading-tight truncate">
-              Packaging Item Onboarding (PM)
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => doSave(false)}
-              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-            >
-              Save
-            </button>
-            <button
-              onClick={handleExportJSON}
-              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-            >
-              Export JSON
-            </button>
-            <button
-              onClick={handleImportJSON}
-              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-            >
-              Import JSON
-            </button>
-            <button
-              onClick={handleReset}
-              className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
-            >
-              Submit
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Body: Sidebar + Content ─────────────────────────────────────────── */}
-      <div className="flex-1">
-        <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
-
-          {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
-          <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
-          {/* Sections header + autosave */}
-          <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
+    <>
+      {bprNode}
+      <div className="fixed inset-0 z-50 min-h-screen bg-black/40 backdrop-blur-sm flex flex-col overflow-y-auto p-4">
+          {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
+          <div className="bg-white border-b border-gray-200">
+          <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
+            <div className="flex items-center gap-3 min-w-0">
               <button
-                onClick={() => setAutoSaveOn(prev => !prev)}
-                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                onClick={() => setPageTab('bpr')}
+                className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
               >
-                Autosave: {autoSaveOn ? 'ON' : 'OFF'}
+                BPR Dashboard
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                onClick={() => { setExistingPmId(null); setPageTab('bpr'); setCurrentSection(0); setEditPmLoading(false); }}
+                className="ml-0.5 p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+              <h1 className="text-base font-bold text-gray-800 leading-tight truncate">
+                Packaging Item Onboarding (PM)
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => doSave(false)}
+                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+              >
+                Save
+              </button>
+              <button
+                onClick={handleExportJSON}
+                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+              >
+                Export JSON
+              </button>
+              <button
+                onClick={handleImportJSON}
+                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+              >
+                Import JSON
+              </button>
+              <button
+                onClick={handleReset}
+                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
+              >
+                Submit
               </button>
             </div>
           </div>
-
-          {/* Status + Version */}
-          <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
-            <div className="flex-1">
-              <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
-              <select
-                id="status"
-                value={formData.status}
-                onChange={handleInputChange}
-                className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              >
-                {['Draft', 'Active', 'Discontinued', 'Under Review'].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="w-12">
-              <label className="block text-[10px] text-gray-500 mb-1">Version</label>
-              <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
-            </div>
           </div>
 
-          {/* Section List */}
-          <nav className="flex-1 px-2 py-2">
-            {SECTIONS.map((section, idx) => (
-              <button
-                key={idx}
-                onClick={() => setCurrentSection(idx)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${
-                  currentSection === idx
-                    ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
-                }`}
-              >
-                {section}
-              </button>
-            ))}
-          </nav>
+        {/* ── Body: Sidebar + Content ─────────────────────────────────────────── */}
+        <div className="flex-1">
+          <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
 
-          {/* Stats */}
-          <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2 mt-auto">
-            {[
-              { label: 'Variants', value: formData.variants.length },
-              { label: 'Vendors', value: formData.vendors.length },
-              { label: 'Tests Logged', value: formData.tests.length },
-              { label: 'Last Saved', value: lastSaved },
-            ].map(stat => (
-              <div key={stat.label}>
-                <p className="text-[9px] uppercase text-gray-400 tracking-wide">{stat.label}</p>
-                <p className="text-sm font-bold text-gray-700">{stat.value}</p>
+            {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
+            <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
+              {/* Sections header + autosave */}
+              <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
+                  <button
+                    onClick={() => setAutoSaveOn(prev => !prev)}
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                  >
+                    Autosave: {autoSaveOn ? 'ON' : 'OFF'}
+                  </button>
+                </div>
               </div>
-            ))}
+
+              {/* Status + Version */}
+              <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
+                  <select
+                    id="status"
+                    value={formData.status}
+                    onChange={handleInputChange}
+                    className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {['Draft', 'Active', 'Discontinued', 'Under Review'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="w-12">
+                  <label className="block text-[10px] text-gray-500 mb-1">Version</label>
+                  <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
+                </div>
+              </div>
+
+              {/* Section List */}
+              <nav className="flex-1 px-2 py-2">
+                {SECTIONS.map((section, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentSection(idx)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${currentSection === idx
+                        ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                      }`}
+                  >
+                    {section}
+                  </button>
+                ))}
+              </nav>
+
+              {/* Stats */}
+              <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2 mt-auto">
+                {[
+                  { label: 'Variants', value: formData.variants.length },
+                  { label: 'Vendors', value: formData.vendors.length },
+                  { label: 'Tests Logged', value: formData.tests.length },
+                  { label: 'Last Saved', value: lastSaved },
+                ].map(stat => (
+                  <div key={stat.label}>
+                    <p className="text-[9px] uppercase text-gray-400 tracking-wide">{stat.label}</p>
+                    <p className="text-sm font-bold text-gray-700">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+            </aside>
+
+            {/* ── RIGHT CONTENT ─────────────────────────────────────────────────── */}
+            <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+              {/* Content header with Prev/Next */}
+              <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                <div className="w-full px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-800">{SECTIONS[currentSection]}</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+                      disabled={currentSection === 0}
+                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      onClick={() => setCurrentSection(prev => Math.min(SECTIONS.length - 1, prev + 1))}
+                      disabled={currentSection === SECTIONS.length - 1}
+                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section body */}
+              <div className="px-4 py-6">
+                <div className="w-full">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
+                    {renderSection()}
+                  </div>
+                </div>
+              </div>
+            </main>
           </div>
-
-        </aside>
-
-        {/* ── RIGHT CONTENT ─────────────────────────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
-          {/* Content header with Prev/Next */}
-          <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-            <div className="w-full px-6 py-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-gray-800">{SECTIONS[currentSection]}</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
-                  disabled={currentSection === 0}
-                  className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  Prev
-                </button>
-                <button
-                  onClick={() => setCurrentSection(prev => Math.min(SECTIONS.length - 1, prev + 1))}
-                  disabled={currentSection === SECTIONS.length - 1}
-                  className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Section body */}
-          <div className="px-4 py-6">
-            <div className="w-full">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
-                {renderSection()}
-              </div>
-            </div>
-          </div>
-        </main>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
 // ─── Pack Materials Dashboard ─────────────────────────────────────────────────
 
 const TYPE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
- Monocarton:  { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
- Bottle:      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
- Label:       { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200' },
- Closure:     { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200' },
- Pump:        { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200' },
- Tube:        { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' },
+  Monocarton: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  Bottle: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+  Label: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+  Closure: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  Pump: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  Tube: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
 };
 
 const PRINT_STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
- 'Approved':           { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
- 'Label awaited':      { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
- 'Artwork approved':   { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200' },
- 'N/A':                { bg: 'bg-gray-50',    text: 'text-gray-500',    border: 'border-gray-200' },
+  'Approved': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  'Label awaited': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  'Artwork approved': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  'N/A': { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200' },
 };
 
 function formatPrice(n: number) {
- return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
+  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
+}
+
+function removeNullish<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Partial<T>;
+}
+
+function normalizePmVendors(input: any): Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }> {
+  if (!Array.isArray(input)) return [];
+  return input.map((v: any, idx: number) => ({
+    name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
+    location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
+    moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
+    price: Number(v?.price ?? v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
+    leadTime: Number(v?.leadTime ?? v?.lead_time_days ?? v?.venLT ?? v?.leadTimeDays ?? 0),
+    approved: String(v?.approved ?? v?.venApproved ?? ''),
+    priceType: String(v?.priceType ?? v?.venPriceType ?? ''),
+    validTill: String(v?.validTill ?? v?.venValid ?? ''),
+    sampleCost: Number(v?.sampleCost ?? v?.venSampleCost ?? 0),
+  }));
+}
+
+function normalizePmVariants(input: any): Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }> {
+  if (!Array.isArray(input)) return [];
+  return input.map((r: any, idx: number) => ({
+    id: String(r?.id ?? r?.varId ?? `V${idx + 1}`),
+    volume: Number(r?.volume ?? r?.varVolume ?? 0),
+    sameMold: String(r?.sameMold ?? r?.varSameMold ?? ''),
+    moq: Number(r?.moq ?? r?.varMoq ?? 0),
+    status: String(r?.status ?? r?.varStatus ?? 'Active'),
+  }));
+}
+
+function normalizePmTests(input: any): Array<{ name: string; result: string; date: string; by: string; remarks: string }> {
+  if (!Array.isArray(input)) return [];
+  return input.map((t: any, idx: number) => ({
+    name: String(t?.name ?? t?.testName ?? ''),
+    result: String(t?.result ?? t?.testResult ?? ''),
+    date: String(t?.date ?? t?.testDate ?? ''),
+    by: String(t?.by ?? t?.testBy ?? ''),
+    remarks: String(t?.remarks ?? t?.testRemarks ?? ''),
+  }));
 }
 
 function GroupChipPM({ group }: { group: string }) {
- const isPrimary = group.startsWith('Primary');
- const isAlt     = group.startsWith('Alt');
- const dotColor  = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
- const label     = group.replace(' +1','').replace(' +2','');
- const extra     = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
- return (
-  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
-   <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
-   {label}
-   {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
-  </span>
- );
+  const isPrimary = group.startsWith('Primary');
+  const isAlt = group.startsWith('Alt');
+  const dotColor = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
+  const label = group.replace(' +1', '').replace(' +2', '');
+  const extra = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+      <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
+      {label}
+      {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
+    </span>
+  );
 }
 
 const BprDashboard: React.FC<{
@@ -1263,343 +1391,360 @@ const BprDashboard: React.FC<{
   onEditPm: (pm: PackMaterialRecord) => void;
   onDeletePm: (pm: PackMaterialRecord) => void | Promise<void>;
 }> = ({ refreshKey = 0, onSwitchToForm, onEditPm, onDeletePm }) => {
- const [searchParams] = useSearchParams();
- const pmFromQuery = searchParams.get('pm') ?? '';
- const [search, setSearch] = useState(pmFromQuery);
- const [typeFilter, setTypeFilter] = useState('');
- const [levelFilter, setLevelFilter] = useState('');
- const [sortAsc, setSortAsc] = useState(true);
- const [allPMs, setAllPMs] = useState<PackMaterialRecord[]>([]);
- const [loading, setLoading] = useState(true);
- const [loadError, setLoadError] = useState<string | null>(null);
- const [reservedModal, setReservedModal] = useState<{ pm: PackMaterialRecord; data: ReservedStockResponse } | null>(null);
- const [reservedLoading, setReservedLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+  const pmFromQuery = searchParams.get('pm') ?? '';
+  const [search, setSearch] = useState(pmFromQuery);
+  const [reservedModal, setReservedModal] = useState<{ pm: PackMaterialRecord; data: ReservedStockResponse } | null>(null);
+  const [reservedLoading, setReservedLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
- useEffect(() => {
-  if (pmFromQuery) setSearch(pmFromQuery);
- }, [pmFromQuery]);
+  useEffect(() => {
+    if (pmFromQuery) setSearch(pmFromQuery);
+  }, [pmFromQuery]);
 
- const loadPackMaterials = useCallback(async () => {
-  setLoading(true);
-  setLoadError(null);
-  try {
-   const list = await fetchPackMaterialsList();
-   setAllPMs(list);
-  } catch (e) {
-   setLoadError(e instanceof Error ? e.message : 'Failed to load pack materials');
-   setAllPMs([]);
-  } finally {
-   setLoading(false);
-  }
- }, []);
+  const offset = (currentPage - 1) * pageSize;
+  const searchTrim = search.trim();
 
- useEffect(() => {
-  loadPackMaterials();
- }, [loadPackMaterials, refreshKey]);
+  const {
+    data: pageData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['pack-materials-page', searchTrim, pageSize, offset, refreshKey],
+    queryFn: () => fetchPackMaterialsPage({ search: searchTrim || undefined, limit: pageSize, offset }),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 
- const allTypes = Array.from(new Set(allPMs.map(p => p.type))).filter(Boolean).sort();
- const allLevels = Array.from(new Set(allPMs.map(p => p.level))).filter(Boolean).sort();
+  const rows = pageData?.rows ?? [];
+  const totalFiltered = pageData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
 
- const filtered = allPMs.filter(pm => {
-  const q = search.toLowerCase();
-  const matchQ = !q || pm.description.toLowerCase().includes(q) || pm.code.toLowerCase().includes(q) || pm.material.toLowerCase().includes(q);
-  const matchType = !typeFilter || pm.type === typeFilter;
-  const matchLevel = !levelFilter || pm.level === levelFilter;
-  return matchQ && matchType && matchLevel;
- }).sort((a, b) => sortAsc ? a.code.localeCompare(b.code) : b.code.localeCompare(a.code));
+  // Reset to page 1 whenever search/page size changes.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, pageSize, refreshKey]);
 
- const stats = {
-  total:     allPMs.length,
-  primary:   allPMs.filter(p => p.level === 'Primary').length,
-  secondary: allPMs.filter(p => p.level === 'Secondary').length,
-  groups:    allPMs.filter(p => p.group).length,
-  types:     new Set(allPMs.map(p => p.type)).size,
- };
+  const stats = {
+    total: totalFiltered,
+    // Best-effort stats based on the current page.
+    primary: rows.filter((p) => (p.level || '') === 'Primary').length,
+    secondary: rows.filter((p) => (p.level || '') === 'Secondary').length,
+    groups: rows.filter((p) => p.group).length,
+    types: new Set(rows.map((p) => p.type).filter(Boolean)).size,
+  };
 
- const statCards = [
-  { label: 'TOTAL PMS',  value: stats.total,     sub: 'Packaging materials',  accent: 'border-l-violet-500', num: 'text-violet-600' },
-  { label: 'PRIMARY',    value: stats.primary,   sub: 'Direct contact',       accent: 'border-l-blue-500',   num: 'text-blue-600' },
-  { label: 'SECONDARY',  value: stats.secondary, sub: 'Outer packaging',      accent: 'border-l-teal-500',   num: 'text-teal-600' },
-  { label: 'PM GROUPS',  value: stats.groups,    sub: 'With affinities',      accent: 'border-l-orange-500', num: 'text-orange-600' },
-  { label: 'PACK TYPES', value: stats.types,     sub: 'Tube, Bottle...',      accent: 'border-l-rose-500',   num: 'text-rose-600' },
- ];
+  const statCards = [
+    { label: 'TOTAL PMS', value: stats.total, sub: 'Packaging materials', accent: 'border-l-violet-500', num: 'text-violet-600' },
+    { label: 'PRIMARY', value: stats.primary, sub: 'Direct contact', accent: 'border-l-blue-500', num: 'text-blue-600' },
+    { label: 'SECONDARY', value: stats.secondary, sub: 'Outer packaging', accent: 'border-l-teal-500', num: 'text-teal-600' },
+    { label: 'PM GROUPS', value: stats.groups, sub: 'With affinities', accent: 'border-l-orange-500', num: 'text-orange-600' },
+    { label: 'PACK TYPES', value: stats.types, sub: 'Tube, Bottle...', accent: 'border-l-rose-500', num: 'text-rose-600' },
+  ];
 
- const openReservedModal = async (pm: PackMaterialRecord) => {
-  setReservedLoading(true);
-  setReservedModal(null);
-  try {
-   const data = await fetchReservedStock(pm.id);
-   setReservedModal({ pm, data });
-  } catch {
-   setReservedModal({ pm, data: { actual: 0, reserved: 0, available: 0, unit: 'PCS' } });
-  } finally {
-   setReservedLoading(false);
-  }
- };
+  const openReservedModal = async (pm: PackMaterialRecord) => {
+    setReservedLoading(true);
+    setReservedModal(null);
+    try {
+      const data = await fetchReservedStock(pm.id);
+      setReservedModal({ pm, data });
+    } catch {
+      setReservedModal({ pm, data: { actual: 0, reserved: 0, available: 0, unit: 'PCS' } });
+    } finally {
+      setReservedLoading(false);
+    }
+  };
 
- return (
-  <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
-   <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
+  return (
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+      <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
 
-    {/* ── Page Header ── */}
-    <div className="relative">
-     <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
-     <div className="relative">
-      <div className="inline-flex items-center gap-2 mb-3">
-       <span className="text-3xl"></span>
-       <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
-      </div>
-      <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
-      <p className="text-sm text-gray-600">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
-     </div>
-    </div>
-
-    {/* ── Loading / Error ── */}
-    {loading && (
-     <div className="flex items-center justify-center py-12 text-gray-500">
-      <span className="animate-pulse">Loading pack materials…</span>
-     </div>
-    )}
-    {!loading && loadError && (
-     <div className="py-8 text-center">
-      <p className="text-red-600 mb-2">{loadError}</p>
-      <button type="button" onClick={loadPackMaterials} className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Retry</button>
-     </div>
-    )}
-
-    {!loading && !loadError && (
-     <>
-    {/* ── Stat Cards ── */}
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-     {statCards.map(card => (
-      <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
-       <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
-       <div className="px-4 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
-        <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
-        <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
-       </div>
-      </div>
-     ))}
-    </div>
-
-    {/* ── Table Card ── */}
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-
-     {/* toolbar */}
-     <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
-      <div className="flex items-center gap-2 min-w-0">
-       <span className="text-sm font-semibold text-gray-900">Packaging Material Masters</span>
-       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{filtered.length} / {allPMs.length}</span>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-       {/* search */}
-       <div className="relative group">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
-        </svg>
-        <input
-         value={search}
-         onChange={e => setSearch(e.target.value)}
-         placeholder="Search code, type…"
-         className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-44"
-        />
-       </div>
-       {/* type filter */}
-       <select
-        value={typeFilter}
-        onChange={e => setTypeFilter(e.target.value)}
-        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
-       >
-        <option value="">All Types</option>
-        {allTypes.map(t => <option key={t} value={t}>{t}</option>)}
-       </select>
-       {/* level filter */}
-       <select
-        value={levelFilter}
-        onChange={e => setLevelFilter(e.target.value)}
-        className="text-xs border border-gray-200 rounded-lg px-3.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all hover:bg-gray-100"
-       >
-        <option value="">All Levels</option>
-        {allLevels.map(l => <option key={l} value={l}>{l}</option>)}
-       </select>
-       {/* new PM button */}
-       <button
-        onClick={onSwitchToForm}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
-       >
-        <span className="text-base leading-none">+</span> New PM
-       </button>
-      </div>
-     </div>
-
-     {/* table */}
-     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-       <thead>
-        <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-         <th
-          className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 cursor-pointer select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors"
-          onClick={() => setSortAsc(p => !p)}
-         >
-          CODE <span className="text-violet-500">{sortAsc ? 'Asc' : 'Desc'}</span>
-         </th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Description</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Level</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Material</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Size / Spec</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/PC</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">MOQ</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Stock</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
-        </tr>
-       </thead>
-       <tbody className="divide-y divide-gray-50">
-        {filtered.length === 0 ? (
-         <tr>
-          <td colSpan={14} className="px-4 py-12 text-center text-gray-400 text-sm">
-           <div className="flex flex-col items-center gap-2">
-            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            No packaging materials match your search.
-           </div>
-          </td>
-         </tr>
-        ) : filtered.map((pm, _idx) => {
-         const typeStyle = TYPE_STYLES[pm.type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
-         const printStyle = PRINT_STATUS_STYLES[pm.printStatus] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
-         const levelBg = pm.level === 'Primary' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200';
-         return (
-          <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
-           {/* code */}
-           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
-           {/* description */}
-           <td className="px-4 py-3.5 font-semibold text-gray-900 whitespace-nowrap group-hover:text-violet-700 transition-colors">{pm.description}</td>
-           {/* type badge */}
-           <td className="px-4 py-3">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border} whitespace-nowrap`}>
-             {pm.type}
-            </span>
-           </td>
-           {/* level badge */}
-           <td className="px-4 py-3">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${levelBg} whitespace-nowrap`}>
-             {pm.level}
-            </span>
-           </td>
-           {/* group */}
-           <td className="px-4 py-3">
-            {pm.group ? <GroupChipPM group={pm.group} /> : <span className="text-gray-300">—</span>}
-           </td>
-           {/* material */}
-           <td className="px-4 py-3 text-gray-600">{pm.material}</td>
-           {/* size/spec */}
-           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{pm.sizeSpec}</td>
-           {/* price */}
-           <td className="px-4 py-3 text-right font-semibold text-amber-600">{formatPrice(pm.pricePerPc)}</td>
-           {/* moq */}
-           <td className="px-4 py-3 text-right text-gray-600">{pm.moq.toLocaleString('en-IN')}</td>
-           {/* lead time */}
-           <td className="px-4 py-3 text-right text-gray-600">{pm.leadTimeDays} days</td>
-           {/* print status */}
-           <td className="px-4 py-3">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${printStyle.bg} ${printStyle.text} ${printStyle.border} whitespace-nowrap`}>
-             {pm.printStatus}
-            </span>
-           </td>
-           {/* products */}
-           <td className="px-4 py-3">
-            <div className="flex flex-wrap gap-1">
-             {pm.products.map(p => (
-              <span key={p} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">{p}</span>
-             ))}
+        {/* ── Page Header ── */}
+        <div className="relative">
+          <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+          <div className="relative">
+            <div className="inline-flex items-center gap-2 mb-3">
+              <span className="text-3xl"></span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
             </div>
-           </td>
-           {/* Show reserved */}
-           <td className="px-4 py-3 text-right">
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
+            <p className="text-sm text-gray-600">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
+          </div>
+        </div>
+
+        {/* ── Loading / Error ── */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12 text-gray-500">
+            <span className="animate-pulse">Loading pack materials…</span>
+          </div>
+        )}
+        {!isLoading && error && (
+          <div className="py-8 text-center">
+            <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load pack materials'}</p>
+            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Retry</button>
+          </div>
+        )}
+
+        {!isLoading && !error && (
+          <>
+            {/* ── Stat Cards ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {statCards.map(card => (
+                <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
+                  <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
+                  <div className="px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
+                    <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
+                    <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Table Card ── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+
+              {/* toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-semibold text-gray-900">Packaging Material Masters</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{rows.length} / {totalFiltered}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* search */}
+                  <div className="relative group">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                    <input
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Search code, type…"
+                      className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-44"
+                    />
+                  </div>
+                  {/* type/level filters removed (server-side pagination uses search only) */}
+                  {/* new PM button */}
+                  <button
+                    onClick={onSwitchToForm}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+                  >
+                    <span className="text-base leading-none">+</span> New PM
+                  </button>
+                </div>
+              </div>
+
+              {/* table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors">
+                        CODE <span className="text-violet-500">Asc</span>
+                      </th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Description</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Level</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Material</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Size / Spec</th>
+                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/PC</th>
+                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">MOQ</th>
+                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
+                      {/* <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Reserved</th> */}
+                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {totalFiltered === 0 ? (
+                      <tr>
+                        <td colSpan={14} className="px-4 py-12 text-center text-gray-400 text-sm">
+                          <div className="flex flex-col items-center gap-2">
+                            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                            </svg>
+                            No packaging materials match your search.
+                          </div>
+                        </td>
+                      </tr>
+                    ) : rows.map((pm, _idx) => {
+                      const typeStyle = TYPE_STYLES[pm.type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+                      const printStyle = PRINT_STATUS_STYLES[pm.printStatus] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
+                      const levelBg = pm.level === 'Primary' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200';
+                      return (
+                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+                          {/* code */}
+                          <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
+                          {/* description */}
+                          <td className="px-4 py-3.5 font-semibold text-gray-900 whitespace-nowrap group-hover:text-violet-700 transition-colors">{pm.description}</td>
+                          {/* type badge */}
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border} whitespace-nowrap`}>
+                              {pm.type}
+                            </span>
+                          </td>
+                          {/* level badge */}
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${levelBg} whitespace-nowrap`}>
+                              {pm.level}
+                            </span>
+                          </td>
+                          {/* group */}
+                          <td className="px-4 py-3">
+                            {pm.group ? <GroupChipPM group={pm.group} /> : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* material */}
+                          <td className="px-4 py-3 text-gray-600">{pm.material}</td>
+                          {/* size/spec */}
+                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{pm.sizeSpec}</td>
+                          {/* price */}
+                          <td className="px-4 py-3 text-right font-semibold text-amber-600">{formatPrice(pm.pricePerPc)}</td>
+                          {/* moq */}
+                          <td className="px-4 py-3 text-right text-gray-600">{pm.moq.toLocaleString('en-IN')}</td>
+                          {/* lead time */}
+                          <td className="px-4 py-3 text-right text-gray-600">{pm.leadTimeDays} days</td>
+                          {/* print status */}
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${printStyle.bg} ${printStyle.text} ${printStyle.border} whitespace-nowrap`}>
+                              {pm.printStatus}
+                            </span>
+                          </td>
+                          {/* products */}
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {pm.products.map(p => (
+                                <span key={p} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">{p}</span>
+                              ))}
+                            </div>
+                          </td>
+                          {/* Show reserved */}
+                          {/* <td className="px-4 py-3 text-right">
             <button
              type="button"
              onClick={() => openReservedModal(pm)}
              disabled={reservedLoading}
              className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline disabled:opacity-50"
             >
-             {reservedLoading ? '…' : 'Show reserved'}
+             {reservedLoading ? '…' : 'Reserved'}
             </button>
-           </td>
-           {/* Actions */}
-           <td className="px-4 py-3 text-right whitespace-nowrap">
-            <button
-             type="button"
-             onClick={(e) => { e.stopPropagation(); onEditPm(pm); }}
-             className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline mr-2"
-            >
-             Edit
-            </button>
-            <button
-             type="button"
-             onClick={(e) => { e.stopPropagation(); onDeletePm(pm); }}
-             className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
-            >
-             Delete
-            </button>
-           </td>
-          </tr>
-         );
-        })}
-       </tbody>
-      </table>
-     </div>
-    </div>
+           </td> */}
+                          {/* Actions */}
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onEditPm(pm); }}
+                              className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline mr-2"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onDeletePm(pm); }}
+                              className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-    {/* Reserved stock modal */}
-    {(reservedModal || reservedLoading) && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
-      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
-       {reservedLoading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
-       ) : reservedModal ? (
-        <>
-         <div className="flex justify-between items-start mb-4">
-          <div>
-           <p className="font-bold text-gray-900">{reservedModal.pm.code}</p>
-           <p className="text-xs text-gray-500">{reservedModal.pm.description}</p>
-          </div>
-          <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-         </div>
-         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
-         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-           <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
-           <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-           <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
-           <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-           <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
-           <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-          </div>
-         </div>
-         <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
-        </>
-       ) : null}
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 bg-white">
+                  <div className="text-xs text-gray-600">
+                    Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
+                    <span className="font-semibold text-gray-900">{totalPages}</span> • Showing{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
+                    <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+                    <span className="font-semibold text-gray-900">{totalFiltered}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Reserved stock modal */}
+            {(reservedModal || reservedLoading) && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
+                <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
+                  {reservedLoading ? (
+                    <p className="text-sm text-gray-500">Loading…</p>
+                  ) : reservedModal ? (
+                    <>
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <p className="font-bold text-gray-900">{reservedModal.pm.code}</p>
+                          <p className="text-xs text-gray-500">{reservedModal.pm.description}</p>
+                        </div>
+                        <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
+                          <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                          <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
+                          <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                          <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
+                          <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+          </>
+        )}
+
+        </div>
       </div>
-     </div>
-    )}
-
-     </>
-    )}
-
-   </div>
-  </div>
- );
+  );
 };
 
 // ─── Small field helpers ──────────────────────────────────────────────────────
@@ -1680,13 +1825,12 @@ const PillCheckboxField: React.FC<{
         className="sr-only"
       />
       <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          checked
+        className={`h-1.5 w-1.5 rounded-full ${checked
             ? color === 'red'
               ? 'bg-red-500'
               : 'bg-indigo-500'
             : 'bg-gray-300'
-        }`}
+          }`}
       />
       <span>{label}</span>
     </label>

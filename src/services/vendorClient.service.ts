@@ -28,6 +28,13 @@ export interface VendorClientRecord {
   data: Record<string, unknown>;
 }
 
+export interface PaginatedRowsResponse<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface CreateVendorClientPayload {
   type: "vendor" | "client";
   entityCode: string;
@@ -59,6 +66,36 @@ export async function fetchVendorClients(
       e instanceof Error ? e.message : "Failed to load vendor/client list";
     return { data: [], error: message, success: false };
   }
+}
+
+/**
+ * Paginated list view for Vendor/Client.
+ * Backend returns `{ rows, total, limit, offset }` when limit/offset are provided.
+ */
+export async function fetchVendorClientsPage(opts: {
+  type: "vendor" | "client";
+  search?: string;
+  status?: VendorClientRecord['status'] | 'all';
+  category?: string | 'all';
+  limit?: number;
+  offset?: number;
+}): Promise<PaginatedRowsResponse<VendorClientRecord>> {
+  const params = new URLSearchParams();
+  params.set('type', opts.type);
+  if (opts.search != null && opts.search.trim()) params.set('search', opts.search.trim());
+  if (opts.status && opts.status !== 'all') params.set('status', opts.status);
+  if (opts.category && opts.category !== 'all') params.set('category', opts.category);
+  params.set('limit', String(opts.limit ?? 10));
+  params.set('offset', String(opts.offset ?? 0));
+
+  const path = `/api/v1/vendor-client?${params.toString()}`;
+  const resp = await api.get<PaginatedRowsResponse<VendorClientRecord>>(path);
+  return {
+    rows: resp?.rows ?? [],
+    total: resp?.total ?? 0,
+    limit: resp?.limit ?? (opts.limit ?? 10),
+    offset: resp?.offset ?? (opts.offset ?? 0),
+  };
 }
 
 export async function fetchVendorClientById(

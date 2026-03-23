@@ -44,6 +44,13 @@ export interface ItemGroupRecord {
   updated_at?: string;
 }
 
+export interface PaginatedRowsResponse<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface CreateItemGroupPayload {
   code: string;
   icon?: string;
@@ -76,6 +83,32 @@ export async function fetchItemGroups(type?: 'RM' | 'PM'): Promise<ServiceResult
     const message = e instanceof Error ? e.message : 'Failed to load item groups';
     return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
   }
+}
+
+/**
+ * Paginated list view for Item Groups.
+ * When limit/offset are provided, backend returns `{ rows, total, limit, offset }`.
+ */
+export async function fetchItemGroupsPage(opts: {
+  type?: 'RM' | 'PM';
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<PaginatedRowsResponse<ItemGroupRecord>> {
+  const params = new URLSearchParams();
+  if (opts.type) params.set('type', opts.type);
+  if (opts.search != null && opts.search.trim()) params.set('search', opts.search.trim());
+  params.set('limit', String(opts.limit ?? 20));
+  params.set('offset', String(opts.offset ?? 0));
+
+  const path = `/api/v1/item-groups?${params.toString()}`;
+  const resp = await api.get<PaginatedRowsResponse<ItemGroupRecord>>(path);
+  return {
+    rows: resp?.rows ?? [],
+    total: resp?.total ?? 0,
+    limit: resp?.limit ?? (opts.limit ?? 20),
+    offset: resp?.offset ?? (opts.offset ?? 0),
+  };
 }
 
 export async function fetchItemGroupById(id: string): Promise<ServiceResult<ItemGroupRecord>> {
