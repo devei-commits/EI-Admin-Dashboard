@@ -153,6 +153,7 @@ export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
     vendorId: '',
     vendorName: po.vendorName ?? '',
     poNumber: po.orderId ?? po.id,
+    reference: po.reference,
     itemCount: items.length,
     value: totalValue,
     date: po.orderDate ?? '',

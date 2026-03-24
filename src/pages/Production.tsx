@@ -3556,7 +3556,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   {overviewCards.map(([k, v]) => (
                     <div key={k} className="bg-black/5 border border-gray-200 rounded-md px-3 py-2.5">
                       <div className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">{k}</div>
-                      <div className="text-xs font-semibold text-gray-800 break-words">{v || '-'}</div>
+                      <div className="text-xs font-semibold text-gray-800 wrap-break-word">{v || '-'}</div>
                     </div>
                   ))}
                 </div>

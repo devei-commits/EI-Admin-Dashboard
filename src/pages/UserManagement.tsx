@@ -192,7 +192,7 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
 // ==================== COMPONENT ====================
 const UserManagement = () => {
  const [users, setUsers] = useState<User[]>([]);
- const [roles, setRoles] = useState<Array<{ role_id: number; role_name: string }>>([]);
+ const [roles, setRoles] = useState<Array<{ role_id: number; role_name: string; role_code: string }>>([]);
  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
  const [loading, setLoading] = useState(true);
  const [error, setError] = useState<string | null>(null);
@@ -234,7 +234,7 @@ const UserManagement = () => {
     setUsers(usersRes.data.map(mapStaffToUser));
    }
    if (rolesList?.length) {
-    setRoles(rolesList.map((r) => ({ role_id: r.role_id, role_name: r.role_name })));
+    setRoles(rolesList.map((r) => ({ role_id: r.role_id, role_name: r.role_name, role_code: r.role_code })));
    }
   } catch {
    setError('Failed to load users');
@@ -350,7 +350,9 @@ const UserManagement = () => {
   if (modalType === 'add') {
    setSaving(true);
    setSaveError(null);
-   const roleId = roles.find((r) => r.role_name === formData.role)?.role_id;
+  const selectedRole = roles.find((r) => r.role_name === formData.role);
+  const roleId = selectedRole?.role_id;
+  const roleCode = selectedRole?.role_code;
    const password = formData.password?.trim();
    if (!password || password.length < 6) {
     setSaveError('Password is required (min 6 characters).');
@@ -362,7 +364,7 @@ const UserManagement = () => {
     setSaving(false);
     return;
    }
-   if (!roleId) {
+   if (!roleId || !roleCode) {
     setSaveError('Role is required.');
     setSaving(false);
     return;
@@ -374,8 +376,8 @@ const UserManagement = () => {
      email: formData.email.trim(),
      mobile: formData.mobile?.trim() ?? '',
      password,
+     role: roleCode,
      roleId,
-     department: formData.department || undefined,
      status: formData.status || 'active',
     });
     if (res.success) {
@@ -763,10 +765,7 @@ const UserManagement = () => {
        {modalType === 'add' && (
         <div><label className="block text-sm font-medium text-slate-300 mb-1">Password *</label><input type="password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
        )}
-       <div className="grid grid-cols-2 gap-4">
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Department *</label><select value={formData.department || ''} onChange={(e) => setFormData(p => ({ ...p, department: e.target.value }))} className={selectClassName} required><option value="">Select</option>{departmentNames.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
-       </div>
+       <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
        <div><label className="block text-sm font-medium text-slate-300 mb-1">Status</label><select value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
        {saveError && <p className="text-sm text-red-600">{saveError}</p>}
        <div className="flex gap-3 pt-4">

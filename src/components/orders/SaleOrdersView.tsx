@@ -65,6 +65,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [planningAvailabilityBySoNo, setPlanningAvailabilityBySoNo] = useState<Record<string, SoPlanningAvailabilityResponse>>({});
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
   const planningAvailabilityRequestInFlight = useRef(false);
+  const planningAvailabilityFetchedOnce = useRef(false);
 
   // Filter sale orders
   const filteredSOs = useMemo(() => {
@@ -122,6 +123,10 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       console.log('[FULFILLMENT-AVAIL][FRONTEND][EFFECT] skip no visible SOs', { ts: now() });
       return;
     }
+    if (planningAvailabilityFetchedOnce.current) {
+      console.log('[FULFILLMENT-AVAIL][FRONTEND][EFFECT] skip already fetched once', { ts: now(), key });
+      return;
+    }
 
     const fetchTick = async () => {
       if (planningAvailabilityRequestInFlight.current) {
@@ -165,6 +170,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
           });
           return next;
         });
+        planningAvailabilityFetchedOnce.current = true;
       } finally {
         planningAvailabilityRequestInFlight.current = false;
         if (!cancelled) setPlanningAvailabilityLoading(false);
@@ -176,19 +182,16 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       }
     };
 
-    // Initial fetch + periodic refresh.
+    // Fetch only when visible SO set changes (no periodic polling).
     fetchTick();
-    const intervalId = window.setInterval(fetchTick, 10000);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
       // Important for React StrictMode in dev:
       // first effect run may be cleaned up immediately; clear this so the next run fetches instantly.
       planningAvailabilityRequestInFlight.current = false;
       console.log('[FULFILLMENT-AVAIL][FRONTEND][EFFECT] cleanup', { ts: now(), key });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSoNos.join('|')]);
 
   // Calculate KPIs
@@ -255,7 +258,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       const updated = await Promise.resolve(onPickConfirm(so.soNo, data));
       setPickModalSO(null);
       setPickSelectedBprNos(undefined);
-      setInvoiceModalSO(updated ?? so);
+      setInvoiceModalSO((updated as SaleOrder | undefined) ?? so);
       setInvoiceSelectedBprNos(bprNos);
     } catch {
       setPickModalSO(null);
@@ -564,7 +567,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                           {execPct}%
                         </div>
                         <div className="text-[10px] text-gray-500 font-normal">
-                          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · planned vs {formatNumber(item.orderedQty)} ordered
+                          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
                         </div>
                       </td>
                       {/* <td className="px-4 py-3 align-top">

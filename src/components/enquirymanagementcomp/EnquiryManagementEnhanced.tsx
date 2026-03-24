@@ -5,6 +5,7 @@ import type {
  TicketPriority, 
  TicketFilters,
  StaffMember,
+ TicketDashboardStats,
 } from '../../types/ticket.types';
 import TicketDashboard from './TicketDashboard';
 import TicketDetailPopup from './TicketDetailPopup';
@@ -13,276 +14,10 @@ import {
  TicketRow, 
  EmptyTicketState,
 } from './TicketComponents';
-import { fetchTickets, fetchAvailableStaff } from '../../services/ticket.service';
+import { fetchAvailableStaff } from '../../services/ticket.service';
+import api from '../../lib/apiClient';
+import { ApiResponse } from '../../types/api.types';
 
-// Mock tickets data for development
-const mockTickets: Ticket[] = [
- {
-  id: 'TKT001',
-  ticketNumber: 'TKT-2026-0001',
-  customer: {
-   id: 'CUST001',
-   name: 'John Doe',
-   email: 'john.doe@example.com',
-   phone: '9876543210',
-   company: 'Acme Corp',
-   isRegistered: true,
-  },
-  subject: 'Issue with my recent order delivery',
-  description: 'I placed an order last week but it still has not arrived. The tracking shows it has been stuck at the same location for 3 days.',
-  category: 'delivery-issue',
-  priority: 'high',
-  status: 'in-progress',
-  source: 'website',
-  tags: ['delivery', 'urgent'],
-  currentAssignee: {
-   staffId: 'STF001',
-   staffName: 'Rahul Sharma',
-   staffEmail: 'rahul.s@company.com',
-   department: 'Customer Support',
-   assignedAt: '2026-01-21T10:30:00Z',
-   assignedBy: 'System',
-   isActive: true,
-  },
-  assignmentHistory: [],
-  linkedOrders: [
-   {
-    orderId: 'ORD001',
-    orderNumber: 'ORD-2026-0542',
-    orderDate: '2026-01-15',
-    orderStatus: 'Shipped',
-    orderTotal: 15999,
-    productName: 'Premium Skincare Kit',
-    linkedAt: '2026-01-21T10:30:00Z',
-    linkedBy: 'Rahul Sharma',
-    relevance: 'Customer order mentioned in complaint',
-   },
-  ],
-  messages: [
-   {
-    id: 'MSG001',
-    ticketId: 'TKT001',
-    senderId: 'CUST001',
-    senderName: 'John Doe',
-    senderType: 'customer',
-    content: 'Hi, I placed order ORD-2026-0542 on Jan 15th and it still hasn\'t arrived. Please help!',
-    sentAt: '2026-01-20T14:22:00Z',
-    isInternal: false,
-   },
-   {
-    id: 'MSG002',
-    ticketId: 'TKT001',
-    senderId: 'STF001',
-    senderName: 'Rahul Sharma',
-    senderType: 'staff',
-    content: 'Hello John, I apologize for the inconvenience. I\'m looking into your order status right now.',
-    sentAt: '2026-01-21T10:35:00Z',
-    isInternal: false,
-   },
-  ],
-  activities: [
-   {
-    id: 'ACT001',
-    ticketId: 'TKT001',
-    type: 'created',
-    description: 'Ticket created from website contact form',
-    performedBy: { id: 'SYSTEM', name: 'System', role: 'System' },
-    timestamp: '2026-01-20T14:22:00Z',
-   },
-   {
-    id: 'ACT002',
-    ticketId: 'TKT001',
-    type: 'assigned',
-    description: 'Ticket assigned to Rahul Sharma',
-    performedBy: { id: 'SYSTEM', name: 'System', role: 'System' },
-    timestamp: '2026-01-21T10:30:00Z',
-   },
-   {
-    id: 'ACT003',
-    ticketId: 'TKT001',
-    type: 'status-change',
-    description: 'Status changed from New to In Progress',
-    performedBy: { id: 'STF001', name: 'Rahul Sharma', role: 'Support Executive' },
-    timestamp: '2026-01-21T10:31:00Z',
-    previousValue: 'New',
-    newValue: 'In Progress',
-   },
-   {
-    id: 'ACT004',
-    ticketId: 'TKT001',
-    type: 'order-linked',
-    description: 'Order ORD-2026-0542 linked to ticket',
-    performedBy: { id: 'STF001', name: 'Rahul Sharma', role: 'Support Executive' },
-    timestamp: '2026-01-21T10:32:00Z',
-   },
-  ],
-  createdAt: '2026-01-20T14:22:00Z',
-  updatedAt: '2026-01-21T10:35:00Z',
-  firstResponseAt: '2026-01-21T10:35:00Z',
-  slaDeadline: '2026-01-22T14:22:00Z',
-  isOverdue: false,
-  responseCount: 1,
- },
- {
-  id: 'TKT002',
-  ticketNumber: 'TKT-2026-0002',
-  customer: {
-   name: 'Jane Smith',
-   email: 'jane.smith@example.com',
-   phone: '8765432109',
-   isRegistered: false,
-  },
-  subject: 'Request for bulk pricing quote',
-  description: 'We are interested in purchasing 500 units of your premium products. Can you provide bulk pricing?',
-  category: 'quotation-request',
-  priority: 'medium',
-  status: 'new',
-  source: 'email',
-  currentAssignee: undefined,
-  assignmentHistory: [],
-  linkedOrders: [],
-  messages: [],
-  activities: [
-   {
-    id: 'ACT005',
-    ticketId: 'TKT002',
-    type: 'created',
-    description: 'Ticket created from email',
-    performedBy: { id: 'SYSTEM', name: 'System', role: 'System' },
-    timestamp: '2026-01-22T09:15:00Z',
-   },
-  ],
-  createdAt: '2026-01-22T09:15:00Z',
-  updatedAt: '2026-01-22T09:15:00Z',
-  slaDeadline: '2026-01-23T09:15:00Z',
-  isOverdue: false,
-  responseCount: 0,
- },
- {
-  id: 'TKT003',
-  ticketNumber: 'TKT-2026-0003',
-  customer: {
-   id: 'CUST003',
-   name: 'Mike Johnson',
-   email: 'mike.j@example.com',
-   phone: '7654321098',
-   isRegistered: true,
-  },
-  subject: 'Payment failed but amount deducted',
-  description: 'I tried to make a payment of Rs 5,999 for my order but the transaction failed. However, the amount has been deducted from my account.',
-  category: 'payment-issue',
-  priority: 'urgent',
-  status: 'open',
-  source: 'phone',
-  currentAssignee: {
-   staffId: 'STF004',
-   staffName: 'Sneha Reddy',
-   staffEmail: 'sneha.r@company.com',
-   department: 'Order Management',
-   assignedAt: '2026-01-22T11:00:00Z',
-   assignedBy: 'Admin',
-   isActive: true,
-  },
-  assignmentHistory: [],
-  linkedOrders: [],
-  messages: [],
-  activities: [
-   {
-    id: 'ACT006',
-    ticketId: 'TKT003',
-    type: 'created',
-    description: 'Ticket created from phone call',
-    performedBy: { id: 'STF004', name: 'Sneha Reddy', role: 'Order Manager' },
-    timestamp: '2026-01-22T11:00:00Z',
-   },
-   {
-    id: 'ACT007',
-    ticketId: 'TKT003',
-    type: 'priority-change',
-    description: 'Priority escalated to Urgent',
-    performedBy: { id: 'STF004', name: 'Sneha Reddy', role: 'Order Manager' },
-    timestamp: '2026-01-22T11:02:00Z',
-    previousValue: 'Medium',
-    newValue: 'Urgent',
-   },
-  ],
-  createdAt: '2026-01-22T11:00:00Z',
-  updatedAt: '2026-01-22T11:02:00Z',
-  slaDeadline: '2026-01-22T15:00:00Z',
-  isOverdue: true,
-  responseCount: 0,
- },
- {
-  id: 'TKT004',
-  ticketNumber: 'TKT-2026-0004',
-  customer: {
-   name: 'Sarah Wilson',
-   email: 'sarah.w@example.com',
-   phone: '6543210987',
-   company: 'Beauty Plus Salon',
-   isRegistered: true,
-  },
-  subject: 'Product specifications inquiry',
-  description: 'Need technical specifications and ingredient list for your organic skincare range.',
-  category: 'product-inquiry',
-  priority: 'low',
-  status: 'resolved',
-  source: 'website',
-  currentAssignee: {
-   staffId: 'STF002',
-   staffName: 'Priya Patel',
-   staffEmail: 'priya.p@company.com',
-   department: 'Sales',
-   assignedAt: '2026-01-18T14:00:00Z',
-   assignedBy: 'System',
-   isActive: true,
-  },
-  assignmentHistory: [],
-  linkedOrders: [],
-  messages: [],
-  activities: [],
-  createdAt: '2026-01-18T10:30:00Z',
-  updatedAt: '2026-01-20T16:45:00Z',
-  firstResponseAt: '2026-01-18T14:15:00Z',
-  resolvedAt: '2026-01-20T16:45:00Z',
-  resolutionNotes: 'Sent product specification documents via email',
-  isOverdue: false,
-  responseCount: 3,
- },
- {
-  id: 'TKT005',
-  ticketNumber: 'TKT-2026-0005',
-  customer: {
-   name: 'David Brown',
-   email: 'david.b@example.com',
-   phone: '5432109876',
-   isRegistered: false,
-  },
-  subject: 'Partnership inquiry for distribution',
-  description: 'We are a distribution company and interested in becoming an authorized distributor for your products in the southern region.',
-  category: 'partnership',
-  priority: 'medium',
-  status: 'pending-internal',
-  source: 'email',
-  currentAssignee: {
-   staffId: 'STF002',
-   staffName: 'Priya Patel',
-   staffEmail: 'priya.p@company.com',
-   department: 'Sales',
-   assignedAt: '2026-01-19T09:00:00Z',
-   assignedBy: 'Admin',
-   isActive: true,
-  },
-  assignmentHistory: [],
-  linkedOrders: [],
-  messages: [],
-  activities: [],
-  createdAt: '2026-01-17T15:20:00Z',
-  updatedAt: '2026-01-21T11:30:00Z',
-  isOverdue: false,
-  responseCount: 2,
- },
-];
 
 // ==================== Main Component ====================
 type ViewTab = 'dashboard' | 'tickets';
@@ -291,8 +26,8 @@ const EnquiryManagementEnhanced: React.FC = () => {
  // View state
  const [activeView, setActiveView] = useState<ViewTab>('dashboard');
  
- // Ticket list state
- const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+ // Ticket list state — always array so filteredTickets never spreads undefined
+ const [tickets, setTickets] = useState<Ticket[]>([]);
  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
  const [filters, setFilters] = useState<TicketFilters>({});
  const [availableStaff, setAvailableStaff] = useState<StaffMember[]>([]);
@@ -311,29 +46,94 @@ const EnquiryManagementEnhanced: React.FC = () => {
   loadStaff();
  }, []);
 
- // Load tickets
- const loadTickets = useCallback(async () => {
+ 
+useEffect(() => {
+  let cancelled = false;
   setLoading(true);
-  try {
-   const result = await fetchTickets(filters, { page: currentPage, pageSize: recordsPerPage });
-   if (result.success && result.data) {
-    // Use mock data for now since API is not implemented
-    // setTickets(result.data.data);
-   }
-  } catch (_error) {
-   /* ignored */
-  } finally {
-   setLoading(false);
-  }
- }, [filters, currentPage]);
+  const fetchEnquiries = async () => {
+    try {
+      const res = await api.get<ApiResponse<Ticket[]> | Ticket[]>('/api/v1/enquiries');
+      if (cancelled) return;
+      const list = Array.isArray(res) ? res : (res && typeof res === 'object' && 'data' in res && Array.isArray((res as ApiResponse<Ticket[]>).data) ? (res as ApiResponse<Ticket[]>).data : []);
+      setTickets(list);
+    } catch (error) {
+      if (!cancelled) setTickets([]);
+      console.error('Enquiries fetch error:', error);
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  };
+  fetchEnquiries();
+  return () => {
+    cancelled = true;
+    setLoading(false);
+  };
+ }, []);
 
- useEffect(() => {
-  loadTickets();
- }, [loadTickets]);
+ // Dashboard stats derived from API tickets (full page dynamic)
+ const dashboardStatsFromTickets = useMemo((): TicketDashboardStats => {
+  const list = Array.isArray(tickets) ? tickets : [];
+  const emptyByStatus: TicketDashboardStats['byStatus'] = {
+   new: 0, open: 0, inProgress: 0, pendingCustomer: 0, pendingInternal: 0, resolved: 0, closed: 0,
+  };
+  const emptyByPriority: TicketDashboardStats['byPriority'] = { low: 0, medium: 0, high: 0, urgent: 0 };
+  if (list.length === 0) {
+   return {
+    totalTickets: 0,
+    openTickets: 0,
+    closedToday: 0,
+    avgResolutionTime: 0,
+    byStatus: emptyByStatus,
+    byPriority: emptyByPriority,
+    byCategory: {} as TicketDashboardStats['byCategory'],
+    staffMetrics: [],
+    ticketTrend: [],
+    slaMetrics: { onTime: 0, breached: 0, atRisk: 0 },
+    responseMetrics: { avgFirstResponseTime: 0, avgResponseTime: 0, avgResolutionTime: 0 },
+   };
+  }
+  const statusKey = (s: string) => {
+   const k = s === 'in-progress' ? 'inProgress' : s === 'pending-customer' ? 'pendingCustomer' : s === 'pending-internal' ? 'pendingInternal' : s;
+   return k as keyof TicketDashboardStats['byStatus'];
+  };
+  const byStatus: TicketDashboardStats['byStatus'] = {
+   new: 0,
+   open: 0,
+   inProgress: 0,
+   pendingCustomer: 0,
+   pendingInternal: 0,
+   resolved: 0,
+   closed: 0,
+  };
+  const byPriority: TicketDashboardStats['byPriority'] = { low: 0, medium: 0, high: 0, urgent: 0 };
+  const today = new Date().toISOString().slice(0, 10);
+  let closedToday = 0;
+  list.forEach((t) => {
+   const sk = statusKey(t.status);
+   if (sk in byStatus) (byStatus as Record<string, number>)[sk] = ((byStatus as Record<string, number>)[sk] ?? 0) + 1;
+   if (t.priority && t.priority in byPriority) byPriority[t.priority as keyof typeof byPriority]++;
+   if ((t as { resolvedAt?: string }).resolvedAt?.slice(0, 10) === today) closedToday++;
+  });
+  const openTickets = list.filter((t) => !['resolved', 'closed'].includes(t.status)).length;
+  return {
+   totalTickets: list.length,
+   openTickets,
+   closedToday,
+   avgResolutionTime: 24,
+   byStatus,
+   byPriority,
+   byCategory: {} as TicketDashboardStats['byCategory'],
+   staffMetrics: [],
+   ticketTrend: [],
+   slaMetrics: { onTime: 0, breached: 0, atRisk: 0 },
+   responseMetrics: { avgFirstResponseTime: 0, avgResponseTime: 0, avgResolutionTime: 0 },
+  };
+ }, [tickets]);
 
  // Filter tickets locally (for mock data)
  const filteredTickets = useMemo(() => {
-  let result = [...tickets];
+  const list = Array.isArray(tickets) ? tickets : [];
+  let result = [...list];
 
   // Search filter
   if (filters.searchTerm) {
@@ -470,10 +270,11 @@ const EnquiryManagementEnhanced: React.FC = () => {
     </button>
    </div>
 
-   {/* Dashboard View */}
+   {/* Dashboard View — stats from API tickets (full page dynamic) */}
    {activeView === 'dashboard' && (
     <TicketDashboard 
      onNavigateToTickets={handleNavigateToTickets}
+     overrideStats={dashboardStatsFromTickets}
     />
    )}
 

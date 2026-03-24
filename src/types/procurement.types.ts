@@ -59,6 +59,8 @@ export type QuoteLine = {
   item: string;
   /** RM/PM master code from quotation line (itemId) */
   itemId?: string;
+  /** Unit label when present on the quotation line (e.g. kg, pcs). */
+  unit?: string;
   qty: string;
   pricePerUnit: number;
   totalValue: number;
@@ -150,6 +152,8 @@ export type PurchaseOrder = {
   vendorId: string;
   vendorName: string;
   poNumber: string;
+  /** External / display reference when distinct from poNumber (e.g. planning ref). */
+  reference?: string;
   itemCount: number;
   value: number;
   date: string;

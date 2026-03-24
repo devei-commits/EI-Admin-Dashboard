@@ -1278,8 +1278,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                           <td className="px-2 py-3 text-sm">{product.targetPrice}</td>
                           <td className="px-2 py-3 text-sm">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${product.priority === 'High' ? 'bg-red-100 text-red-700' :
-                                product.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-green-100 text-green-700'
+                              product.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
                               }`}>{product.priority}</span>
                           </td>
                           <td className="px-2 py-3">

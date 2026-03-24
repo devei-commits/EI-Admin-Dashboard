@@ -33,4 +33,8 @@ export interface Order {
   items: OrderItem[];
   formData: OrderFormData;
   orderStatus: OrderStatus;
+  /** Zoho Books purchase order id (PO only) */
+  zohoPurchaseOrderId?: string | null;
+  /** Zoho Books vendor bill id — purchase invoice (PO only) */
+  zohoBillId?: string | null;
 }

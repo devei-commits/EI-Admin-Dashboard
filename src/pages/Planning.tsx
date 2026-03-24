@@ -3998,7 +3998,7 @@ const Planning = () => {
               {activeBatchTab === 'batch-plan' && (() => {
                 const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
                 const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
-                const kgPerUnit = orderQtyNum > 0 ? orderTotalKg / orderQtyNum : orderTotalKg || 1;
+                const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : (orderTotalKg || 1);
                 const batchTotal = customBatches.reduce((sum, b) => sum + (b.sizeKg || 0), 0);
                 const batchTotalUnits = kgPerUnit > 0 ? batchTotal / kgPerUnit : 0;
                 const remaining = orderTotalKg - batchTotal;
@@ -4173,10 +4173,17 @@ const Planning = () => {
                                   <input
                                     type="number"
                                     value={kgPerUnit > 0 ? Math.round(batch.sizeKg / kgPerUnit) : batch.sizeKg}
-                                    onChange={(e) => updateBatchUnits(idx, parseFloat(e.target.value) || 0)}
+                                    onChange={(e) => {
+                                      const units = parseFloat(e.target.value) || 0;
+                                      const sizeKg = units * kgPerUnit;
+                                      console.log('e.target.value', e.target.value);
+                                      console.log('sizeKg', kgPerUnit, units, sizeKg);
+                                      updateBatchUnits(idx, units);
+                                    }}
                                     disabled={isSent}
                                     className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
                                     min={0}
+                                    
                                   />
                                   <span className="text-xs font-semibold text-gray-600">units</span>
                                   {!isSent && canSendToProduction && (

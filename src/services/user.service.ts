@@ -116,8 +116,8 @@ export async function createStaffUser(payload: {
  email: string;
  mobile: string;
  password: string;
+ role: string;
  roleId: number;
- department?: string;
  status?: string;
 }): Promise<ServiceResult<StaffUserFromApi>> {
  try {
@@ -127,8 +127,8 @@ export async function createStaffUser(payload: {
    email: payload.email.trim(),
    mobile: payload.mobile.trim(),
    password: payload.password,
+  role: payload.role.trim(),
    roleId: payload.roleId,
-   department: payload.department?.trim() || undefined,
    status: payload.status || 'active',
   };
   const res = await api.post<StaffUserFromApi>('/api/v1/users/create', body);

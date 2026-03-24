@@ -2,7 +2,7 @@
  * TanStack Query hooks for raw materials — list (with optional search) and by id.
  */
 import { queryKeys } from '../lib/queryClient';
-import { createListQueryWithParams, createDetailQuery, createMutation } from '../lib/queryHooksFactory';
+import { createListQueryWithParams, useDetailQuery, createMutation } from '../lib/queryHooksFactory';
 import * as rawMaterialsService from '../services/rawMaterials.service';
 
 export const useRawMaterialsList = createListQueryWithParams<

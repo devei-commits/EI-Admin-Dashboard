@@ -61,7 +61,7 @@ const RawMaterialRefactored: React.FC = () => {
  const [generatedRmCode, setGeneratedRmCode] = useState('');
 
  const [formData, setFormData] = useState({
-  // Primary Info (incl. for Zoho sync — TODO: implement Zoho integration)
+  // Primary Info (Zoho Books: new RMs sync on save when integration is enabled on the API)
   rmSku: '',
   zohoId: '',
   sku: '',
@@ -423,8 +423,20 @@ const RawMaterialRefactored: React.FC = () => {
     addToast('success', 'Raw Material updated successfully!');
     setExistingRmId(null);
    } else {
-    await createRawMaterial(formData as Record<string, unknown>);
-    addToast('success', 'Raw Material saved successfully!');
+    const { zohoSync } = await createRawMaterial(formData as Record<string, unknown>);
+    if (zohoSync?.synced === false && zohoSync.error) {
+     addToast(
+      'error',
+      `Saved in Esthetic Insights, but Zoho Books sync failed: ${zohoSync.error}`
+     );
+    } else {
+     addToast(
+      'success',
+      zohoSync?.synced && zohoSync.item_id
+       ? `Raw Material saved and linked to Zoho (item ${zohoSync.item_id}).`
+       : 'Raw Material saved successfully!'
+     );
+    }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
    setPageTab('dashboard');
@@ -437,7 +449,7 @@ const RawMaterialRefactored: React.FC = () => {
  // Stage content rendering
  const renderStageContent = () => {
   switch (currentStage) {
-  case 0: // Primary Info (Zoho sync TODO: use zohoId, sku when integration is implemented)
+  case 0: // Primary Info (optional manual Zoho ID; otherwise created in Zoho on first save)
   return (
    <div className="space-y-4">
     <InputField
@@ -452,7 +464,7 @@ const RawMaterialRefactored: React.FC = () => {
      id="zohoId"
      value={formData.zohoId}
      onChange={handleInputChange}
-     placeholder="Zoho item id (sync TODO)"
+     placeholder="Optional: existing Zoho item id (leave blank to create in Zoho on save)"
     />
     <InputField
      label="SKU (for Zoho)"

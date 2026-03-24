@@ -3,7 +3,7 @@ import type {
  TicketDashboardStats, 
  StaffPerformanceMetrics,
  TicketPriority,
- TicketStatus 
+ TicketStatus,
 } from '../../types/ticket.types';
 import { fetchTicketDashboardStats, fetchStaffPerformanceMetrics } from '../../services/ticket.service';
 
@@ -344,15 +344,18 @@ const SLAMetrics: React.FC<SLAMetricsProps> = ({ metrics }) => {
 interface TicketDashboardProps {
  onNavigateToTickets?: (filter?: { status?: TicketStatus; priority?: TicketPriority }) => void;
  onStaffClick?: (staffId: string) => void;
+ /** When provided, use these stats instead of fetching (dynamic from enquiries API). */
+ overrideStats?: TicketDashboardStats | null;
 }
 
 const TicketDashboard: React.FC<TicketDashboardProps> = ({ 
  onNavigateToTickets,
- onStaffClick 
+ onStaffClick,
+ overrideStats,
 }) => {
  const [stats, setStats] = useState<TicketDashboardStats | null>(null);
  const [staffMetrics, setStaffMetrics] = useState<StaffPerformanceMetrics[]>([]);
- const [loading, setLoading] = useState(true);
+ const [loading, setLoading] = useState(!overrideStats);
  const [dateRange, setDateRange] = useState({ from: '', to: '' });
 
  const loadDashboardData = useCallback(async () => {
@@ -377,8 +380,13 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
  }, [dateRange]);
 
  useEffect(() => {
+  if (overrideStats) {
+   setStats(overrideStats);
+   setLoading(false);
+   return;
+  }
   loadDashboardData();
- }, [loadDashboardData]);
+ }, [loadDashboardData, overrideStats]);
 
  const formatTime = (minutes: number): string => {
   if (minutes < 60) return `${minutes}m`;

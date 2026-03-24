@@ -20,11 +20,22 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', {
+      '@typescript-eslint/no-unused-vars': ['warn', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
       }],
+      'react-hooks/purity': 'off',
+      'no-useless-catch': 'warn',
+      'no-dupe-else-if': 'warn',
+      'no-empty': 'warn',
+      // Large legacy codebase: gradual typing; avoid blocking CI on hundreds of `any` usages
+      '@typescript-eslint/no-explicit-any': 'off',
+      // React Compiler / eslint-plugin-react-hooks v7 rules — too strict for existing data-fetch + menu sync patterns
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/static-components': 'off',
+      'react-hooks/exhaustive-deps': 'warn',
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
 ])

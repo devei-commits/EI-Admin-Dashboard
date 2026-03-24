@@ -3,7 +3,7 @@
  * Uses queryHooksFactory for modular, reusable pattern.
  */
 import { queryKeys } from '../lib/queryClient';
-import { createListQuery, createDetailQuery, createMutation } from '../lib/queryHooksFactory';
+import { createListQuery, useDetailQuery, createMutation } from '../lib/queryHooksFactory';
 import * as roleService from '../services/role.service';
 
 export const useRolesList = createListQuery(
@@ -13,7 +13,7 @@ export const useRolesList = createListQuery(
 );
 
 export function useRole(id: string | null) {
-  return createDetailQuery(
+  return useDetailQuery(
     (rid) => queryKeys.role(rid),
     id,
     () => (id ? roleService.getRoleById(id) : Promise.resolve(null)),

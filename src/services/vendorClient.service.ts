@@ -156,8 +156,13 @@ export async function createVendorClient(
   } catch (e) {
     const err = e as Error & { status?: number; body?: { error?: string } };
     const message =
-      err.body?.error ?? (err instanceof Error ? err.message : "Failed to create vendor/client");
-    return { data: null, error: { code: "ERROR", message, timestamp: new Date().toISOString() }, success: false };
+      err.body?.error ??
+      (err instanceof Error ? err.message : "Failed to create vendor/client");
+    return {
+      data: null,
+      error: { code: "ERROR", message, timestamp: new Date().toISOString() },
+      success: false,
+    };
   }
 }
 

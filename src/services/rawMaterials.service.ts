@@ -19,8 +19,10 @@ export interface RawMaterialFromApi {
   status: string;
   products: string[];
   group: string | null;
-  /** Primary info for Zoho sync (TODO: implement Zoho integration) */
+  /** Zoho Books item id after create sync (when enabled) */
   zoho_id?: string | null;
+  /** Present when Zoho Books item sync ran on create */
+  zoho_sync?: { synced: boolean; item_id?: string; error?: string };
   sku?: string | null;
   hsn_code?: string | null;
   tax_pref?: string | null;
@@ -138,6 +140,12 @@ export async function fetchRawMaterialById(id: string): Promise<{ record: RawMat
 /** Full form payload for create/update (matches formData shape). */
 export type RawMaterialFormPayload = Record<string, unknown>;
 
+export interface RawMaterialCreateResult {
+  record: RawMaterialRecord;
+  /** Set when backend reports Zoho Books sync outcome on create */
+  zohoSync?: RawMaterialFromApi['zoho_sync'];
+}
+
 /** Next RM code for a series prefix (e.g. EI-RM-ACT → EI-RM-ACT-00001). */
 export async function fetchNextRawMaterialCode(prefix: string): Promise<string> {
   const p = encodeURIComponent(prefix.trim());
@@ -147,10 +155,11 @@ export async function fetchNextRawMaterialCode(prefix: string): Promise<string> 
 
 /**
  * Create raw material. Body: full form payload (formData).
+ * When Zoho Books is enabled, the backend creates a Zoho item and sets `zoho_id` when sync succeeds.
  */
-export async function createRawMaterial(payload: RawMaterialFormPayload): Promise<RawMaterialRecord> {
+export async function createRawMaterial(payload: RawMaterialFormPayload): Promise<RawMaterialCreateResult> {
   const row = await api.post<RawMaterialFromApi>('/api/v1/raw-materials', payload);
-  return mapApiToRecord(row);
+  return { record: mapApiToRecord(row), zohoSync: row.zoho_sync };
 }
 
 /**

@@ -2,7 +2,7 @@
  * TanStack Query hooks for vendor-client — list (optional type filter) and by id.
  */
 import { queryKeys } from '../lib/queryClient';
-import { createListQueryWithParams, createDetailQuery, createMutation } from '../lib/queryHooksFactory';
+import { createListQueryWithParams, useDetailQuery, createMutation } from '../lib/queryHooksFactory';
 import * as vendorClientService from '../services/vendorClient.service';
 
 type VendorClientType = 'vendor' | 'client' | undefined;

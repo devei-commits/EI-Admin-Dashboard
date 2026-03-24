@@ -6,7 +6,7 @@ import { useGlobalState } from '../../context/GlobalStateContext';
 import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
 import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
-import type { ProcurementRequestItem as BackendPRItem } from '../../services/procurement.service';
+import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as ApiProcurementRequest } from '../../services/procurement.service';
 import {
   fetchProcurementQuotations,
   fetchQuoteLineDefaults,
@@ -18,7 +18,7 @@ import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '.
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
 import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
-import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
+import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import { fetchPriceListPage, type PriceListItemPage } from '../../services/itemsList.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
@@ -68,13 +68,13 @@ const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
 const DEBUG_PROC_RELEASE = import.meta.env.DEV;
 
 /** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
-function coerceProcurementRequestRows(value: unknown): { id: string }[] {
+function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
   if (value == null) return [];
-  if (Array.isArray(value)) return value as { id: string }[];
+  if (Array.isArray(value)) return value as ApiProcurementRequest[];
   if (typeof value === 'object' && value !== null) {
     const o = value as Record<string, unknown>;
-    if (Array.isArray(o.data)) return o.data as { id: string }[];
-    if (Array.isArray(o.requests)) return o.requests as { id: string }[];
+    if (Array.isArray(o.data)) return o.data as ApiProcurementRequest[];
+    if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
 }
@@ -105,6 +105,40 @@ function quoteLineMatchesReleaseTarget(line: QuoteLine, rel: ReleaseToPlannedIte
     if (lineCode.includes(codeKey) || codeKey.includes(lineCode)) return true;
   }
   return false;
+}
+
+function extractMasterCodeFromText(value: unknown): string {
+  const s = String(value ?? '').trim();
+  if (!s) return '';
+  const m = s.match(/EI-[A-Z0-9-]+/i);
+  return m && m[0] ? m[0].toUpperCase() : '';
+}
+
+function resolveItemCodeFromSources(
+  sources: unknown[],
+  fallbackType: RequestType,
+  fallbackIndex: number
+): string {
+  for (const src of sources) {
+    const code = extractMasterCodeFromText(src);
+    if (code) return code;
+  }
+  return `EI-${fallbackType}-${String(fallbackIndex + 1).padStart(3, '0')}`;
+}
+
+function resolveMasterIdsFromRawItem(raw: any): {
+  raw_material_id?: number;
+  pack_material_id?: number;
+  product_id?: number;
+} {
+  const rm = raw?.raw_material_id != null ? Number(raw.raw_material_id) : NaN;
+  const pm = raw?.pack_material_id != null ? Number(raw.pack_material_id) : NaN;
+  const pr = raw?.product_id != null ? Number(raw.product_id) : NaN;
+  return {
+    ...(Number.isFinite(rm) && rm > 0 ? { raw_material_id: rm } : {}),
+    ...(Number.isFinite(pm) && pm > 0 ? { pack_material_id: pm } : {}),
+    ...(Number.isFinite(pr) && pr > 0 ? { product_id: pr } : {}),
+  };
 }
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
@@ -341,9 +375,9 @@ const Procurement: React.FC = () => {
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
-  const [stockCategoryFilter, setStockCategoryFilter] = useState<'All' | RequestType>('All');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed' | 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock'>('All Statuses');
-  const [stockSearch, setStockSearch] = useState('');
+  const [_stockCategoryFilter, _setStockCategoryFilter] = useState<'All' | RequestType>('All');
+  const [_stockStatusFilter, _setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed' | 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock'>('All Statuses');
+  const [_stockSearch, _setStockSearch] = useState('');
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
   const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
@@ -711,7 +745,7 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const backendPrs = backendPrArray;
+  const backendPrs: ApiProcurementRequest[] = backendPrArray;
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
     const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
@@ -1147,7 +1181,11 @@ const Procurement: React.FC = () => {
                 const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
                 return {
                   item: i.itemName ?? i.name ?? request.items[idx] ?? '',
-                  itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
+                  itemCode: resolveItemCodeFromSources(
+                    [i.code, i.itemCode, i.item_code, i.itemId, i.item_id, i.rm_code, i.pm_code, i.itemName, i.name],
+                    request.type,
+                    idx
+                  ),
                   type: request.type,
                   qty: String(i.quantity ?? ''),
                   pricePerUnit: rate,
@@ -1211,7 +1249,11 @@ const Procurement: React.FC = () => {
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
         return {
           item: i.itemName ?? i.name ?? '',
-          itemCode: `EI-${inferredType}-${String(idx + 1).padStart(3, '0')}`,
+          itemCode: resolveItemCodeFromSources(
+            [i.code, i.itemCode, i.item_code, i.itemId, i.item_id, i.rm_code, i.pm_code, i.itemName, i.name],
+            inferredType,
+            idx
+          ),
           type: inferredType,
           qty: String(i.quantity ?? ''),
           pricePerUnit: rate,
@@ -1447,7 +1489,11 @@ const Procurement: React.FC = () => {
                 return {
                   id: `line-${idx}`,
                   item: String(line.item ?? ''),
-                  itemCode: prItem?.code ?? line.itemCode ?? `EI-${record.request.type}-${String(idx + 1).padStart(3, '0')}`,
+                  itemCode: resolveItemCodeFromSources(
+                    [prItem?.code, line.itemCode, line.item, prItem?.name],
+                    record.request.type,
+                    idx
+                  ),
                   poQty: Number(line.qty) || 0,
                   rcvdQty: 0,
                   invoiceQty: 0,
@@ -1531,6 +1577,7 @@ const Procurement: React.FC = () => {
       try {
         const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
         if (!alreadyHasGrn) {
+            const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
           await createGRN({
             grnNo: `GRN-${record.poNumber}-${Date.now()}`,
             purchase_order_id: parseInt(backendPoId, 10),
@@ -1541,21 +1588,36 @@ const Procurement: React.FC = () => {
             poValue: record.grandTotal ?? 0,
             status: 'Under GRN',
             receivedDate: today,
-            lineItems: record.lineItems.map((line: any, idx: number) => ({
-              id: `line-${idx}`,
-              item: String(line.item ?? ''),
-              itemCode: line.itemCode ?? `EI-${(record.request?.type ?? 'RM')}-${String(idx + 1).padStart(3, '0')}`,
-              poQty: Number(line.qty) || 0,
-              rcvdQty: 0,
-              invoiceQty: 0,
-              unitPrice: Number(line.pricePerUnit) || 0,
-              diff: 0,
-              qcStatus: 'Pending',
-              qcBy: '',
-              raw_material_id: undefined,
-              pack_material_id: undefined,
-              product_id: undefined,
-            })),
+              lineItems: record.lineItems.map((line: any, idx: number) => {
+                const raw = rawItemsForGrn[idx] ?? {};
+                return {
+                  id: `line-${idx}`,
+                  item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
+                  itemCode: resolveItemCodeFromSources(
+                    [
+                      raw.code,
+                      raw.itemCode,
+                      raw.item_code,
+                      raw.itemId,
+                      raw.item_id,
+                      raw.rm_code,
+                      raw.pm_code,
+                      line.itemCode,
+                      line.item,
+                    ],
+                    (record.request?.type ?? 'RM') as RequestType,
+                    idx
+                  ),
+                  poQty: Number(line.qty) || Number(raw.quantity) || 0,
+                  rcvdQty: 0,
+                  invoiceQty: 0,
+                  unitPrice: Number(line.pricePerUnit) || Number(raw.rate ?? raw.price ?? 0) || 0,
+                  diff: 0,
+                  qcStatus: 'Pending',
+                  qcBy: '',
+                  ...resolveMasterIdsFromRawItem(raw),
+                };
+              }),
           });
           unlinkedGrnCreated = true;
         } else {
@@ -1624,7 +1686,8 @@ const Procurement: React.FC = () => {
       : quotes.find((q) => q.requestId === requestId && q.status === 'Confirmed')
         ?? quotes.find((q) => q.requestId === requestId);
     const vendor = preferredVendor?.trim() || quoteToUse?.vendor?.trim() || 'Unassigned';
-    const vendorId = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase())?.id;
+    const matchedVendorForZoho = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase());
+    const vendorId = matchedVendorForZoho?.id;
 
     let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
     if (vendorId && vendor !== 'Unassigned') {
@@ -1683,13 +1746,28 @@ const Procurement: React.FC = () => {
       reference: requestCode,
       paymentTerms: 'As per contract',
       status: 'Draft',
-      formData: { requestId, requestCode },
-      items: lineItems.map((l) => ({
-        itemName: l.item,
-        quantity: l.qty,
-        rate: String(l.pricePerUnit),
-        tax: String(l.gstPercent || 18),
-      })),
+      formData: {
+        requestId,
+        requestCode,
+        ...(matchedVendorForZoho && vendor !== 'Unassigned'
+          ? {
+              vendorClientId: matchedVendorForZoho.id,
+              vendorEntityCode: matchedVendorForZoho.vendorCode,
+            }
+          : {}),
+      },
+      items: lineItems.map((l, idx) => {
+        const src = items[idx];
+        return {
+          itemName: l.item,
+          itemCode: l.itemCode,
+          quantity: l.qty,
+          rate: String(l.pricePerUnit),
+          tax: String(l.gstPercent || 18),
+          ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
+          ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
+        };
+      }),
     };
     const createResult = await createPurchaseOrder(poPayload);
     if (!createResult.success || !createResult.data) {
@@ -2995,7 +3073,7 @@ const Procurement: React.FC = () => {
                                         setReleaseToPlannedForm({
                                           vendor: first?.vendor ?? '',
                                           moqDisplay: item.moq ? `${item.moq} (₹${firstLine?.pricePerUnit ?? 0} · ${first?.leadTimeDays ?? 0}d)` : '',
-                                          qty: String(item.reqQty ?? item.qty ?? 0),
+                                          qty: String(item.reqQty ?? 0),
                                           unitPrice: String(firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
                                           paymentTermsType: pt0.type,
                                           advancePercent: String(
@@ -5192,8 +5270,6 @@ const Procurement: React.FC = () => {
             return prItemNames.has(qName) || [...prItemNames].some((prName) => prName.includes(qName) || qName.includes(prName));
           })
         );
-        const confirmedQuote = reqQuotes.find(q => q.status === 'Confirmed');
-        const canDraftPO = req.status === 'Quoted' || req.status === 'New';
         const canReleasePO = req.status === 'PO Draft';
 
         return (
@@ -5563,7 +5639,13 @@ const Procurement: React.FC = () => {
                             queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
                             addToast('success', 'Stock check saved');
                           } else {
-                            addToast('error', res.error ?? 'Failed to save stock check');
+                            const stockCheckErr =
+                              res.error == null
+                                ? 'Failed to save stock check'
+                                : typeof res.error === 'string'
+                                  ? res.error
+                                  : (res.error.message ?? 'Failed to save stock check');
+                            addToast('error', stockCheckErr);
                           }
                         }}
                         className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
@@ -5650,7 +5732,7 @@ const Procurement: React.FC = () => {
 
       {/* ── Edit Procurement Request Modal ── */}
       {editRequestTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setEditRequestTarget(null)}>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setEditRequestTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
             className="relative w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
@@ -5969,9 +6051,11 @@ const Procurement: React.FC = () => {
               })
               .filter((r) => r.qty > 0)
               .slice(0, 10);
-        const gapQty = req.stockSummary ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0)) : item.qty;
+        const _gapQty = req.stockSummary
+          ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0))
+          : (item.reqQty ?? item.qty);
         return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setReleaseToPlannedTarget(null)}>
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setReleaseToPlannedTarget(null)}>
             <div className="absolute inset-0 bg-black/40" />
             <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-xl border border-slate-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
@@ -6234,6 +6318,9 @@ const Procurement: React.FC = () => {
                       };
 
                       const vendorName = releaseToPlannedForm.vendor || req.preferredVendor || 'Unassigned';
+                      const matchedVendorForZoho = vendors.find(
+                        (v) => (v.name || '').trim().toLowerCase() === vendorName.trim().toLowerCase()
+                      );
 
                       const poPayload = {
                         orderId: newDpoId,
@@ -6246,13 +6333,22 @@ const Procurement: React.FC = () => {
                         formData: {
                           requestId: req.id,
                           requestCode: req.code,
+                          ...(matchedVendorForZoho && vendorName.trim() && vendorName !== 'Unassigned'
+                            ? {
+                                vendorClientId: matchedVendorForZoho.id,
+                                vendorEntityCode: matchedVendorForZoho.vendorCode,
+                              }
+                            : {}),
                         },
                         items: [
                           {
                             itemName: lineItem.item,
+                            itemCode: lineItem.itemCode,
                             quantity: lineItem.qty,
                             rate: String(lineItem.pricePerUnit),
                             tax: String(lineItem.gstPercent || 18),
+                            ...(item.raw_material_id != null ? { raw_material_id: Number(item.raw_material_id) } : {}),
+                            ...(item.pack_material_id != null ? { pack_material_id: Number(item.pack_material_id) } : {}),
                           },
                         ],
                       };
@@ -6328,7 +6424,7 @@ const Procurement: React.FC = () => {
 
       {/* ── Edit Draft PO Modal ── */}
       {editDraftPOTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setEditDraftPOTarget(null)}>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setEditDraftPOTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
             className="relative w-full max-w-lg rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
@@ -6441,7 +6537,13 @@ const Procurement: React.FC = () => {
                       vendorName: form.vendor,
                       paymentTerms: form.paymentTerms || undefined,
                       expectedShipmentDate: form.expectedDelivery || undefined,
-                      items: form.lineItems.map((l) => ({ itemName: l.item, quantity: l.qty, rate: String(l.pricePerUnit), tax: String(l.gstPercent ?? 18) })),
+                      items: form.lineItems.map((l) => ({
+                        itemName: l.item,
+                        itemCode: l.itemCode,
+                        quantity: l.qty,
+                        rate: String(l.pricePerUnit),
+                        tax: String(l.gstPercent ?? 18),
+                      })),
                     };
                     const res = await updatePurchaseOrder(d.backendPoId, payload);
                     if (!res.success) {
@@ -6521,7 +6623,7 @@ const Procurement: React.FC = () => {
           null;
 
         const stockItems = req.itemDetails && req.itemDetails.length > 0
-          ? req.itemDetails.map((item, idx) => {
+          ? req.itemDetails.map((item, _idx) => {
             const wh = resolveWh(item.itemCode, item.itemName);
             const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
             return {
@@ -6572,7 +6674,7 @@ const Procurement: React.FC = () => {
               className="relative w-full max-w-xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex-shrink-0 border-b border-slate-200 px-5 py-4 bg-slate-50">
+              <div className="shrink-0 border-b border-slate-200 px-5 py-4 bg-slate-50">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[11px] text-slate-700">
@@ -6675,7 +6777,7 @@ const Procurement: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
+              <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
                 <button
                   onClick={() => {
                     setSelectedStockCheckRequest(null);
@@ -7509,12 +7611,11 @@ const Procurement: React.FC = () => {
                               const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
                               const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                              const fallbackItemCode =
+                                selectedQuote.requestType === 'PM' ? `EI-PM-001` : `EI-RM-001`;
                               const lineItem: DraftPOLineItem = {
                                 item: selectedItem.name ?? selectedItem.code ?? 'Item',
-                                itemCode:
-                                  selectedQuote.requestType === 'PM'
-                                    ? `EI-PM-001`
-                                    : `EI-RM-001`,
+                                itemCode: (selectedItem.code && String(selectedItem.code).trim()) || fallbackItemCode,
                                 type: selectedQuote.requestType,
                                 qty: String(qtyNeeded),
                                 pricePerUnit,
@@ -7525,6 +7626,9 @@ const Procurement: React.FC = () => {
 
                               const vendorName =
                                 (backendPr as any).preferredVendor?.trim() || selectedQuote.vendor;
+                              const matchedVendorForZoho = vendors.find(
+                                (v) => (v.name || '').trim().toLowerCase() === String(vendorName).trim().toLowerCase()
+                              );
 
                               const poPayload = {
                                 orderId: newDpoId,
@@ -7538,13 +7642,26 @@ const Procurement: React.FC = () => {
                                   requestId: createPoFromQuoteState.requestId,
                                   requestCode: requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode,
                                   quoteId: selectedQuote.id,
+                                  ...(matchedVendorForZoho && String(vendorName).trim() && String(vendorName).trim() !== 'Unassigned'
+                                    ? {
+                                        vendorClientId: matchedVendorForZoho.id,
+                                        vendorEntityCode: matchedVendorForZoho.vendorCode,
+                                      }
+                                    : {}),
                                 },
                                 items: [
                                   {
                                     itemName: lineItem.item,
+                                    itemCode: lineItem.itemCode,
                                     quantity: lineItem.qty,
                                     rate: String(lineItem.pricePerUnit),
                                     tax: String(lineItem.gstPercent || 18),
+                                    ...(selectedItem.raw_material_id != null
+                                      ? { raw_material_id: Number(selectedItem.raw_material_id) }
+                                      : {}),
+                                    ...(selectedItem.pack_material_id != null
+                                      ? { pack_material_id: Number(selectedItem.pack_material_id) }
+                                      : {}),
                                   },
                                 ],
                               };

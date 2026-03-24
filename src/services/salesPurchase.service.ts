@@ -24,6 +24,8 @@ function toOrder(row: any, type: 'SO' | 'PO'): Order {
     orderStatus: row.orderStatus && typeof row.orderStatus === 'object'
       ? row.orderStatus
       : { orderStatus: '', invoiced: '', payment: '', packed: '', shipped: '', deliveryMethod: '' },
+    zohoPurchaseOrderId: row.zohoPurchaseOrderId ?? null,
+    zohoBillId: row.zohoBillId ?? null,
   };
 }
 
