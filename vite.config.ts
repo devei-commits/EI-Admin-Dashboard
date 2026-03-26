@@ -89,7 +89,7 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: 'https://ei-website-backend-production.up.railway.app/',
-        //target: "http://127.0.0.1:3000",
+        // target: "http://127.0.0.1:3000",
         changeOrigin: true,
         rewrite: (path) => path,
       },

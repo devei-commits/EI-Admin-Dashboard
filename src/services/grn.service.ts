@@ -36,6 +36,7 @@ export interface GRNRecordFromApi {
   grnDate?: string | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
+  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
@@ -52,6 +53,8 @@ export interface GeneratedLabel {
 export interface GenerateLabelsPayload {
   noOfBoxes?: number;
   unitsPerBox?: number;
+  /** Items in the last box when it is not a full carton (boxes 1..n-1 use unitsPerBox). */
+  lastBoxUnits?: number | null;
   locationPrefix?: string;
   grnBatchMfg?: string;
   expiry?: string;
@@ -131,6 +134,7 @@ export interface UpdateGRNPayload {
   invoiceAmount?: number | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
+  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;

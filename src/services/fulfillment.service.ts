@@ -3,12 +3,21 @@ import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData } from '.
 
 const BASE = '/api/v1/fulfillment';
 
+/** Normalize GET payloads whether the API returns a raw array or a wrapped `{ data: [...] }`. */
+function unwrapList<T>(res: unknown): T[] {
+  if (Array.isArray(res)) return res;
+  if (res && typeof res === 'object' && 'data' in res) {
+    const d = (res as { data?: unknown }).data;
+    if (Array.isArray(d)) return d as T[];
+  }
+  return [];
+}
+
 /* ── List / Get ── */
 
 export async function fetchFulfillmentOrders(): Promise<SaleOrder[]> {
-  const res = await api.get<SaleOrder[]>(BASE);
-  const data = (res as any)?.data ?? res;
-  return Array.isArray(data) ? data : [];
+  const res = await api.get<unknown>(BASE);
+  return unwrapList<SaleOrder>(res);
 }
 
 export async function fetchFulfillmentOrderById(id: number): Promise<SaleOrder | null> {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
 
@@ -20,6 +21,68 @@ function normalizeQcStatus(s: string | undefined): QCStatus {
 type WorkflowStep = 'PO Received' | 'Qty Check' | 'QC Inspection' | 'Label Generation' | 'Dispatch Ready';
 
 const WORKFLOW_STEPS_REQUIRED: WorkflowStep[] = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
+
+/** Compare boxes × units to received qty without float drift; supports large integer quantities. */
+function boxesTimesUnitsEqualsRcvd(noOfBoxes: number, unitsPerBox: number, rcvdQty: number): boolean {
+  if (!Number.isFinite(rcvdQty) || rcvdQty < 0) return false;
+  const boxes = Math.max(1, Math.trunc(noOfBoxes) || 1);
+  const units = Math.max(0, Math.trunc(unitsPerBox) || 0);
+  try {
+    return BigInt(boxes) * BigInt(units) === BigInt(Math.trunc(rcvdQty));
+  } catch {
+    return boxes * units === rcvdQty;
+  }
+}
+
+/** Uniform cartons, or full cartons + optional partial last box: (n−1)×u + last = rcvd. */
+function labelPackagingMatchesRcvd(
+  rcvdQty: number,
+  numBoxes: number,
+  unitsPerBox: number,
+  lastBoxUnitsStr: string
+): { ok: true } | { ok: false; message: string } {
+  const n = Math.max(1, Math.trunc(numBoxes) || 1);
+  const u = Math.max(0, Math.trunc(unitsPerBox) || 0);
+  const lastTrim = lastBoxUnitsStr.trim();
+  if (!lastTrim) {
+    if (!boxesTimesUnitsEqualsRcvd(n, u, rcvdQty)) {
+      const prod =
+        typeof BigInt !== 'undefined'
+          ? String(BigInt(n) * BigInt(u))
+          : String(n * u);
+      return {
+        ok: false,
+        message: `No of boxes × Units/box (${n} × ${u} = ${prod}) must equal received quantity (${rcvdQty}). Or use “Last box (remainder)” for a partial final carton.`,
+      };
+    }
+    return { ok: true };
+  }
+  if (u < 1) {
+    return { ok: false, message: 'Set units per full box (e.g. 20) before entering remainder in last box.' };
+  }
+  const last = Math.trunc(Number(lastTrim)) || 0;
+  if (last < 1 || last > u) {
+    return { ok: false, message: `Last box units must be between 1 and ${u} (nominal full carton).` };
+  }
+  try {
+    const total = BigInt(n - 1) * BigInt(u) + BigInt(last);
+    const rcvd = BigInt(Math.trunc(rcvdQty));
+    if (total !== rcvd) {
+      return {
+        ok: false,
+        message: `(${n - 1} full × ${u}) + ${last} (last) = ${total.toString()} must equal received quantity (${rcvdQty}).`,
+      };
+    }
+  } catch {
+    if ((n - 1) * u + last !== rcvdQty) {
+      return {
+        ok: false,
+        message: `(${n - 1} full × ${u}) + ${last} (last) must equal received quantity (${rcvdQty}).`,
+      };
+    }
+  }
+  return { ok: true };
+}
 
 interface LineItem {
   id: string;
@@ -58,6 +121,7 @@ interface GRNRecord {
   workflowSteps?: WorkflowStep[];
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
+  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
@@ -120,6 +184,7 @@ const ScanSimulator = ({ grnNo }: { grnNo: string }) => {
 // GRN Detail Modal Component
 const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
@@ -135,6 +200,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
   const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
   const [unitsPerBox, setUnitsPerBox] = useState(String(grn.unitsPerBox ?? ''));
+  const [lastBoxUnitsStr, setLastBoxUnitsStr] = useState(
+    grn.lastBoxUnits != null && grn.lastBoxUnits !== undefined ? String(grn.lastBoxUnits) : ''
+  );
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
   const [grnBatchMfg, setGrnBatchMfg] = useState(grn.grnBatchMfg ?? '');
   const [expiry, setExpiry] = useState(grn.expiry ?? '');
@@ -163,7 +231,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     setEditedLineItems(prev =>
       prev.map(item => {
         if (item.id !== itemId) return item;
-        const next = { ...item, [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']: field === 'rcvdQty' ? parseInt(value as string) || 0 : value };
+        const next = {
+          ...item,
+          [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']:
+            field === 'rcvdQty' ? Math.trunc(Number(value)) || 0 : value,
+        };
         if (field === 'rcvdQty') {
           const rcvdQty = next.rcvdQty;
           const diff = rcvdQty - item.poQty;
@@ -174,7 +246,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     );
   };
 
-  const persistUpdate = async (payload: { status?: string; qcStatus?: string; workflowSteps?: string[] }) => {
+  const persistUpdate = async (payload: { status?: string; qcStatus?: string; workflowSteps?: string[] }): Promise<GRNRecord | null> => {
     setSaveError(null);
     setSaving(true);
     try {
@@ -184,6 +256,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         lineItems: editedLineItems,
         noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
+        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
         locationPrefix: locationPrefix || undefined,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
@@ -213,6 +286,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnDate: res.grnDate ?? undefined,
         noOfBoxes: res.noOfBoxes ?? undefined,
         unitsPerBox: res.unitsPerBox ?? undefined,
+        lastBoxUnits: res.lastBoxUnits ?? undefined,
         locationPrefix: res.locationPrefix ?? undefined,
         grnBatchMfg: res.grnBatchMfg ?? undefined,
         expiry: res.expiry ?? undefined,
@@ -220,15 +294,26 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         generatedLabels: res.generatedLabels ?? undefined,
       };
       onSaveChanges(updated);
-      if (payload.status === 'GRN Complete') onClose();
+      if (payload.status === 'GRN Complete') {
+        // Planning batch availability depends on warehouse inventory (SIH) and planning-extracted derived data.
+        // Invalidate so the Planning screen refreshes without a full page reload.
+        queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
+        queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+        queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+        onClose();
+      }
+      return updated;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save');
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSaveOnly = () => persistUpdate({});
+  const handleSaveOnly = () => {
+    void persistUpdate({});
+  };
 
   const completionBlockers: string[] = [];
   if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
@@ -244,7 +329,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       setSaveError(`Cannot mark complete yet: ${completionBlockers.join(' ')}`);
       return;
     }
-    persistUpdate({
+    void persistUpdate({
       status: 'GRN Complete',
       qcStatus: 'Passed',
       workflowSteps: WORKFLOW_STEPS_REQUIRED,
@@ -514,10 +599,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Label data & Generate QR Labels */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
-            <p className="text-xs text-slate-600">One QR per box for this GRN. Each box gets a unique QR (Box 1, Box 2, …) with product, GRN, units/box, location, batch, and expiry. Generate only after QC is Passed.</p>
+            <p className="text-xs text-slate-600">One QR per box for this GRN. Each box gets a unique QR (Box 1, Box 2, …) with product, GRN, units in that box, location, batch, and expiry. If received quantity does not divide evenly into full cartons (e.g. 49 items, 20 per carton), set <strong>Last box (remainder)</strong> so (full boxes × units/box) + last box = received qty. <strong>Generate Labels</strong> saves first, then creates QR codes.</p>
             {qcStatus !== 'Passed' && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                <strong>QC must be Passed</strong> before generating labels. Set QC status to &quot;Passed&quot; and assign &quot;QC by&quot;, then save. After that you can generate QR labels.
+                <strong>QC must be Passed</strong> before generating labels. Set QC status to &quot;Passed&quot;, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
               </div>
             )}
 
@@ -544,12 +629,30 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Units/box</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Units/box (full carton)</label>
                 <input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix</label>
-                <input type="text" value={locationPrefix} onChange={(e) => setLocationPrefix(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" placeholder="e.g. WH-A" />
+                <label className="block text-xs font-medium text-slate-600 mb-1">Last box (remainder)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={lastBoxUnitsStr}
+                  onChange={(e) => setLastBoxUnitsStr(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                  placeholder="e.g. 9 for 2×20 + 9"
+                />
+                <p className="text-[10px] text-slate-500 mt-0.5">Optional. Leave empty when every box has the same count. Must be ≤ full carton size.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code)</label>
+                <input
+                  type="text"
+                  value={locationPrefix}
+                  onChange={(e) => setLocationPrefix(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                  placeholder="e.g. A1-L2-S3"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
@@ -569,7 +672,15 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <button
                   onClick={async () => {
                     if (qcStatus !== 'Passed') {
-                      setLabelError('QC must be Passed before generating labels. Update QC status and save, then try again.');
+                      setLabelError('QC must be Passed before generating labels.');
+                      return;
+                    }
+                    if (!qcBy.trim()) {
+                      setLabelError('Assign QC by before generating labels.');
+                      return;
+                    }
+                    if (!assignedTo.trim()) {
+                      setLabelError('Assign this GRN (Assigned To) before generating labels.');
                       return;
                     }
                     if (editedLineItems.length > 0 && !selectedLineItemId) {
@@ -579,18 +690,29 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
                     const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
                     if (selectedLineItem != null) {
-                      const expectedRcvd = numBoxes * numUnitsPerBox;
-                      if (expectedRcvd !== selectedLineItem.rcvdQty) {
-                        setLabelError(`No of boxes × Units/box (${numBoxes} × ${numUnitsPerBox} = ${expectedRcvd}) must equal the received quantity (${selectedLineItem.rcvdQty}) for the selected line item.`);
+                      const pack = labelPackagingMatchesRcvd(
+                        selectedLineItem.rcvdQty,
+                        numBoxes,
+                        numUnitsPerBox,
+                        lastBoxUnitsStr
+                      );
+                      if (!pack.ok) {
+                        setLabelError(pack.message);
                         return;
                       }
                     }
                     setLabelError(null);
                     setGeneratingLabels(true);
                     try {
+                      const saved = await persistUpdate({});
+                      if (!saved) {
+                        addToast('error', 'Could not save changes. Fix the error above, then try Generate Labels again.');
+                        return;
+                      }
                       const res = await generateGRNLabels(grn.id, {
                         noOfBoxes: numBoxes,
                         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
+                        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
                         locationPrefix: locationPrefix || undefined,
                         grnBatchMfg: grnBatchMfg || undefined,
                         expiry: expiry || undefined,
@@ -603,6 +725,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       if (res.workflowSteps) {
                         setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
                       }
+                      const merged: GRNRecord = {
+                        ...saved,
+                        generatedLabels: res.labels,
+                        workflowSteps: (res.workflowSteps ?? saved.workflowSteps) as WorkflowStep[],
+                      };
+                      onSaveChanges(merged);
                     } catch (e: unknown) {
                       const err = e as { status?: number; body?: { error?: string }; message?: string };
                       const status = err?.status;
@@ -610,7 +738,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       const msg = bodyError || (e instanceof Error ? e.message : 'Failed to generate labels');
                       setLabelError(msg);
                       if (status === 403) {
-                        addToast('error', 'Save QC changes before generating labels. Set QC status to Passed and assign QC by, then save.');
+                        addToast('error', 'QC must be Passed on the server before labels can be generated. Save failed or QC was not persisted.');
                       } else {
                         addToast('error', msg);
                       }
@@ -618,10 +746,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       setGeneratingLabels(false);
                     }
                   }}
-                  disabled={generatingLabels || qcStatus !== 'Passed'}
+                  disabled={generatingLabels || saving || qcStatus !== 'Passed'}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  {generatingLabels ? 'Generating…' : 'Generate Labels'}
+                  {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
                 </button>
               ) : (
                 <button
@@ -641,7 +769,24 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {labels.map((label) => {
-                  let payload: { grn_id?: number; grn_no?: string; product_name?: string; item_code?: string; units_per_box?: number; location_prefix?: string; grn_batch_mfg?: string; expiry?: string; mfg_batch?: string; box_index?: number } = {};
+                  let payload: {
+                    grn_id?: number;
+                    grn_no?: string;
+                    product_name?: string;
+                    item_code?: string;
+                    units_per_box?: number;
+                    full_carton_units?: number;
+                    partial_last_box?: boolean;
+                    location_prefix?: string;
+                    toRack?: string | null;
+                    toZone?: string | null;
+                    rack?: string | null;
+                    zone?: string | null;
+                    grn_batch_mfg?: string;
+                    expiry?: string;
+                    mfg_batch?: string;
+                    box_index?: number;
+                  } = {};
                   try {
                     payload = JSON.parse(label.qrPayload);
                   } catch {
@@ -659,8 +804,21 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                         {payload.product_name && <p><span className="font-semibold">Product:</span> {payload.product_name}</p>}
                         {payload.item_code && <p><span className="font-semibold">Item code:</span> {payload.item_code}</p>}
                         <p><span className="font-semibold">GRN:</span> {payload.grn_no || payload.grn_id}</p>
-                        <p><span className="font-semibold">Units/box:</span> {payload.units_per_box}</p>
-                        <p><span className="font-semibold">Location:</span> {payload.location_prefix || '—'}</p>
+                        <p><span className="font-semibold">Units in this box:</span> {payload.units_per_box}</p>
+                        {payload.full_carton_units != null && (
+                          <p><span className="font-semibold">Full carton size:</span> {payload.full_carton_units}</p>
+                        )}
+                        {payload.partial_last_box && (
+                          <p className="text-amber-700 font-medium">Partial last carton</p>
+                        )}
+                        <p>
+                          <span className="font-semibold">Rack:</span>{' '}
+                          {payload.toRack || payload.rack || payload.location_prefix || '—'}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Zone:</span>{' '}
+                          {payload.toZone || payload.zone || '—'}
+                        </p>
                         <p><span className="font-semibold">Batch mfg:</span> {payload.grn_batch_mfg || '—'}</p>
                         <p><span className="font-semibold">Expiry:</span> {payload.expiry || '—'}</p>
                         <p><span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}</p>
@@ -744,6 +902,7 @@ function mapApiToGRNRecord(r: {
   grnDate?: string | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
+  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
@@ -771,6 +930,7 @@ function mapApiToGRNRecord(r: {
     grnDate: r.grnDate ?? undefined,
     noOfBoxes: r.noOfBoxes ?? undefined,
     unitsPerBox: r.unitsPerBox ?? undefined,
+    lastBoxUnits: r.lastBoxUnits ?? undefined,
     locationPrefix: r.locationPrefix ?? undefined,
     grnBatchMfg: r.grnBatchMfg ?? undefined,
     expiry: r.expiry ?? undefined,

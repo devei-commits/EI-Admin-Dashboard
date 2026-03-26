@@ -2939,9 +2939,16 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        const shortfall = item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum);
-                        const hasShortfall = shortfall > 0;
+                        const shortfall =
+                          item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum);
+                        // Avoid float edge cases (e.g. 0.03 kg lines) hiding a real gap.
+                        const hasShortfall = shortfall > 1e-6;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
+                        const quoteSlabs = getQuotationSlabsForItem(item);
+                        const hasMatchingQuotation = quoteSlabs.length > 0;
+                        /** Allow release when there is a gap, when a Procurement quotation matches this RM/PM, or when a planned line already exists (another vendor / follow-on release). */
+                        const canReleaseToPlanning =
+                          hasShortfall || hasMatchingQuotation || hasExistingPlannedLine;
                         return (
                       <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-2 py-2">
@@ -3010,7 +3017,12 @@ const Planning = () => {
                             <button
                               type="button"
                               className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={!hasShortfall}
+                              disabled={!canReleaseToPlanning}
+                              title={
+                                canReleaseToPlanning
+                                  ? undefined
+                                  : 'Needs a shortage, a matching quotation in Procurement → Quotations, or an existing planned line to add another release.'
+                              }
                               onClick={() => openReleaseToPlanningModal(item)}
                             >
                               Release to Planning
