@@ -19,7 +19,15 @@ import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.ser
 import type { PoTrackingRecord } from '../../services/poTracking.service';
 import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
-import { fetchPriceListPage, type PriceListItemPage } from '../../services/itemsList.service';
+import {
+  fetchPriceListPage,
+  createItemList,
+  createItemListRate,
+  createItemListTier,
+  updateItemListTier,
+  updateItemListRate,
+  type PriceListItemPage,
+} from '../../services/itemsList.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import {
@@ -345,6 +353,28 @@ const Procurement: React.FC = () => {
       itemType?: 'RM' | 'PM';
     }[]
   >([]);
+
+  const [editItemsListLineTarget, setEditItemsListLineTarget] = useState<{
+    itemsListId: number;
+    rateId: number;
+    tierId: number;
+    vendorId: number;
+    vendorName: string;
+    requestType: RequestType;
+    itemName: string;
+    itemCode: string;
+    moqMin: number;
+    moqMax: number | null;
+    pricePerUnit: number;
+    paymentTerms: string;
+  } | null>(null);
+  const [editItemsListLineSaving, setEditItemsListLineSaving] = useState(false);
+  const [editItemsListLineForm, setEditItemsListLineForm] = useState<{
+    pricePerUnit: string;
+    moqMin: string;
+    moqMax: string;
+    paymentTerms: string;
+  }>({ pricePerUnit: '', moqMin: '', moqMax: '', paymentTerms: '' });
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
   const [selectedGrn, setSelectedGrn] = useState<{
     request: ProcurementRequest;
@@ -558,22 +588,22 @@ const Procurement: React.FC = () => {
     enabled: !!selectedPO?.backendPoId,
   });
 
-  const needItemsListForDraftPO = sideSection === 'Draft POs' || !!selectedDraftPO;
-  const { data: itemsListRm } = useQuery({
+  const needItemsListForQuotesOrDraftPO = sideSection === 'Quotations' || sideSection === 'Draft POs' || !!selectedDraftPO;
+  const { data: itemsListRm = [] } = useQuery({
     queryKey: ['items-list-page', 'RM'],
     queryFn: async () => {
       const res = await fetchPriceListPage('RM');
       return res.success ? res.data ?? [] : [];
     },
-    enabled: needItemsListForDraftPO,
+    enabled: needItemsListForQuotesOrDraftPO,
   });
-  const { data: itemsListPm } = useQuery({
+  const { data: itemsListPm = [] } = useQuery({
     queryKey: ['items-list-page', 'PM'],
     queryFn: async () => {
       const res = await fetchPriceListPage('PM');
       return res.success ? res.data ?? [] : [];
     },
-    enabled: needItemsListForDraftPO,
+    enabled: needItemsListForQuotesOrDraftPO,
   });
 
   const vendorItemPriceMap = useMemo(() => {
@@ -640,10 +670,9 @@ const Procurement: React.FC = () => {
   }, [selectedDraftPO, quotes, vendorItemPriceMap]);
 
   const isProcurementDataLoading =
-    backendPrResult === undefined ||
-    quotationsResult === undefined ||
     vendorClientList === undefined ||
-    purchaseOrdersRaw === undefined;
+    purchaseOrdersRaw === undefined ||
+    (sideSection !== 'Quotations' && (backendPrResult === undefined || quotationsResult === undefined));
 
   useEffect(() => {
     if (backendPrResult !== undefined) setRequests(requestsFromApi);
@@ -1081,6 +1110,189 @@ const Procurement: React.FC = () => {
     });
   }, [categoryFilter, vendorFilter, statusFilter, searchQuery, quotes, sideSection, requests]);
 
+  const itemsListQuotes = useMemo<VendorQuote[]>(() => {
+    type TmpLine = QuoteLine & {
+      vendorId: string;
+      __itemsListId: number;
+      __rateId: number;
+      __tierId: number;
+      __moqMin: number;
+      __moqMax: number | null;
+      __paymentTerms: string;
+    };
+    const bucket = new Map<string, { vendor: string; vendorId: string; requestType: RequestType; lines: TmpLine[]; terms?: string }>();
+    const add = (type: RequestType, item: PriceListItemPage) => {
+      const code = String(item.code ?? '').trim();
+      const name = String(item.name ?? '').trim() || code;
+      const unit = type === 'RM' ? (String(item.uom ?? 'KG') || 'KG') : 'PCS';
+      (item.vendorRates ?? []).forEach((rate) => {
+        const vendorName = String(rate.vendor_name ?? rate.vendor_code ?? '').trim();
+        if (!vendorName) return;
+        const vendorId = String(rate.vendor_id ?? '');
+        const itemsListId = Number(item.itemsListId ?? item.itemsListId) || 0;
+        if (!Number.isFinite(itemsListId) || itemsListId <= 0) return;
+        const rateId = Number(rate.id) || 0;
+        if (!Number.isFinite(rateId) || rateId <= 0) return;
+        const key = `${vendorName.toLowerCase()}|${vendorId}|${type}`;
+        const existing = bucket.get(key) ?? { vendor: vendorName, vendorId, requestType: type, lines: [], terms: (rate as any).payment_terms ?? '' };
+        (rate.tiers ?? []).forEach((tier) => {
+          const moq = Number(tier.moq_min ?? 0) || 0;
+          const price = Number((tier as any).price_per_unit ?? 0) || 0;
+          if (moq <= 0 || price <= 0) return;
+          const tierId = Number(tier.id) || 0;
+          if (!Number.isFinite(tierId) || tierId <= 0) return;
+          existing.lines.push({
+            item: name,
+            itemId: code,
+            unit,
+            qty: String(moq),
+            pricePerUnit: price,
+            totalValue: moq * price,
+            vsPlanned: '—',
+            vendorId,
+            raw_material_id: item.raw_material_id ?? undefined,
+            pack_material_id: item.pack_material_id ?? undefined,
+            __itemsListId: itemsListId,
+            __rateId: rateId,
+            __tierId: tierId,
+            __moqMin: moq,
+            __moqMax: tier.moq_max ?? null,
+            __paymentTerms: String((rate as any).payment_terms ?? ''),
+          });
+        });
+        bucket.set(key, existing);
+      });
+    };
+    (itemsListRm ?? []).forEach((it) => add('RM', it));
+    (itemsListPm ?? []).forEach((it) => add('PM', it));
+
+    const out: VendorQuote[] = [];
+    bucket.forEach((b) => {
+      const lines = b.lines
+        .sort((a, z) => a.item.localeCompare(z.item) || Number(a.qty) - Number(z.qty))
+        // remove vendorId helper
+        .map(({ vendorId: _vendorId, ...rest }) => rest);
+      out.push({
+        id: `IL-${b.requestType}-${b.vendorId}`,
+        requestId: '',
+        requestCode: 'ITEMS LIST',
+        requestType: b.requestType,
+        vendor: b.vendor,
+        status: 'Confirmed',
+        quotedOn: new Date().toISOString().slice(0, 10),
+        leadTimeDays: 0,
+        terms: String(b.terms ?? 'As per contract'),
+        validTill: '—',
+        rating: 0,
+        fileName: '—',
+        note: 'From Items List (vendor price list)',
+        lines,
+      });
+    });
+    return out;
+  }, [itemsListPm, itemsListRm]);
+
+  const filteredItemsListQuotes = useMemo(() => {
+    return itemsListQuotes.filter((quote) => {
+      if (categoryFilter !== 'All' && quote.requestType !== categoryFilter) return false;
+      if (vendorFilter !== 'All Vendors' && quote.vendor !== vendorFilter) return false;
+      if (statusFilter !== 'All Statuses' && quote.status !== statusFilter) return false;
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      if (quote.vendor.toLowerCase().includes(q)) return true;
+      if (quote.id.toLowerCase().includes(q)) return true;
+      if (quote.requestCode.toLowerCase().includes(q)) return true;
+      return (quote.lines ?? []).some((l) => String(l.item ?? '').toLowerCase().includes(q) || String(l.itemId ?? '').toLowerCase().includes(q));
+    });
+  }, [categoryFilter, itemsListQuotes, searchQuery, statusFilter, vendorFilter]);
+
+  const quotesForQuotationsSection = sideSection === 'Quotations' ? filteredItemsListQuotes : filteredQuotes;
+
+  const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
+    const meta = line as QuoteLine & {
+      __itemsListId?: number;
+      __rateId?: number;
+      __tierId?: number;
+      __moqMin?: number;
+      __moqMax?: number | null;
+      __paymentTerms?: string;
+    };
+    const itemsListId = Number(meta.__itemsListId ?? 0) || 0;
+    const rateId = Number(meta.__rateId ?? 0) || 0;
+    const tierId = Number(meta.__tierId ?? 0) || 0;
+    if (itemsListId <= 0 || rateId <= 0 || tierId <= 0) {
+      addToast('error', 'This row is missing Items List linkage (itemsListId/rateId/tierId).');
+      return;
+    }
+    const moqMin = Number(meta.__moqMin ?? 0) || 0;
+    const moqMax = meta.__moqMax != null ? Number(meta.__moqMax) : null;
+    const paymentTerms = String(meta.__paymentTerms ?? quote.terms ?? '');
+    setEditItemsListLineTarget({
+      itemsListId,
+      rateId,
+      tierId,
+      vendorId: Number(String((quote as any).vendorId ?? '').replace(/[^\d]/g, '')) || Number((quote as any).vendorId) || 0,
+      vendorName: quote.vendor,
+      requestType: quote.requestType,
+      itemName: String(line.item ?? ''),
+      itemCode: String(line.itemId ?? ''),
+      moqMin,
+      moqMax,
+      pricePerUnit: Number(line.pricePerUnit ?? 0) || 0,
+      paymentTerms,
+    });
+    setEditItemsListLineForm({
+      pricePerUnit: String(Number(line.pricePerUnit ?? 0) || ''),
+      moqMin: String(moqMin || ''),
+      moqMax: moqMax == null ? '' : String(moqMax),
+      paymentTerms: paymentTerms || '',
+    });
+  };
+
+  const saveEditItemsListTier = async () => {
+    if (!editItemsListLineTarget) return;
+    const itemsListId = editItemsListLineTarget.itemsListId;
+    const rateId = editItemsListLineTarget.rateId;
+    const tierId = editItemsListLineTarget.tierId;
+    const nextPrice = Number(editItemsListLineForm.pricePerUnit || 0) || 0;
+    const moqMaxRaw = String(editItemsListLineForm.moqMax ?? '').trim();
+    const nextMoqMax = moqMaxRaw === '' ? null : (Number(moqMaxRaw) || 0);
+    const nextPaymentTerms = String(editItemsListLineForm.paymentTerms ?? '').trim();
+    if (nextPrice <= 0) {
+      addToast('warning', 'Enter a valid price.');
+      return;
+    }
+    setEditItemsListLineSaving(true);
+    try {
+      // Update payment terms at vendor-rate level (optional).
+      if (nextPaymentTerms !== editItemsListLineTarget.paymentTerms) {
+        const resRate = await updateItemListRate(String(itemsListId), rateId, { payment_terms: nextPaymentTerms });
+        if (!resRate.success) {
+          addToast('error', 'Failed to update payment terms.');
+          return;
+        }
+      }
+
+      // IMPORTANT: edit must update existing tier (no new tiers created from Procurement UI).
+      const resTier = await updateItemListTier(String(itemsListId), rateId, tierId, {
+        moq_max: nextMoqMax,
+        price_per_unit: nextPrice,
+        note: 'Edited from Procurement → Quotations',
+      });
+      if (!resTier.success) {
+        addToast('error', 'Failed to update tier.');
+        return;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'RM'] });
+      await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'PM'] });
+      addToast('success', 'Saved to Items List.');
+      setEditItemsListLineTarget(null);
+    } finally {
+      setEditItemsListLineSaving(false);
+    }
+  };
+
   const filteredDraftPOs = useMemo(() => {
     return draftPOs.filter((dpo) => {
       if (categoryFilter !== 'All' && dpo.type !== categoryFilter) return false;
@@ -1099,9 +1311,10 @@ const Procurement: React.FC = () => {
   }, [requests, draftPOs]);
 
   const quoteStats = useMemo(() => {
-    const totalQuotes = filteredQuotes.length;
-    const confirmed = filteredQuotes.filter((quote) => quote.status === 'Confirmed').length;
-    const notSelected = filteredQuotes.filter((quote) => quote.status === 'Not Selected').length;
+    const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
+    const totalQuotes = list.length;
+    const confirmed = list.filter((quote) => quote.status === 'Confirmed').length;
+    const notSelected = list.filter((quote) => quote.status === 'Not Selected').length;
 
     return {
       totalQuotes,
@@ -1110,7 +1323,7 @@ const Procurement: React.FC = () => {
       urgent: requests.filter((request) => request.priority === 'High' && request.status === 'New').length,
       pendingAction: requests.filter((request) => request.status === 'New' || request.status === 'Quoted').length,
     };
-  }, [filteredQuotes, requests]);
+  }, [filteredQuotes, quotesForQuotationsSection, requests, sideSection]);
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
@@ -3173,12 +3386,12 @@ const Procurement: React.FC = () => {
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       Loading procurement data…
                     </div>
-                  ) : filteredQuotes.length === 0 ? (
+                  ) : quotesForQuotationsSection.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       No quotes match current filters.
                     </div>
                   ) : (
-                    filteredQuotes.map((quote) => {
+                    quotesForQuotationsSection.map((quote) => {
                       const isExpanded = expandedQuoteId === quote.id;
 
                       return (
@@ -3229,7 +3442,18 @@ const Procurement: React.FC = () => {
                                 {quote.lines.map((line, idx) => (
                                   <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="px-4 py-3">
-                                      <span className="font-semibold text-slate-900">{line.item}</span>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="font-semibold text-slate-900">{line.item}</span>
+                                        {quote.id.startsWith('IL-') && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openEditItemsListTier(quote, line)}
+                                            className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                          >
+                                            Edit
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="px-4 py-3">
                                       <span className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
@@ -3537,6 +3761,102 @@ const Procurement: React.FC = () => {
                     )}
                   </div>
                 </>
+              )}
+
+              {/* Items List tier edit modal (Quotations view writes to Items List) */}
+              {editItemsListLineTarget && (
+                <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center px-4">
+                  <div className="w-full max-w-lg rounded-xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">Edit vendor tier (Items List)</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {editItemsListLineTarget.vendorName} · {editItemsListLineTarget.requestType} · {editItemsListLineTarget.itemCode || '—'} {editItemsListLineTarget.itemName}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditItemsListLineTarget(null)}
+                        className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                        disabled={editItemsListLineSaving}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ min</label>
+                          <input
+                            value={editItemsListLineForm.moqMin}
+                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMin: e.target.value }))}
+                            type="number"
+                            min={1}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            disabled
+                          />
+                          <p className="text-[11px] text-slate-500 mt-1">MOQ min can’t be edited here. Create a new tier from Items List.</p>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ max (optional)</label>
+                          <input
+                            value={editItemsListLineForm.moqMax}
+                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMax: e.target.value }))}
+                            type="number"
+                            min={0}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            disabled={editItemsListLineSaving}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Price / unit (₹)</label>
+                          <input
+                            value={editItemsListLineForm.pricePerUnit}
+                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            disabled={editItemsListLineSaving}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms</label>
+                          <input
+                            value={editItemsListLineForm.paymentTerms}
+                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                            type="text"
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            disabled={editItemsListLineSaving}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditItemsListLineTarget(null)}
+                          className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold"
+                          disabled={editItemsListLineSaving}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveEditItemsListTier}
+                          className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 text-sm font-semibold disabled:opacity-60"
+                          disabled={editItemsListLineSaving}
+                        >
+                          {editItemsListLineSaving ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        This updates the existing Items List tier (no new entries created from Procurement).
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {sideSection === 'Issued POs' && (() => {
@@ -7371,51 +7691,122 @@ const Procurement: React.FC = () => {
                       Number(recordQuoteForm.advancePercent)
                     );
 
-                    const items = recordQuoteLines.map((l) => {
-                      const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
-                      const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
-                      const total = qty * price;
-                      const item: { itemId: string; name: string; orderQty: number; pricePerUnit: number; uom: string; totalValue: number; raw_material_id?: number; pack_material_id?: number } = {
-                        itemId: l.itemId || l.name || '',
-                        name: l.name || l.itemId || '',
-                        orderQty: qty,
-                        pricePerUnit: price,
-                        uom: l.uom,
-                        totalValue: total,
-                      };
-                      if (l.raw_material_id != null) item.raw_material_id = l.raw_material_id;
-                      if (l.pack_material_id != null) item.pack_material_id = l.pack_material_id;
-                      return item;
-                    });
+                    // Save into Items List (single source of truth for vendor pricing).
+                    const loadPage = async (type: 'RM' | 'PM') => {
+                      const res = await fetchPriceListPage(type);
+                      return res.success ? (res.data ?? []) : [];
+                    };
+                    let rmPage = await loadPage('RM');
+                    let pmPage = await loadPage('PM');
 
-                    const payload: Parameters<typeof createProcurementQuotation>[0] = {
-                      vendorId,
-                      quoteDate: recordQuoteForm.quoteDate || null,
-                      validTill: recordQuoteForm.validTill || null,
-                      leadTimeDays: recordQuoteForm.leadTimeDays
-                        ? Number(recordQuoteForm.leadTimeDays)
-                        : null,
-                      paymentTerms: composedPaymentTerms || null,
-                      notes: recordQuoteForm.notes || null,
-                      status: 'pending',
-                      items,
+                    const getOrCreateItemsListId = async (line: { raw_material_id?: number | null; pack_material_id?: number | null }) => {
+                      const isRm = line.raw_material_id != null;
+                      const type = isRm ? 'RM' : 'PM';
+                      const idToMatch = isRm ? Number(line.raw_material_id) : Number(line.pack_material_id);
+                      const page = isRm ? rmPage : pmPage;
+                      const match = isRm
+                        ? page.find((p) => Number(p.raw_material_id) === idToMatch)
+                        : page.find((p) => Number(p.pack_material_id) === idToMatch);
+                      const existingId = Number(match?.itemsListId ?? 0) || 0;
+                      if (existingId > 0) return { itemsListId: existingId, pageRow: match ?? null };
+
+                      // Not present in items_list yet → create it.
+                      const createRes = await createItemList({
+                        type,
+                        raw_material_id: isRm ? (line.raw_material_id ?? null) : null,
+                        pack_material_id: !isRm ? (line.pack_material_id ?? null) : null,
+                        status: 'Active',
+                      });
+                      // 409 Conflict is expected when seeded already exists; proceed in all cases by reloading.
+                      if (!createRes.success) {
+                        const msg =
+                          typeof createRes.error === 'string'
+                            ? createRes.error
+                            : (createRes.error as any)?.message ?? '';
+                        const lowered = String(msg).toLowerCase();
+                        if (msg && !lowered.includes('already') && !lowered.includes('conflict') && !lowered.includes('409')) {
+                          addToast('error', msg || 'Failed to create Items List entry');
+                          return { itemsListId: 0, pageRow: null };
+                        }
+                      }
+
+                      // Reload the page list and find again.
+                      if (type === 'RM') rmPage = await loadPage('RM');
+                      else pmPage = await loadPage('PM');
+                      const page2 = type === 'RM' ? rmPage : pmPage;
+                      const match2 =
+                        type === 'RM'
+                          ? page2.find((p) => Number(p.raw_material_id) === idToMatch)
+                          : page2.find((p) => Number(p.pack_material_id) === idToMatch);
+                      const createdId = Number(match2?.itemsListId ?? 0) || 0;
+                      return { itemsListId: createdId, pageRow: match2 ?? null };
                     };
 
-                    const res = await createProcurementQuotation(payload);
+                    for (const l of recordQuoteLines) {
+                      const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                      const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                      if (qty <= 0 || price <= 0) continue;
 
-                    if (!res.success || !res.data) {
-                      addToast(
-                        'error',
-                        typeof res.error === 'string' ? res.error : 'Failed to record quotation'
-                      );
-                      return;
+                      const { itemsListId, pageRow } = await getOrCreateItemsListId(l);
+                      if (itemsListId <= 0 || !pageRow) {
+                        addToast('error', 'Failed to resolve Items List entry for one of the lines.');
+                        return;
+                      }
+
+                      const existingRate = (pageRow.vendorRates ?? []).find((r) => Number(r.vendor_id) === Number(vendorId)) ?? null;
+                      let rateId = Number(existingRate?.id ?? 0) || 0;
+                      if (rateId <= 0) {
+                        const resRate = await createItemListRate(String(itemsListId), {
+                          vendor_id: vendorId,
+                          default_rate: price,
+                          default_moq: qty,
+                          currency: 'INR',
+                          payment_terms: composedPaymentTerms || null,
+                          lead_time_days: recordQuoteForm.leadTimeDays ? Number(recordQuoteForm.leadTimeDays) : null,
+                        });
+                        if (!resRate.success || !resRate.data) {
+                          addToast('error', 'Failed to create vendor rate in Items List.');
+                          return;
+                        }
+                        rateId = Number(resRate.data.id) || 0;
+                        // Reload to get updated tiers/rates for subsequent matching.
+                        if (l.raw_material_id != null) rmPage = await loadPage('RM');
+                        else pmPage = await loadPage('PM');
+                      } else {
+                        await updateItemListRate(String(itemsListId), rateId, {
+                          default_rate: price,
+                          default_moq: qty,
+                          payment_terms: composedPaymentTerms || null,
+                          lead_time_days: recordQuoteForm.leadTimeDays ? Number(recordQuoteForm.leadTimeDays) : null,
+                        });
+                      }
+
+                      // Create tier row for this MOQ (or update if same MOQ already exists).
+                      const existingTier = (existingRate?.tiers ?? []).find((t) => Number(t.moq_min) === Number(qty)) ?? null;
+                      if (existingTier) {
+                        await updateItemListTier(String(itemsListId), rateId, existingTier.id, {
+                          price_per_unit: price,
+                          moq_max: existingTier.moq_max ?? null,
+                          note: 'Recorded from Procurement → Quotations',
+                        });
+                      } else {
+                        const resTier = await createItemListTier(String(itemsListId), rateId, {
+                          moq_min: qty,
+                          moq_max: null,
+                          price_per_unit: price,
+                          valid_till: recordQuoteForm.validTill || null,
+                          note: 'Recorded from Procurement → Quotations',
+                        });
+                        if (!resTier.success) {
+                          addToast('error', 'Failed to create tier in Items List.');
+                          return;
+                        }
+                      }
                     }
 
-                    queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
-                    addToast(
-                      'success',
-                      `Quotation recorded (${res.data.vendorName ?? 'Vendor'})`
-                    );
+                    await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'RM'] });
+                    await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'PM'] });
+                    addToast('success', 'Saved vendor price list (Items List).');
                     setShowRecordQuoteModal(false);
                   }}
                   className="px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600"

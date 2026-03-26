@@ -50,6 +50,7 @@ const ItemsList: React.FC = () => {
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
   const [paymentTerms, setPaymentTerms] = useState<string>('');
+  const [leadTimeDays, setLeadTimeDays] = useState<string>('');
 
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
@@ -161,6 +162,7 @@ const ItemsList: React.FC = () => {
     setSelectedVendor(null);
     setCurrency('INR');
     setPaymentTerms('');
+    setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(false);
     setItemSearchQuery('');
@@ -173,6 +175,7 @@ const ItemsList: React.FC = () => {
     setSelectedVendor(null);
     setCurrency('INR');
     setPaymentTerms('');
+    setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(true);
     setItemSearchQuery('');
@@ -226,6 +229,7 @@ const ItemsList: React.FC = () => {
         vendor_id: parseInt(selectedVendor.id, 10),
         currency,
         payment_terms: paymentTerms || undefined,
+        lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
       });
       if (!rateRes.success || !rateRes.data) {
         addToast('error', rateRes.error?.message ?? 'Failed to create vendor rate');
@@ -740,6 +744,17 @@ const ItemsList: React.FC = () => {
                     <option value="Advance">Advance</option>
                     <option value="CIA">CIA</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="0"
+                  />
                 </div>
               </div>
               <div>
