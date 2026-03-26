@@ -245,25 +245,28 @@ const ItemsList: React.FC = () => {
       setShowAddTierModal(false);
       setTierTarget(null);
       setAddPriceListMode(false);
-      if (activeTab === 'rm' || activeTab === 'pm') {
-        await itemsPageQuery.refetch();
-      }
-      if (activeTab === 'pr') {
-        await prProductsQuery.refetch();
-      }
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          typeof q.queryKey[0] === 'string' &&
+          q.queryKey[0].startsWith('items-list'),
+        refetchType: 'all',
+      });
     } catch (e) {
       addToast('error', 'Failed to save tiers');
     }
     setSubmittingTiers(false);
   };
 
+  /** Refetch all Items List queries (active + inactive) so data from Vendor Master sync appears without a full reload. */
   const refetchPage = () => {
-    if (activeTab === 'rm' || activeTab === 'pm') {
-      void itemsPageQuery.refetch();
-    }
-    if (activeTab === 'pr') {
-      void prProductsQuery.refetch();
-    }
+    void queryClient.invalidateQueries({
+      predicate: (q) =>
+        Array.isArray(q.queryKey) &&
+        typeof q.queryKey[0] === 'string' &&
+        q.queryKey[0].startsWith('items-list'),
+      refetchType: 'all',
+    });
   };
 
   const openEditRate = (item: PriceListItemPage, rate: RateForEdit) => {
@@ -449,6 +452,11 @@ const ItemsList: React.FC = () => {
                     </option>
                   ))}
                 </select>
+                {vendorFilterId ? (
+                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
+                    Only rows with a rate for this vendor are shown. Choose &quot;All vendors&quot; to see every RM/PM line.
+                  </span>
+                ) : null}
               </div>
             )}
           </div>

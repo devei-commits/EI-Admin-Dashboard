@@ -1,17 +1,28 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VendorClient as VendorClientType } from '../context/VendorClientContext';
-import { fetchVendorClientsPage, updateVendorClient as updateVendorClientApi, deleteVendorClient as deleteVendorClientApi } from '../services/vendorClient.service';
+import {
+ fetchVendorClientsPage,
+ fetchVendorClientById,
+ updateVendorClient as updateVendorClientApi,
+ deleteVendorClient as deleteVendorClientApi,
+} from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
 
 const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boolean }> = ({ label, value, mono }) => {
- const display = value === null || value === undefined || value === '' ? '-' : String(value);
+ const isEl = React.isValidElement(value);
+ const display =
+  value === null || value === undefined || value === ''
+   ? '-'
+   : !isEl
+     ? String(value)
+     : null;
  return (
   <div>
    <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">{label}</div>
-   <div className={`text-sm text-gray-800 mt-1 ${mono ? 'font-mono' : ''}`}>{display}</div>
+   <div className={`text-sm text-gray-800 mt-1 ${mono ? 'font-mono' : ''}`}>{isEl ? value : display}</div>
   </div>
  );
 };
@@ -29,9 +40,9 @@ const VendorClientSection: React.FC<{ title: string; icon?: string; children: Re
 const VendorClient: React.FC = () => {
  const { addToast } = useToast();
   const queryClient = useQueryClient();
- const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master' | 'vendor-form' | 'client-form'>('vendor-master');
- const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
- const [editingClientId, setEditingClientId] = useState<string | null>(null);
+ const [activeTab, setActiveTab] = useState<'vendor-master' | 'client-master'>('vendor-master');
+ const [vendorCreateModalOpen, setVendorCreateModalOpen] = useState(false);
+ const [clientCreateModalOpen, setClientCreateModalOpen] = useState(false);
  const [editing, setEditing] = useState<{ id: string; type: 'vendor' | 'client' } | null>(null);
 
  const [viewing, setViewing] = useState<VendorClientType | null>(null);
@@ -73,11 +84,9 @@ const VendorClient: React.FC = () => {
  };
 
  const tabs = [
-  { id: 'vendor-master', label: 'Vendor Master', icon: '' },
-  { id: 'client-master', label: 'Client Master', icon: '' },
-  { id: 'vendor-form', label: 'Vendor Form', icon: '' },
-  { id: 'client-form', label: 'Client Form', icon: '' },
- ] as const;
+  { id: 'vendor-master' as const, label: 'Vendor Master', icon: '' },
+  { id: 'client-master' as const, label: 'Client Master', icon: '' },
+ ];
 
  const vendorOffset = (vendorPage - 1) * vendorPageSize;
  const clientOffset = (clientPage - 1) * clientPageSize;
@@ -148,24 +157,20 @@ const VendorClient: React.FC = () => {
  }, [clientPage, clientTotalPages]);
 
  const openVendorCreate = () => {
-  setEditingVendorId(null);
-  setActiveTab('vendor-form');
+  setVendorCreateModalOpen(true);
  };
 
  const openClientCreate = () => {
-  setEditingClientId(null);
-  setActiveTab('client-form');
+  setClientCreateModalOpen(true);
  };
 
  const openVendorEdit = (id: string) => {
   setViewing(null);
-  setEditingVendorId(id);
   setEditing({ id, type: 'vendor' });
  };
 
  const openClientEdit = (id: string) => {
   setViewing(null);
-  setEditingClientId(id);
   setEditing({ id, type: 'client' });
  };
 
@@ -181,8 +186,7 @@ const VendorClient: React.FC = () => {
 
   // Close details panel if the deleted record is being viewed/edited.
   if (viewing?.id === id) setViewing(null);
-  if (editingVendorId === id) setEditingVendorId(null);
-  if (editingClientId === id) setEditingClientId(null);
+  if (editing?.id === id) setEditing(null);
 
   await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
   addToast('success', 'Record deleted');
@@ -204,9 +208,23 @@ const VendorClient: React.FC = () => {
   addToast('success', 'Status updated');
  };
 
- const openView = (vc: VendorClientType) => {
-  setViewing(vc);
- };
+ const openView = useCallback(
+  async (vc: VendorClientType) => {
+   // The paginated list rows can be stale and sometimes omit large nested JSON blobs.
+   // Always refetch the latest record so "Vendor Items & Price List" reflects recent saves.
+   try {
+    const res = await fetchVendorClientById(String(vc.id));
+    if (res.success && res.data) {
+     setViewing(res.data as unknown as VendorClientType);
+     return;
+    }
+   } catch {
+    // Ignore and fall back to the list row.
+   }
+   setViewing(vc);
+  },
+  []
+ );
 
  const closeView = () => {
   setViewing(null);
@@ -214,8 +232,6 @@ const VendorClient: React.FC = () => {
 
  const closeEdit = () => {
   setEditing(null);
-  setEditingVendorId(null);
-  setEditingClientId(null);
  };
 
  const renderListTable = (
@@ -708,28 +724,6 @@ const VendorClient: React.FC = () => {
       </div>
      </div>
     );
-  case 'vendor-form':
-   return (
-    <VendorForm
-    editingId={editingVendorId}
-    onSaved={() => {
-     void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
-     setEditingVendorId(null);
-     setActiveTab('vendor-master');
-    }}
-    />
-   );
-  case 'client-form':
-   return (
-    <ClientForm
-    editingId={editingClientId}
-    onSaved={() => {
-     void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
-     setEditingClientId(null);
-     setActiveTab('client-master');
-    }}
-    />
-   );
   }
  };
 
@@ -737,12 +731,13 @@ const VendorClient: React.FC = () => {
   <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
    <div className="max-w-7xl mx-auto">
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-     {/* Tab Header */}
+     {/* Master tabs: Vendor | Client */}
      <div className="border-b border-gray-200">
       <div className="flex">
        {tabs.map((tab) => (
         <button
          key={tab.id}
+         type="button"
          onClick={() => setActiveTab(tab.id)}
          className={`flex-1 px-6 py-4 text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
           activeTab === tab.id
@@ -793,6 +788,16 @@ const VendorClient: React.FC = () => {
         <VendorClientField label="Name" value={viewing.name} />
         <VendorClientField label="Category" value={viewing.category} />
         <VendorClientField label="Email" value={viewing.email} />
+        {viewing.userId ? (
+          <VendorClientField
+            label="Linked user (User Management)"
+            value={
+              <a href={`/user-management`} className="text-blue-600 hover:underline font-mono">
+                User #{viewing.userId}
+              </a>
+            }
+          />
+        ) : null}
         <VendorClientField label="Phone" value={viewing.phone} />
         <VendorClientField label="State" value={viewing.location} />
         <VendorClientField label="Country" value={viewing.country} />
@@ -910,26 +915,7 @@ const VendorClient: React.FC = () => {
         </div>
        </VendorClientSection>
 
-       {viewing.type === 'vendor' ? (
-        <VendorClientSection title="Vendor Items & Price List" icon="">
-         {renderListTable(
-          ['Type', 'Code', 'Name', 'UoM', 'MOQ', 'Unit Price', 'Lead Time', 'Valid Till', 'GST', 'HSN', 'Payment Override'],
-          (Array.isArray(viewing.data?.vendorItems) ? viewing.data.vendorItems : []).map((it: any) => [
-           it.itemType,
-           it.itemCode,
-           it.itemName,
-           it.uom,
-           it.moq,
-           it.unitPrice,
-           it.leadTime,
-           it.priceValidTill,
-           it.gst,
-           it.hsn,
-           it.paymentTermsOverride,
-          ])
-         )}
-        </VendorClientSection>
-       ) : (
+       {viewing.type === 'client' && (
         <VendorClientSection title="Product Interest & Requirements" icon="">
          {renderListTable(
           ['Category', 'Type', 'Expected Volume', 'Frequency', 'Target Price', 'Specifications', 'Priority'],
@@ -981,6 +967,74 @@ const VendorClient: React.FC = () => {
     </div>
   )}
 
+  {vendorCreateModalOpen && (
+   <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="vendor-create-title"
+   >
+    <div className="w-full max-w-6xl max-h-[92vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
+     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50 shrink-0">
+      <div>
+       <h3 id="vendor-create-title" className="text-lg font-bold text-gray-800">Add Vendor</h3>
+       <p className="text-sm text-gray-500">Complete the wizard to create a new vendor master record.</p>
+      </div>
+      <button
+       type="button"
+       onClick={() => setVendorCreateModalOpen(false)}
+       className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+      >
+       Close
+      </button>
+     </div>
+     <div className="overflow-y-auto flex-1 min-h-0">
+      <VendorForm
+       editingId={null}
+       onSaved={() => {
+        void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+        setVendorCreateModalOpen(false);
+       }}
+      />
+     </div>
+    </div>
+   </div>
+  )}
+
+  {clientCreateModalOpen && (
+   <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="client-create-title"
+   >
+    <div className="w-full max-w-6xl max-h-[92vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
+     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50 shrink-0">
+      <div>
+       <h3 id="client-create-title" className="text-lg font-bold text-gray-800">Add Client</h3>
+       <p className="text-sm text-gray-500">Complete the wizard to create a new client master record.</p>
+      </div>
+      <button
+       type="button"
+       onClick={() => setClientCreateModalOpen(false)}
+       className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+      >
+       Close
+      </button>
+     </div>
+     <div className="overflow-y-auto flex-1 min-h-0">
+      <ClientForm
+       editingId={null}
+       onSaved={() => {
+        void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+        setClientCreateModalOpen(false);
+       }}
+      />
+     </div>
+    </div>
+   </div>
+  )}
+
   {editing && (
    <div
     className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
@@ -1008,16 +1062,14 @@ const VendorClient: React.FC = () => {
       onSaved={() => {
        void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
        closeEdit();
-       setActiveTab('vendor-master');
       }}
       />
-     ) : (
+  ) : (
       <ClientForm
       editingId={editing.id}
       onSaved={() => {
        void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
        closeEdit();
-       setActiveTab('client-master');
       }}
       />
      )}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
  Filter,
  Plus,
@@ -45,6 +46,7 @@ interface User {
  status: 'active' | 'inactive' | 'suspended';
  createdAt: string;
  lastLogin: string;
+ vendorClientCode?: string | null;
 }
 
 // ==================== CONSTANTS ====================
@@ -70,6 +72,7 @@ function mapStaffToUser(r: StaffUserFromApi): User {
   status,
   createdAt: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : '',
   lastLogin: '',
+  vendorClientCode: r.vendor_client_code ?? null,
  };
 }
 
@@ -596,13 +599,14 @@ const UserManagement = () => {
       <thead className="bg-slate-50">
        <tr>
         {[
-         { key: 'name', label: 'User', width: 'w-[18%]' },
-         { key: null, label: 'Contact', width: 'w-[22%]' },
-         { key: 'department', label: 'Department', width: 'w-[12%]' },
-         { key: 'role', label: 'Role', width: 'w-[12%]' },
+         { key: 'name', label: 'User', width: 'w-[16%]' },
+         { key: null, label: 'Contact', width: 'w-[20%]' },
+         { key: null, label: 'Masters', width: 'w-[12%]' },
+         { key: 'department', label: 'Department', width: 'w-[10%]' },
+         { key: 'role', label: 'Role', width: 'w-[10%]' },
          { key: 'status', label: 'Status', width: 'w-[10%]' },
-         { key: null, label: 'Last Login', width: 'w-[12%]' },
-         { key: null, label: 'Actions', width: 'w-[14%]' },
+         { key: null, label: 'Last Login', width: 'w-[10%]' },
+         { key: null, label: 'Actions', width: 'w-[12%]' },
         ].map(({ key, label, width }) => (
          <th key={label} className={`${width} px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase`}>
           {key ? (
@@ -616,7 +620,7 @@ const UserManagement = () => {
       </thead>
       <tbody className="divide-y divide-gray-100">
        {paginatedUsers.length === 0 ? (
-        <tr><td colSpan={7} className="px-4 py-12 text-center">
+        <tr><td colSpan={8} className="px-4 py-12 text-center">
          <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
          <p className="font-medium text-slate-500">No users found</p>
         </td></tr>
@@ -636,6 +640,15 @@ const UserManagement = () => {
          <td className="px-4 py-3">
           <p className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Mail className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.email}</p>
           <p className="text-sm text-slate-500 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.mobile}</p>
+         </td>
+         <td className="px-4 py-3">
+          {user.vendorClientCode ? (
+           <Link to="/vendor-client" className="text-xs font-mono text-blue-600 hover:underline" title="Open Masters → Vendor / Client">
+            {user.vendorClientCode}
+           </Link>
+          ) : (
+           <span className="text-xs text-slate-400">—</span>
+          )}
          </td>
          <td className="px-4 py-3"><span className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Building2 className="w-4 h-4 shrink-0 text-gray-400" />{user.department}</span></td>
          <td className="px-4 py-3"><span className="text-sm font-medium text-slate-300 flex items-center gap-1.5 truncate"><Shield className="w-4 h-4 shrink-0 text-slate-700" />{user.role}</span></td>
@@ -727,12 +740,23 @@ const UserManagement = () => {
          { label: 'Status', value: selectedUser.status, badge: true },
          { label: 'Email', value: selectedUser.email },
          { label: 'Mobile', value: selectedUser.mobile },
+         {
+          label: 'Client / vendor master',
+          value: selectedUser.vendorClientCode ? selectedUser.vendorClientCode : '—',
+          linkVendor: Boolean(selectedUser.vendorClientCode),
+         },
          { label: 'Created On', value: selectedUser.createdAt },
          { label: 'Last Login', value: selectedUser.lastLogin },
-        ].map(({ label, value, badge }) => (
+        ].map(({ label, value, badge, linkVendor }) => (
          <div key={label} className="bg-slate-50 rounded-lg p-3">
           <p className="text-xs text-slate-500">{label}</p>
-          {badge ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border mt-1 ${getStatusColor(value)}`}>{getStatusIcon(value)} {value}</span> : <p className="font-medium text-gray-800 text-sm">{value}</p>}
+          {badge ? (
+           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border mt-1 ${getStatusColor(String(value))}`}>{getStatusIcon(String(value))} {String(value)}</span>
+          ) : linkVendor ? (
+           <Link to="/vendor-client" className="font-medium text-sm text-blue-600 hover:underline mt-1 inline-block font-mono">{String(value)}</Link>
+          ) : (
+           <p className="font-medium text-gray-800 text-sm">{value}</p>
+          )}
          </div>
         ))}
        </div>
