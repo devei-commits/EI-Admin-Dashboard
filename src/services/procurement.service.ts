@@ -39,7 +39,7 @@ export interface CreateProcurementPayload {
   planningExtractedId: number;
   planningBatchId?: number | null;
   priority: string;
-  requiredByDate: string;
+  requiredByDate: string | null;
   notes: string;
   items: ProcurementRequestItem[];
 }

@@ -25,6 +25,7 @@ import {
 import {
   createProcurementRequest,
   fetchProcurementRequests,
+  updateProcurementRequest,
   type ProcurementRequestItem,
 } from '../services/procurement.service';
 import { fetchPriceListPage, type PriceListItemPage } from '../services/itemsList.service';
@@ -40,7 +41,7 @@ import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
-import { createPurchaseOrder, fetchPurchaseOrders, updatePurchaseOrder } from '../services/salesPurchase.service';
+import { fetchPurchaseOrders } from '../services/salesPurchase.service';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -134,8 +135,6 @@ type PlannedLine = {
   backendPoId?: string;
 };
 
-const PLANNING_DRAFT_PO_SOURCE = 'planning-items-involved';
-
 function buildPlannedGroupKey(vendorName: string, paymentTerms: string, leadTimeDays: number) {
   return `${vendorName.trim().toLowerCase()}|||${paymentTerms.trim()}|||${Number(leadTimeDays) || 0}`;
 }
@@ -148,8 +147,8 @@ function plannedLineMatchesItemsInvolvedRow(line: PlannedLine, item: ItemsInvolv
   if (Number.isFinite(matId) && matId > 0) {
     return Number.isFinite(lineMatId) && lineMatId === matId;
   }
-  const codeItem = String(item.code ?? '').trim().toLowerCase();
-  const codeLine = String(line.itemCode ?? '').trim().toLowerCase();
+  const codeItem = normalizeMaterialCode(String(item.code ?? '').trim().toLowerCase());
+  const codeLine = normalizeMaterialCode(String(line.itemCode ?? '').trim().toLowerCase());
   if (codeItem.length > 0 && codeLine.length > 0 && codeItem === codeLine) return true;
   const nameItem = String(item.name ?? '').trim().toLowerCase();
   const nameLine = String(line.itemName ?? '').trim().toLowerCase();
@@ -167,13 +166,14 @@ function normalizeMaterialCode(code: string): string {
     .replace(/^pm[-_]?/i, '');
 }
 
-function poItemMergeKey(row: Record<string, unknown>): string {
-  const rid = row.raw_material_id;
-  const pid = row.pack_material_id;
-  if (rid != null && Number(rid) > 0) return `rm:${Number(rid)}`;
-  if (pid != null && Number(pid) > 0) return `pm:${Number(pid)}`;
-  const n = String(row.itemName ?? row.name ?? '').trim().toLowerCase();
-  return `n:${n}`;
+function procurementItemMergeKey(item: ProcurementRequestItem): string {
+  if (item.type === 'RM' && item.raw_material_id != null && Number(item.raw_material_id) > 0) {
+    return `rm:${Number(item.raw_material_id)}`;
+  }
+  if (item.type === 'PM' && item.pack_material_id != null && Number(item.pack_material_id) > 0) {
+    return `pm:${Number(item.pack_material_id)}`;
+  }
+  return `${item.type}:${String(item.code || item.name || '').trim().toLowerCase()}`;
 }
 
 /** Tab stats — all possible keys so we can access without `any` */
@@ -1543,16 +1543,21 @@ const Planning = () => {
           });
         } else {
           // Fallback for partial payloads / legacy rows:
-          // Planning stores items as: "<itemName> (<itemCode>)"
+          // Accept multiple shapes: explicit code fields, or "<name> (<code>)".
           const rawName = String(itemLine?.itemName ?? itemLine?.name ?? '').trim();
-          const parsedCode = rawName.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() ?? '';
-          if (!parsedCode) continue;
-
-          const parsedName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          const explicitCode = String(itemLine?.itemCode ?? itemLine?.itemId ?? itemLine?.code ?? '').trim();
+          const parsedCodeFromName = rawName.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() ?? '';
+          const parsedCode = explicitCode || parsedCodeFromName;
+          const parsedName = explicitCode
+            ? rawName
+            : rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          if (!parsedCode && !parsedName) continue;
 
           const codeLower = parsedCode.toLowerCase();
           const itemTypeGuess: 'RM' | 'PM' =
-            codeLower.includes('pm-') || codeLower.includes('ei-pm') || codeLower.includes('-pm-') ? 'PM' : 'RM';
+            codeLower.includes('pm-') || codeLower.includes('ei-pm') || codeLower.includes('-pm-')
+              ? 'PM'
+              : (String(itemLine?.unit ?? itemLine?.uom ?? '').toUpperCase().includes('PCS') ? 'PM' : 'RM');
 
           const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
           const unitPriceNum = Number(itemLine?.rate ?? itemLine?.price ?? 0) || 0;
@@ -1713,83 +1718,89 @@ const Planning = () => {
         ? Number(planningRow.pack_material_id)
         : undefined;
 
-    const newApiItem: Record<string, unknown> = {
-      itemName: `${planningRow.name} (${planningRow.code})`,
-      quantity: qty,
-      rate: String(unitPrice),
-      tax: '18',
+    const newRequestItem: ProcurementRequestItem = {
+      type: planningRow.itemType,
+      code: planningRow.code || planningRow.name,
+      name: planningRow.name,
+      required: qty,
+      sih: Number(planningRow.sihNum ?? 0) || 0,
+      shortage: qty,
+      quantity_requested: qty,
+      unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
+      line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+      ...(rmId != null ? { raw_material_id: rmId } : {}),
+      ...(pmId != null ? { pack_material_id: pmId } : {}),
     };
-    if (rmId != null) newApiItem.raw_material_id = rmId;
-    if (pmId != null) newApiItem.pack_material_id = pmId;
 
-    const listRes = await fetchPurchaseOrders();
-    if (!listRes.success || !listRes.data) {
-      addToast('error', typeof listRes.error === 'string' ? listRes.error : 'Failed to load purchase orders');
+    const peId = Number(planningRow.planningExtractedId);
+    if (!Number.isFinite(peId) || peId <= 0) {
+      addToast('error', 'Missing planning line context; cannot create procurement request.');
       return false;
     }
 
-    const drafts = listRes.data.filter((o) => String(o.status).toLowerCase() === 'draft');
-    const match = drafts.find((o) => {
-      const fd = (o.formData || {}) as Record<string, unknown>;
-      return fd.source === PLANNING_DRAFT_PO_SOURCE && String(fd.plannedGroupKey || '') === groupKey;
+    const requiredByDate: string | null = null;
+
+    const reqRes = await fetchProcurementRequests(peId);
+    if (!reqRes.success || !reqRes.data) {
+      addToast('error', typeof reqRes.error === 'string' ? reqRes.error : 'Failed to load procurement requests');
+      return false;
+    }
+
+    const existing = reqRes.data.find((r) => {
+      const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
+      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN'].includes(String(r.status || ''));
+      return sameVendor && openStatus;
     });
 
-    if (match) {
-      const backendPoId = String(match.id ?? '').replace(/^PO-/, '') || String(match.id);
-      const existingItems = Array.isArray(match.items) ? match.items.map((i) => ({ ...(i as object) })) : [];
-      const newKey = poItemMergeKey(newApiItem);
-      const idx = existingItems.findIndex((i) => poItemMergeKey(i as Record<string, unknown>) === newKey);
-      let merged: unknown[];
+    if (existing) {
+      const existingItems = Array.isArray(existing.items) ? [...existing.items] : [];
+      const mergeKey = procurementItemMergeKey(newRequestItem);
+      const idx = existingItems.findIndex((i) => procurementItemMergeKey(i) === mergeKey);
+      let merged: ProcurementRequestItem[];
       if (idx >= 0) {
-        const old = existingItems[idx] as Record<string, unknown>;
-        const qOld = Number(old.quantity) || 0;
-        const rOld = Number(old.rate ?? old.price) || 0;
+        const old = existingItems[idx];
+        const qOld = Number(old.quantity_requested ?? 0) || 0;
         const qNew = qOld + qty;
-        const rNew = qNew > 0 ? (qOld * rOld + qty * unitPrice) / qNew : unitPrice;
         merged = [...existingItems];
-        merged[idx] = { ...old, quantity: qNew, rate: String(rNew) };
+        merged[idx] = {
+          ...old,
+          required: (Number(old.required ?? 0) || 0) + qty,
+          shortage: (Number(old.shortage ?? 0) || 0) + qty,
+          quantity_requested: qNew,
+          line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+        };
       } else {
-        merged = [...existingItems, newApiItem];
+        merged = [...existingItems, newRequestItem];
       }
-      const upd = await updatePurchaseOrder(backendPoId, { items: merged });
+
+      const upd = await updateProcurementRequest(existing.id, {
+        items: merged,
+        preferredVendor: vendorName,
+      });
       if (!upd.success) {
-        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update draft PO');
+        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update procurement request');
         return false;
       }
     } else {
-      const today = new Date();
-      const createdDateStr = today.toISOString().split('T')[0];
-      const exp = new Date(today);
-      exp.setDate(exp.getDate() + leadTimeDays);
-      const expectedDeliveryStr = exp.toISOString().split('T')[0];
-      const orderId = `DPO-PLN-${Date.now()}`;
-      const peId = planningRow.planningExtractedId;
-      const createRes = await createPurchaseOrder({
-        orderId,
-        vendorName,
-        orderDate: createdDateStr,
-        expectedShipmentDate: expectedDeliveryStr,
-        reference: peId != null ? `Planning PE-${peId}` : 'Planning — Items Involved',
-        paymentTerms,
-        status: 'Draft',
-        formData: {
-          source: PLANNING_DRAFT_PO_SOURCE,
-          plannedGroupKey: groupKey,
-          requestCode: 'Planning',
-          requestId: '',
-        },
-        items: [newApiItem],
+      const createRes = await createProcurementRequest({
+        planningExtractedId: peId,
+        planningBatchId: null,
+        priority: 'High',
+        requiredByDate,
+        notes: `Planned group: ${groupKey}`,
+        items: [newRequestItem],
       });
       if (!createRes.success || !createRes.data) {
-        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create draft PO');
+        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create procurement request');
         return false;
       }
+      await updateProcurementRequest(createRes.data.id, { preferredVendor: vendorName });
     }
 
-    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
 
     setReleaseToPlanningItem(null);
-    addToast('success', 'Added to Draft PO for review (Procurement → Draft POs).');
+    addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
     return true;
   };
 
@@ -2723,7 +2734,8 @@ const Planning = () => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
-                            <div className="text-xs text-gray-500">{order.soStatus ?? order.productCode}</div>
+                            <div className="text-xs text-gray-700">{order.productName ?? order.productCode ?? '—'}</div>
+                            <div className="text-xs text-gray-500">{order.soStatus ?? '—'}</div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{order.orderQty}</div>
@@ -2849,7 +2861,7 @@ const Planning = () => {
                         ['Due Date', selectedRowForDetail.dueDate],
                         ['Days Left', selectedRowForDetail.daysLeft],
                         // ['Batch Size', selectedRowForDetail.batchSize],
-                        ['Batches Required', `${selectedRowForDetail.batchesRequired} batches`],
+                        // ['Batches Required', `${selectedRowForDetail.batchesRequired} batches`],
                         ['BOM Status', selectedRowForDetail.bomStatus],
                         ['Approved By', selectedRowForDetail.approvedBy],
                       ].map(([label, value]) => (
@@ -3050,16 +3062,10 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        const shortfall =
-                          item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum);
-                        // Avoid float edge cases (e.g. 0.03 kg lines) hiding a real gap.
-                        const hasShortfall = shortfall > 1e-6;
+                        // Release should only be available when NET is negative (actual shortage).
+                        const hasShortfall = item.netNum < 0;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const quoteSlabs = getQuotationSlabsForItem(item);
-                        const hasMatchingQuotation = quoteSlabs.length > 0;
-                        /** Allow release when there is a gap, when an Items List vendor rate exists for this RM/PM, or when a planned line already exists (another vendor / follow-on release). */
-                        const canReleaseToPlanning =
-                          hasShortfall || hasMatchingQuotation || hasExistingPlannedLine;
+                        const canReleaseToPlanning = hasShortfall;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2">
@@ -3132,7 +3138,7 @@ const Planning = () => {
                                   title={
                                     canReleaseToPlanning
                                       ? undefined
-                                      : 'Needs a shortage, an Items List vendor rate (shown in Procurement → Quotations), or an existing planned line to add another release.'
+                                      : 'Disabled because NET is not negative (stock is sufficient).'
                                   }
                                   onClick={() => openReleaseToPlanningModal(item)}
                                 >
@@ -3298,7 +3304,12 @@ const Planning = () => {
         const slabs = getQuotationSlabsForItem(item);
         const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
         const previous = plannedLinesFromBackend
-          .filter((l) => plannedLineMatchesItemsInvolvedRow(l, item))
+          .filter((l) => {
+            if (Number(item.planningExtractedId) > 0 && Number(l.planningExtractedId) > 0 && Number(l.planningExtractedId) !== Number(item.planningExtractedId)) {
+              return false;
+            }
+            return plannedLineMatchesItemsInvolvedRow(l, item);
+          })
           .slice(0, 10);
         const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
         return (
@@ -3658,15 +3669,15 @@ const Planning = () => {
               </div>
               {(() => {
                 const allShortfallResolved = rows.length > 0 && rows.every((r) => r.shortfall <= 0);
-                const alreadySent = Boolean(batch.sent);
-                if (alreadySent) {
-                  return (
-                    <div className="px-4 py-3 border-t border-gray-200 bg-emerald-50 flex items-center justify-between">
-                      <span className="text-sm font-medium text-emerald-800">Sent to production — can be scheduled in Production → Calendar.</span>
-                      <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-                    </div>
-                  );
-                }
+                // const alreadySent = Boolean(batch.sent);
+                // if (alreadySent) {
+                //   return (
+                //     <div className="px-4 py-3 border-t border-gray-200 bg-emerald-50 flex items-center justify-between">
+                //       <span className="text-sm font-medium text-emerald-800">Sent to production — can be scheduled in Production → Calendar.</span>
+                //       <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
+                //     </div>
+                //   );
+                // }
                 if (allShortfallResolved) {
                   return (
                     <div className="px-4 py-3 border-t border-gray-200 bg-amber-50 flex items-center justify-between gap-3">
@@ -4011,11 +4022,11 @@ const Planning = () => {
 
                   {/* Order summary + Preview qty */}
                   <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
-                    <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2">
+                    {/* <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2">
                       <p className="text-xs font-semibold text-cyan-900">
                         Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
                       </p>
-                    </div>
+                    </div> */}
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
                       <input
@@ -4403,9 +4414,6 @@ const Planning = () => {
                         })}
                       </div>
                     </div>
-                    <button type="button" onClick={handleSaveBatchPlan} className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700">
-                      Save Batch Plan
-                    </button>
                   </div>
                 );
               })()}
@@ -4554,13 +4562,7 @@ const Planning = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="border-t border-gray-200 p-6 flex gap-3 justify-between">
-              <button
-                onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="border-t border-gray-200 p-6 flex gap-3 justify-end">
               <div className="flex gap-2">
                 {/* <button onClick={() => handleRaisePRFromBatch()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-yellow-500 hover:bg-yellow-600 transition-colors">
                   Raise PR for Shortages
@@ -4577,6 +4579,21 @@ const Planning = () => {
                     BOM Confirmed
                   </span>
                 )}
+                {/* {activeBatchTab === 'batch-plan' && (
+                  <button
+                    type="button"
+                    onClick={handleSaveBatchPlan}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700"
+                  >
+                    Save Batch Plan
+                  </button>
+                )}
+                <button
+                  onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button> */}
               </div>
             </div>
           </div>
