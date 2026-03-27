@@ -69,10 +69,8 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
     }
 
     load();
-    const interval = window.setInterval(load, 20000);
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
     };
   }, [isOpen, saleOrder?.soNo]);
 

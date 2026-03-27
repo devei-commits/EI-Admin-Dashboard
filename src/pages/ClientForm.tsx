@@ -96,6 +96,8 @@ interface ClientFormData {
   clientStage: string;
   potentialValue: string;
   acquisitionDate: string;
+  /** users.userid — optional link to User Management account */
+  linkedUserId: string;
 }
 
 type ClientFormProps = {
@@ -190,6 +192,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     clientStage: '',
     potentialValue: '',
     acquisitionDate: '',
+    linkedUserId: '',
   });
 
   const stages = [
@@ -230,6 +233,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         notes: data.notes || existingClient.notes,
         entityCode: String(entityCode || ''),
         zohoId: data.zohoId ?? (existingClient as { zohoId?: string }).zohoId ?? '',
+        linkedUserId: String((existingClient as { userId?: string | null }).userId ?? ''),
       };
 
       const termsStr = String(data.paymentTerms ?? existingClient.paymentTerms ?? '');
@@ -469,6 +473,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         paymentTerms: payload.paymentTerms,
         notes: payload.notes,
         zohoId: formData.zohoId || undefined,
+        userId: formData.linkedUserId.trim() === '' ? null : formData.linkedUserId.trim(),
         data: payload.data as Record<string, unknown>,
       });
       if (res.success) {
@@ -496,6 +501,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       type: 'client',
       entityCode,
       zohoId: formData.zohoId || undefined,
+      ...(formData.linkedUserId.trim() ? { userId: formData.linkedUserId.trim() } : {}),
       name: payload.name,
       email: payload.email,
       phone: payload.phone,
@@ -523,6 +529,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
         agreementLink: '', owner: '', agreementNotes: '',
         salesOwner: '', accountManager: '', leadSource: '', referredBy: '',
         clientStage: '', potentialValue: '', acquisitionDate: '',
+        linkedUserId: '',
       });
       setDocuments([]); setPocs([]); setBanks([]); setProductInterests([]);
       setCurrentStage(0);
@@ -634,6 +641,11 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 <div>
                   <label className={labelClass}>Zoho ID</label>
                   <input type="text" name="zohoId" value={formData.zohoId} onChange={handleInputChange} placeholder="Zoho contact/org id (for sync)" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Linked User Management ID</label>
+                  <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
+                  <p className="text-xs text-slate-500 mt-1">Matches a row in User Management. Clear to unlink.</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -3,6 +3,8 @@ import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
+import { fetchSoPlanningAvailability } from '../services/fulfillment.service';
 import {
   fetchPlanningExtractedList,
   fetchPlanningExtractedById,
@@ -23,13 +25,10 @@ import {
 import {
   createProcurementRequest,
   fetchProcurementRequests,
+  updateProcurementRequest,
   type ProcurementRequestItem,
 } from '../services/procurement.service';
-import {
-  fetchProcurementQuotations,
-  type ProcurementQuotation,
-  type ProcurementQuotationItem,
-} from '../services/procurementQuotations.service';
+import { fetchPriceListPage, type PriceListItemPage } from '../services/itemsList.service';
 import {
   fetchBOMByProductId,
   type BOMRecord,
@@ -42,7 +41,7 @@ import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
-import { createPurchaseOrder, fetchPurchaseOrders, updatePurchaseOrder } from '../services/salesPurchase.service';
+import { fetchPurchaseOrders } from '../services/salesPurchase.service';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -136,8 +135,6 @@ type PlannedLine = {
   backendPoId?: string;
 };
 
-const PLANNING_DRAFT_PO_SOURCE = 'planning-items-involved';
-
 function buildPlannedGroupKey(vendorName: string, paymentTerms: string, leadTimeDays: number) {
   return `${vendorName.trim().toLowerCase()}|||${paymentTerms.trim()}|||${Number(leadTimeDays) || 0}`;
 }
@@ -150,8 +147,8 @@ function plannedLineMatchesItemsInvolvedRow(line: PlannedLine, item: ItemsInvolv
   if (Number.isFinite(matId) && matId > 0) {
     return Number.isFinite(lineMatId) && lineMatId === matId;
   }
-  const codeItem = String(item.code ?? '').trim().toLowerCase();
-  const codeLine = String(line.itemCode ?? '').trim().toLowerCase();
+  const codeItem = normalizeMaterialCode(String(item.code ?? '').trim().toLowerCase());
+  const codeLine = normalizeMaterialCode(String(line.itemCode ?? '').trim().toLowerCase());
   if (codeItem.length > 0 && codeLine.length > 0 && codeItem === codeLine) return true;
   const nameItem = String(item.name ?? '').trim().toLowerCase();
   const nameLine = String(line.itemName ?? '').trim().toLowerCase();
@@ -169,13 +166,14 @@ function normalizeMaterialCode(code: string): string {
     .replace(/^pm[-_]?/i, '');
 }
 
-function poItemMergeKey(row: Record<string, unknown>): string {
-  const rid = row.raw_material_id;
-  const pid = row.pack_material_id;
-  if (rid != null && Number(rid) > 0) return `rm:${Number(rid)}`;
-  if (pid != null && Number(pid) > 0) return `pm:${Number(pid)}`;
-  const n = String(row.itemName ?? row.name ?? '').trim().toLowerCase();
-  return `n:${n}`;
+function procurementItemMergeKey(item: ProcurementRequestItem): string {
+  if (item.type === 'RM' && item.raw_material_id != null && Number(item.raw_material_id) > 0) {
+    return `rm:${Number(item.raw_material_id)}`;
+  }
+  if (item.type === 'PM' && item.pack_material_id != null && Number(item.pack_material_id) > 0) {
+    return `pm:${Number(item.pack_material_id)}`;
+  }
+  return `${item.type}:${String(item.code || item.name || '').trim().toLowerCase()}`;
 }
 
 /** Tab stats — all possible keys so we can access without `any` */
@@ -447,6 +445,12 @@ const Planning = () => {
     [planningExtractedList]
   );
 
+  // Fulfillment "Availability" parity: per SO, fetch planning availability (RM/PM startable batches) and show it in PIs Extracted rows.
+  const normalizeSoKey = (value: string) => String(value || '').trim().toUpperCase();
+  const [planningAvailabilityBySoNo, setPlanningAvailabilityBySoNo] = useState<Record<string, SoPlanningAvailabilityResponse>>({});
+  const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
+  const planningAvailabilityRequestInFlight = useRef(false);
+
   const productIdForBom = selectedSOForBatch?.productId ?? 0;
   const { data: bomByProduct } = useQuery({
     queryKey: ['bom-by-product', productIdForBom],
@@ -676,6 +680,46 @@ const Planning = () => {
     const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
     setFeasibilityPreviewQty(orderQtyNum);
   }, [selectedSOForBatch?.id, selectedSOForBatch?.orderQty]);
+
+  const kgPerUnitForPlanBatches = useMemo(() => {
+    const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const totalKgNum = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    return orderQtyNum > 0 && totalKgNum > 0 ? totalKgNum / orderQtyNum : 0;
+  }, [selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg]);
+
+  // When user adjusts Feasibility "Preview qty", reflect it into the next active batch-units input in Batch Plan.
+  // "Next active" = expanded batch if any; otherwise first unsent batch.
+  useEffect(() => {
+    if (!planBatchesModalOpen || !selectedSOForBatch) return;
+    if (activeBatchTab !== 'batch-plan') return;
+    if (!Number.isFinite(kgPerUnitForPlanBatches) || kgPerUnitForPlanBatches <= 0) return;
+    if (customBatches.length === 0) return;
+
+    const sent = selectedSOForBatch.sentBatchIndices ?? [];
+    let targetIdx = expandedBatchIndex;
+    if (targetIdx == null) {
+      const firstUnsent = customBatches.findIndex((_, i) => !sent.includes(i));
+      targetIdx = firstUnsent >= 0 ? firstUnsent : 0;
+    }
+    if (targetIdx < 0 || targetIdx >= customBatches.length) return;
+
+    const nextUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    const currentUnits = Math.round((customBatches[targetIdx]?.sizeKg || 0) / kgPerUnitForPlanBatches);
+    if (nextUnits === currentUnits) return;
+
+    setCustomBatches((prev) =>
+      prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: nextUnits * kgPerUnitForPlanBatches } : b))
+    );
+    setExpandedBatchIndex(targetIdx);
+  }, [
+    feasibilityPreviewQty,
+    activeBatchTab,
+    planBatchesModalOpen,
+    selectedSOForBatch,
+    expandedBatchIndex,
+    kgPerUnitForPlanBatches,
+    customBatches,
+  ]);
 
   const lastSyncedBomIdRef = useRef<string | null>(null);
   const syncedFallbackOrderIdRef = useRef<string | null>(null);
@@ -940,6 +984,11 @@ const Planning = () => {
       return bomFormula.map((item) => {
         const code = item.code ?? item.id;
         const pct = item.percentage ?? 0;
+        const sgRaw =
+          (item as RawMaterial).specificGravity ??
+          (item as { specific_gravity?: number }).specific_gravity ??
+          1;
+        const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
         const perBatch = (batchSizeNum * pct) / 100;
         const kgPerUnitRm = kgPerUnitOfProduct > 0 ? (pct / 100) * kgPerUnitOfProduct : perBatch / (unitsPerBatch || 1);
         const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.code === code || r.name === item.name || String(r.sourceId) === String(item.id)));
@@ -948,17 +997,20 @@ const Planning = () => {
         const free = Math.max(0, sih - reserved);
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
+        const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
         const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
         const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
         const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
         const gap = Math.max(0, reqThisOrder - free);
-        return { name: item.name, code: String(code), pct, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
+        return { name: item.name, code: String(code), pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
       });
     }
     if (activeBom?.rmLines?.length) {
       return activeBom.rmLines.map((line, i) => {
         const code = line.rm_code ?? String(line.raw_material_id ?? i);
         const pct = line.pct_w_w ?? line.pct ?? 0;
+        const sgRaw = (line as any).specific_gravity ?? (line as any).specificGravity ?? 1;
+        const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
         const perBatch = (batchSizeNum * pct) / 100;
         const kgPerUnitRm = kgPerUnitOfProduct > 0 ? (pct / 100) * kgPerUnitOfProduct : perBatch / (unitsPerBatch || 1);
         const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.code === code || String(r.sourceId) === String(line.raw_material_id)));
@@ -967,15 +1019,21 @@ const Planning = () => {
         const free = Math.max(0, sih - reserved);
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
+        const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
         const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
         const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
         const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
         const gap = Math.max(0, reqThisOrder - free);
-        return { name: line.inci_name ?? code, code, pct, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
+        return { name: line.inci_name ?? code, code, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
       });
     }
     return (selectedSOForBatch?.rawMaterials ?? []).map((item) => {
       const pct = item.percentage || 0;
+      const sgRaw =
+        (item as RawMaterial).specificGravity ??
+        (item as { specific_gravity?: number }).specific_gravity ??
+        1;
+      const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
       const perBatch = (batchSizeNum * pct) / 100;
       const kgPerUnitRm = kgPerUnitOfProduct > 0 ? (pct / 100) * kgPerUnitOfProduct : perBatch / (unitsPerBatch || 1);
       const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.name === item.name || r.code === (item as RawMaterial).code));
@@ -984,11 +1042,12 @@ const Planning = () => {
       const free = Math.max(0, sih - reserved);
       const inTransit = whRow?.inTransit ?? 0;
       const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
+      const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
       const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
       const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
       const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
       const gap = Math.max(0, reqThisOrder - free);
-      return { name: item.name, code: (item as RawMaterial).code ?? item.id, pct, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
+      return { name: item.name, code: (item as RawMaterial).code ?? item.id, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
     });
   }, [bomFormula, activeBom?.rmLines, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.batchSize, selectedSOForBatch?.batchesRequired, selectedSOForBatch?.totalKg, warehouseRows, batchSizeNum, batchesReq, orderQtyNum, totalKgNum, kgPerUnitOfProduct, unitsPerBatch, feasibilityPreviewQty]);
 
@@ -1063,10 +1122,19 @@ const Planning = () => {
     queryFn: fetchAllBatches,
     enabled: activeMainTab === 'items-involved',
   });
-  const { data: procurementQuotations = [] } = useQuery({
-    queryKey: ['procurement-quotations', 'planning-items-involved'],
+  // Items List (vendor rates) is the single source of truth for quotations and PO planned stage.
+  const { data: itemsListRmPage = [] } = useQuery({
+    queryKey: ['items-list-page', 'RM', 'planning-items-involved'],
     queryFn: async () => {
-      const res = await fetchProcurementQuotations();
+      const res = await fetchPriceListPage('RM');
+      return res.success ? (res.data ?? []) : [];
+    },
+    enabled: activeMainTab === 'items-involved',
+  });
+  const { data: itemsListPmPage = [] } = useQuery({
+    queryKey: ['items-list-page', 'PM', 'planning-items-involved'],
+    queryFn: async () => {
+      const res = await fetchPriceListPage('PM');
       return res.success ? (res.data ?? []) : [];
     },
     enabled: activeMainTab === 'items-involved',
@@ -1079,9 +1147,12 @@ const Planning = () => {
         ? `${Number(row.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
         : `${Math.round(row.totalRequired).toLocaleString()} pcs`;
     const sihStr = Math.round(row.sih).toLocaleString();
-    const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
-    const netNum = Number(row.sih ?? 0) + plannedQtyNum + orderedQtyNum - Number(row.totalRequired ?? 0);
+    // Availability math (per requirement):
+    // Gap = Required - (((SIH + PO) - Reserved))
+    // This API provides `row.sih` as free/available stock (stock_in_hand - reserved), so:
+    // Gap = Required - (free + PO)
+    const netNum = Number(row.sih ?? 0) + orderedQtyNum - Number(row.totalRequired ?? 0);
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     return {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
@@ -1110,8 +1181,8 @@ const Planning = () => {
       unit: row.unit,
       reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
       reservedNum: Number(row.reserved ?? 0) || 0,
-      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
-      plannedQtyNum,
+      plannedQty: (Number(row.plannedQty ?? 0) || 0).toLocaleString() + unitSuffix,
+      plannedQtyNum: Number(row.plannedQty ?? 0) || 0,
       orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
       orderedQtyNum,
       net: `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`,
@@ -1294,6 +1365,54 @@ const Planning = () => {
     });
   }, [pisRows, statusFilter, searchTerm]);
 
+  const visiblePisSoNos = useMemo(
+    () => Array.from(new Set(filteredPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
+    [filteredPisOrders]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const key = visiblePisSoNos.join('|');
+    if (activeMainTab !== 'pis-extracted') return;
+    if (!key) return;
+    if (planningAvailabilityRequestInFlight.current) return;
+
+    planningAvailabilityRequestInFlight.current = true;
+    setPlanningAvailabilityLoading(true);
+    Promise.all(
+      visiblePisSoNos.map((soNo) =>
+        fetchSoPlanningAvailability(soNo)
+          .then((res) => ({ soNo, res }))
+          .catch((e) => {
+            console.error('fetchSoPlanningAvailability error', { soNo, e });
+            return { soNo, res: null as any };
+          })
+      )
+    )
+      .then((results) => {
+        if (cancelled) return;
+        setPlanningAvailabilityBySoNo((prev) => {
+          const next = { ...prev };
+          for (const r of results) {
+            if (r.res) {
+              next[r.soNo] = r.res;
+              next[normalizeSoKey(r.soNo)] = r.res;
+            }
+          }
+          return next;
+        });
+      })
+      .finally(() => {
+        planningAvailabilityRequestInFlight.current = false;
+        if (!cancelled) setPlanningAvailabilityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      planningAvailabilityRequestInFlight.current = false;
+    };
+  }, [activeMainTab, visiblePisSoNos.join('|')]);
+
 
   const openDetailModal = (order: SalesOrder) => {
     setSelectedRowForDetail(order);
@@ -1325,7 +1444,7 @@ const Planning = () => {
     const itemCode = String(item.code ?? '').trim().toLowerCase();
     const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
     if (item.itemType === 'RM') {
-      return lines.reduce((sum, line: { raw_material_id?: number; rm_code?: string; code?: string; pct_w_w?: number; pct?: number; quantity?: number }) => {
+      return lines.reduce<number>((sum, line: { raw_material_id?: number; rm_code?: string; code?: string; pct_w_w?: number; pct?: number; quantity?: number }) => {
         const lineId = Number(line.raw_material_id);
         const lineCode = String(line.rm_code ?? line.code ?? '').trim().toLowerCase();
         const matches = (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
@@ -1335,7 +1454,7 @@ const Planning = () => {
         return sum + qty;
       }, 0);
     }
-    return lines.reduce((sum, line: { pack_material_id?: number; pm_code?: string; code?: string; qty_per_unit?: number; quantity?: number; value?: number }) => {
+    return lines.reduce<number>((sum, line: { pack_material_id?: number; pm_code?: string; code?: string; qty_per_unit?: number; quantity?: number; value?: number }) => {
       const lineId = Number(line.pack_material_id);
       const lineCode = String(line.pm_code ?? line.code ?? '').trim().toLowerCase();
       const matches = (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
@@ -1424,16 +1543,21 @@ const Planning = () => {
           });
         } else {
           // Fallback for partial payloads / legacy rows:
-          // Planning stores items as: "<itemName> (<itemCode>)"
+          // Accept multiple shapes: explicit code fields, or "<name> (<code>)".
           const rawName = String(itemLine?.itemName ?? itemLine?.name ?? '').trim();
-          const parsedCode = rawName.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() ?? '';
-          if (!parsedCode) continue;
-
-          const parsedName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          const explicitCode = String(itemLine?.itemCode ?? itemLine?.itemId ?? itemLine?.code ?? '').trim();
+          const parsedCodeFromName = rawName.match(/\(([^)]+)\)\s*$/)?.[1]?.trim() ?? '';
+          const parsedCode = explicitCode || parsedCodeFromName;
+          const parsedName = explicitCode
+            ? rawName
+            : rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          if (!parsedCode && !parsedName) continue;
 
           const codeLower = parsedCode.toLowerCase();
           const itemTypeGuess: 'RM' | 'PM' =
-            codeLower.includes('pm-') || codeLower.includes('ei-pm') || codeLower.includes('-pm-') ? 'PM' : 'RM';
+            codeLower.includes('pm-') || codeLower.includes('ei-pm') || codeLower.includes('-pm-')
+              ? 'PM'
+              : (String(itemLine?.unit ?? itemLine?.uom ?? '').toUpperCase().includes('PCS') ? 'PM' : 'RM');
 
           const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
           const unitPriceNum = Number(itemLine?.rate ?? itemLine?.price ?? 0) || 0;
@@ -1474,71 +1598,30 @@ const Planning = () => {
   const getQuotationSlabsForItem = (item: ItemsInvolvedDisplayRow) => {
     const rid = Number(item.raw_material_id);
     const pid = Number(item.pack_material_id);
-    const codeNorm = String(item.code ?? '').trim().toLowerCase();
-    const nameNorm = String(item.name ?? '').trim().toLowerCase();
-    const hasRmId = item.itemType === 'RM' && Number.isFinite(rid) && rid > 0;
-    const hasPmId = item.itemType === 'PM' && Number.isFinite(pid) && pid > 0;
-    const normItemCode = normalizeMaterialCode(codeNorm);
+    const page: PriceListItemPage[] = item.itemType === 'PM' ? (itemsListPmPage as PriceListItemPage[]) : (itemsListRmPage as PriceListItemPage[]);
+    const codeNorm = normalizeMaterialCode(String(item.code ?? '').trim().toLowerCase());
 
-    type QuoteMatchDecision = { matched: boolean; reason?: string };
-    const quotationLineMatchDecision = (line: ProcurementQuotationItem): QuoteMatchDecision => {
-      const lineCode = String(line.itemId ?? '').trim().toLowerCase();
-      const lineName = String(line.name ?? '').trim().toLowerCase();
-      if (hasRmId) {
-        if (line.raw_material_id != null && Number(line.raw_material_id) === rid) return { matched: true, reason: 'rm_id' };
-        // Fallback only when quote line didn't store RM/PM ids (older data / partial payloads).
-        // Use exact normalized code/name equality only (avoid substring matching).
-        if (normItemCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) return { matched: true, reason: 'rm_code_fallback' };
-        if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) return { matched: true, reason: 'rm_name_fallback' };
-        return { matched: false };
-      }
-      if (hasPmId) {
-        if (line.pack_material_id != null && Number(line.pack_material_id) === pid) return { matched: true, reason: 'pm_id' };
-        // Fallback only when quote line didn't store RM/PM ids (older data / partial payloads).
-        if (normItemCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) return { matched: true, reason: 'pm_code_fallback' };
-        if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) return { matched: true, reason: 'pm_name_fallback' };
-        return { matched: false };
-      }
-      // Item doesn't have RM/PM ids: use exact normalized code/name equality only.
-      if (codeNorm.length > 0 && lineCode.length > 0 && normalizeMaterialCode(lineCode) === normItemCode) {
-        return { matched: true, reason: 'code_fallback_no_ids_on_item' };
-      }
-      if (nameNorm.length > 0 && lineName.length > 0 && lineName === nameNorm) {
-        return { matched: true, reason: 'name_fallback_no_ids_on_item' };
-      }
-      return { matched: false };
-    };
+    const row =
+      (item.itemType === 'RM' && Number.isFinite(rid) && rid > 0 ? page.find((p) => Number(p.raw_material_id) === rid) : null) ??
+      (item.itemType === 'PM' && Number.isFinite(pid) && pid > 0 ? page.find((p) => Number(p.pack_material_id) === pid) : null) ??
+      page.find((p) => normalizeMaterialCode(String(p.code ?? '').trim().toLowerCase()) === codeNorm) ??
+      null;
 
-    const slabs = (procurementQuotations as ProcurementQuotation[]).flatMap((q) => {
-      const evaluated = (q.items ?? []).map((line) => {
-        const decision = quotationLineMatchDecision(line);
-        return { line, decision };
-      });
-      return evaluated
-        .filter((x) => x.decision.matched)
-        .map(({ line, decision }) => ({
-          vendorId: Number(q.vendorId) || null,
-          vendorName: String(q.vendorName ?? `Vendor ${q.vendorId}`),
-          moq: Number(line.orderQty ?? 0) || 0,
-          unitPrice: Number(line.pricePerUnit ?? 0) || 0,
-          leadTimeDays: Number(q.leadTimeDays ?? 0) || 0,
-          paymentTerms: String(q.paymentTerms ?? 'As per contract'),
-          // Debug helpers: show what quote line matched in this modal.
-          __debugLine: {
-            item: String(line.name ?? '').trim(),
-            itemId: String(line.itemId ?? '').trim(),
-            raw_material_id: line.raw_material_id ?? null,
-            pack_material_id: line.pack_material_id ?? null,
-            orderQty: line.orderQty ?? 0,
-          },
-          __debugMatchReason: decision.reason,
-          __debugQuoteSource: {
-            quotationId: String((q as any).id ?? ''),
-            vendorId: String(q.vendorId ?? ''),
-            procurementRequestId: q.procurementRequestId != null ? String(q.procurementRequestId) : '',
-          },
-        }));
+    const vendorRates = row?.vendorRates ?? [];
+    const slabs = vendorRates.flatMap((vr) => {
+      const vendorName = String(vr.vendor_name ?? vr.vendor_code ?? `Vendor ${vr.vendor_id}`);
+      const paymentTerms = String((vr as any).payment_terms ?? 'As per contract');
+      return (vr.tiers ?? []).map((t) => ({
+        vendorId: Number(vr.vendor_id) || null,
+        vendorName,
+        moq: Number(t.moq_min ?? 0) || 0,
+        unitPrice: Number((t as any).price_per_unit ?? 0) || 0,
+        leadTimeDays: Number((vr as any).lead_time_days ?? 0) || 0,
+        paymentTerms,
+        __source: 'items_list',
+      }));
     });
+
     return slabs.sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.moq - b.moq || a.unitPrice - b.unitPrice);
   };
 
@@ -1578,7 +1661,7 @@ const Planning = () => {
       // eslint-disable-next-line no-console
       console.groupEnd();
     }
-    const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum));
+    const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
     const qtyStr =
       surplus > 0 ? String(surplus) : shortfall > 0 ? String(Math.round(shortfall)) : '';
@@ -1593,7 +1676,7 @@ const Planning = () => {
       paymentTermsType: parsedTerms.type,
       advancePercent: String(
         parsedTerms.advancePercent ||
-          (paymentTermsTypeRequiresAdvancePercent(parsedTerms.type) ? 50 : 0)
+        (paymentTermsTypeRequiresAdvancePercent(parsedTerms.type) ? 50 : 0)
       ),
       leadTimeDays: first?.leadTimeDays ?? 0,
     });
@@ -1635,83 +1718,89 @@ const Planning = () => {
         ? Number(planningRow.pack_material_id)
         : undefined;
 
-    const newApiItem: Record<string, unknown> = {
-      itemName: `${planningRow.name} (${planningRow.code})`,
-      quantity: qty,
-      rate: String(unitPrice),
-      tax: '18',
+    const newRequestItem: ProcurementRequestItem = {
+      type: planningRow.itemType,
+      code: planningRow.code || planningRow.name,
+      name: planningRow.name,
+      required: qty,
+      sih: Number(planningRow.sihNum ?? 0) || 0,
+      shortage: qty,
+      quantity_requested: qty,
+      unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
+      line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+      ...(rmId != null ? { raw_material_id: rmId } : {}),
+      ...(pmId != null ? { pack_material_id: pmId } : {}),
     };
-    if (rmId != null) newApiItem.raw_material_id = rmId;
-    if (pmId != null) newApiItem.pack_material_id = pmId;
 
-    const listRes = await fetchPurchaseOrders();
-    if (!listRes.success || !listRes.data) {
-      addToast('error', typeof listRes.error === 'string' ? listRes.error : 'Failed to load purchase orders');
+    const peId = Number(planningRow.planningExtractedId);
+    if (!Number.isFinite(peId) || peId <= 0) {
+      addToast('error', 'Missing planning line context; cannot create procurement request.');
       return false;
     }
 
-    const drafts = listRes.data.filter((o) => String(o.status).toLowerCase() === 'draft');
-    const match = drafts.find((o) => {
-      const fd = (o.formData || {}) as Record<string, unknown>;
-      return fd.source === PLANNING_DRAFT_PO_SOURCE && String(fd.plannedGroupKey || '') === groupKey;
+    const requiredByDate: string | null = null;
+
+    const reqRes = await fetchProcurementRequests(peId);
+    if (!reqRes.success || !reqRes.data) {
+      addToast('error', typeof reqRes.error === 'string' ? reqRes.error : 'Failed to load procurement requests');
+      return false;
+    }
+
+    const existing = reqRes.data.find((r) => {
+      const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
+      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN'].includes(String(r.status || ''));
+      return sameVendor && openStatus;
     });
 
-    if (match) {
-      const backendPoId = String(match.id ?? '').replace(/^PO-/, '') || String(match.id);
-      const existingItems = Array.isArray(match.items) ? match.items.map((i) => ({ ...(i as object) })) : [];
-      const newKey = poItemMergeKey(newApiItem);
-      const idx = existingItems.findIndex((i) => poItemMergeKey(i as Record<string, unknown>) === newKey);
-      let merged: unknown[];
+    if (existing) {
+      const existingItems = Array.isArray(existing.items) ? [...existing.items] : [];
+      const mergeKey = procurementItemMergeKey(newRequestItem);
+      const idx = existingItems.findIndex((i) => procurementItemMergeKey(i) === mergeKey);
+      let merged: ProcurementRequestItem[];
       if (idx >= 0) {
-        const old = existingItems[idx] as Record<string, unknown>;
-        const qOld = Number(old.quantity) || 0;
-        const rOld = Number(old.rate ?? old.price) || 0;
+        const old = existingItems[idx];
+        const qOld = Number(old.quantity_requested ?? 0) || 0;
         const qNew = qOld + qty;
-        const rNew = qNew > 0 ? (qOld * rOld + qty * unitPrice) / qNew : unitPrice;
         merged = [...existingItems];
-        merged[idx] = { ...old, quantity: qNew, rate: String(rNew) };
+        merged[idx] = {
+          ...old,
+          required: (Number(old.required ?? 0) || 0) + qty,
+          shortage: (Number(old.shortage ?? 0) || 0) + qty,
+          quantity_requested: qNew,
+          line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+        };
       } else {
-        merged = [...existingItems, newApiItem];
+        merged = [...existingItems, newRequestItem];
       }
-      const upd = await updatePurchaseOrder(backendPoId, { items: merged });
+
+      const upd = await updateProcurementRequest(existing.id, {
+        items: merged,
+        preferredVendor: vendorName,
+      });
       if (!upd.success) {
-        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update draft PO');
+        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update procurement request');
         return false;
       }
     } else {
-      const today = new Date();
-      const createdDateStr = today.toISOString().split('T')[0];
-      const exp = new Date(today);
-      exp.setDate(exp.getDate() + leadTimeDays);
-      const expectedDeliveryStr = exp.toISOString().split('T')[0];
-      const orderId = `DPO-PLN-${Date.now()}`;
-      const peId = planningRow.planningExtractedId;
-      const createRes = await createPurchaseOrder({
-        orderId,
-        vendorName,
-        orderDate: createdDateStr,
-        expectedShipmentDate: expectedDeliveryStr,
-        reference: peId != null ? `Planning PE-${peId}` : 'Planning — Items Involved',
-        paymentTerms,
-        status: 'Draft',
-        formData: {
-          source: PLANNING_DRAFT_PO_SOURCE,
-          plannedGroupKey: groupKey,
-          requestCode: 'Planning',
-          requestId: '',
-        },
-        items: [newApiItem],
+      const createRes = await createProcurementRequest({
+        planningExtractedId: peId,
+        planningBatchId: null,
+        priority: 'High',
+        requiredByDate,
+        notes: `Planned group: ${groupKey}`,
+        items: [newRequestItem],
       });
       if (!createRes.success || !createRes.data) {
-        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create draft PO');
+        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create procurement request');
         return false;
       }
+      await updateProcurementRequest(createRes.data.id, { preferredVendor: vendorName });
     }
 
-    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
 
     setReleaseToPlanningItem(null);
-    addToast('success', 'Added to Draft PO for review (Procurement → Draft POs).');
+    addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
     return true;
   };
 
@@ -2483,6 +2572,15 @@ const Planning = () => {
             PIs Extracted
           </NavLink>
           <NavLink
+            to="/planning/batches"
+            className={({ isActive }) =>
+              `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
+              }`
+            }
+          >
+            Batches
+          </NavLink>
+          <NavLink
             to="/planning/items-involved"
             className={({ isActive }) =>
               `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
@@ -2499,15 +2597,6 @@ const Planning = () => {
             }
           >
             Availability Summary
-          </NavLink>
-          <NavLink
-            to="/planning/batches"
-            className={({ isActive }) =>
-              `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
-              }`
-            }
-          >
-            Batches
           </NavLink>
         </div>
 
@@ -2572,6 +2661,7 @@ const Planning = () => {
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">SO No</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Units</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Availability</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Internal Progress</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer Status</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
@@ -2644,11 +2734,44 @@ const Planning = () => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
-                            <div className="text-xs text-gray-500">{order.soStatus ?? order.productCode}</div>
+                            <div className="text-xs text-gray-700">{order.productName ?? order.productCode ?? '—'}</div>
+                            <div className="text-xs text-gray-500">{order.soStatus ?? '—'}</div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{order.orderQty}</div>
                             <div className="text-xs text-gray-500">{order.totalKg} total</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {(() => {
+                              const res =
+                                planningAvailabilityBySoNo[order.soNumber] ??
+                                planningAvailabilityBySoNo[normalizeSoKey(order.soNumber)];
+                              const items = res?.items ?? [];
+                              const item: SoPlanningAvailabilityItem | null =
+                                items.find((it) => String(it.sku || '').trim() === String(order.productCode || '').trim()) ??
+                                items.find((it) => String(it.productName || '').trim() === String(order.productName || '').trim()) ??
+                                (items.length === 1 ? items[0] : null);
+                              if (planningAvailabilityLoading && !item) {
+                                return <span className="text-xs text-gray-400">Loading…</span>;
+                              }
+                              if (!item) {
+                                return <span className="text-xs text-gray-400">—</span>;
+                              }
+                              return (
+                                <div className="text-xs text-gray-700 leading-relaxed">
+                                  <div>
+                                    <span className="font-semibold text-teal-700">RM</span>{' '}
+                                    {item.rmStartedCount}/{item.rmStartableCount} started ·{' '}
+                                    {item.rmStartableCount}/{item.totalBatches} available
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-orange-700">PM</span>{' '}
+                                    {item.pmStartedCount}/{item.pmStartableCount} started ·{' '}
+                                    {item.pmStartableCount}/{item.totalBatches} available
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
@@ -2737,8 +2860,8 @@ const Planning = () => {
                         ['Order Date', selectedRowForDetail.orderDate],
                         ['Due Date', selectedRowForDetail.dueDate],
                         ['Days Left', selectedRowForDetail.daysLeft],
-                        ['Batch Size', selectedRowForDetail.batchSize],
-                        ['Batches Required', `${selectedRowForDetail.batchesRequired} batches`],
+                        // ['Batch Size', selectedRowForDetail.batchSize],
+                        // ['Batches Required', `${selectedRowForDetail.batchesRequired} batches`],
                         ['BOM Status', selectedRowForDetail.bomStatus],
                         ['Approved By', selectedRowForDetail.approvedBy],
                       ].map(([label, value]) => (
@@ -2939,97 +3062,91 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        const shortfall =
-                          item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum);
-                        // Avoid float edge cases (e.g. 0.03 kg lines) hiding a real gap.
-                        const hasShortfall = shortfall > 1e-6;
+                        // Release should only be available when NET is negative (actual shortage).
+                        const hasShortfall = item.netNum < 0;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const quoteSlabs = getQuotationSlabsForItem(item);
-                        const hasMatchingQuotation = quoteSlabs.length > 0;
-                        /** Allow release when there is a gap, when a Procurement quotation matches this RM/PM, or when a planned line already exists (another vendor / follow-on release). */
-                        const canReleaseToPlanning =
-                          hasShortfall || hasMatchingQuotation || hasExistingPlannedLine;
+                        const canReleaseToPlanning = hasShortfall;
                         return (
-                      <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="px-2 py-2">
-                          <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                          {item.itemType === 'PM' && <div className="text-xs text-gray-500">Primary A</div>}
-                        </td>
-                        <td className="px-2 py-2">
-                          <span className="text-blue-600 font-medium text-xs">{item.code}</span>
-                        </td>
-                        <td className="px-2 py-2">
-                          <span className={`text-xs font-semibold px-1 py-0.5 rounded ${item.itemType === 'PM'
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-cyan-100 text-cyan-700'
-                            }`}>
-                            {item.itemType}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setUsedInModalItem(item)}
-                            className="w-5 h-5 bg-pink-100 hover:bg-pink-200 rounded-full flex items-center justify-center mx-auto transition-colors"
-                            title="Click to view batches using this item"
-                          >
-                            <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
-                          </button>
-                        </td>
-                        <td className="px-2 py-2 text-right text-gray-900 text-xs">{item.totalReq}</td>
-                        <td className="px-2 py-2 text-right text-orange-600 font-medium text-xs">{item.sih}</td>
-                        <td className="px-2 py-2 text-right text-amber-700 text-xs">{item.reserved}</td>
-                        <td className="px-2 py-2 text-right text-blue-700 text-xs">{item.plannedQty}</td>
-                        <td className="px-2 py-2 text-right text-rose-600 text-xs">{item.inTransit}</td>
-                        <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.reorderPt}</td>
-                        <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.avgMo}</td>
-                        <td className="px-2 py-2 text-center">
-                          {item.status === 'In Stock' && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">In Stock</span>}
-                          {item.status === 'Low Stock' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Low Stock</span>}
-                          {item.status === 'Critical' && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">Critical</span>}
-                          {item.status === 'Out of Stock' && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>}
-                          {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
-                        </td>
-                        <td className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                          {item.net}
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <div className={`h-1.5 rounded-sm w-10 ${item.coverage === '100%' ? 'bg-green-500' : 'bg-orange-400'
-                              }`}></div>
-                            <span className="text-xs font-semibold text-gray-700">{item.coverage}</span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-gray-900 text-xs">{item.whBatches}</td>
-                        <td className="px-2 py-2 text-center text-gray-600 text-xs">{item.expiry}</td>
-                        <td className="px-2 py-2 text-center text-gray-500 text-xs">{item.bomFlag}</td>
-                        <td className="px-2 py-2 text-center">
-                          <div className="flex flex-col items-center gap-1 min-w-[7rem]">
-                            {hasShortfall && hasExistingPlannedLine && (
-                              <span
-                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                title="At least one planned line exists for this item; you can add another release."
-                              >
-                                Planned line
+                          <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-2 py-2">
+                              <div className="text-gray-900 font-medium text-xs">{item.name}</div>
+                              {item.itemType === 'PM' && <div className="text-xs text-gray-500">Primary A</div>}
+                            </td>
+                            <td className="px-2 py-2">
+                              <span className="text-blue-600 font-medium text-xs">{item.code}</span>
+                            </td>
+                            <td className="px-2 py-2">
+                              <span className={`text-xs font-semibold px-1 py-0.5 rounded ${item.itemType === 'PM'
+                                ? 'bg-orange-100 text-orange-700'
+                                : 'bg-cyan-100 text-cyan-700'
+                                }`}>
+                                {item.itemType}
                               </span>
-                            )}
-                            <button
-                              type="button"
-                              className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={!canReleaseToPlanning}
-                              title={
-                                canReleaseToPlanning
-                                  ? undefined
-                                  : 'Needs a shortage, a matching quotation in Procurement → Quotations, or an existing planned line to add another release.'
-                              }
-                              onClick={() => openReleaseToPlanningModal(item)}
-                            >
-                              Release to Planning
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setUsedInModalItem(item)}
+                                className="w-5 h-5 bg-pink-100 hover:bg-pink-200 rounded-full flex items-center justify-center mx-auto transition-colors"
+                                title="Click to view batches using this item"
+                              >
+                                <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
+                              </button>
+                            </td>
+                            <td className="px-2 py-2 text-right text-gray-900 text-xs">{item.totalReq}</td>
+                            <td className="px-2 py-2 text-right text-orange-600 font-medium text-xs">{item.sih}</td>
+                            <td className="px-2 py-2 text-right text-amber-700 text-xs">{item.reserved}</td>
+                            <td className="px-2 py-2 text-right text-blue-700 text-xs">{item.plannedQty}</td>
+                            <td className="px-2 py-2 text-right text-rose-600 text-xs">{item.inTransit}</td>
+                            <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.reorderPt}</td>
+                            <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.avgMo}</td>
+                            <td className="px-2 py-2 text-center">
+                              {item.status === 'In Stock' && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">In Stock</span>}
+                              {item.status === 'Low Stock' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Low Stock</span>}
+                              {item.status === 'Critical' && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">Critical</span>}
+                              {item.status === 'Out of Stock' && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>}
+                              {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
+                            </td>
+                            <td className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
+                              }`}>
+                              {item.net}
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <div className={`h-1.5 rounded-sm w-10 ${item.coverage === '100%' ? 'bg-green-500' : 'bg-orange-400'
+                                  }`}></div>
+                                <span className="text-xs font-semibold text-gray-700">{item.coverage}</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-gray-900 text-xs">{item.whBatches}</td>
+                            <td className="px-2 py-2 text-center text-gray-600 text-xs">{item.expiry}</td>
+                            <td className="px-2 py-2 text-center text-gray-500 text-xs">{item.bomFlag}</td>
+                            <td className="px-2 py-2 text-center">
+                              <div className="flex flex-col items-center gap-1 min-w-[7rem]">
+                                {hasShortfall && hasExistingPlannedLine && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                    title="At least one planned line exists for this item; you can add another release."
+                                  >
+                                    Planned line
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  disabled={!canReleaseToPlanning}
+                                  title={
+                                    canReleaseToPlanning
+                                      ? undefined
+                                      : 'Disabled because NET is not negative (stock is sufficient).'
+                                  }
+                                  onClick={() => openReleaseToPlanningModal(item)}
+                                >
+                                  Release to Planning
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
                         );
                       })()
                     ))}
@@ -3187,9 +3304,14 @@ const Planning = () => {
         const slabs = getQuotationSlabsForItem(item);
         const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
         const previous = plannedLinesFromBackend
-          .filter((l) => plannedLineMatchesItemsInvolvedRow(l, item))
+          .filter((l) => {
+            if (Number(item.planningExtractedId) > 0 && Number(l.planningExtractedId) > 0 && Number(l.planningExtractedId) !== Number(item.planningExtractedId)) {
+              return false;
+            }
+            return plannedLineMatchesItemsInvolvedRow(l, item);
+          })
           .slice(0, 10);
-        const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.plannedQtyNum + item.orderedQtyNum));
+        const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
         return (
           <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
@@ -3237,7 +3359,7 @@ const Planning = () => {
                                     paymentTermsType: p.type,
                                     advancePercent: String(
                                       p.advancePercent ||
-                                        (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                      (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                     ),
                                     leadTimeDays: s.leadTimeDays,
                                   }));
@@ -3249,7 +3371,7 @@ const Planning = () => {
                             </td>
                           </tr>
                         ))}
-                        {slabs.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-500">No quotations found for this item in Procurement &gt; Quotations.</td></tr>}
+                        {slabs.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-500">No vendor rates found for this item in Items List (shown in Procurement &gt; Quotations).</td></tr>}
                       </tbody>
                     </table>
                     <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
@@ -3379,7 +3501,7 @@ const Planning = () => {
                                     paymentTermsType: p.type,
                                     advancePercent: String(
                                       p.advancePercent ||
-                                        (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                      (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                     ),
                                     leadTimeDays: r.leadTimeDays,
                                   }));
@@ -3547,15 +3669,15 @@ const Planning = () => {
               </div>
               {(() => {
                 const allShortfallResolved = rows.length > 0 && rows.every((r) => r.shortfall <= 0);
-                const alreadySent = Boolean(batch.sent);
-                if (alreadySent) {
-                  return (
-                    <div className="px-4 py-3 border-t border-gray-200 bg-emerald-50 flex items-center justify-between">
-                      <span className="text-sm font-medium text-emerald-800">Sent to production — can be scheduled in Production → Calendar.</span>
-                      <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-                    </div>
-                  );
-                }
+                // const alreadySent = Boolean(batch.sent);
+                // if (alreadySent) {
+                //   return (
+                //     <div className="px-4 py-3 border-t border-gray-200 bg-emerald-50 flex items-center justify-between">
+                //       <span className="text-sm font-medium text-emerald-800">Sent to production — can be scheduled in Production → Calendar.</span>
+                //       <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
+                //     </div>
+                //   );
+                // }
                 if (allShortfallResolved) {
                   return (
                     <div className="px-4 py-3 border-t border-gray-200 bg-amber-50 flex items-center justify-between gap-3">
@@ -3900,11 +4022,11 @@ const Planning = () => {
 
                   {/* Order summary + Preview qty */}
                   <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
-                    <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2">
+                    {/* <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2">
                       <p className="text-xs font-semibold text-cyan-900">
                         Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
                       </p>
-                    </div>
+                    </div> */}
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
                       <input
@@ -3935,10 +4057,11 @@ const Planning = () => {
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-200">
                               <th className="px-3 py-2 text-left font-semibold text-gray-700 min-w-[120px]">Item</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-700">SG</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Req this order</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700">Stock</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Free</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Available</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">PO / Transit</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700">Gap</th>
                               <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Max units</th>
@@ -3951,7 +4074,13 @@ const Planning = () => {
                                   <span className="font-medium text-xs">{row.name}</span>
                                   <div className="text-[10px] text-gray-500">{row.code} · kg</div>
                                 </td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">{row.reqThisOrder.toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-700">{Number(row.specificGravity ?? 1).toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">
+                                  {row.reqThisOrder.toFixed(2)}
+                                  <div className="text-[10px] font-normal text-gray-500">
+                                    {(row.reqThisOrderLiters ?? row.reqThisOrder).toFixed(2)} L
+                                  </div>
+                                </td>
                                 <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
                                 <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
                                 <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.free.toLocaleString()}</td>
@@ -4195,7 +4324,7 @@ const Planning = () => {
                                     disabled={isSent}
                                     className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
                                     min={0}
-                                    
+
                                   />
                                   <span className="text-xs font-semibold text-gray-600">units</span>
                                   {!isSent && canSendToProduction && (
@@ -4285,9 +4414,6 @@ const Planning = () => {
                         })}
                       </div>
                     </div>
-                    <button type="button" onClick={handleSaveBatchPlan} className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700">
-                      Save Batch Plan
-                    </button>
                   </div>
                 );
               })()}
@@ -4436,13 +4562,7 @@ const Planning = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="border-t border-gray-200 p-6 flex gap-3 justify-between">
-              <button
-                onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="border-t border-gray-200 p-6 flex gap-3 justify-end">
               <div className="flex gap-2">
                 {/* <button onClick={() => handleRaisePRFromBatch()} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-yellow-500 hover:bg-yellow-600 transition-colors">
                   Raise PR for Shortages
@@ -4459,6 +4579,21 @@ const Planning = () => {
                     BOM Confirmed
                   </span>
                 )}
+                {/* {activeBatchTab === 'batch-plan' && (
+                  <button
+                    type="button"
+                    onClick={handleSaveBatchPlan}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700"
+                  >
+                    Save Batch Plan
+                  </button>
+                )}
+                <button
+                  onClick={() => { setPlanBatchesModalOpen(false); setSelectedSOForBatch(null); setSelectedBatchId(null); setIsReadyForProduction(false); setSwapSourceIndex(null); setCustomBatches([]); setExpandedBatchIndex(null); }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button> */}
               </div>
             </div>
           </div>

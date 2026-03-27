@@ -6,10 +6,21 @@
 import type { ServiceResult } from "../types/api.types";
 import { api } from "../lib/apiClient";
 
+/** Returned on vendor create/update when Vendor Items are synced to Items List price tables */
+export interface PriceListSyncResult {
+  synced: number;
+  removed: number;
+  skipped: Array<{ code: string; type: string; reason: string }>;
+}
+
 export interface VendorClientRecord {
   id: string;
   type: "vendor" | "client";
+  /** users.userid when this master is linked to a portal/login user */
+  userId?: string | null;
   zohoId?: string;
+  /** Present for vendors after save when backend syncs vendorItems → items_list */
+  priceListSync?: PriceListSyncResult;
   name: string;
   email: string;
   phone: string;
@@ -39,6 +50,8 @@ export interface CreateVendorClientPayload {
   type: "vendor" | "client";
   entityCode: string;
   zohoId?: string | null;
+  /** Optional link to portal/user management record. */
+  userId?: string | null;
   name?: string;
   email?: string;
   phone?: string;
@@ -135,6 +148,9 @@ export async function createVendorClient(
     const body = {
       type: payload.type,
       entityCode: payload.entityCode,
+      ...(payload.userId != null && payload.userId !== ""
+        ? { userId: payload.userId }
+        : {}),
       zohoId: payload.zohoId ?? undefined,
       name: payload.name,
       email: payload.email,

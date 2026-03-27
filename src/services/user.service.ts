@@ -31,6 +31,9 @@ export interface StaffUserFromApi {
  role_id?: number;
  role_name?: string;
  department?: string;
+ vendor_client_id?: number | null;
+ vendor_client_code?: string | null;
+ vendor_client_type?: string | null;
 }
 
 // ==================== User CRUD Operations ====================

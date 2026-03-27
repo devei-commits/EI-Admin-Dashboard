@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { Plus, Trash2 } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { fetchNextBomCode } from '../services/bom.service';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 import {
   createPRRegistration,
   fetchPRProductDetail,
@@ -49,6 +51,8 @@ interface BOMFormState {
   // Formula BOM Tab
   formulaIngredients: Array<{
     id: string;
+    rawMaterialId?: string;
+    rmCode?: string;
     inciName: string;
     phase: string;
     percentWW: string;
@@ -58,6 +62,8 @@ interface BOMFormState {
   // Pack BOM Tab
   packingComponents: Array<{
     id: string;
+    packMaterialId?: string;
+    pmCode?: string;
     pmDescription: string;
     type: string;
     qtyUnit: string;
@@ -229,7 +235,8 @@ function bomFormToRmLines(fd: BOMFormState) {
   return fd.formulaIngredients.map((ing) => ({
     phase: ing.phase,
     inci_name: ing.inciName,
-    rm_code: '',
+    rm_code: ing.rmCode || '',
+    raw_material_id: ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
     pct_w_w: parseFloat(ing.percentWW) || 0,
     uom: ing.uom,
   }));
@@ -237,7 +244,8 @@ function bomFormToRmLines(fd: BOMFormState) {
 
 function bomFormToPmLines(fd: BOMFormState) {
   return fd.packingComponents.map((c) => ({
-    pm_code: '',
+    pm_code: c.pmCode || '',
+    pack_material_id: c.packMaterialId ? parseInt(c.packMaterialId, 10) : undefined,
     description: c.pmDescription,
     pack_type: c.type,
     qty_per_unit: parseFloat(c.qtyUnit) || 1,
@@ -337,6 +345,8 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     (phase.ingredients || []).forEach((ing, ii) => {
       formulaIngredients.push({
         id: `fi-${pi}-${ii}`,
+        rawMaterialId: ing.raw_material_id != null ? String(ing.raw_material_id) : undefined,
+        rmCode: ing.rm_code || '',
         inciName: ing.inci_name || '',
         phase: phase.phase || '',
         percentWW: String(ing.pct_w_w ?? ''),
@@ -346,6 +356,11 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
   });
   const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => ({
     id: `pc-${i}`,
+    packMaterialId:
+      (row as any).pack_material_id != null
+        ? String((row as any).pack_material_id)
+        : (row.pm_id != null ? String(row.pm_id) : undefined),
+    pmCode: (row.pm_code as string) || '',
     pmDescription: row.pm_description || '',
     type: row.pack_type || '',
     qtyUnit: String(row.qty_per_unit ?? ''),
@@ -394,6 +409,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
+  const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
+  const [masterLoading, setMasterLoading] = useState(true);
+  const [selectedRmId, setSelectedRmId] = useState<string>('');
+  const [selectedPmId, setSelectedPmId] = useState<string>('');
 
   const stages = [
     'Identity & coding',
@@ -402,6 +422,39 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     'Process Steps',
     'Specs & Regulatory',
   ];
+
+  // Load RM/PM masters once so the BOM lines can reference actual items (ids/codes/prices).
+  useEffect(() => {
+    let cancelled = false;
+    setMasterLoading(true);
+    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()])
+      .then(([rms, pms]) => {
+        if (cancelled) return;
+        setRawMaterials(rms || []);
+        setPackMaterials(pms || []);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) addToast('error', 'Failed to load RM/PM masters');
+      })
+      .finally(() => {
+        if (!cancelled) setMasterLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addToast]);
+
+  const rawMaterialById = useMemo(() => {
+    const m = new Map<string, RawMaterialRecord>();
+    rawMaterials.forEach((r) => m.set(String(r.id), r));
+    return m;
+  }, [rawMaterials]);
+  const packMaterialById = useMemo(() => {
+    const m = new Map<string, PackMaterialRecord>();
+    packMaterials.forEach((p) => m.set(String(p.id), p));
+    return m;
+  }, [packMaterials]);
 
   // When route has :id, fetch product and fill form for edit
   useEffect(() => {
@@ -485,17 +538,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const addIngredient = () => {
-    if (!tempIngredient.inciName.trim()) {
-      addToast('error', 'INCI Name is required');
+    const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
+    if (!rm && !tempIngredient.inciName.trim()) {
+      addToast('error', 'Select a Raw Material (or enter INCI Name)');
       return;
     }
     setFormData(prev => ({
       ...prev,
       formulaIngredients: [...prev.formulaIngredients, {
         id: Date.now().toString(),
-        ...tempIngredient
+        rawMaterialId: rm ? String(rm.id) : undefined,
+        rmCode: rm ? rm.code : '',
+        inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
+        phase: tempIngredient.phase,
+        percentWW: tempIngredient.percentWW,
+        uom: rm?.uom || tempIngredient.uom || 'GM',
       }]
     }));
+    setSelectedRmId('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   };
 
@@ -507,17 +567,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const addComponent = () => {
-    if (!tempComponent.pmDescription.trim()) {
-      addToast('error', 'PM Description is required');
+    const pm = selectedPmId ? packMaterialById.get(String(selectedPmId)) : undefined;
+    if (!pm && !tempComponent.pmDescription.trim()) {
+      addToast('error', 'Select a Pack Material (or enter PM Description)');
       return;
     }
     setFormData(prev => ({
       ...prev,
       packingComponents: [...prev.packingComponents, {
         id: Date.now().toString(),
-        ...tempComponent
+        packMaterialId: pm ? String(pm.id) : undefined,
+        pmCode: pm ? pm.code : '',
+        pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
+        type: tempComponent.type || pm?.level || pm?.type || '',
+        qtyUnit: tempComponent.qtyUnit,
+        uom: tempComponent.uom || pm?.unit || 'PCS',
       }]
     }));
+    setSelectedPmId('');
     setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   };
 
@@ -892,13 +959,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
 
                 <div className="border-t pt-3 space-y-2">
-                  <input
-                    type="text"
-                    placeholder="INCI Name"
-                    value={tempIngredient.inciName}
-                    onChange={(e) => setTempIngredient(prev => ({ ...prev, inciName: e.target.value }))}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={selectedRmId}
+                      onChange={(e) => setSelectedRmId(e.target.value)}
+                      disabled={masterLoading}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    >
+                      <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
+                      {rawMaterials.map((rm) => (
+                        <option key={rm.id} value={rm.id}>
+                          {rm.code} — {rm.inci || rm.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Or type INCI Name (manual)"
+                      value={tempIngredient.inciName}
+                      onChange={(e) => setTempIngredient(prev => ({ ...prev, inciName: e.target.value }))}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    />
+                  </div>
                   <div className="grid grid-cols-3 gap-2">
                     <input
                       type="text"
@@ -967,13 +1049,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
 
                 <div className="border-t pt-3 space-y-2">
-                  <input
-                    type="text"
-                    placeholder="PM Description"
-                    value={tempComponent.pmDescription}
-                    onChange={(e) => setTempComponent(prev => ({ ...prev, pmDescription: e.target.value }))}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={selectedPmId}
+                      onChange={(e) => setSelectedPmId(e.target.value)}
+                      disabled={masterLoading}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    >
+                      <option value="">{masterLoading ? 'Loading pack materials…' : 'Select Pack Material (PM master)'}</option>
+                      {packMaterials.map((pm) => (
+                        <option key={pm.id} value={pm.id}>
+                          {pm.code} — {pm.description}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Or type PM Description (manual)"
+                      value={tempComponent.pmDescription}
+                      onChange={(e) => setTempComponent(prev => ({ ...prev, pmDescription: e.target.value }))}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"

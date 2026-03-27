@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useVendorClient } from '../context/VendorClientContext';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode } from '../services/vendorClient.service';
+import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, type VendorClientRecord } from '../services/vendorClient.service';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 
 interface Document {
  type: string;
@@ -44,6 +46,10 @@ interface VendorItem {
  hsn: string;
  paymentTermsOverride: string;
 }
+
+type ItemCodeSuggestion =
+ | { kind: 'RM'; code: string; name: string; uom: string; gst?: number; hsn?: string | null }
+ | { kind: 'PM'; code: string; name: string; uom: string; gst?: number; hsn?: string | null };
 
 interface VendorFormData {
  setupType: 'VENDOR' | 'CLIENT';
@@ -88,6 +94,7 @@ interface VendorFormData {
  agreementLink: string;
  owner: string;
  agreementNotes: string;
+ linkedUserId: string;
 }
 
 type VendorFormProps = {
@@ -96,30 +103,112 @@ type VendorFormProps = {
 };
 
 const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) => {
- const { vendorClients } = useVendorClient();
+ const queryClient = useQueryClient();
  const { addToast } = useToast();
  const [currentStage, setCurrentStage] = useState(0);
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [isSaving, setIsSaving] = useState(false);
+ const [savingPriceList, setSavingPriceList] = useState(false);
  const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
- const existingVendor = useMemo(() => {
-  if (!editingId) return null;
-  const fromContext = vendorClients.find(v => v.id === editingId && v.type === 'vendor');
-  if (fromContext) return fromContext;
-  if (fetchedRecord && (fetchedRecord as { type?: string }).type === 'vendor') return fetchedRecord as any;
-  return null;
- }, [editingId, vendorClients, fetchedRecord]);
-
  useEffect(() => {
-  if (!editingId) { setFetchedRecord(null); return; }
-  if (vendorClients.some(v => v.id === editingId && v.type === 'vendor')) { setFetchedRecord(null); return; }
+  if (!editingId) {
+   setFetchedRecord(null);
+   return;
+  }
   let cancelled = false;
   fetchVendorClientById(editingId).then((res) => {
    if (!cancelled && res.success && res.data) setFetchedRecord(res.data as unknown as Record<string, unknown>);
   });
-  return () => { cancelled = true; };
- }, [editingId, vendorClients]);
+  return () => {
+   cancelled = true;
+  };
+ }, [editingId]);
+
+ /** When opening/closing edit (or switching vendor), reset wizard state so we don't mix sessions. */
+ useEffect(() => {
+  setVendorItems([]);
+  setCurrentStage(0);
+ }, [editingId]);
+
+ /** Hydrate edit form once per GET response — never use list/context rows here (they can omit data.vendorItems). */
+ const hydratedFetchKeyRef = useRef<string>('');
+ useEffect(() => {
+  if (!editingId) {
+   hydratedFetchKeyRef.current = '';
+   return;
+  }
+  if (!fetchedRecord || (fetchedRecord as { type?: string }).type !== 'vendor') return;
+
+  const lastMod = String((fetchedRecord as { lastModified?: string }).lastModified ?? '');
+  const fetchKey = `${editingId}:${lastMod}`;
+  if (hydratedFetchKeyRef.current === fetchKey) return;
+  hydratedFetchKeyRef.current = fetchKey;
+
+  const v = fetchedRecord as Record<string, unknown>;
+  const data = (v.data || {}) as Record<string, any>;
+
+  const entityCode =
+   data.entityCode ||
+   data.customerNumber ||
+   data.cfContactId ||
+   data.contactId ||
+   v.id;
+
+  const termsStr = String(data.paymentTerms ?? v.paymentTerms ?? '');
+  const isAdvance = /advance/i.test(termsStr) && !/on delivery/i.test(termsStr);
+  const isOnDelivery = /on delivery/i.test(termsStr) || /after dispatch/i.test(termsStr);
+
+  const baseFormData = {
+   legalName: data.legalName || v.name,
+   tradeName: data.tradeName || v.name,
+   primaryEmail: data.primaryEmail || v.email,
+   primaryPhone: data.primaryPhone || v.phone,
+   state: data.state || v.location,
+   country: data.country || v.country,
+   setupCategory: data.setupCategory || v.category,
+   paymentTerms: data.paymentTerms || v.paymentTerms,
+   notes: data.notes || v.notes,
+   entityCode: String(entityCode || ''),
+   zohoId: data.zohoId ?? (v as { zohoId?: string }).zohoId ?? '',
+   linkedUserId: String((v as { userId?: string | null }).userId ?? ''),
+   paymentCreditType: data.paymentCreditType ?? (isAdvance ? 'Advance' : 'Credit'),
+   payablesAdvancedPct:
+    data.payablesAdvancedPct != null && String(data.payablesAdvancedPct).trim() !== ''
+     ? String(data.payablesAdvancedPct)
+     : isAdvance
+       ? '100'
+       : '0',
+   payablesBeforeDispatchPct:
+    data.payablesBeforeDispatchPct != null && String(data.payablesBeforeDispatchPct).trim() !== ''
+     ? String(data.payablesBeforeDispatchPct)
+     : '0',
+   payablesAfterDispatchPct:
+    data.payablesAfterDispatchPct != null && String(data.payablesAfterDispatchPct).trim() !== ''
+     ? String(data.payablesAfterDispatchPct)
+     : isAdvance
+       ? '0'
+       : isOnDelivery
+         ? '100'
+         : '100',
+  };
+
+  setFormData((prev) => ({
+   ...prev,
+   ...baseFormData,
+   ...data,
+   setupType: 'VENDOR',
+   setupPrefix: 'VEN',
+  }));
+  setDocuments(Array.isArray(data.documents) ? data.documents : []);
+  setPocs(Array.isArray(data.pocs) ? data.pocs : []);
+  setBanks(Array.isArray(data.banks) ? data.banks : []);
+  setVendorItems((prev) => {
+   const fromServer = Array.isArray(data.vendorItems) ? data.vendorItems : [];
+   if (prev.length > 0) return prev;
+   return fromServer;
+  });
+ }, [editingId, fetchedRecord]);
 
  const [documents, setDocuments] = useState<Document[]>([]);
  const [pocs, setPocs] = useState<POC[]>([]);
@@ -130,6 +219,82 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const [tempPoc, setTempPoc] = useState({ name: '', role: '', email: '', phone: '', level: '', preferred: '', notes: '' });
  const [tempBank, setTempBank] = useState({ beneficiaryName: '', bankName: '', accountNo: '', ifsc: '', branch: '', accountType: '', upiId: '', isDefault: '', notes: '' });
  const [tempItem, setTempItem] = useState({ itemType: '', itemCode: '', itemName: '', uom: 'KG', moq: '', unitPrice: '', leadTime: '', priceValidTill: '', gst: '', hsn: '', paymentTermsOverride: '' });
+
+ const [itemCodeSuggestions, setItemCodeSuggestions] = useState<ItemCodeSuggestion[]>([]);
+ const [itemCodeLoading, setItemCodeLoading] = useState(false);
+ const [itemCodeOpen, setItemCodeOpen] = useState(false);
+ const itemCodeBlurTimeoutRef = useRef<number | null>(null);
+ const lastSuggestReqRef = useRef(0);
+
+ useEffect(() => {
+  // Only autocomplete for RM/PM.
+  const t = String(tempItem.itemType || '').trim().toUpperCase();
+  if (t !== 'RM' && t !== 'PM') {
+   setItemCodeSuggestions([]);
+   setItemCodeLoading(false);
+   setItemCodeOpen(false);
+   return;
+  }
+
+  const q = String(tempItem.itemCode || '').trim();
+  if (q.length < 2) {
+   setItemCodeSuggestions([]);
+   setItemCodeLoading(false);
+   return;
+  }
+
+  const reqId = Date.now();
+  lastSuggestReqRef.current = reqId;
+  setItemCodeLoading(true);
+
+  const timer = window.setTimeout(() => {
+   const run = async () => {
+    try {
+     if (t === 'RM') {
+      const list = await fetchRawMaterialsList(q);
+      if (lastSuggestReqRef.current !== reqId) return;
+      const mapped: ItemCodeSuggestion[] = (list ?? [])
+       .slice(0, 10)
+       .map((rm: RawMaterialRecord) => ({
+        kind: 'RM',
+        code: rm.code,
+        name: rm.name,
+        uom: rm.uom || 'KG',
+        gst: rm.gst,
+        hsn: rm.hsnCode,
+       }));
+      setItemCodeSuggestions(mapped);
+      setItemCodeOpen(true);
+     } else {
+      const list = await fetchPackMaterialsList(q);
+      if (lastSuggestReqRef.current !== reqId) return;
+      const mapped: ItemCodeSuggestion[] = (list ?? [])
+       .slice(0, 10)
+       .map((pm: PackMaterialRecord) => ({
+        kind: 'PM',
+        code: pm.code,
+        name: pm.description,
+        uom: pm.unit || 'PCS',
+        hsn: pm.hsnCode,
+       }));
+      setItemCodeSuggestions(mapped);
+      setItemCodeOpen(true);
+     }
+    } catch {
+     if (lastSuggestReqRef.current !== reqId) return;
+     setItemCodeSuggestions([]);
+     setItemCodeOpen(false);
+    } finally {
+     if (lastSuggestReqRef.current === reqId) setItemCodeLoading(false);
+    }
+   };
+   void run();
+  }, 250);
+
+  return () => {
+   window.clearTimeout(timer);
+  };
+ }, [tempItem.itemType, tempItem.itemCode]);
 
  const [formData, setFormData] = useState<VendorFormData>({
   setupType: 'VENDOR',
@@ -170,6 +335,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   agreementLink: '',
   owner: '',
   agreementNotes: '',
+  linkedUserId: '',
  });
 
  const stages = [
@@ -179,76 +345,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   { title: 'Multi-level POCs', hint: 'Multiple contacts with escalation levels and departments.' },
   { title: 'Bank Details', hint: 'Multiple bank accounts + default account.' },
   { title: 'Payment Terms & Credit', hint: 'Terms, credit limit, TDS, payment mode.' },
-  { title: 'Vendor Items & Price List', hint: 'Map vendor items and negotiated prices.' },
   { title: 'Agreements & Status', hint: 'NDA/MSA/Rate Contract status and links.' },
  ];
 
  const draftKey = useMemo(() => {
   return editingId ? `vendor_form_draft_${editingId}` : 'vendor_form_draft';
  }, [editingId]);
-
- useEffect(() => {
-  if (existingVendor) {
-   const data = (existingVendor.data || {}) as any;
-     const entityCode =
-        data.entityCode ||
-        data.customerNumber ||
-        data.cfContactId ||
-        data.contactId ||
-        existingVendor.id;
-
-     const termsStr = String(data.paymentTerms ?? existingVendor.paymentTerms ?? '');
-     const isAdvance = /advance/i.test(termsStr) && !/on delivery/i.test(termsStr);
-     const isOnDelivery = /on delivery/i.test(termsStr) || /after dispatch/i.test(termsStr);
-
-     const baseFormData = {
-        legalName: data.legalName || existingVendor.name,
-        tradeName: data.tradeName || existingVendor.name,
-        primaryEmail: data.primaryEmail || existingVendor.email,
-        primaryPhone: data.primaryPhone || existingVendor.phone,
-        state: data.state || existingVendor.location,
-        country: data.country || existingVendor.country,
-        setupCategory: data.setupCategory || existingVendor.category,
-        paymentTerms: data.paymentTerms || existingVendor.paymentTerms,
-        notes: data.notes || existingVendor.notes,
-        entityCode: String(entityCode || ''),
-        zohoId: data.zohoId ?? (existingVendor as { zohoId?: string }).zohoId ?? '',
-        paymentCreditType: data.paymentCreditType ?? (isAdvance ? 'Advance' : 'Credit'),
-        payablesAdvancedPct:
-          data.payablesAdvancedPct != null && String(data.payablesAdvancedPct).trim() !== ''
-            ? String(data.payablesAdvancedPct)
-            : isAdvance
-              ? '100'
-              : '0',
-        payablesBeforeDispatchPct:
-          data.payablesBeforeDispatchPct != null && String(data.payablesBeforeDispatchPct).trim() !== ''
-            ? String(data.payablesBeforeDispatchPct)
-            : '0',
-        payablesAfterDispatchPct:
-          data.payablesAfterDispatchPct != null && String(data.payablesAfterDispatchPct).trim() !== ''
-            ? String(data.payablesAfterDispatchPct)
-            : isAdvance
-              ? '0'
-              : isOnDelivery
-                ? '100'
-                : '100',
-     };
-
-     setFormData(prev => ({
-        ...prev,
-        ...baseFormData,
-        ...(data as any),
-        setupType: 'VENDOR',
-        setupPrefix: 'VEN',
-     }));
-   setDocuments(Array.isArray(data.documents) ? data.documents : []);
-   setPocs(Array.isArray(data.pocs) ? data.pocs : []);
-   setBanks(Array.isArray(data.banks) ? data.banks : []);
-   setVendorItems(Array.isArray(data.vendorItems) ? data.vendorItems : []);
-   setCurrentStage(0);
-   return;
-  }
- }, [existingVendor]);
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { name, value } = e.target;
@@ -403,6 +505,15 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
  const addVendorItem = () => {
   if (!tempItem.itemType || !tempItem.itemName) { addToast('error', 'Item type and name are required'); return; }
+  const t = String(tempItem.itemType).trim().toUpperCase();
+  if ((t === 'RM' || t === 'PM') && !String(tempItem.itemCode || '').trim()) {
+   addToast('error', 'Item code is required for RM/PM so prices can sync to Items List');
+   return;
+  }
+  if ((t === 'RM' || t === 'PM') && !String(tempItem.unitPrice || '').trim()) {
+   addToast('error', 'Unit price is required for RM/PM lines');
+   return;
+  }
   setVendorItems([...vendorItems, tempItem]);
   setTempItem({ itemType: '', itemCode: '', itemName: '', uom: 'KG', moq: '', unitPrice: '', leadTime: '', priceValidTill: '', gst: '', hsn: '', paymentTermsOverride: '' });
   addToast('success', 'Vendor item added');
@@ -413,15 +524,102 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   addToast('success', 'Vendor item removed');
  };
 
+ const invalidateItemsListAfterVendorSave = async () => {
+  await queryClient.invalidateQueries({
+   predicate: (q) =>
+    Array.isArray(q.queryKey) &&
+    typeof q.queryKey[0] === 'string' &&
+    q.queryKey[0].startsWith('items-list'),
+   refetchType: 'all',
+  });
+ };
+
+ const buildVendorDataBlob = () => {
+  const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+  const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+  const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+  const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+  return {
+   computedPaymentTerms,
+   data: { ...formData, paymentTerms: computedPaymentTerms, documents, pocs, banks, vendorItems },
+  };
+ };
+
+ const validateVendorItemsForPriceSave = (): boolean => {
+  for (const it of vendorItems) {
+   const t = String(it.itemType || '').trim().toUpperCase();
+   if (t === 'RM' || t === 'PM') {
+    if (!String(it.itemCode || '').trim()) {
+     addToast('error', 'RM/PM lines need an item code before saving');
+     return false;
+    }
+    if (!String(it.unitPrice || '').trim()) {
+     addToast('error', 'RM/PM lines need a unit price before saving');
+     return false;
+    }
+   }
+  }
+  return true;
+ };
+
+ const handleSaveVendorPriceList = async () => {
+  if (!editingId) {
+   addToast('error', 'Save the vendor once from the final step first, then open Edit to save the price list to the server.');
+   return;
+  }
+  if (!validateVendorItemsForPriceSave()) return;
+  setSavingPriceList(true);
+  try {
+   const { computedPaymentTerms, data } = buildVendorDataBlob();
+   const res = await updateVendorClientApi(editingId, {
+    name: formData.tradeName || formData.legalName,
+    email: formData.primaryEmail,
+    phone: formData.primaryPhone,
+    location: formData.state,
+    country: formData.country,
+    category: formData.setupCategory,
+    paymentTerms: computedPaymentTerms,
+    notes: formData.notes,
+    zohoId: formData.zohoId || undefined,
+    userId: formData.linkedUserId.trim() === '' ? null : formData.linkedUserId.trim(),
+    data: data as Record<string, unknown>,
+   });
+   if (res.success && res.data) {
+    const row = res.data as VendorClientRecord;
+    const d = (row.data || {}) as Record<string, unknown>;
+    if (Array.isArray(d.vendorItems)) {
+     setVendorItems(d.vendorItems as VendorItem[]);
+    }
+    const lastMod = String(row.lastModified ?? '');
+    hydratedFetchKeyRef.current = `${editingId}:${lastMod}`;
+    setFetchedRecord(row as unknown as Record<string, unknown>);
+    addToast('success', 'Price list saved to server.');
+    const sync = row.priceListSync;
+    if (sync && sync.skipped.length > 0) {
+     const hint = sync.skipped[0]
+      ? `${sync.skipped[0].code}: ${sync.skipped[0].reason}`
+      : 'check RM/PM codes in masters';
+     addToast(
+      'warning',
+      `Price list: ${sync.skipped.length} line(s) not synced (${hint}${sync.skipped.length > 1 ? '…' : ''})`,
+     );
+    }
+    void invalidateItemsListAfterVendorSave();
+    void queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+    return;
+   }
+   addToast('error', getErrorMessage(res.error, 'Failed to save price list'));
+  } finally {
+   setSavingPriceList(false);
+  }
+ };
+
  const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!validateStage(currentStage, true)) return;
   setIsSaving(true);
 
-    const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
-    const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
-    const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
-    const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+  const { computedPaymentTerms, data } = buildVendorDataBlob();
 
   const payload = {
    name: formData.tradeName || formData.legalName,
@@ -430,12 +628,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    location: formData.state,
    country: formData.country,
    category: formData.setupCategory,
-      paymentTerms: computedPaymentTerms,
+   paymentTerms: computedPaymentTerms,
    notes: formData.notes,
-      data: { ...formData, paymentTerms: computedPaymentTerms, documents, pocs, banks, vendorItems },
+   data,
   };
 
-  if (editingId && existingVendor) {
+  if (editingId) {
    const res = await updateVendorClientApi(editingId, {
     name: payload.name,
     email: payload.email,
@@ -446,10 +644,22 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     paymentTerms: payload.paymentTerms,
     notes: payload.notes,
     zohoId: formData.zohoId || undefined,
+    userId: formData.linkedUserId.trim() === '' ? null : formData.linkedUserId.trim(),
     data: payload.data as Record<string, unknown>,
    });
    if (res.success) {
     addToast('success', 'Vendor updated successfully!');
+    const sync = res.data?.priceListSync;
+    if (sync && sync.skipped.length > 0) {
+     const hint = sync.skipped[0]
+      ? `${sync.skipped[0].code}: ${sync.skipped[0].reason}`
+      : 'check RM/PM codes in masters';
+     addToast(
+      'warning',
+      `Price list: ${sync.skipped.length} line(s) not synced (${hint}${sync.skipped.length > 1 ? '…' : ''})`,
+     );
+    }
+    void invalidateItemsListAfterVendorSave();
     setIsSaving(false);
     onSaved?.();
     return;
@@ -463,6 +673,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    type: 'vendor',
    entityCode: formData.entityCode || '',
    zohoId: formData.zohoId || undefined,
+   ...(formData.linkedUserId.trim() ? { userId: formData.linkedUserId.trim() } : {}),
    name: payload.name,
    email: payload.email,
    phone: payload.phone,
@@ -477,6 +688,17 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
   if (res.success) {
    addToast('success', 'Vendor created successfully!');
+   const sync = res.data?.priceListSync;
+   if (sync && sync.skipped.length > 0) {
+    const hint = sync.skipped[0]
+     ? `${sync.skipped[0].code}: ${sync.skipped[0].reason}`
+     : 'check RM/PM codes in masters';
+    addToast(
+     'warning',
+     `Price list: ${sync.skipped.length} line(s) not synced (${hint}${sync.skipped.length > 1 ? '…' : ''})`,
+    );
+   }
+   void invalidateItemsListAfterVendorSave();
    setFormData({
     setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '', zohoId: '',
     legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
@@ -490,6 +712,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
     agreementType: '', agreementStatus: '', startDate: '', endDate: '',
     agreementLink: '', owner: '', agreementNotes: '',
+    linkedUserId: '',
    });
    setDocuments([]); setPocs([]); setBanks([]); setVendorItems([]);
    setCurrentStage(0);
@@ -597,6 +820,11 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         <div>
          <label className={labelClass}>Zoho ID</label>
          <input type="text" name="zohoId" value={formData.zohoId} onChange={handleInputChange} placeholder="Zoho contact/org id (for sync)" className={inputClass} />
+        </div>
+        <div>
+         <label className={labelClass}>Linked User Management ID</label>
+         <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
+         <p className="text-xs text-slate-500 mt-1">Optional link to a user account. Clear to unlink.</p>
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1072,11 +1300,31 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       </div>
      )}
 
-     {/* Stage 6: Vendor Items & Price List */}
-     {currentStage === 6 && (
+    {/* Vendor Items & Price List step removed from the wizard */}
+    {currentStage === 9999 && (
       <div className="space-y-6">
        <div className={sectionTitleClass}>Vendor Items & Price List (Vendor Only)</div>
-       <p className="text-sm text-gray-500 mb-4">This section is visible only for Vendor master.</p>
+       <p className="text-sm text-gray-500 mb-4">
+        This section is visible only for Vendor master. Lines with type <strong>RM</strong> or <strong>PM</strong> must use an{' '}
+        <strong>item code</strong> that exists in Raw Materials or Pack Materials masters. On save, those lines sync to{' '}
+        <strong>Items List → Price list</strong> (vendor rates and MOQ tiers). Service/Other lines are stored on the vendor only.
+       </p>
+
+       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 mb-4">
+        <p className="text-sm text-gray-600">
+         {editingId
+          ? 'Save the lines below to the server now and verify the request/response in the network tab (or Items List after sync).'
+          : 'A vendor record must exist before the price list can be saved. Submit the full form once, then edit the vendor to use Save price list.'}
+        </p>
+        <button
+         type="button"
+         onClick={handleSaveVendorPriceList}
+         disabled={!editingId || savingPriceList}
+         className="shrink-0 px-4 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
+        >
+         {savingPriceList ? 'Saving…' : 'Save price list'}
+        </button>
+       </div>
        
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -1091,7 +1339,65 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </div>
         <div>
          <label className={labelClass}>Item Code</label>
-         <input type="text" value={tempItem.itemCode} onChange={(e) => setTempItem({...tempItem, itemCode: e.target.value})} placeholder="EI-RM-... / EI-PM-..." className={inputClass} />
+         <div className="relative">
+          <input
+           type="text"
+           value={tempItem.itemCode}
+           onChange={(e) => {
+            setTempItem({ ...tempItem, itemCode: e.target.value });
+            setItemCodeOpen(true);
+           }}
+           onFocus={() => {
+            if (itemCodeBlurTimeoutRef.current) window.clearTimeout(itemCodeBlurTimeoutRef.current);
+            if (itemCodeSuggestions.length > 0) setItemCodeOpen(true);
+           }}
+           onBlur={() => {
+            // Delay so clicking a suggestion still works.
+            itemCodeBlurTimeoutRef.current = window.setTimeout(() => setItemCodeOpen(false), 150);
+           }}
+           placeholder="Type to search RM/PM master codes…"
+           className={inputClass}
+           autoComplete="off"
+          />
+          {itemCodeLoading && (
+           <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">Searching…</div>
+          )}
+
+          {itemCodeOpen && itemCodeSuggestions.length > 0 && (
+           <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden">
+            <div className="max-h-64 overflow-auto">
+             {itemCodeSuggestions.map((sug, i) => (
+              <button
+               key={`${sug.kind}-${sug.code}-${i}`}
+               type="button"
+               onMouseDown={(e) => e.preventDefault()}
+               onClick={() => {
+                setTempItem((prev) => ({
+                 ...prev,
+                 itemType: sug.kind,
+                 itemCode: sug.code,
+                 itemName: sug.name,
+                 uom: sug.uom || prev.uom,
+                 gst: sug.gst != null ? String(sug.gst) : prev.gst,
+                 hsn: sug.hsn != null ? String(sug.hsn) : prev.hsn,
+                }));
+                setItemCodeOpen(false);
+               }}
+               className="w-full text-left px-3 py-2 hover:bg-slate-50"
+              >
+               <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                 <div className="text-sm font-mono text-gray-900 truncate">{sug.code}</div>
+                 <div className="text-xs text-gray-600 truncate">{sug.name}</div>
+                </div>
+                <div className="text-xs text-gray-500 shrink-0">{sug.kind} • {sug.uom}</div>
+               </div>
+              </button>
+             ))}
+            </div>
+           </div>
+          )}
+         </div>
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1195,8 +1501,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       </div>
      )}
 
-     {/* Stage 7: Agreements & Status */}
-     {currentStage === 7 && (
+    {/* Stage 6: Agreements & Status */}
+    {currentStage === 6 && (
       <div className="space-y-6">
        <div className={sectionTitleClass}>Agreements & Status</div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

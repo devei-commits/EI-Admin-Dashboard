@@ -1,10 +1,17 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Local backend by default so Client/Vendor Master matches your DB when developing.
+  // Override: VITE_DEV_API_PROXY=https://your-deployed-api.example/ npm run dev
+  const env = loadEnv(mode, process.cwd(), "");
+  const apiProxyTarget =
+    env.VITE_DEV_API_PROXY?.trim() || "http://127.0.0.1:3000";
+
+  return {
   plugins: [
     react(),
     tailwindcss(),
@@ -82,14 +89,12 @@ export default defineConfig({
       "sonner",
     ],
   },
-  // Dev server: proxy API to backend (backend on port 3000)
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
       "/api": {
-        target: 'https://ei-website-backend-production.up.railway.app/',
-        // target: "http://127.0.0.1:3000",
+        target: apiProxyTarget,
         changeOrigin: true,
         rewrite: (path) => path,
       },
@@ -98,4 +103,5 @@ export default defineConfig({
       clientFiles: ["./src/App.tsx", "./src/main.tsx"],
     },
   },
+  };
 });

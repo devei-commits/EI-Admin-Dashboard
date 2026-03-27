@@ -108,6 +108,8 @@ export type DraftPOLineItem = {
   itemCode: string;
   type: RequestType;
   qty: string;
+  /** Lead time in days selected from vendor quotation/Items List */
+  leadTimeDays?: number;
   pricePerUnit: number;
   gstPercent: number;
   gstAmount: number;

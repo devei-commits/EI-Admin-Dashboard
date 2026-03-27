@@ -50,6 +50,7 @@ const ItemsList: React.FC = () => {
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
   const [paymentTerms, setPaymentTerms] = useState<string>('');
+  const [leadTimeDays, setLeadTimeDays] = useState<string>('');
 
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
@@ -161,6 +162,7 @@ const ItemsList: React.FC = () => {
     setSelectedVendor(null);
     setCurrency('INR');
     setPaymentTerms('');
+    setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(false);
     setItemSearchQuery('');
@@ -173,6 +175,7 @@ const ItemsList: React.FC = () => {
     setSelectedVendor(null);
     setCurrency('INR');
     setPaymentTerms('');
+    setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(true);
     setItemSearchQuery('');
@@ -226,6 +229,7 @@ const ItemsList: React.FC = () => {
         vendor_id: parseInt(selectedVendor.id, 10),
         currency,
         payment_terms: paymentTerms || undefined,
+        lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
       });
       if (!rateRes.success || !rateRes.data) {
         addToast('error', rateRes.error?.message ?? 'Failed to create vendor rate');
@@ -245,25 +249,28 @@ const ItemsList: React.FC = () => {
       setShowAddTierModal(false);
       setTierTarget(null);
       setAddPriceListMode(false);
-      if (activeTab === 'rm' || activeTab === 'pm') {
-        await itemsPageQuery.refetch();
-      }
-      if (activeTab === 'pr') {
-        await prProductsQuery.refetch();
-      }
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          typeof q.queryKey[0] === 'string' &&
+          q.queryKey[0].startsWith('items-list'),
+        refetchType: 'all',
+      });
     } catch (e) {
       addToast('error', 'Failed to save tiers');
     }
     setSubmittingTiers(false);
   };
 
+  /** Refetch all Items List queries (active + inactive) so data from Vendor Master sync appears without a full reload. */
   const refetchPage = () => {
-    if (activeTab === 'rm' || activeTab === 'pm') {
-      void itemsPageQuery.refetch();
-    }
-    if (activeTab === 'pr') {
-      void prProductsQuery.refetch();
-    }
+    void queryClient.invalidateQueries({
+      predicate: (q) =>
+        Array.isArray(q.queryKey) &&
+        typeof q.queryKey[0] === 'string' &&
+        q.queryKey[0].startsWith('items-list'),
+      refetchType: 'all',
+    });
   };
 
   const openEditRate = (item: PriceListItemPage, rate: RateForEdit) => {
@@ -449,6 +456,11 @@ const ItemsList: React.FC = () => {
                     </option>
                   ))}
                 </select>
+                {vendorFilterId ? (
+                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
+                    Only rows with a rate for this vendor are shown. Choose &quot;All vendors&quot; to see every RM/PM line.
+                  </span>
+                ) : null}
               </div>
             )}
           </div>
@@ -732,6 +744,17 @@ const ItemsList: React.FC = () => {
                     <option value="Advance">Advance</option>
                     <option value="CIA">CIA</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="0"
+                  />
                 </div>
               </div>
               <div>

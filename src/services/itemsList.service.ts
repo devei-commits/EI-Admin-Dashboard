@@ -39,6 +39,7 @@ export interface ItemListVendorRateRow {
   vendor_code: string | null;
   default_rate: number | null;
   default_moq: number | null;
+  lead_time_days?: number | null;
   currency: string;
   status: string;
   tiers: ItemListTierRow[];
@@ -62,6 +63,7 @@ export interface CreateRatePayload {
   default_moq?: number | null;
   currency?: string;
   payment_terms?: string | null;
+  lead_time_days?: number | null;
 }
 
 export interface CreateTierPayload {
@@ -94,6 +96,7 @@ export interface PriceListItemPage {
     vendor_code: string | null;
     currency: string;
     payment_terms?: string | null;
+    lead_time_days?: number | null;
     tiers: ItemListTierRow[];
   }>;
 }
