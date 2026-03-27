@@ -834,6 +834,17 @@ const ItemsList: React.FC = () => {
                     placeholder="0"
                   />
                 </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="0"
+                  />
+                </div>
               </div>
               <div>
                 <div className="text-[11px] font-bold text-gray-500 uppercase mb-2">Price Tiers</div>
