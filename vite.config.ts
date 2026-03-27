@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 
-// https://vite.dev/config/
+// https://vite.dev/config
 export default defineConfig(({ mode }) => {
   // Local backend by default so Client/Vendor Master matches your DB when developing.
   // Override: VITE_DEV_API_PROXY=https://your-deployed-api.example/ npm run dev
