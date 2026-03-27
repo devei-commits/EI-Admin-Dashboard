@@ -126,6 +126,19 @@ export async function updateMRN(id: string, payload: UpdateMRNPayload): Promise<
   return api.put<MRNRecordFromApi>(`/api/v1/mrn/${id}`, payload);
 }
 
+/** Prefer server `error` message from failed API responses (e.g. validation). */
+export function getApiErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'body' in err) {
+    const body = (err as { body?: unknown }).body;
+    if (body && typeof body === 'object' && body !== null && 'error' in body) {
+      const e = (body as { error?: unknown }).error;
+      if (typeof e === 'string' && e.trim()) return e.trim();
+    }
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 export async function generateMRNLabels(
   id: string,
   payload?: GenerateMRNLabelsPayload

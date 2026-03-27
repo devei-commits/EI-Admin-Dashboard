@@ -54,6 +54,7 @@ const TreasuryApp = () => {
     autoRefresh: true,
     refreshInterval: 120
   });
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
 
   // Auto-refresh effect
   useEffect(() => {
@@ -79,7 +80,6 @@ const TreasuryApp = () => {
     priority: true,
     method: true
   });
-  const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
   const notificationRef = useRef<HTMLDivElement>(null);
 
   // Close notifications when clicking outside or navigating screens

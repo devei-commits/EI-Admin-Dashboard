@@ -8,14 +8,14 @@ type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
 type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending';
 
-const QC_STATUS_OPTIONS: QCStatus[] = ['Under test', 'Quality checked', 'Passed', 'Rejected'];
+const QC_STATUS_OPTIONS: Array<Extract<QCStatus, 'Passed' | 'Rejected'>> = ['Passed', 'Rejected'];
 
 /** Map legacy API qc_status to QCStatus */
 function normalizeQcStatus(s: string | undefined): QCStatus {
   const v = (s || '').trim();
   if (v === 'Passed') return 'Passed';
   if (v === 'Rejected' || v === 'Failed') return 'Rejected';
-  if (v === 'Quality checked') return 'Quality checked';
+  if (v === 'Quality checked') return 'Under test';
   return 'Under test';
 }
 type WorkflowStep = 'PO Received' | 'Qty Check' | 'QC Inspection' | 'Label Generation' | 'Dispatch Ready';
@@ -402,6 +402,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   onChange={(e) => setQcStatus(e.target.value as QCStatus)}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
                 >
+                  {qcStatus !== 'Passed' && qcStatus !== 'Rejected' && (
+                    <option value={qcStatus} disabled>{qcStatus}</option>
+                  )}
                   {QC_STATUS_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
@@ -683,7 +686,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       setLabelError('Assign this GRN (Assigned To) before generating labels.');
                       return;
                     }
-                    if (editedLineItems.length > 0 && !selectedLineItemId) {
+                    if (!selectedLineItemId || !selectedLineItem) {
                       setLabelError('Please select a product / line item before generating labels.');
                       return;
                     }
@@ -746,7 +749,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                       setGeneratingLabels(false);
                     }
                   }}
-                  disabled={generatingLabels || saving || qcStatus !== 'Passed'}
+                  disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
@@ -976,19 +979,6 @@ const WarehouseInbound = () => {
       setToast(null);
       toastRef.current = null;
     }, 2500);
-  };
-
-  // Update status from table dropdown (like MRN)
-  const handleStatusChange = async (grnId: string, newStatus: GRNStatus) => {
-    try {
-      await updateGRN(grnId, { status: newStatus });
-      setGrnData(prev =>
-        prev.map(grn => (grn.id === grnId ? { ...grn, status: newStatus } : grn))
-      );
-      showToast(`Status updated to ${newStatus}.`);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to update status', 'error');
-    }
   };
 
   // Handle saving changes from modal back to dashboard
@@ -1234,19 +1224,10 @@ const WarehouseInbound = () => {
                           {grn.qcStatus}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={grn.status}
-                          onChange={(e) => handleStatusChange(grn.id, e.target.value as GRNStatus)}
-                          className={`text-xs font-medium rounded-lg border px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${getStatusColor(grn.status)}`}
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="In Transit">In Transit</option>
-                          <option value="Under GRN">Under GRN</option>
-                          <option value="On Hold">On Hold</option>
-                          <option value="Delayed">Delayed</option>
-                          <option value="GRN Complete">GRN Complete</option>
-                        </select>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusColor(grn.status)}`}>
+                          {grn.status}
+                        </span>
                       </td>
                     </tr>
                   ))

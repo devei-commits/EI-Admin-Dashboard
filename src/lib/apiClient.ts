@@ -47,6 +47,18 @@ function buildUrl(path: string): string {
  return base ? `${base}${p}` : p;
 }
 
+/** Prefer API JSON `{ error }` / `{ message }` over generic HTTP status text. */
+function extractServerErrorMessage(body: unknown): string | null {
+ if (body == null) return null;
+ if (typeof body === 'string' && body.trim()) return body.trim();
+ if (typeof body === 'object') {
+  const o = body as Record<string, unknown>;
+  if (typeof o.error === 'string' && o.error.trim()) return o.error.trim();
+  if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
+ }
+ return null;
+}
+
 export async function apiRequest<T>(
  path: string,
  options: RequestInit & { skipAuth?: boolean } = {}
@@ -59,9 +71,6 @@ export async function apiRequest<T>(
   headers: { ...getHeaders(!skipAuth), ...(init.headers as HeadersInit) },
  });
  if (!response.ok) {
-  const err = new Error(`HTTP ${response.status}: ${response.statusText}`) as Error & { status: number };
-  err.status = response.status;
-
   // Read the body once to avoid "body stream already read" error
   const text = await response.text();
   let body: unknown;
@@ -71,7 +80,11 @@ export async function apiRequest<T>(
    body = text;
   }
 
-  (err as Error & { body?: unknown }).body = body;
+  const serverMessage = extractServerErrorMessage(body);
+  const fallback = `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
+  const err = new Error(serverMessage || fallback) as Error & { status: number; body?: unknown };
+  err.status = response.status;
+  err.body = body;
   throw err;
  }
  if (response.status === 204) return undefined as T;
