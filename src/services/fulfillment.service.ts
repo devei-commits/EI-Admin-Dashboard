@@ -165,25 +165,40 @@ export interface SoPlanningAvailabilityResponse {
   items: SoPlanningAvailabilityItem[];
 }
 
+const soPlanningAvailabilityCache = new Map<string, SoPlanningAvailabilityResponse>();
+const soPlanningAvailabilityInFlight = new Map<string, Promise<SoPlanningAvailabilityResponse>>();
+
 export async function fetchSoPlanningAvailability(soNo: string): Promise<SoPlanningAvailabilityResponse> {
-  const res = await api.get<SoPlanningAvailabilityResponse>(`${BASE}/so-planning-availability?so_no=${encodeURIComponent(soNo)}`);
-  const raw = (res as any)?.data ?? res;
-  // Be defensive about response shape. Some endpoints in this codebase return wrapped payloads.
-  const payload =
-    (raw as any)?.items
-      ? raw
-      : ((raw as any)?.data?.items ? (raw as any).data : raw);
+  const cacheKey = String(soNo || '').trim().toUpperCase();
+  const cached = soPlanningAvailabilityCache.get(cacheKey);
+  if (cached) return cached;
 
-  const normalized: SoPlanningAvailabilityResponse = {
-    success: Boolean((payload as any)?.success ?? true),
-    soNo: String((payload as any)?.soNo ?? soNo),
-    items: Array.isArray((payload as any)?.items) ? (payload as any).items : [],
-  };
+  const existing = soPlanningAvailabilityInFlight.get(cacheKey);
+  if (existing) return existing;
 
-  console.log('[FULFILLMENT-AVAIL][FRONTEND][SERVICE] fetchSoPlanningAvailability', {
-    soNo,
-    raw,
-    normalized,
-  });
-  return normalized;
+  const request = api
+    .get<SoPlanningAvailabilityResponse>(`${BASE}/so-planning-availability?so_no=${encodeURIComponent(soNo)}`)
+    .then((res) => {
+      const raw = (res as any)?.data ?? res;
+      // Be defensive about response shape. Some endpoints in this codebase return wrapped payloads.
+      const payload =
+        (raw as any)?.items
+          ? raw
+          : ((raw as any)?.data?.items ? (raw as any).data : raw);
+
+      const normalized: SoPlanningAvailabilityResponse = {
+        success: Boolean((payload as any)?.success ?? true),
+        soNo: String((payload as any)?.soNo ?? soNo),
+        items: Array.isArray((payload as any)?.items) ? (payload as any).items : [],
+      };
+
+      soPlanningAvailabilityCache.set(cacheKey, normalized);
+      return normalized;
+    })
+    .finally(() => {
+      soPlanningAvailabilityInFlight.delete(cacheKey);
+    });
+
+  soPlanningAvailabilityInFlight.set(cacheKey, request);
+  return request;
 }
