@@ -1762,6 +1762,8 @@ const Planning = () => {
       quantity_requested: qty,
       unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
       line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+      planned_unit_price: unitPrice,
+      ...(leadTimeDays > 0 ? { lead_time_days: leadTimeDays } : {}),
       ...(rmId != null ? { raw_material_id: rmId } : {}),
       ...(pmId != null ? { pack_material_id: pmId } : {}),
       ...(slabMoq > 0 ? { moq_min: slabMoq } : {}),
@@ -1803,7 +1805,9 @@ const Planning = () => {
           shortage: (Number(old.shortage ?? 0) || 0) + qty,
           quantity_requested: qNew,
           line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
-          moq_min: old.moq_min ?? newRequestItem.moq_min,
+          planned_unit_price: unitPrice,
+          lead_time_days: leadTimeDays > 0 ? leadTimeDays : old.lead_time_days,
+          moq_min: slabMoq > 0 ? slabMoq : old.moq_min,
         };
       } else {
         merged = [...existingItems, newRequestItem];

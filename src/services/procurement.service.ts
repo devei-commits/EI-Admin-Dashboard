@@ -16,6 +16,9 @@ export interface ProcurementRequestItem {
   product_id?: number;
   /** Vendor tier MOQ (kg or pcs) from Items List when set from Planning — server enforces MOQ. */
   moq_min?: number;
+  /** Planned ₹/unit from Release to Planning (mirrors line_notes for Procurement UI). */
+  planned_unit_price?: number;
+  lead_time_days?: number;
 }
 
 export interface ProcurementRequest {

@@ -1365,18 +1365,26 @@ const Procurement: React.FC = () => {
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
+    const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+
     const requestRecords = requests
       .filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending')
-      .map((request) => {
-        const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
-        const linkedPO = purchaseOrders.find(
-          (p) =>
-            p.status === 'Released' &&
-            (String(p.formData?.requestId) === String(request.id) ||
-              String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase())
-        );
+      .flatMap((request) => {
         const linkedQuote = quotes.find((quote) => quote.requestId === request.id && quote.status === 'Confirmed') ??
           quotes.find((quote) => quote.requestId === request.id);
+
+        const releasedPosForRequest = purchaseOrders
+          .filter(
+            (p) =>
+              p.status === 'Released' &&
+              (String(p.formData?.requestId) === String(request.id) ||
+                String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase()),
+          )
+          .sort((a, b) => {
+            const na = parseInt(String(a.id).replace(/\D/g, ''), 10) || 0;
+            const nb = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
+            return nb - na;
+          });
 
         const etaDays = Math.ceil((new Date(request.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         const computedStatus: 'Released' | 'In Transit' | 'At Risk' =
@@ -1419,10 +1427,9 @@ const Procurement: React.FC = () => {
             })
             : lines;
 
-        const lineItems =
-          linkedDraftPO?.lineItems ??
+        const lineItemsForReleasedPo = (linkedPO: PurchaseOrder) =>
           withQuotePrices(
-            linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
+            linkedPO.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
               ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => {
                 const qty = Number(i.quantity) || 0;
                 const rate = Number(i.rate ?? i.price ?? 0);
@@ -1445,26 +1452,60 @@ const Procurement: React.FC = () => {
                   lineTotal,
                 };
               })
-              : fallbackLineItems
+              : fallbackLineItems,
           );
 
-        const grandTotal =
-          linkedDraftPO?.grandTotal ??
-          linkedPO?.value ??
-          lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+        // After a split, a *draft* split (e.g. …-S2) still shares requestId with the released half (…-S1).
+        // Never let that draft override lines / PO number for Issued POs — vendor-facing data must come from each Released PO row.
+        if (releasedPosForRequest.length > 0) {
+          return releasedPosForRequest.map((linkedPO) => {
+            const lineItems = lineItemsForReleasedPo(linkedPO);
+            const grandTotal =
+              Number(linkedPO.value) > 0
+                ? Number(linkedPO.value)
+                : lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+            const draftOverlay = draftPOs.find(
+              (d) =>
+                String(d.requestId) === String(request.id) &&
+                normPoKey(d.dpoNumber) === normPoKey(String(linkedPO.poNumber ?? '')),
+            );
+            const backendPoId = String(linkedPO.id ?? '').replace(/^PO-/, '');
+            return {
+              request,
+              poNumber: String(linkedPO.poNumber ?? draftOverlay?.dpoNumber ?? request.code).replace('DPO', 'PO'),
+              vendor: linkedPO.vendorName ?? draftOverlay?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
+              status: computedStatus,
+              etaDays,
+              lineItems,
+              grandTotal,
+              requestCode: request.code,
+              createdDate: linkedPO.date ?? draftOverlay?.createdDate ?? request.createdDate ?? '',
+              paymentTerms: linkedPO.paymentTerms ?? draftOverlay?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+              backendPoId: /^\d+$/.test(backendPoId) ? backendPoId : undefined,
+            };
+          });
+        }
 
-        return {
-          request,
-          poNumber: (linkedDraftPO?.dpoNumber ?? linkedPO?.poNumber ?? request.code).replace('DPO', 'PO'),
-          vendor: linkedDraftPO?.vendor ?? linkedPO?.vendorName ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
-          status: computedStatus,
-          etaDays,
-          lineItems,
-          grandTotal,
-          requestCode: request.code,
-          createdDate: linkedDraftPO?.createdDate ?? linkedPO?.date ?? request.createdDate ?? '',
-          paymentTerms: linkedDraftPO?.paymentTerms ?? linkedPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
-        };
+        const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
+        const lineItems =
+          linkedDraftPO?.lineItems ?? withQuotePrices(fallbackLineItems);
+        const grandTotal =
+          linkedDraftPO?.grandTotal ?? lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+
+        return [
+          {
+            request,
+            poNumber: String(linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO'),
+            vendor: linkedDraftPO?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
+            status: computedStatus,
+            etaDays,
+            lineItems,
+            grandTotal,
+            requestCode: request.code,
+            createdDate: linkedDraftPO?.createdDate ?? request.createdDate ?? '',
+            paymentTerms: linkedDraftPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+          },
+        ];
       });
 
     // Include released PO records even when there is no linked procurement request.

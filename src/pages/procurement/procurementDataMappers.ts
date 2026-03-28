@@ -34,12 +34,25 @@ const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
   pending: 'Pending Review',
 };
 
+/** Qty from API: numbers, strings, comma-separated (en-IN). */
+export function parseQuantityRequested(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).replace(/,/g, '').replace(/\s/g, '').trim();
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number } {
   const raw = String(lineNotes ?? '');
   let plannedPrice = 0;
   let leadTimeDays = 0;
-  const rateMatch = raw.match(/Planned rate\s*[₹]?\s*([\d.]+)/i) || raw.match(/[₹]\s*([\d.]+)/);
-  if (rateMatch) plannedPrice = Number(rateMatch[1]) || 0;
+  const rateMatch =
+    raw.match(/Planned rate\s*[₹]?\s*([\d.,]+)/i) || raw.match(/[₹]\s*([\d.,]+)/);
+  if (rateMatch) {
+    const n = parseFloat(String(rateMatch[1]).replace(/,/g, ''));
+    if (Number.isFinite(n)) plannedPrice = n;
+  }
   const leadMatch = raw.match(/Lead:\s*(\d+)\s*d/i);
   if (leadMatch) leadTimeDays = Number(leadMatch[1]) || 0;
   return { plannedPrice, leadTimeDays };
@@ -86,18 +99,26 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
       (i: {
         code?: string;
         name?: string;
-        quantity_requested?: number;
+        quantity_requested?: number | string;
         unit?: string;
         line_notes?: string;
         moq_min?: number;
+        planned_unit_price?: number;
+        lead_time_days?: number;
         raw_material_id?: number;
         pack_material_id?: number;
         type?: string;
       }) => {
         const parsed = parsePlannedLineNotes(i?.line_notes);
+        const fieldRate = Number(i?.planned_unit_price);
+        const plannedPrice =
+          Number.isFinite(fieldRate) && fieldRate > 0 ? fieldRate : parsed.plannedPrice;
+        const fieldLead = Number(i?.lead_time_days);
+        const leadTimeDays =
+          Number.isFinite(fieldLead) && fieldLead > 0 ? fieldLead : parsed.leadTimeDays;
         const moqMin = i?.moq_min != null ? Number(i.moq_min) : NaN;
         const moqStr = Number.isFinite(moqMin) && moqMin > 0 ? String(moqMin) : '';
-        const reqQty = Number(i?.quantity_requested) || 0;
+        const reqQty = parseQuantityRequested(i?.quantity_requested);
         const lineType: ItemDetail['type'] =
           i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM';
         return {
@@ -107,9 +128,9 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
           unit: i?.unit ?? '',
           moq: moqStr,
           packSize: '',
-          plannedPrice: parsed.plannedPrice,
-          leadTimeDays: parsed.leadTimeDays,
-          estValue: reqQty * parsed.plannedPrice,
+          plannedPrice,
+          leadTimeDays,
+          estValue: reqQty * plannedPrice,
           raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
           pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
           type: lineType,
