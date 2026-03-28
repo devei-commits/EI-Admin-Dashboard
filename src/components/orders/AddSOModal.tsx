@@ -4,6 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
+
+/** Default calendar days from order date to due date (business rule). */
+const LEAD_DAYS_PRODUCT = 45;
+const LEAD_DAYS_CUSTOMISATION = 90;
 import { Plus, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { AddSOModalProps } from '../../types/orderFulfillment';
@@ -29,7 +33,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const [customer, setCustomer] = useState('');
   const [customerCity, setCustomerCity] = useState('');
   const [orderDate, setOrderDate] = useState(getTodayISO());
-  const [dueDate, setDueDate] = useState(addDays(getTodayISO(), 30));
+  const [dueDate, setDueDate] = useState(addDays(getTodayISO(), LEAD_DAYS_PRODUCT));
+  const [orderKind, setOrderKind] = useState<'product' | 'customisation'>('product');
   const [priority, setPriority] = useState<'normal' | 'high'>('normal');
   const [shipAddress, setShipAddress] = useState('');
   const [paymentTermsType, setPaymentTermsType] = useState<PaymentTermsStructuredType>('net_30');
@@ -154,7 +159,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomer('');
     setCustomerCity('');
     setOrderDate(getTodayISO());
-    setDueDate(addDays(getTodayISO(), 30));
+    setOrderKind('product');
+    setDueDate(addDays(getTodayISO(), LEAD_DAYS_PRODUCT));
     setPriority('normal');
     setShipAddress('');
     setPaymentTermsType('net_30');
@@ -208,8 +214,17 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                 <Input label="Customer City" placeholder="e.g., Mumbai" value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <Input label="Order Date" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+                <Select
+                  label="Lead time"
+                  value={orderKind}
+                  onChange={(e) => setOrderKind(e.target.value as 'product' | 'customisation')}
+                  options={[
+                    { value: 'product', label: `Product (${LEAD_DAYS_PRODUCT} days)` },
+                    { value: 'customisation', label: `Customisation (${LEAD_DAYS_CUSTOMISATION} days)` },
+                  ]}
+                />
                 <Input label="Due Date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
                 <Select
                   label="Priority"
@@ -221,6 +236,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   ]}
                 />
               </div>
+              <p className="text-xs text-gray-500 -mt-2">Due date defaults to order date + lead days; adjust if needed.</p>
 
               <div>
                 <Input label="Shipping Address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />

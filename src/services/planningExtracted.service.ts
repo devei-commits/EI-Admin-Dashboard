@@ -107,6 +107,14 @@ export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
   customBatches?: CustomBatch[] | null;
 }
 
+function throwIfApiErrorBody(e: unknown): void {
+  const err = e as Error & { body?: unknown };
+  if (err?.body && typeof err.body === 'object' && err.body !== null && 'error' in err.body) {
+    const msg = (err.body as { error?: unknown }).error;
+    if (typeof msg === 'string' && msg.trim()) throw new Error(msg);
+  }
+}
+
 export async function updatePlanningExtracted(
   id: string,
   payload: UpdatePlanningExtractedPayload
@@ -115,7 +123,8 @@ export async function updatePlanningExtracted(
     const res = await api.patch<PlanningExtractedRow>(`/api/v1/planning-extracted/${id}`, payload);
     const data = res?.data ?? res;
     return data ?? null;
-  } catch {
+  } catch (e) {
+    throwIfApiErrorBody(e);
     return null;
   }
 }

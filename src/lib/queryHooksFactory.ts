@@ -77,6 +77,8 @@ export function createDetailQuery<T>(
   options: { staleTime?: number; enabled?: boolean } = {},
 ) {
   const staleTime = options.staleTime ?? 2 * 60 * 1000;
+  // Invoked only from custom hooks (useProductDetail, etc.); not a hook itself.
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- factory consumed exclusively inside use* hooks
   return useQuery({
     queryKey: getQueryKey(id ?? ''),
     queryFn: async () => {

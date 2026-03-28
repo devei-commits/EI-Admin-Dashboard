@@ -38,7 +38,7 @@ import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
 import { fetchPlanningExtractedList, fetchItemsInvolvedByPlanningId, fetchSentBatchSummary, type SentBatchSummaryRow } from '../services/planningExtracted.service';
 import {
-  createMRN, fetchMRNList, fetchMRNById, updateMRN, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
+  createMRN, fetchMRNList, fetchMRNById, updateMRN, getApiErrorMessage, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
   type MRNRecordFromApi, type GeneratedMRNLabel, type MRNLocationHistoryEntry, type AssignablePicker as MRNAssignablePicker,
 } from '../services/mrn.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
@@ -533,6 +533,12 @@ const bprStatusLabel: Record<BPRStatus, string> = {
   scheduled: 'Scheduled', filling: 'Filling', fill_qc: 'Fill QC', packaging: 'Packaging', pack_qc: 'Pack QC', qc_failed: 'QC Failed', fg_ready: 'FG Ready',
 };
 
+function canAdjustBatchSize(batch: Batch): boolean {
+  if (batch.bprStatus === 'fg_ready') return false;
+  if (batch.bmrStatus === 'draft') return false;
+  return true;
+}
+
 /* ────────────────────── API HELPERS ─────────────────────────── */
 
 function apiBatchToBatch(r: BatchRow): Batch {
@@ -928,6 +934,53 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
       <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
         <button onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><CheckCircle2 size={13} /> Confirm Batch</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ──────────────── ADJUST BATCH SIZE (post-confirm BMR/BPR) ───── */
+
+function AdjustBatchSizeModal({ batch, onClose, onSave }: {
+  batch: Batch;
+  onClose: () => void;
+  onSave: (updates: Partial<Batch>) => void;
+}) {
+  const [batchSize, setBatchSize] = useState(batch.batchSize || 0);
+
+  const handleSave = () => {
+    const updates: Partial<Batch> = { batchSize };
+    const oldSize = batch.batchSize || 1;
+    const newSize = batchSize || oldSize;
+    if (newSize !== oldSize && (batch.dispensingRM?.length > 0 || batch.dispensingPM?.length > 0)) {
+      const scale = newSize / oldSize;
+      if (batch.dispensingRM?.length) {
+        updates.dispensingRM = batch.dispensingRM.map((r) => ({
+          ...r,
+          required: Math.round(r.required * scale * 100) / 100,
+        }));
+      }
+      if (batch.dispensingPM?.length) {
+        updates.dispensingPM = batch.dispensingPM.map((p) => ({
+          ...p,
+          required: Math.round(p.required * scale),
+        }));
+      }
+    }
+    onSave(updates);
+    onClose();
+  };
+
+  return (
+    <Modal onClose={onClose} title={`Adjust batch size — ${batch.bmrNo}`} subtitle={`${batch.productName} · Current ${batch.batchSize} KG`} size="md">
+      <Tip color="orange" icon={<Settings size={14} />}>Change the batch size during BMR or BPR. RM/PM required quantities scale proportionally; when the batch is linked to Planning, the planning batch row is updated on save.</Tip>
+      <div className="mt-3">
+        <label className={LBL}>Batch size (KG)</label>
+        <input className={INP} type="number" value={batchSize || ''} onChange={e => setBatchSize(parseFloat(e.target.value) || 0)} />
+      </div>
+      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+        <button type="button" onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><CheckCircle2 size={13} /> Save</button>
       </div>
     </Modal>
   );
@@ -2172,16 +2225,39 @@ const DEFAULT_QC_SPECS: Record<string, QCSpec[]> = {
   ],
 };
 
+function deriveQcSpecsFromBatch(batch: Batch, qcType: 'bmr' | 'fill' | 'pack'): QCSpec[] {
+  const base = batch.qcSpecs.length > 0 ? batch.qcSpecs : (DEFAULT_QC_SPECS[qcType] || []);
+  return base.map(s => ({ ...s }));
+}
+
 function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
   batch: Batch; qcType: 'bmr' | 'fill' | 'pack'; team: TeamMember[];
   /** Production batch DB id — loads master RM/PM bulk specs (BMR) and FG Specs & Stability (Pack QC). */
   batchPk?: number;
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
 }) {
-  const initialSpecs = batch.qcSpecs.length > 0 ? batch.qcSpecs : (DEFAULT_QC_SPECS[qcType] || []);
-  const [specs, setSpecs] = useState(initialSpecs.map(s => ({ ...s })));
+  const [specs, setSpecs] = useState(() => deriveQcSpecsFromBatch(batch, qcType));
   const [yieldVal, setYieldVal] = useState('');
-  const [remarks, setRemarks] = useState('');
+  const [remarks, setRemarks] = useState(() => batch.remarks ?? '');
+
+  const batchPkId = (batch as Batch & { _pk?: number })._pk;
+  const qcSpecsFingerprint = JSON.stringify(batch.qcSpecs ?? []);
+
+  useEffect(() => {
+    setSpecs(deriveQcSpecsFromBatch(batch, qcType));
+    setRemarks(batch.remarks ?? '');
+  }, [
+    batch.bmrNo,
+    batchPkId,
+    qcType,
+    batch.bmrStatus,
+    batch.bprStatus,
+    qcSpecsFingerprint,
+    batch.remarks,
+    batch.bulkBatchAccepted,
+    batch.fillBatchAccepted,
+    batch.fgBatchAccepted,
+  ]);
 
   useEffect(() => {
     if (qcType === 'bmr') {
@@ -2191,7 +2267,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
     } else {
       setYieldVal(batch.fgYield != null && Number.isFinite(Number(batch.fgYield)) ? String(batch.fgYield) : '');
     }
-  }, [batch.bmrNo, qcType, batch.bulkYield, batch.fillYield, batch.fgYield]);
+  }, [batch.bmrNo, qcType, batch.bulkYield, batch.fillYield, batch.fgYield, batch.bmrStatus, batch.bprStatus]);
   const [qcRef, setQcRef] = useState<QcReferencePayload | null>(null);
   const [qcRefLoading, setQcRefLoading] = useState(false);
   const [qcRefErr, setQcRefErr] = useState<string | null>(null);
@@ -2466,24 +2542,133 @@ function mrnLineItemsLookLikePm(m: Pick<MRNRecordFromApi, 'lineItems'>): boolean
   return items.some((li) => li.pack_material_id != null || u(li.unit) === 'PCS' || u(li.unit) === 'PC');
 }
 function batchHasOpenRmMtr(bmrNo: string, list: MRNRecordFromApi[]): boolean {
+  const isClosed = (status: string | undefined) => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'completed' || s === 'succeeded';
+  };
   return list.some(
     (m) =>
       m.bmrNo === bmrNo &&
       m.source === 'MTR' &&
       !m.isInboundFromMu &&
       mrnLineItemsLookLikeRm(m) &&
-      m.status !== 'Completed',
+      !isClosed(m.status),
   );
 }
 function batchHasOpenPmMtr(bmrNo: string, list: MRNRecordFromApi[]): boolean {
+  const isClosed = (status: string | undefined) => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'completed' || s === 'succeeded';
+  };
   return list.some(
     (m) =>
       m.bmrNo === bmrNo &&
       m.source === 'MTR' &&
       !m.isInboundFromMu &&
       mrnLineItemsLookLikePm(m) &&
-      m.status !== 'Completed',
+      !isClosed(m.status),
   );
+}
+
+/** Open outbound RM MTR for this BMR (WH → MU), if any. */
+function findOpenRmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNRecordFromApi | null {
+  const isClosed = (status: string | undefined) => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'completed' || s === 'succeeded';
+  };
+  const found = list.find(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikeRm(m) &&
+      !isClosed(m.status),
+  );
+  return found ?? null;
+}
+
+/** Open outbound PM MTR for this BMR, if any. */
+function findOpenPmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNRecordFromApi | null {
+  const isClosed = (status: string | undefined) => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'completed' || s === 'succeeded';
+  };
+  const found = list.find(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikePm(m) &&
+      !isClosed(m.status),
+  );
+  return found ?? null;
+}
+
+/** Short label for BMR/BPR chip — reflects warehouse pipeline (not editable). */
+function outboundMtrStageTitle(m: MRNRecordFromApi): string {
+  const s = String(m.status || '').trim();
+  if (s === 'Pending') return 'MTR: Awaiting warehouse release';
+  if (s === 'Picked') return 'MTR: Picked at warehouse — release to send in transit';
+  if (s === 'In Transfer') return 'MTR: Warehouse initiated transfer — tap Release to set In transit';
+  if (s === 'In Transit') return 'MTR: In transit (released from WH)';
+  if (s === 'Received at MU') return 'MTR: At MU — finish put-away';
+  return 'MTR: In progress';
+}
+
+function outboundMtrStageHint(m: MRNRecordFromApi): string {
+  const s = String(m.status || '').trim();
+  if (s === 'Pending') return 'Open Transfer orders → Release from warehouse to move stock.';
+  if (s === 'Picked') return 'Pick is saved. In Transfer orders → Release from warehouse to move stock.';
+  if (s === 'In Transfer') return 'Open Transfer orders → Release from warehouse to align to In transit (required for the next steps).';
+  if (s === 'In Transit') return 'Stock left the warehouse. When material arrives at MU, tap Verify / Received at MU.';
+  if (s === 'Received at MU') return 'Enter MU zone and rack, then Mark Succeeded to complete the move.';
+  return 'Complete steps in Transfer orders.';
+}
+
+/** Mirrors backend outbound MTR allowed transitions. Returns error message or null. */
+const OUTBOUND_MTR_ALLOWED: readonly [string, string][] = [
+  ['Pending', 'Picked'],
+  ['Pending', 'In Transit'],
+  ['Pending', 'In Transfer'],
+  ['Picked', 'In Transit'],
+  ['Picked', 'In Transfer'],
+  ['In Transfer', 'In Transit'],
+  ['In Transit', 'Received at MU'],
+  ['Received at MU', 'Completed'],
+];
+
+function validateOutboundMtrTransition(currentStatus: string | undefined, nextStatus: string): string | null {
+  const curRaw = String(currentStatus || '').trim();
+  const cur = curRaw.toLowerCase() === 'succeeded' ? 'Completed' : curRaw;
+  const nextRaw = String(nextStatus || '').trim();
+  const next = nextRaw.toLowerCase() === 'succeeded' ? 'Completed' : nextRaw;
+
+  if (cur === next) return null;
+
+  if (cur === 'Completed') {
+    return 'This transfer is already completed; the status cannot be changed.';
+  }
+
+  const ok = OUTBOUND_MTR_ALLOWED.some(([a, b]) => a === cur && b === next);
+  if (ok) return null;
+
+  const hintByStatus: Record<string, string> = {
+    Pending:
+      'First save pick in Warehouse (optional) or in Transfer orders tap Release from warehouse so status becomes In Transit.',
+    Picked:
+      'Next tap Release from warehouse in Transfer orders to set In Transit (or use Warehouse Initiate transfer, then Release to align to In Transit).',
+    'In Transfer':
+      'Tap Release from warehouse in Transfer orders to set In Transit, then when goods arrive at MU use Verify / Received at MU.',
+    'In Transit':
+      'When goods arrive at MU, tap Verify / Received at MU in Transfer orders before completing.',
+    'Received at MU':
+      'Enter MU zone and MU rack, then tap Mark Succeeded to complete.',
+  };
+
+  const hint =
+    hintByStatus[cur] ||
+    'Follow Production → Transfer orders: Release from warehouse → In transit → Received at MU → Mark Succeeded.';
+  return `This step cannot be done yet (cannot move from "${cur}" to "${next}"). ${hint}`;
 }
 
 /* ──────────── MTR MODAL ────────────────────────────────────── */
@@ -2756,7 +2941,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       });
       addToast(
         'success',
-        'MTR raised. Warehouse will pick and send material. RM/PM dispensing unlocks after the transfer order is completed and MU stock is updated (Transfer orders → Complete transfer).',
+        'Transfer request created. Warehouse must release this order from Transfer Orders (In Transit), then mark Received and Complete to unlock RM/PM dispensing.',
       );
       onMtrCreated?.();
       onClose();
@@ -2866,7 +3051,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
 }
 
 /* ──────────── TRANSFER ORDERS (MU INBOUND) ────────────────────── */
-const MRN_STATUS_OPTIONS = ['Pending', 'In Transit', 'Received at MU', 'Completed'];
+const MRN_STATUS_OPTIONS = ['Pending', 'In Transit', 'Received at MU', 'Succeeded'];
 
 /** Scan simulator: paste QR payload JSON → show decoded text + action (like GRN). */
 function MRNScanSimulator({ mrnNo }: { mrnNo: string }) {
@@ -2920,6 +3105,7 @@ function MRNDetailModal({
   onClose: () => void;
   onSave: (updated: MRNRecordFromApi) => void;
 }) {
+  const { addToast } = useToast();
   const [status, setStatus] = useState(mrn.status);
   const [assignedPicker, setAssignedPicker] = useState(mrn.assignedPicker || '');
   const [receivedAtMu, setReceivedAtMu] = useState(mrn.receivedAtMu ? (mrn.receivedAtMu as string).slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -2969,17 +3155,34 @@ function MRNDetailModal({
   const canCompleteOutboundTransfer =
     isOutboundMtr && status === 'Received at MU' && muStorageFilled;
 
+  const isClosedStatus = (value: string | undefined) => {
+    const s = String(value || '').trim().toLowerCase();
+    return s === 'completed' || s === 'succeeded';
+  };
+
   const persistUpdate = async (payload: Partial<MRNRecordFromApi>) => {
     const nextStatus = payload.status !== undefined ? payload.status : status;
-    if (nextStatus === 'Completed' && mrn.status !== 'Completed' && isOutboundMtr) {
+    if (isOutboundMtr && payload.status !== undefined) {
+      const err = validateOutboundMtrTransition(mrn.status, String(payload.status));
+      if (err) {
+        setSaveError(err);
+        addToast('error', err);
+        return;
+      }
+    }
+    if (nextStatus === 'Succeeded' && !isClosedStatus(mrn.status) && isOutboundMtr) {
       const z = String((payload.muReceiveZone !== undefined ? payload.muReceiveZone : muReceiveZone) || '').trim();
       const r = String((payload.muReceiveRack !== undefined ? payload.muReceiveRack : muReceiveRack) || '').trim();
       if (!z || !r) {
-        setSaveError('Enter MU zone and MU rack before completing the transfer.');
+        const msg = 'Enter MU zone and MU rack before completing the transfer.';
+        setSaveError(msg);
+        addToast('error', msg);
         return;
       }
       if (mrn.status !== 'Received at MU') {
-        setSaveError('Set status to Received at MU first (use “Verify / Received at MU”), then complete.');
+        const msg = 'Confirm Received at MU first (after warehouse release), then complete.';
+        setSaveError(msg);
+        addToast('error', msg);
         return;
       }
     }
@@ -3002,10 +3205,13 @@ function MRNDetailModal({
         ...payload,
       });
       const updated = res as MRNRecordFromApi;
+      setStatus(updated.status);
       onSave(updated);
-      if (payload.status === 'Completed') onClose();
+      if (payload.status === 'Succeeded' || payload.status === 'Completed') onClose();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save');
+      const msg = getApiErrorMessage(e) || 'Failed to save';
+      setSaveError(msg);
+      addToast('error', msg);
     } finally {
       setSaving(false);
     }
@@ -3067,9 +3273,16 @@ function MRNDetailModal({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                  {MRN_STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
+                {isOutboundMtr ? (
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                    <span className="font-semibold text-slate-900">{status}</span>
+                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">{outboundMtrStageHint({ ...mrn, status })}</p>
+                  </div>
+                ) : (
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    {MRN_STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Assigned picker</label>
@@ -3210,24 +3423,34 @@ function MRNDetailModal({
 
           {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{saveError}</div>}
 
-          {isOutboundMtr && status !== 'Completed' && (
+          {isOutboundMtr && !isClosedStatus(status) && (
             <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              To <strong>complete</strong> this transfer: set status to <strong>Received at MU</strong> (use Verify if needed), enter <strong>MU zone</strong> and <strong>MU rack</strong>, then click Complete transfer.
+              Correct order (enforced): <strong>Release from warehouse</strong> → <strong>In transit</strong> → <strong>Received at MU</strong> → enter <strong>MU zone / rack</strong> → <strong>Mark Succeeded</strong>.
+              BMR shows the same stage on the batch card (status is not editable here — use the buttons below).
             </p>
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 disabled:opacity-50">Close</button>
             <button onClick={() => persistUpdate({})} disabled={saving} className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
-            {status !== 'Received at MU' && status !== 'Completed' && (
+            {(status === 'Pending' || status === 'Picked' || status === 'In Transfer') && (
+              <button
+                onClick={() => persistUpdate({ status: 'In Transit' })}
+                disabled={saving}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Release from Warehouse
+              </button>
+            )}
+            {status === 'In Transit' && (
               <button onClick={() => persistUpdate({ status: 'Received at MU', receivedAtMu: receivedAtMu || new Date().toISOString().slice(0, 10) })} disabled={saving} className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50">Verify / Received at MU</button>
             )}
-            {status !== 'Completed' && (
+            {!isClosedStatus(status) && (
               <button
                 type="button"
                 onClick={() =>
                   persistUpdate({
-                    status: 'Completed',
+                    status: 'Succeeded',
                     muReceiveZone: muReceiveZone.trim() || undefined,
                     muReceiveRack: muReceiveRack.trim() || undefined,
                   })
@@ -3244,7 +3467,7 @@ function MRNDetailModal({
                 }
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Complete transfer
+                Mark Succeeded
               </button>
             )}
           </div>
@@ -3339,9 +3562,11 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
                       <td className="px-4 py-3"><span className="text-sm font-mono font-medium text-blue-600">{m.mrnNo}</span></td>
                       <td className="px-4 py-3 text-sm text-slate-800">{m.requestedBy}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${m.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${String(m.status).toLowerCase() === 'succeeded' || m.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                           m.status === 'Received at MU' ? 'bg-amber-100 text-amber-700 border-amber-200' :
                             m.status === 'In Transit' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              m.status === 'In Transfer' ? 'bg-cyan-100 text-cyan-800 border-cyan-200' :
+                              m.status === 'Picked' ? 'bg-violet-100 text-violet-800 border-violet-200' :
                               'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>{m.status}</span>
                       </td>
@@ -3366,7 +3591,7 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
               setSelectedMRN(updated);
               setDetailMRN(updated);
               onMrnListChanged?.();
-              if (updated.status === 'Completed' && updated.source === 'MTR' && !updated.isInboundFromMu) {
+              if ((updated.status === 'Succeeded' || updated.status === 'Completed') && updated.source === 'MTR' && !updated.isInboundFromMu) {
                 onOutboundMtrCompleted?.();
               }
             }}
@@ -3397,6 +3622,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
   const [bomPmItems, setBomPmItems] = useState<DispensingItem[]>([]);
   const [bomLoading, setBomLoading] = useState(false);
+
+  const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
+  const openPmMtrForBatch = useMemo(() => findOpenPmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
 
   useEffect(() => {
     if (!batch.sku && !batch.productName) return;
@@ -3572,7 +3800,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
                     {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-                    {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
+                    {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
                       <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>
                     )}
                   </div>
@@ -3597,7 +3825,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
                     {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-                    {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && (
+                    {type === 'bpr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && (
                       <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>
                     )}
                   </div>
@@ -3759,23 +3987,30 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
         <div id="bdm-actions" className="flex flex-wrap gap-2 items-center px-5 py-4 border-t border-gray-100 shrink-0 bg-gray-50/50 rounded-b-2xl">
           <button type="button" onClick={onClose} className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Close</button>
           {batch.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>}
-          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
-          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
+          {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
+          {type === 'bpr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
+          {canAdjustBatchSize(batch) && (
+            <Btn color="orange" icon={<Settings size={12} />} onClick={() => { onClose(); onAction('adjustBatch', batch); }}>Adjust batch size</Btn>
+          )}
           {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && batch.rmReserved && batch.pmReserved && !batch.mfgDate && !batch.fillDate && !batch.packDate && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Set Schedule</Btn>
           )}
           {canShowRescheduleFooterButton(batch) && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Reschedule dates</Btn>
           )}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !batchHasOpenRmMtr(batch.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && batchHasOpenRmMtr(batch.bmrNo, outboundMrns) && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={14} /> MTR in progress — complete transfer in Transfer orders to unlock dispensing</span>
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !openRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && openRmMtrForBatch && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
+              <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
+            </span>
           )}
           {batch.rmConnected && batch.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !batchHasOpenPmMtr(batch.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && batchHasOpenPmMtr(batch.bmrNo, outboundMrns) && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={14} /> PM MTR in progress — complete transfer in Transfer orders</span>
+          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !openPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && openPmMtrForBatch && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
+              <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
+            </span>
           )}
           {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>}
           {batch.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Fill QC</Btn>}
@@ -4031,6 +4266,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.teal;
+              const openRmMtr = findOpenRmMtrForBatch(b.bmrNo, outboundMrns);
               return (
                 <div key={b.bmrNo} className={`rounded-xl border p-4 ${b.bmrStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
@@ -4062,16 +4298,23 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
                     {b.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
-                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.pmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reservePM', b)}>Reserve PM</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && b.rmReserved && b.pmReserved && !b.mfgDate && !b.fillDate && !b.packDate && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
                     )}
                     {canShowRescheduleFooterButton(b) && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Reschedule</Btn>
                     )}
+                    {canAdjustBatchSize(b) && (
+                      <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
+                    )}
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !batchHasOpenRmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && batchHasOpenRmMtr(b.bmrNo, outboundMrns) && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={10} /> MTR pending</span>
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && openRmMtr && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
+                        title={outboundMtrStageHint(openRmMtr)}
+                      >
+                        <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtr)}</span>
+                      </span>
                     )}
                     {b.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
                     {b.bmrStatus === 'in_production' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Bulk QC</Btn>}
@@ -4097,7 +4340,7 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
   onAction: (action: string, batch: Batch) => void;
   onExportBPR?: () => void;
 }) {
-  const bprBatches = batches.filter(b => b.bprStatus !== 'draft' || b.bmrStatus === 'cleared');
+  const bprBatches = batches.filter(b => b.bmrStatus !== 'draft');
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const statusFiltered = filter === 'all' ? bprBatches : filter === 'qc_failed' ? bprBatches.filter(b => b.bprStatus === 'qc_failed') : filter === 'filling' ? bprBatches.filter(b => ['filling', 'pm_connected', 'pm_dispensing'].includes(b.bprStatus)) : filter === 'fill_qc' ? bprBatches.filter(b => b.bprStatus === 'fill_qc' || b.bprStatus === 'pack_qc') : bprBatches.filter(b => b.bprStatus === filter);
@@ -4148,11 +4391,12 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
       </div>
       <div className="flex-1 overflow-auto p-5" id="bpr-list">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-400"><Package size={32} className="mb-2 opacity-20" /><p className="text-sm">No BPR records match. Batches appear here after BMR clearance.</p></div>
+          <div className="flex flex-col items-center justify-center h-40 text-gray-400"><Package size={32} className="mb-2 opacity-20" /><p className="text-sm text-center max-w-md">No BPR records match this filter. After BMR batch is confirmed, the batch appears here for filling and packaging.</p></div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.purple;
+              const openPmMtr = findOpenPmMtrForBatch(b.bmrNo, outboundMrns);
               return (
                 <div key={b.bprNo} className={`rounded-xl border p-4 ${b.bprStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
@@ -4188,9 +4432,20 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
-                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && !batchHasOpenPmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
-                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && batchHasOpenPmMtr(b.bmrNo, outboundMrns) && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"><Info size={10} /> PM MTR pending</span>
+                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.pmReserved && (
+                      <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reservePM', b)}>Reserve PM</Btn>
+                    )}
+                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && b.rmReserved && b.pmReserved && !b.mfgDate && !b.fillDate && !b.packDate && (
+                      <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
+                    )}
+                    {canAdjustBatchSize(b) && (
+                      <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
+                    )}
+                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && !openPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && openPmMtr && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]" title={outboundMtrStageHint(openPmMtr)}>
+                        <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtr)}</span>
+                      </span>
                     )}
                     {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>}
                     {canShowRescheduleFooterButton(b) && (
@@ -5161,6 +5416,12 @@ const Production = () => {
       .catch(() => { });
   }, []);
 
+  /** After any MRN save from Transfer orders — keep BMR/BPR chips and batch state in sync with WH. */
+  const refreshAfterMrnSave = useCallback(() => {
+    refreshOutboundMrns();
+    refreshBatches();
+  }, [refreshOutboundMrns, refreshBatches]);
+
   const syncProductionAfterMrn = useCallback(() => {
     refreshBatches();
     refreshOutboundMrns();
@@ -5342,6 +5603,10 @@ const Production = () => {
       console.log('[RESERVE-DEBUG] Frontend: PATCH /batches (then refetch warehouse-inventory). Available = SIH - reserved; after reserve: reserved_new = R + X, available_new = SIH - reserved_new.');
     }
     updateBatch(modalBatch.bmrNo, updates);
+    if (modalType === 'confirm' || modalType === 'adjustBatch') {
+      queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+    }
     // Dispensing: warehouse refetch runs after PATCH succeeds inside updateBatch (ML1/ML2 delta applied on server).
     if (modalType === 'reserveRM' || modalType === 'reservePM' || modalType === 'mtrRM' || modalType === 'mtrPM' || modalType === 'qcPack') {
       fetchWarehouseInventory().then((invResult) => {
@@ -5357,6 +5622,7 @@ const Production = () => {
       });
     }
     const msg = modalType === 'confirm' ? `${modalBatch.bmrNo} confirmed`
+      : modalType === 'adjustBatch' ? `${modalBatch.bmrNo} batch size updated`
       : modalType === 'reserveRM' ? `RM Reserved for ${modalBatch.bmrNo}`
         : modalType === 'reservePM' ? `PM Reserved for ${modalBatch.bprNo}`
           : modalType === 'schedule' ? `${modalBatch.bmrNo} scheduled`
@@ -5365,7 +5631,7 @@ const Production = () => {
                 : modalType === 'mtrRM' || modalType === 'mtrPM' ? 'MTR sent'
                   : 'Batch updated';
     addToast('success', msg);
-  }, [modalBatch, modalType, updateBatch, addToast]);
+  }, [modalBatch, modalType, updateBatch, addToast, queryClient]);
 
   const closeModal = useCallback(() => { setModalBatch(null); setModalType(null); setScheduleSlot(null); setPendingMtrItems(null); }, []);
 
@@ -5399,7 +5665,7 @@ const Production = () => {
       case 'bpr':
         return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
       case 'transfers':
-        return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshOutboundMrns} />;
+        return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshAfterMrnSave} />;
       case 'equipment':
         return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
       case 'team':
@@ -5418,6 +5684,9 @@ const Production = () => {
       {/* MODALS */}
       {modalBatch && modalType === 'confirm' && (
         <ConfirmBatchModal batch={modalBatch} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+      )}
+      {modalBatch && modalType === 'adjustBatch' && (
+        <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'reserveRM' && (
         <ReserveMaterialModal

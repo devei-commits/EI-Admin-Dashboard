@@ -16,6 +16,11 @@ import {
 import { fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
+import {
+  parseStagedPaymentTerms,
+  serializeStagedPaymentTerms,
+  validateStagedPercents,
+} from '../lib/stagedPaymentTerms';
 
 interface PriceTierRow {
   id?: string;
@@ -49,14 +54,20 @@ const ItemsList: React.FC = () => {
   const [loadingCombined, setLoadingCombined] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
-  const [paymentTerms, setPaymentTerms] = useState<string>('');
+  const [advancePctStr, setAdvancePctStr] = useState('');
+  const [preShipmentPctStr, setPreShipmentPctStr] = useState('');
+  const [postShipmentPctStr, setPostShipmentPctStr] = useState('');
+  const [creditDaysStr, setCreditDaysStr] = useState('');
   const [leadTimeDays, setLeadTimeDays] = useState<string>('');
 
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
   const [editingRate, setEditingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
   const [editRateCurrency, setEditRateCurrency] = useState('INR');
-  const [editRatePaymentTerms, setEditRatePaymentTerms] = useState('');
+  const [editAdvancePct, setEditAdvancePct] = useState('');
+  const [editPreShipmentPct, setEditPreShipmentPct] = useState('');
+  const [editPostShipmentPct, setEditPostShipmentPct] = useState('');
+  const [editCreditDays, setEditCreditDays] = useState('');
   const [submittingEditRate, setSubmittingEditRate] = useState(false);
 
   // Edit tier (single price row) — item + rateId + tier for PUT/DELETE
@@ -132,6 +143,14 @@ const ItemsList: React.FC = () => {
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
+  const formatRatePaymentTermsLabel = (raw: string | null | undefined) => {
+    const p = parseStagedPaymentTerms(raw ?? '');
+    if (p) {
+      return `Adv ${p.advance_pct}% · Pre ${p.pre_shipment_pct}% · Post ${p.post_shipment_pct}%${p.credit_days ? ` · Net ${p.credit_days}d` : ''}`;
+    }
+    return raw?.trim() || '';
+  };
+
   useEffect(() => {
     if (!showAddTierModal || !addPriceListMode || tierTarget) {
       setAddPriceListCombinedItems([]);
@@ -161,7 +180,10 @@ const ItemsList: React.FC = () => {
     setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
     setSelectedVendor(null);
     setCurrency('INR');
-    setPaymentTerms('');
+    setAdvancePctStr('');
+    setPreShipmentPctStr('');
+    setPostShipmentPctStr('');
+    setCreditDaysStr('');
     setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(false);
@@ -174,7 +196,10 @@ const ItemsList: React.FC = () => {
     setResolvedItemsListId(null);
     setSelectedVendor(null);
     setCurrency('INR');
-    setPaymentTerms('');
+    setAdvancePctStr('');
+    setPreShipmentPctStr('');
+    setPostShipmentPctStr('');
+    setCreditDaysStr('');
     setLeadTimeDays('');
     setPriceTiers(EMPTY_TIERS);
     setAddPriceListMode(true);
@@ -207,6 +232,14 @@ const ItemsList: React.FC = () => {
       addToast('error', 'Add at least one tier with MOQ and Price');
       return;
     }
+    const adv = Number(advancePctStr);
+    const pre = Number(preShipmentPctStr);
+    const post = Number(postShipmentPctStr);
+    const pctErr = validateStagedPercents(adv, pre, post);
+    if (pctErr) {
+      addToast('error', pctErr);
+      return;
+    }
     setSubmittingTiers(true);
     try {
       let itemsListId = resolvedItemsListId;
@@ -225,10 +258,16 @@ const ItemsList: React.FC = () => {
         }
         itemsListId = createRes.data.id;
       }
+      const staged = serializeStagedPaymentTerms({
+        advance_pct: adv,
+        pre_shipment_pct: pre,
+        post_shipment_pct: post,
+        credit_days: creditDaysStr ? Math.max(0, parseInt(creditDaysStr, 10) || 0) : 0,
+      });
       const rateRes = await createItemListRate(String(itemsListId), {
         vendor_id: parseInt(selectedVendor.id, 10),
         currency,
-        payment_terms: paymentTerms || undefined,
+        payment_terms: staged,
         lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
       });
       if (!rateRes.success || !rateRes.data) {
@@ -276,7 +315,16 @@ const ItemsList: React.FC = () => {
   const openEditRate = (item: PriceListItemPage, rate: RateForEdit) => {
     setEditingRate({ item, rate });
     setEditRateCurrency(rate.currency);
-    setEditRatePaymentTerms(rate.payment_terms ?? '');
+    const p = parseStagedPaymentTerms(rate.payment_terms ?? '') ?? {
+      advance_pct: 0,
+      pre_shipment_pct: 100,
+      post_shipment_pct: 0,
+      credit_days: 0,
+    };
+    setEditAdvancePct(String(p.advance_pct));
+    setEditPreShipmentPct(String(p.pre_shipment_pct));
+    setEditPostShipmentPct(String(p.post_shipment_pct));
+    setEditCreditDays(String(p.credit_days ?? 0));
   };
 
   const openEditTier = (item: PriceListItemPage, rateId: number, tier: ItemListTierRow) => {
@@ -291,9 +339,24 @@ const ItemsList: React.FC = () => {
   const handleUpdateRate = async () => {
     if (!editingRate || editingRate.item.itemsListId == null) return;
     setSubmittingEditRate(true);
+    const adv = Number(editAdvancePct);
+    const pre = Number(editPreShipmentPct);
+    const post = Number(editPostShipmentPct);
+    const pctErr = validateStagedPercents(adv, pre, post);
+    if (pctErr) {
+      addToast('error', pctErr);
+      setSubmittingEditRate(false);
+      return;
+    }
+    const staged = serializeStagedPaymentTerms({
+      advance_pct: adv,
+      pre_shipment_pct: pre,
+      post_shipment_pct: post,
+      credit_days: editCreditDays ? Math.max(0, parseInt(editCreditDays, 10) || 0) : 0,
+    });
     const res = await updateItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id, {
       currency: editRateCurrency,
-      payment_terms: editRatePaymentTerms || null,
+      payment_terms: staged,
     });
     setSubmittingEditRate(false);
     if (res.success) {
@@ -558,7 +621,9 @@ const ItemsList: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
                           {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
-                          {rate.payment_terms && <span className="text-[10.5px] text-gray-500 ml-1.5">· {rate.payment_terms}</span>}
+                          {(rate.payment_terms && formatRatePaymentTermsLabel(rate.payment_terms)) ? (
+                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatRatePaymentTermsLabel(rate.payment_terms)}</span>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-gray-400">{rate.currency}</span>
@@ -732,18 +797,42 @@ const ItemsList: React.FC = () => {
                     <option value="EUR">EUR</option>
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms</label>
-                  <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
-                    <option value="">—</option>
-                    <option value="NET 15">NET 15</option>
-                    <option value="NET 30">NET 30</option>
-                    <option value="NET 45">NET 45</option>
-                    <option value="NET 60">NET 60</option>
-                    <option value="Due on receipt">Due on receipt</option>
-                    <option value="Advance">Advance</option>
-                    <option value="CIA">CIA</option>
-                  </select>
+                <div className="col-span-2 space-y-2">
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                    Payment terms (% of order value)
+                  </label>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Advance (on order), pre-shipment, and post-shipment must total at most 100%. These apply to website checkout and My Orders.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <span className="text-[10px] font-semibold text-gray-500">Advance %</span>
+                      <input type="number" min={0} max={100} value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold text-gray-500">Pre-shipment %</span>
+                      <input type="number" min={0} max={100} value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold text-gray-500">Post-shipment %</span>
+                      <input type="number" min={0} max={100} value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold text-gray-500">Credit days</span>
+                      <input type="number" min={0} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="0"
+                  />
                 </div>
                 <div>
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
@@ -850,18 +939,14 @@ const ItemsList: React.FC = () => {
                   <option value="EUR">EUR</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms</label>
-                <select value={editRatePaymentTerms} onChange={(e) => setEditRatePaymentTerms(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
-                  <option value="">—</option>
-                  <option value="NET 15">NET 15</option>
-                  <option value="NET 30">NET 30</option>
-                  <option value="NET 45">NET 45</option>
-                  <option value="NET 60">NET 60</option>
-                  <option value="Due on receipt">Due on receipt</option>
-                  <option value="Advance">Advance</option>
-                  <option value="CIA">CIA</option>
-                </select>
+              <div className="space-y-2">
+                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms (%)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" min={0} max={100} value={editAdvancePct} onChange={(e) => setEditAdvancePct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Advance" />
+                  <input type="number" min={0} max={100} value={editPreShipmentPct} onChange={(e) => setEditPreShipmentPct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Pre-shipment" />
+                  <input type="number" min={0} max={100} value={editPostShipmentPct} onChange={(e) => setEditPostShipmentPct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Post-shipment" />
+                  <input type="number" min={0} value={editCreditDays} onChange={(e) => setEditCreditDays(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Credit days" />
+                </div>
               </div>
             </div>
             <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-between">

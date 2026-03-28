@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { Plus, Trash2 } from 'lucide-react';
@@ -456,6 +456,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     return m;
   }, [packMaterials]);
 
+  const ingredientDraftRef = useRef<HTMLDivElement>(null);
+  const packDraftRef = useRef<HTMLDivElement>(null);
+  const stepDraftRef = useRef<HTMLDivElement>(null);
+
+  const formulaPercentTotal = useMemo(() => {
+    return formData.formulaIngredients.reduce((sum, ing) => {
+      const n = parseFloat(String(ing.percentWW).replace(/[^\d.-]/g, ''));
+      return sum + (Number.isNaN(n) ? 0 : n);
+    }, 0);
+  }, [formData.formulaIngredients]);
+
+  const runOnDraftLeave = useCallback(
+    (containerRef: React.RefObject<HTMLDivElement | null>, flush: () => boolean) => {
+      window.setTimeout(() => {
+        const root = containerRef.current;
+        if (!root) return;
+        const active = document.activeElement;
+        if (root.contains(active)) return;
+        flush();
+      }, 0);
+    },
+    []
+  );
+
   // When route has :id, fetch product and fill form for edit
   useEffect(() => {
     if (!productIdFromRoute) return;
@@ -537,26 +561,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     addToast('success', 'Form filled with mock data for testing!');
   };
 
-  const addIngredient = () => {
+  const flushIngredientDraft = (): boolean => {
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
-    if (!rm && !tempIngredient.inciName.trim()) {
-      addToast('error', 'Select a Raw Material (or enter INCI Name)');
-      return;
-    }
-    setFormData(prev => ({
+    if (!rm && !tempIngredient.inciName.trim()) return false;
+    setFormData((prev) => ({
       ...prev,
-      formulaIngredients: [...prev.formulaIngredients, {
-        id: Date.now().toString(),
-        rawMaterialId: rm ? String(rm.id) : undefined,
-        rmCode: rm ? rm.code : '',
-        inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
-        phase: tempIngredient.phase,
-        percentWW: tempIngredient.percentWW,
-        uom: rm?.uom || tempIngredient.uom || 'GM',
-      }]
+      formulaIngredients: [
+        ...prev.formulaIngredients,
+        {
+          id: Date.now().toString(),
+          rawMaterialId: rm ? String(rm.id) : undefined,
+          rmCode: rm ? rm.code : '',
+          inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
+          phase: tempIngredient.phase,
+          percentWW: tempIngredient.percentWW,
+          uom: rm?.uom || tempIngredient.uom || 'GM',
+        },
+      ],
     }));
     setSelectedRmId('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+    return true;
+  };
+
+  const addIngredient = () => {
+    flushIngredientDraft();
   };
 
   const removeIngredient = (id: string) => {
@@ -566,26 +595,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
-  const addComponent = () => {
+  const flushComponentDraft = (): boolean => {
     const pm = selectedPmId ? packMaterialById.get(String(selectedPmId)) : undefined;
-    if (!pm && !tempComponent.pmDescription.trim()) {
-      addToast('error', 'Select a Pack Material (or enter PM Description)');
-      return;
-    }
-    setFormData(prev => ({
+    if (!pm && !tempComponent.pmDescription.trim()) return false;
+    setFormData((prev) => ({
       ...prev,
-      packingComponents: [...prev.packingComponents, {
-        id: Date.now().toString(),
-        packMaterialId: pm ? String(pm.id) : undefined,
-        pmCode: pm ? pm.code : '',
-        pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
-        type: tempComponent.type || pm?.level || pm?.type || '',
-        qtyUnit: tempComponent.qtyUnit,
-        uom: tempComponent.uom || pm?.unit || 'PCS',
-      }]
+      packingComponents: [
+        ...prev.packingComponents,
+        {
+          id: Date.now().toString(),
+          packMaterialId: pm ? String(pm.id) : undefined,
+          pmCode: pm ? pm.code : '',
+          pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
+          type: tempComponent.type || pm?.level || pm?.type || '',
+          qtyUnit: tempComponent.qtyUnit,
+          uom: tempComponent.uom || pm?.unit || 'PCS',
+        },
+      ],
     }));
     setSelectedPmId('');
     setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+    return true;
+  };
+
+  const addComponent = () => {
+    flushComponentDraft();
   };
 
   const removeComponent = (id: string) => {
@@ -595,19 +629,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
-  const addStep = () => {
-    if (!tempStep.instruction.trim()) {
-      addToast('error', 'Instruction is required');
-      return;
-    }
-    setFormData(prev => ({
+  const flushStepDraft = (): boolean => {
+    if (!tempStep.instruction.trim()) return false;
+    setFormData((prev) => ({
       ...prev,
-      processSteps: [...prev.processSteps, {
-        id: Date.now().toString(),
-        ...tempStep
-      }]
+      processSteps: [
+        ...prev.processSteps,
+        {
+          id: Date.now().toString(),
+          ...tempStep,
+        },
+      ],
     }));
     setTempStep({ stepNumber: '', instruction: '', duration: '' });
+    return true;
+  };
+
+  const addStep = () => {
+    flushStepDraft();
   };
 
   const removeStep = (id: string) => {
@@ -792,130 +831,169 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
               <div className="space-y-4 border-t border-slate-200 pt-4">
-                <input
-                  type="text"
-                  placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
-                  value={formData.productName}
-                  onChange={(e) => handleInputChange('productName', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <select
-                    value={formData.category}
-                    onChange={(e) => handleInputChange('category', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">CATEGORY (formulation)</option>
-                    <option value="Sunscreen">Sunscreen</option>
-                    <option value="Face Wash">Face Wash</option>
-                    <option value="Serum">Serum</option>
-                    <option value="Cream">Cream</option>
-                  </select>
-                  <select
-                    value={formData.productForm}
-                    onChange={(e) => handleInputChange('productForm', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">PRODUCT FORM</option>
-                    <option value="Lotion/Cream">Lotion/Cream</option>
-                    <option value="Gel">Gel</option>
-                    <option value="Serum">Serum</option>
-                    <option value="Oil">Oil</option>
-                  </select>
-                </div>
-
-                <select
-                  value={formData.brandClient}
-                  onChange={(e) => handleInputChange('brandClient', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">BRAND / CLIENT</option>
-                  <option value="EI Own Brand">EI Own Brand</option>
-                  <option value="Client A">Client A</option>
-                  <option value="Client B">Client B</option>
-                </select>
-
-                <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Product Name</label>
                   <input
                     type="text"
-                    placeholder="e.g. 50g"
-                    value={formData.fillSize}
-                    onChange={(e) => handleInputChange('fillSize', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="e.g. 1x50 tube"
-                    value={formData.packConfiguration}
-                    onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
+                    value={formData.productName}
+                    onChange={(e) => handleInputChange('productName', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    placeholder="PR / BOM code (generate above)"
-                    value={formData.skuCode}
-                    onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="e.g. Rs.499"
-                    value={formData.mrp}
-                    onChange={(e) => handleInputChange('mrp', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Zoho item id (sync TODO)"
-                    value={formData.zohoId}
-                    onChange={(e) => handleInputChange('zohoId', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="SKU (for Zoho) - optional (defaults to PR code)"
-                    value={formData.skuForZoho}
-                    onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <select
-                    value={formData.bomTaxPreference}
-                    onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">TAX PREFERENCE</option>
-                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
-                    <input
-                      type="checkbox"
-                      checked={formData.bomReturnable}
-                      onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
-                    />
-                    <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category (Formulation)</label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => handleInputChange('category', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">Select category</option>
+                      <option value="Sunscreen">Sunscreen</option>
+                      <option value="Face Wash">Face Wash</option>
+                      <option value="Serum">Serum</option>
+                      <option value="Cream">Cream</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Form</label>
+                    <select
+                      value={formData.productForm}
+                      onChange={(e) => handleInputChange('productForm', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">Select product form</option>
+                      <option value="Lotion/Cream">Lotion/Cream</option>
+                      <option value="Gel">Gel</option>
+                      <option value="Serum">Serum</option>
+                      <option value="Oil">Oil</option>
+                    </select>
                   </div>
                 </div>
 
-                <textarea
-                  value={formData.bomAssociateItems}
-                  onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
-                  rows={2}
-                  placeholder="Link related BOM / RM / packaging if any"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Brand / Client</label>
+                  <select
+                    value={formData.brandClient}
+                    onChange={(e) => handleInputChange('brandClient', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">Select brand / client</option>
+                    <option value="EI Own Brand">EI Own Brand</option>
+                    <option value="Client A">Client A</option>
+                    <option value="Client B">Client B</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 50g"
+                      value={formData.fillSize}
+                      onChange={(e) => handleInputChange('fillSize', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1x50 tube"
+                      value={formData.packConfiguration}
+                      onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code</label>
+                    <input
+                      type="text"
+                      placeholder="PR / BOM code (generate above)"
+                      value={formData.skuCode}
+                      onChange={(e) => handleInputChange('skuCode', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">MRP Price</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Rs.499"
+                      value={formData.mrp}
+                      onChange={(e) => handleInputChange('mrp', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Zoho Item ID</label>
+                    <input
+                      type="text"
+                      placeholder="Zoho item id (sync TODO)"
+                      value={formData.zohoId}
+                      onChange={(e) => handleInputChange('zohoId', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
+                    <input
+                      type="text"
+                      placeholder="SKU (for Zoho) - optional (defaults to PR code)"
+                      value={formData.skuForZoho}
+                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
+                    <select
+                      value={formData.bomTaxPreference}
+                      onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">Select tax preference</option>
+                      {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
+                    <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={formData.bomReturnable}
+                        onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
+                      />
+                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Associated Items</label>
+                  <textarea
+                    value={formData.bomAssociateItems}
+                    onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
+                    rows={2}
+                    placeholder="Link related BOM / RM / packaging if any"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -925,14 +1003,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
-                <p className="text-xs text-slate-600 mb-3">Add all formula ingredients in phase order. Total must equal 100.00%.</p>
-                
-                <button
-                  onClick={addIngredient}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 mb-4"
-                >
-                  <Plus className="w-4 h-4" /> Add Ingredient
-                </button>
+                <p className="text-xs text-slate-600 mb-3">
+                  Add ingredients in phase order. Rows are saved when you leave the fields below or press Enter (total should equal 100%).
+                </p>
 
                 <div className="space-y-2 mb-4">
                   <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase">
@@ -949,7 +1022,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         <div className="text-slate-600">{ing.percentWW}</div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-600">{ing.uom}</span>
-                          <button onClick={() => removeIngredient(ing.id)} className="text-red-600 hover:text-red-800">
+                          <button type="button" onClick={() => removeIngredient(ing.id)} className="text-red-600 hover:text-red-800">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -958,11 +1031,21 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <div className="border-t pt-3 space-y-2">
+                <div
+                  ref={ingredientDraftRef}
+                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+                    e.preventDefault();
+                    addIngredient();
+                  }}
+                >
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={selectedRmId}
                       onChange={(e) => setSelectedRmId(e.target.value)}
+                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       disabled={masterLoading}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
@@ -978,6 +1061,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Or type INCI Name (manual)"
                       value={tempIngredient.inciName}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, inciName: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
@@ -987,6 +1071,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Phase"
                       value={tempIngredient.phase}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, phase: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <input
@@ -994,11 +1079,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="% W/W"
                       value={tempIngredient.percentWW}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, percentWW: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <select
                       value={tempIngredient.uom}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, uom: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
                       <option>GM</option>
@@ -1008,7 +1095,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-600 mt-3">Total: <span className="font-semibold text-blue-600">0.00%</span></p>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+                  <p className="text-xs text-slate-600">
+                    Total (saved lines): <span className="font-semibold text-blue-600">{formulaPercentTotal.toFixed(2)}%</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addIngredient}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4" /> Add ingredient to list
+                  </button>
+                </div>
               </div>
             </div>
         );
@@ -1017,14 +1115,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
-                <p className="text-xs text-slate-600 mb-3">Add all packaging components - primary, secondary, labels.</p>
-                
-                <button
-                  onClick={addComponent}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 mb-4"
-                >
-                  <Plus className="w-4 h-4" /> Add Component
-                </button>
+                <p className="text-xs text-slate-600 mb-3">
+                  List primary, secondary, and label components. Rows save when you leave the fields below or press Enter.
+                </p>
 
                 <div className="space-y-2 mb-4">
                   <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase">
@@ -1039,7 +1132,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         <div className="text-slate-600">{comp.type}</div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-600">{comp.qtyUnit}</span>
-                          <button onClick={() => removeComponent(comp.id)} className="text-red-600 hover:text-red-800">
+                          <button type="button" onClick={() => removeComponent(comp.id)} className="text-red-600 hover:text-red-800">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -1048,11 +1141,21 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <div className="border-t pt-3 space-y-2">
+                <div
+                  ref={packDraftRef}
+                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    addComponent();
+                  }}
+                >
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={selectedPmId}
                       onChange={(e) => setSelectedPmId(e.target.value)}
+                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       disabled={masterLoading}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
@@ -1068,6 +1171,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Or type PM Description (manual)"
                       value={tempComponent.pmDescription}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, pmDescription: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
@@ -1077,6 +1181,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Type"
                       value={tempComponent.type}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, type: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <input
@@ -1084,9 +1189,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Qty / Unit"
                       value={tempComponent.qtyUnit}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, qtyUnit: e.target.value }))}
+                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
+                </div>
+
+                <div className="flex justify-end mt-3">
+                  <button
+                    type="button"
+                    onClick={addComponent}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4" /> Add component to list
+                  </button>
                 </div>
               </div>
             </div>
@@ -1096,14 +1212,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">MANUFACTURING PROCESS STEPS</label>
-                <p className="text-xs text-slate-600 mb-3">Define step-by-step instructions in manufacturing order.</p>
-                
-                <button
-                  onClick={addStep}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 mb-4"
-                >
-                  <Plus className="w-4 h-4" /> Add Step
-                </button>
+                <p className="text-xs text-slate-600 mb-3">
+                  Steps are added when you leave the fields below (or use Ctrl+Enter in the instruction box). Instruction is required.
+                </p>
 
                 <div className="space-y-2 mb-4">
                   <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase">
@@ -1119,7 +1230,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             <div className="text-slate-900">{step.instruction}</div>
                             <div className="text-xs text-slate-600 mt-1">Duration: {step.duration}</div>
                           </div>
-                          <button onClick={() => removeStep(step.id)} className="text-red-600 hover:text-red-800">
+                          <button type="button" onClick={() => removeStep(step.id)} className="text-red-600 hover:text-red-800">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -1128,18 +1239,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <div className="border-t pt-3 space-y-2">
+                <div
+                  ref={stepDraftRef}
+                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && (e.target as HTMLElement).tagName === 'TEXTAREA') {
+                      e.preventDefault();
+                      addStep();
+                    }
+                  }}
+                >
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New step</p>
                   <input
                     type="text"
                     placeholder="Step #"
                     value={tempStep.stepNumber}
                     onChange={(e) => setTempStep(prev => ({ ...prev, stepNumber: e.target.value }))}
+                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                   />
                   <textarea
-                    placeholder="Step Description / Instruction"
+                    placeholder="Step Description / Instruction (Ctrl+Enter to add)"
                     value={tempStep.instruction}
                     onChange={(e) => setTempStep(prev => ({ ...prev, instruction: e.target.value }))}
+                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
                     rows={2}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                   />
@@ -1148,8 +1271,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     placeholder="Duration (e.g., 15 mins)"
                     value={tempStep.duration}
                     onChange={(e) => setTempStep(prev => ({ ...prev, duration: e.target.value }))}
+                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addStep();
+                      }
+                    }}
                     className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                   />
+                </div>
+
+                <div className="flex justify-end mt-3">
+                  <button
+                    type="button"
+                    onClick={addStep}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4" /> Add step to list
+                  </button>
                 </div>
               </div>
             </div>

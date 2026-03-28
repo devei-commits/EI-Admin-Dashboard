@@ -3,8 +3,18 @@
  * Keeps the UI types stable while backend shapes may differ.
  */
 
-import type { ProcurementRequest, VendorQuote, QuoteLine, Vendor, PurchaseOrder, RequestType, DraftPO, DraftPOLineItem } from '../../types/procurement.types';
-import type { ProcurementRequest as BackendPR } from '../../services/procurement.service';
+import type {
+  ProcurementRequest,
+  VendorQuote,
+  QuoteLine,
+  Vendor,
+  PurchaseOrder,
+  RequestType,
+  DraftPO,
+  DraftPOLineItem,
+  ItemDetail,
+} from '../../types/procurement.types';
+import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '../../services/procurement.service';
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 import type { Order } from '../../types/salesPurchase.types';
@@ -24,46 +34,87 @@ const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
   pending: 'Pending Review',
 };
 
+function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number } {
+  const raw = String(lineNotes ?? '');
+  let plannedPrice = 0;
+  let leadTimeDays = 0;
+  const rateMatch = raw.match(/Planned rate\s*[₹]?\s*([\d.]+)/i) || raw.match(/[₹]\s*([\d.]+)/);
+  if (rateMatch) plannedPrice = Number(rateMatch[1]) || 0;
+  const leadMatch = raw.match(/Lead:\s*(\d+)\s*d/i);
+  if (leadMatch) leadTimeDays = Number(leadMatch[1]) || 0;
+  return { plannedPrice, leadTimeDays };
+}
+
 /** Backend procurement request (from /api/v1/procurement) -> ProcurementRequest */
 export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string | null }): ProcurementRequest {
   const items = Array.isArray(pr.items) ? pr.items : [];
-  const type: RequestType = (items[0]?.type === 'PM' ? 'PM' : 'RM');
+  const hasRm = items.some(
+    (i: { type?: string; raw_material_id?: number }) =>
+      i?.type === 'RM' || (i?.raw_material_id != null && Number(i.raw_material_id) > 0)
+  );
+  const hasPm = items.some(
+    (i: { type?: string; pack_material_id?: number }) =>
+      i?.type === 'PM' || (i?.pack_material_id != null && Number(i.pack_material_id) > 0)
+  );
+  const type: RequestType = hasPm && !hasRm ? 'PM' : 'RM';
   const code = `PR-REQ-${String(pr.id).padStart(3, '0')}`;
+  const itemLabels = items.map((i: { name?: string; code?: string }) => {
+    const n = i?.name != null ? String(i.name).trim() : '';
+    const c = i?.code != null ? String(i.code).trim() : '';
+    if (n) return n;
+    if (c) return c;
+    return 'Item';
+  });
   return {
     id: String(pr.id),
     code,
     type,
     priority: (pr.priority as ProcurementRequest['priority']) ?? 'Medium',
     status: PR_STATUS_MAP[pr.status ?? ''] ?? 'New',
-    items: items.map((i: { name?: string }) => i?.name ?? ''),
+    items: itemLabels,
     dueDate: pr.requiredByDate ?? '',
     createdDate: pr.createdAt ?? '',
     requestedBy: pr.requestedBy ?? undefined,
     preferredVendor: pr.preferredVendor ?? undefined,
     batchId: pr.planningBatchId != null ? String(pr.planningBatchId) : undefined,
+    notes: pr.notes ?? null,
+    planningSoNumber: pr.planningSoNumber ?? null,
+    planningCustomerName: pr.planningCustomerName ?? null,
+    planningProductName: pr.planningProductName ?? null,
+    planningProductCode: pr.planningProductCode ?? null,
     itemDetails: items.map(
       (i: {
         code?: string;
         name?: string;
         quantity_requested?: number;
         unit?: string;
+        line_notes?: string;
+        moq_min?: number;
         raw_material_id?: number;
         pack_material_id?: number;
         type?: string;
-      }) => ({
-        itemCode: i?.code ?? '',
-        itemName: i?.name ?? '',
-        reqQty: i?.quantity_requested ?? 0,
-        unit: i?.unit ?? '',
-        moq: '',
-        packSize: '',
-        plannedPrice: 0,
-        leadTimeDays: 0,
-        estValue: 0,
-        raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
-        pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
-        type: i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM',
-      })
+      }) => {
+        const parsed = parsePlannedLineNotes(i?.line_notes);
+        const moqMin = i?.moq_min != null ? Number(i.moq_min) : NaN;
+        const moqStr = Number.isFinite(moqMin) && moqMin > 0 ? String(moqMin) : '';
+        const reqQty = Number(i?.quantity_requested) || 0;
+        const lineType: ItemDetail['type'] =
+          i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM';
+        return {
+          itemCode: i?.code ?? '',
+          itemName: i?.name ?? '',
+          reqQty,
+          unit: i?.unit ?? '',
+          moq: moqStr,
+          packSize: '',
+          plannedPrice: parsed.plannedPrice,
+          leadTimeDays: parsed.leadTimeDays,
+          estValue: reqQty * parsed.plannedPrice,
+          raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
+          pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
+          type: lineType,
+        };
+      }
     ),
     stockSummary: {
       stockInHand: 0,
@@ -169,7 +220,12 @@ export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
 
 /** PurchaseOrder (from API, status Draft) + requests -> DraftPO for sidebar/list */
 export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: ProcurementRequest[]): DraftPO {
-  const formData = (po.formData || {}) as { requestId?: string; requestCode?: string };
+  const formData = (po.formData || {}) as {
+    requestId?: string;
+    requestCode?: string;
+    procurementApprovalStatus?: string;
+    procurementApprovedAt?: string;
+  };
   const request = requests.find(
     (r) => r.id === formData.requestId || r.code === formData.requestCode
   );
@@ -184,15 +240,18 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
         const subtotal = qty * rate;
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+        const codeFromApi = String(i.itemCode ?? i.code ?? '').trim();
         return {
           item: i.itemName || i.name || String(items[idx] ?? ''),
-          itemCode: `EI-${type}-${String(idx + 1).padStart(3, '0')}`,
+          itemCode: codeFromApi || `EI-${type}-${String(idx + 1).padStart(3, '0')}`,
           type,
           qty: String(i.quantity ?? qty),
           pricePerUnit: rate,
           gstPercent: gstPct,
           gstAmount,
           lineTotal,
+          ...(i.raw_material_id != null ? { raw_material_id: Number(i.raw_material_id) } : {}),
+          ...(i.pack_material_id != null ? { pack_material_id: Number(i.pack_material_id) } : {}),
         };
       })
     : items.map((name, idx) => ({
@@ -211,6 +270,16 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
   const grandTotal = subtotal + gstTotal;
   const backendPoId = String(po.id ?? '').replace(/^PO-/, '') || undefined;
 
+  const approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  const approvedAtIso = formData.procurementApprovedAt;
+  let approvedLabel = '';
+  if (approvalApproved && approvedAtIso) {
+    const d = new Date(approvedAtIso);
+    if (!Number.isNaN(d.getTime())) {
+      approvedLabel = d.toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+  }
+
   return {
     id: po.poNumber,
     dpoNumber: po.poNumber,
@@ -219,19 +288,134 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
     type,
     vendor: po.vendorName ?? '',
     vendorId: '',
-    status: 'Pending Approval',
+    status: approvalApproved ? 'Approved' : 'Pending Approval',
     createdDate: po.date ?? '',
     createdBy: 'Procurement',
     paymentTerms: po.paymentTerms ?? '',
     expectedDelivery: po.expectedShipmentDate ?? po.date ?? '',
     deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
     vendorRating: 0,
-    alertMessage: 'Loaded from backend.',
-    alertType: 'warning',
+    alertMessage: approvalApproved
+      ? `Approved on ${approvedLabel || '—'}. Ready for release.`
+      : 'Loaded from backend.',
+    alertType: approvalApproved ? 'ok' : 'warning',
     lineItems,
     subtotal: parseFloat(subtotal.toFixed(2)),
     gstTotal: parseFloat(gstTotal.toFixed(2)),
     grandTotal: parseFloat(grandTotal.toFixed(2)),
     backendPoId,
   };
+}
+
+/**
+ * Match a backend PR line to a draft PO line (name/code fuzzy match, same as quote/PR pairing in UI).
+ */
+export function matchBackendPrItemForDraftLine(
+  line: DraftPOLineItem,
+  prItems: ProcurementRequestItem[]
+): ProcurementRequestItem | undefined {
+  if (!prItems.length) return undefined;
+  const nameNorm = (line.item ?? '').trim().toLowerCase();
+  const codeNorm = (line.itemCode ?? '').trim().toLowerCase();
+  const rm = line.raw_material_id != null ? Number(line.raw_material_id) : null;
+  const pm = line.pack_material_id != null ? Number(line.pack_material_id) : null;
+  if (rm != null && Number.isFinite(rm)) {
+    const byRm = prItems.find((it) => it.raw_material_id != null && Number(it.raw_material_id) === rm);
+    if (byRm) return byRm;
+  }
+  if (pm != null && Number.isFinite(pm)) {
+    const byPm = prItems.find((it) => it.pack_material_id != null && Number(it.pack_material_id) === pm);
+    if (byPm) return byPm;
+  }
+  return prItems.find((it) => {
+    const inName = String(it.name ?? '').trim().toLowerCase();
+    const inCode = String(it.code ?? '').trim().toLowerCase();
+    if (!inName && !inCode) return false;
+    return (
+      (inName && (inName === nameNorm || (!!nameNorm && (nameNorm.includes(inName) || inName.includes(nameNorm))))) ||
+      (!!inCode && (!!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm))))
+    );
+  });
+}
+
+/**
+ * One-to-one assignment of PR lines to draft PO lines (greedy, unique indices).
+ * Prevents split PO halves from attaching the same PR row / master id to multiple lines.
+ */
+export function assignPrItemToDraftLines(
+  lines: DraftPOLineItem[],
+  prItems: ProcurementRequestItem[]
+): (ProcurementRequestItem | undefined)[] {
+  if (!prItems.length) return lines.map(() => undefined);
+  const used = new Set<number>();
+  const pick = (pred: (it: ProcurementRequestItem, j: number) => boolean): number | undefined => {
+    for (let j = 0; j < prItems.length; j++) {
+      if (used.has(j)) continue;
+      if (pred(prItems[j], j)) return j;
+    }
+    return undefined;
+  };
+
+  return lines.map((line) => {
+    const nameNorm = (line.item ?? '').trim().toLowerCase();
+    const codeNorm = (line.itemCode ?? '').trim().toLowerCase();
+    const rm = line.raw_material_id != null ? Number(line.raw_material_id) : null;
+    const pm = line.pack_material_id != null ? Number(line.pack_material_id) : null;
+
+    let j: number | undefined;
+    if (rm != null && Number.isFinite(rm)) {
+      j = pick((it) => it.raw_material_id != null && Number(it.raw_material_id) === rm);
+    }
+    if (j === undefined && pm != null && Number.isFinite(pm)) {
+      j = pick((it) => it.pack_material_id != null && Number(it.pack_material_id) === pm);
+    }
+    if (j === undefined && codeNorm) {
+      j = pick((it) => {
+        const inCode = String(it.code ?? '').trim().toLowerCase();
+        return !!inCode && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm));
+      });
+    }
+    if (j === undefined) {
+      j = pick((it) => {
+        const inName = String(it.name ?? '').trim().toLowerCase();
+        const inCode = String(it.code ?? '').trim().toLowerCase();
+        if (!inName && !inCode) return false;
+        return (
+          (inName && (inName === nameNorm || (!!nameNorm && (nameNorm.includes(inName) || inName.includes(nameNorm))))) ||
+          (!!inCode && (!!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm))))
+        );
+      });
+    }
+    if (j !== undefined) {
+      used.add(j);
+      return prItems[j];
+    }
+    return undefined;
+  });
+}
+
+/** Build purchase_orders.items payload from draft lines (optionally enrich ids from PR). */
+export function draftLineItemsToPurchaseOrderItems(
+  lines: DraftPOLineItem[],
+  prItems?: ProcurementRequestItem[],
+  preAssigned?: (ProcurementRequestItem | undefined)[]
+): Record<string, unknown>[] {
+  const assigned: (ProcurementRequestItem | undefined)[] =
+    preAssigned && preAssigned.length === lines.length
+      ? preAssigned
+      : prItems?.length && lines.length
+        ? assignPrItemToDraftLines(lines, prItems)
+        : [];
+  return lines.map((l, idx) => {
+    const src = assigned[idx];
+    return {
+      itemName: l.item,
+      itemCode: l.itemCode,
+      quantity: l.qty,
+      rate: String(l.pricePerUnit),
+      tax: String(l.gstPercent || 18),
+      ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
+      ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
+    };
+  });
 }

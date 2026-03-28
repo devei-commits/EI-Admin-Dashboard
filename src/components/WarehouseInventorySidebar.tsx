@@ -134,13 +134,17 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
       const d = res.data;
       const stockInHand =
         (Number(d.wh_stock) || 0) + (Number(d.ml1_stock) || 0) + (Number(d.ml2_stock) || 0);
+      const numOr = (v: unknown, fallback: number): number => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : fallback;
+      };
       const updated: InventoryItem = {
         ...itemToSave,
-        whStock: Number(d.wh_stock) ?? itemToSave.whStock,
-        ml1Stock: Number(d.ml1_stock) ?? itemToSave.ml1Stock,
-        ml2Stock: Number(d.ml2_stock) ?? itemToSave.ml2Stock,
+        whStock: numOr(d.wh_stock, itemToSave.whStock),
+        ml1Stock: numOr(d.ml1_stock, itemToSave.ml1Stock),
+        ml2Stock: numOr(d.ml2_stock, itemToSave.ml2Stock),
         stockInHand,
-        reserved: Number(d.reserved) ?? itemToSave.reserved,
+        reserved: numOr(d.reserved, itemToSave.reserved),
       };
       setSelectedItem(updated);
       if (onItemUpdated) onItemUpdated(updated);

@@ -106,7 +106,13 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       whUnit: r.whUnit ?? 'KG',
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
-      stockInHand: (Number(r.stockInHand) ?? (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock))) || 0,
+      stockInHand: (() => {
+        if (r.stockInHand != null && r.stockInHand !== '') {
+          const n = Number(r.stockInHand);
+          if (Number.isFinite(n)) return n;
+        }
+        return (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+      })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
@@ -166,7 +172,13 @@ export async function fetchWarehouseInventoryPage(opts: {
       whUnit: r.whUnit ?? 'KG',
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
-      stockInHand: (Number(r.stockInHand) ?? (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock))) || 0,
+      stockInHand: (() => {
+        if (r.stockInHand != null && r.stockInHand !== '') {
+          const n = Number(r.stockInHand);
+          if (Number.isFinite(n)) return n;
+        }
+        return (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+      })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
@@ -329,7 +341,7 @@ export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: W
       whUnit: r.whUnit ?? 'KG',
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
-      stockInHand: (Number(r.stockInHand) ?? 0) || 0,
+      stockInHand: Number.isFinite(Number(r.stockInHand)) ? Number(r.stockInHand) : 0,
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,

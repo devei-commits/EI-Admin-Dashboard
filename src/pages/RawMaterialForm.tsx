@@ -1237,6 +1237,12 @@ const RawMaterialRefactored: React.FC = () => {
 
   const isEditLoading = pageTab === 'form' && !!existingRmId && editRmLoading;
   const isEditing = !!existingRmId;
+  const closeFormPopup = () => {
+    setExistingRmId(null);
+    setPageTab('dashboard');
+    setEditRmLoading(false);
+    setCurrentStage(0);
+  };
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -1244,7 +1250,7 @@ const RawMaterialRefactored: React.FC = () => {
       {pageTab === 'form' && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4"
-          onClick={() => { setExistingRmId(null); setPageTab('dashboard'); setEditRmLoading(false); setCurrentStage(0); }}
+          onClick={closeFormPopup}
         >
           <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
@@ -1253,10 +1259,12 @@ const RawMaterialRefactored: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => { setExistingRmId(null); setPageTab('dashboard'); setEditRmLoading(false); setCurrentStage(0); }}
-                className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                onClick={closeFormPopup}
+                aria-label="Close raw material popup"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
               >
-                ✕
+                <span aria-hidden>✕</span>
+                <span>Close</span>
               </button>
             </div>
 
@@ -1640,7 +1648,7 @@ const InputField: React.FC<{
  placeholder?: string;
 }> = ({ label, id, value, onChange, type = 'text', placeholder }) => (
  <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
   <input
    type={type}
    id={id}
@@ -1660,7 +1668,7 @@ const SelectField: React.FC<{
  options: string[];
 }> = ({ label, id, value, onChange, options }) => (
  <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
   <select
    id={id}
    value={value || ''}
@@ -1684,7 +1692,7 @@ const TextareaField: React.FC<{
  placeholder?: string;
 }> = ({ label, id, value, onChange, rows = 3, placeholder }) => (
  <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
   <textarea
    id={id}
    value={value || ''}
@@ -1702,7 +1710,7 @@ const CheckboxField: React.FC<{
  checked: boolean;
  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }> = ({ label, id, checked, onChange }) => (
- <label className="flex items-center text-sm">
+ <div className="flex items-center text-sm">
   <input
    type="checkbox"
    id={id}
@@ -1710,8 +1718,8 @@ const CheckboxField: React.FC<{
    onChange={onChange}
    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
   />
-  <span className="ml-2 text-gray-700">{label}</span>
- </label>
+  <label htmlFor={id} className="ml-2 text-gray-700">{label}</label>
+ </div>
 );
 
 export default RawMaterialRefactored;

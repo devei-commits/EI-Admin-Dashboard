@@ -58,12 +58,13 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
     <div className="grid grid-cols-2 gap-4 mb-4">
      {displayColumns.map(col => (
       <div key={col.key}>
-       <label className="block text-xs font-medium text-gray-600 mb-1 capitalize">
+      <label htmlFor={`${itemType}-${col.key}`} className="block text-xs font-medium text-gray-600 mb-1 capitalize">
         {col.label}
         {tempFieldNames.includes(col.key) && '*'}
        </label>
        {col.type === 'select' && col.options ? (
         <select
+         id={`${itemType}-${col.key}`}
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
          className="w-full p-2 border border-gray-300 rounded text-sm"
@@ -75,6 +76,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
         </select>
        ) : col.type === 'date' ? (
         <input
+         id={`${itemType}-${col.key}`}
          type="date"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
@@ -82,6 +84,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
         />
        ) : col.type === 'number' ? (
         <input
+         id={`${itemType}-${col.key}`}
          type="number"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
@@ -90,6 +93,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
         />
        ) : (
         <input
+         id={`${itemType}-${col.key}`}
          type="text"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}

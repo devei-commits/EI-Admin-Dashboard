@@ -1,19 +1,59 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, type MRNRecordFromApi, type AssignablePicker } from '../../services/mrn.service';
+import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker } from '../../services/mrn.service';
 
-/** API status -> UI display status */
-const API_TO_UI_STATUS: Record<string, 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed'> = {
-  Pending: 'Pending Pick',
-  Picked: 'In Pick',
-  'In Transfer': 'In Transfer',
-  Completed: 'Completed',
-};
-const UI_TO_API_STATUS: Record<string, string> = {
+/** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
+export type OutboundUiStatus =
+  | 'Pending Pick'
+  | 'In Pick'
+  | 'In Transfer'
+  | 'In Transit'
+  | 'Received at MU'
+  | 'Completed';
+
+function mapApiStatusToUi(raw: string | undefined): OutboundUiStatus {
+  const s = String(raw || '').trim();
+  if (s === 'Succeeded' || s === 'Completed') return 'Completed';
+  if (s === 'Pending') return 'Pending Pick';
+  if (s === 'Picked') return 'In Pick';
+  if (s === 'In Transfer') return 'In Transfer';
+  if (s === 'In Transit') return 'In Transit';
+  if (s === 'Received at MU') return 'Received at MU';
+  return 'Pending Pick';
+}
+
+const UI_TO_API_STATUS: Record<OutboundUiStatus, string> = {
   'Pending Pick': 'Pending',
   'In Pick': 'Picked',
   'In Transfer': 'In Transfer',
-  'Completed': 'Completed',
+  'In Transit': 'In Transit',
+  'Received at MU': 'Received at MU',
+  Completed: 'Completed',
 };
+
+/** Non–MTR (ad-hoc) outbound: linear manual steps only. */
+const NON_MTR_MANUAL_FLOW: OutboundUiStatus[] = ['Pending Pick', 'In Pick', 'In Transfer', 'Completed'];
+
+function isMtrOutbound(mrn: { source?: string }): boolean {
+  return String(mrn.source || '').trim() === 'MTR';
+}
+
+function manualStatusOptions(current: OutboundUiStatus): OutboundUiStatus[] {
+  if (['In Transit', 'Received at MU'].includes(current)) return [current];
+  const idx = NON_MTR_MANUAL_FLOW.indexOf(current);
+  if (idx === -1) return [current];
+  const next = NON_MTR_MANUAL_FLOW[idx + 1];
+  return next ? [NON_MTR_MANUAL_FLOW[idx], next] : [NON_MTR_MANUAL_FLOW[idx]];
+}
+
+type StatusFilter = 'All' | 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed';
+
+function statusMatchesFilter(mrnStatus: OutboundUiStatus, filter: StatusFilter): boolean {
+  if (filter === 'All') return true;
+  if (filter === 'In Transfer') {
+    return ['In Transfer', 'In Transit', 'Received at MU'].includes(mrnStatus);
+  }
+  return mrnStatus === filter;
+}
 
 /** Display label for transfer direction. */
 const TRANSFER_TYPE_LABEL = {
@@ -21,13 +61,11 @@ const TRANSFER_TYPE_LABEL = {
   inbound_from_mu: 'Inbound from MU',
 } as const;
 
-type TransferTypeFilter = 'All' | 'outbound' | 'inbound_from_mu';
-
 interface MRN {
   id: string;
   mrnNo: string;
   requestedBy: string;
-  status: 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed';
+  status: OutboundUiStatus;
   assignedPicker: string;
   transferTeam: string;
   itemsCount: number;
@@ -47,10 +85,8 @@ interface PickLineItem {
   uom: string;
 }
 
-type StatusFilter = 'All' | 'Pending Pick' | 'In Pick' | 'In Transfer' | 'Completed';
-
 function mapApiToMRN(r: MRNRecordFromApi): MRN {
-  const status = API_TO_UI_STATUS[r.status] ?? 'Pending Pick';
+  const status = mapApiStatusToUi(r.status);
   return {
     id: r.id,
     mrnNo: r.mrnNo,
@@ -83,9 +119,7 @@ const OutboundDashboard = () => {
   const [assignablePickers, setAssignablePickers] = useState<AssignablePicker[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
-  const [transferTypeFilter, setTransferTypeFilter] = useState<TransferTypeFilter>('All');
   const [selectedMRNId, setSelectedMRNId] = useState<string | null>(null);
-  const [panelMode, setPanelMode] = useState<'pick' | 'view'>('pick');
   const [assignedPicker, setAssignedPicker] = useState('');
   const [assignedTransferBy, setAssignedTransferBy] = useState('');
   const [pickedItems, setPickedItems] = useState<Record<string, boolean>>({});
@@ -111,12 +145,15 @@ const OutboundDashboard = () => {
     (async () => {
       setLoading(true);
       try {
-        const [list, pickers] = await Promise.all([fetchMRNList(), fetchMRNAssignablePickers()]);
+        const [list, pickers] = await Promise.all([
+          fetchMRNList({ transferType: 'outbound' }),
+          fetchMRNAssignablePickers(),
+        ]);
         if (!cancelled) {
           setMrnData(list.map(mapApiToMRN));
           setAssignablePickers(pickers);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) setMrnData([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -147,9 +184,8 @@ const OutboundDashboard = () => {
       }))
     : [];
 
-  const handleOpenPanel = (mrn: MRN, mode: 'pick' | 'view') => {
+  const handleOpenPanel = (mrn: MRN, _mode: 'pick' | 'view') => {
     setSelectedMRNId(mrn.id);
-    setPanelMode(mode);
 
     const existingState = pickStateByMrn[mrn.id];
     setAssignedPicker(existingState?.assignedPicker ?? mrn.assignedPicker ?? '');
@@ -210,7 +246,7 @@ const OutboundDashboard = () => {
       );
       showToast('Changes saved.');
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to save changes', 'error');
+      showToast(getApiErrorMessage(e) || 'Failed to save changes', 'error');
     }
   };
 
@@ -232,7 +268,7 @@ const OutboundDashboard = () => {
       showToast(`Pick saved for ${selectedMRN.mrnNo}. Status updated to In Pick.`);
       closePickPanel();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to save pick', 'error');
+      showToast(getApiErrorMessage(e) || 'Failed to save pick', 'error');
     }
   };
 
@@ -256,20 +292,7 @@ const OutboundDashboard = () => {
       showToast(`Transfer initiated for ${selectedMRN.mrnNo}. Status updated to In Transfer.`);
       closePickPanel();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to initiate transfer', 'error');
-    }
-  };
-
-  const handleCompleteTransfer = async (mrnId: string) => {
-    const doneMrn = mrnData.find((mrn) => mrn.id === mrnId);
-    try {
-      await updateMRN(mrnId, { status: UI_TO_API_STATUS['Completed'] });
-      setMrnData((prev) =>
-        prev.map((mrn) => (mrn.id === mrnId ? { ...mrn, status: 'Completed' as const } : mrn))
-      );
-      showToast(`Cycle completed for ${doneMrn?.mrnNo ?? 'MRN'}. Status updated to Completed.`);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to complete transfer', 'error');
+      showToast(getApiErrorMessage(e) || 'Failed to initiate transfer', 'error');
     }
   };
 
@@ -293,12 +316,8 @@ const OutboundDashboard = () => {
       (mrn.notes || '').toLowerCase().includes(q) ||
       (mrn.bmrNo || '').toLowerCase().includes(q) ||
       (mrn.source || '').toLowerCase().includes(q);
-    const matchesStatus = statusFilter === 'All' || mrn.status === statusFilter;
-    const matchesTransferType =
-      transferTypeFilter === 'All' ||
-      (transferTypeFilter === 'inbound_from_mu' && mrn.isInboundFromMu) ||
-      (transferTypeFilter === 'outbound' && !mrn.isInboundFromMu);
-    return matchesSearch && matchesStatus && matchesTransferType;
+    const matchesStatus = statusMatchesFilter(mrn.status, statusFilter);
+    return matchesSearch && matchesStatus;
   });
 
   const getStatusBadgeColor = (status: string) => {
@@ -309,6 +328,10 @@ const OutboundDashboard = () => {
         return 'bg-amber-50 text-amber-700 border border-amber-200';
       case 'In Transfer':
         return 'bg-cyan-50 text-cyan-700 border border-cyan-200';
+      case 'In Transit':
+        return 'bg-sky-50 text-sky-800 border border-sky-200';
+      case 'Received at MU':
+        return 'bg-indigo-50 text-indigo-800 border border-indigo-200';
       case 'Completed':
         return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
       default:
@@ -316,16 +339,21 @@ const OutboundDashboard = () => {
     }
   };
 
-  const handleStatusChange = async (mrnId: string, newStatus: StatusFilter) => {
-    if (newStatus === 'All') return;
+  const handleStatusChange = async (mrn: MRN, newStatus: OutboundUiStatus) => {
+    if (isMtrOutbound(mrn)) return;
+    const allowed = manualStatusOptions(mrn.status);
+    if (!allowed.includes(newStatus)) {
+      showToast('Complete the previous step before moving to this status.', 'error');
+      return;
+    }
     try {
-      await updateMRN(mrnId, { status: UI_TO_API_STATUS[newStatus] });
+      await updateMRN(mrn.id, { status: UI_TO_API_STATUS[newStatus] });
       setMrnData((prev) =>
-        prev.map((m) => (m.id === mrnId ? { ...m, status: newStatus } : m))
+        prev.map((m) => (m.id === mrn.id ? { ...m, status: newStatus } : m))
       );
       showToast(`Status updated to ${newStatus}.`);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Failed to update status', 'error');
+      showToast(getApiErrorMessage(e) || 'Failed to update status', 'error');
     }
   };
 
@@ -373,25 +401,7 @@ const OutboundDashboard = () => {
         <div className="bg-white border border-slate-200 rounded-lg">
           {/* Header */}
           <div className="p-6 border-b border-slate-200">
-            <h1 className="text-xl font-bold text-slate-900 mb-4">Transfer orders</h1>
-            
-            {/* Transfer type filter */}
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-sm text-slate-500">Type:</span>
-              {(['All', 'outbound', 'inbound_from_mu'] as TransferTypeFilter[]).map(filter => (
-                <button
-                  key={filter}
-                  onClick={() => setTransferTypeFilter(filter)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                    transferTypeFilter === filter
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {filter === 'All' ? 'All' : TRANSFER_TYPE_LABEL[filter]}
-                </button>
-              ))}
-            </div>
+            <h1 className="text-xl font-bold text-slate-900 mb-4">Outbound transfers</h1>
 
             {/* Filter Tabs */}
             <div className="flex items-center gap-2 mb-4">
@@ -483,16 +493,26 @@ const OutboundDashboard = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={mrn.status}
-                          onChange={(e) => handleStatusChange(mrn.id, e.target.value as StatusFilter)}
-                          className={`text-xs rounded border px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${getStatusBadgeColor(mrn.status)}`}
-                        >
-                          <option value="Pending Pick">Pending Pick</option>
-                          <option value="In Pick">In Pick</option>
-                          <option value="In Transfer">In Transfer</option>
-                          <option value="Completed">Completed</option>
-                        </select>
+                        {isMtrOutbound(mrn) ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-1.5 text-xs font-medium rounded border ${getStatusBadgeColor(mrn.status)}`}
+                            title="MTR: status follows the Production transfer workflow (not editable here)."
+                          >
+                            {mrn.status}
+                          </span>
+                        ) : (
+                          <select
+                            value={mrn.status}
+                            onChange={(e) => handleStatusChange(mrn, e.target.value as OutboundUiStatus)}
+                            className={`text-xs rounded border px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${getStatusBadgeColor(mrn.status)}`}
+                          >
+                            {manualStatusOptions(mrn.status).map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                     </tr>
                   ))

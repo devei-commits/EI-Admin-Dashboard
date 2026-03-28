@@ -480,6 +480,16 @@ const Planning = () => {
     const n = parseInt(s, 10);
     return Number.isNaN(n) ? 0 : n;
   }, [selectedRowForDetail?.orderQty]);
+  const totalKgNumForDetail = useMemo(() => {
+    if (!selectedRowForDetail?.totalKg) return 0;
+    const n = parseFloat(String(selectedRowForDetail.totalKg).replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }, [selectedRowForDetail?.totalKg]);
+  const batchSizeKgForDetail = useMemo(() => {
+    if (!selectedRowForDetail?.batchSize) return 0;
+    const n = parseFloat(String(selectedRowForDetail.batchSize).replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }, [selectedRowForDetail?.batchSize]);
 
   // RM/PM list for detail popup: BOM lines × order quantity (total required for this FG order)
   const { detailRmItems, detailPmItems } = useMemo(() => {
@@ -494,8 +504,13 @@ const Planning = () => {
     const rmLines = bom.rmLines ?? [];
     const pmLines = bom.pmLines ?? [];
     const rmItems = rmLines.map((line: BOMRmLine, i: number) => {
-      const qtyPerUnit = (line as { quantity?: number }).quantity ?? ((line.pct_w_w ?? (line as { pct?: number }).pct ?? 0) / 100);
-      const totalQty = qtyPerUnit * orderQty;
+      const pct = Number(line.pct_w_w ?? (line as { pct?: number }).pct ?? 0) || 0;
+      const absoluteQty = Number((line as { quantity?: number }).quantity ?? 0) || 0;
+      const totalQty = pct > 0 && totalKgNumForDetail > 0
+        ? (pct / 100) * totalKgNumForDetail
+        : (absoluteQty > 0 && batchSizeKgForDetail > 0 && totalKgNumForDetail > 0
+          ? absoluteQty * (totalKgNumForDetail / batchSizeKgForDetail)
+          : absoluteQty * orderQty);
       return {
         id: String((line as { raw_material_id?: number }).raw_material_id ?? line.rm_code ?? i),
         name: (line as { inci_name?: string }).inci_name ?? (line as { name?: string }).name ?? String(line.rm_code ?? ''),
@@ -514,7 +529,7 @@ const Planning = () => {
       };
     });
     return { detailRmItems: rmItems, detailPmItems: pmItems };
-  }, [bomForDetail, orderQtyNumForDetail]);
+  }, [bomForDetail, orderQtyNumForDetail, totalKgNumForDetail, batchSizeKgForDetail]);
 
   const { data: rawMaterialsData } = useQuery({
     queryKey: ['raw-materials-list'],
@@ -998,8 +1013,8 @@ const Planning = () => {
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
         const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-        const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
-        const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
+        const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
+        const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
         const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
         const gap = Math.max(0, reqThisOrder - free);
         return { name: item.name, code: String(code), pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1020,8 +1035,8 @@ const Planning = () => {
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
         const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-        const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
-        const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
+        const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
+        const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
         const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
         const gap = Math.max(0, reqThisOrder - free);
         return { name: line.inci_name ?? code, code, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1043,8 +1058,8 @@ const Planning = () => {
       const inTransit = whRow?.inTransit ?? 0;
       const reqThisOrder = kgPerUnitRm * feasibilityPreviewQty;
       const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-      const maxUnits = kgPerUnitRm > 0 ? Math.floor(sih / kgPerUnitRm) : 999;
-      const maxBatches = perBatch > 0 ? Math.floor(sih / perBatch) : 999;
+      const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
+      const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
       const totalReq = kgPerUnitOfProduct > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
       const gap = Math.max(0, reqThisOrder - free);
       return { name: item.name, code: (item as RawMaterial).code ?? item.id, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1064,8 +1079,8 @@ const Planning = () => {
         const free = Math.max(0, sih - reserved);
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = qtyPerUnit * feasibilityPreviewQty;
-        const maxUnits = qtyPerUnit > 0 ? Math.floor(sih / qtyPerUnit) : 999;
-        const maxBatches = perBatchPcs > 0 ? Math.floor(sih / perBatchPcs) : 999;
+        const maxUnits = qtyPerUnit > 0 ? Math.floor(free / qtyPerUnit) : 999;
+        const maxBatches = perBatchPcs > 0 ? Math.floor(free / perBatchPcs) : 999;
         const totalReq = qtyPerUnit * orderQtyNum;
         const gap = Math.max(0, reqThisOrder - free);
         return { name: item.name, code: String(code), qtyPerUnit, perBatchPcs, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1082,8 +1097,8 @@ const Planning = () => {
         const free = Math.max(0, sih - reserved);
         const inTransit = whRow?.inTransit ?? 0;
         const reqThisOrder = qtyPerUnit * feasibilityPreviewQty;
-        const maxUnits = qtyPerUnit > 0 ? Math.floor(sih / qtyPerUnit) : 999;
-        const maxBatches = perBatchPcs > 0 ? Math.floor(sih / perBatchPcs) : 999;
+        const maxUnits = qtyPerUnit > 0 ? Math.floor(free / qtyPerUnit) : 999;
+        const maxBatches = perBatchPcs > 0 ? Math.floor(free / perBatchPcs) : 999;
         const totalReq = qtyPerUnit * orderQtyNum;
         const gap = Math.max(0, reqThisOrder - free);
         return { name: line.description ?? code, code, qtyPerUnit, perBatchPcs, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1098,13 +1113,18 @@ const Planning = () => {
       const free = Math.max(0, sih - reserved);
       const inTransit = whRow?.inTransit ?? 0;
       const reqThisOrder = qtyPerUnit * feasibilityPreviewQty;
-      const maxUnits = qtyPerUnit > 0 ? Math.floor(sih / qtyPerUnit) : 999;
-      const maxBatches = perBatchPcs > 0 ? Math.floor(sih / perBatchPcs) : 999;
+        const maxUnits = qtyPerUnit > 0 ? Math.floor(free / qtyPerUnit) : 999;
+        const maxBatches = perBatchPcs > 0 ? Math.floor(free / perBatchPcs) : 999;
       const totalReq = qtyPerUnit * orderQtyNum;
       const gap = Math.max(0, reqThisOrder - free);
       return { name: item.name, code: (item as PackagingMaterial).code ?? item.id, qtyPerUnit, perBatchPcs, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
     });
   }, [bomPackaging, activeBom?.pmLines, selectedSOForBatch?.packagingMaterials, selectedSOForBatch?.orderQty, selectedSOForBatch?.batchesRequired, warehouseRows, batchesReq, orderQtyNum, feasibilityPreviewQty]);
+
+  /** BOM can be confirmed whenever the editor has RM/PM lines; backend reserves up to free stock (shortages stay for POs). */
+  const canConfirmBomPerBatch = useMemo(() => {
+    return feasibilityRmRows.length > 0 || feasibilityPmRows.length > 0;
+  }, [feasibilityRmRows, feasibilityPmRows]);
 
   // Feasibility summary: max units we can make (bottleneck by RM and PM)
   const feasibilityRmCoversUnits = feasibilityRmRows.length > 0 ? Math.min(...feasibilityRmRows.map((r) => r.maxUnits)) : 0;
@@ -1154,6 +1174,10 @@ const Planning = () => {
     // Gap = Required - (free + PO)
     const netNum = Number(row.sih ?? 0) + orderedQtyNum - Number(row.totalRequired ?? 0);
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
+    const netDisplay =
+      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
+        ? `${netNum >= 0 ? '+' : ''}${Number(netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
+        : `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`;
     return {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
       name: row.name,
@@ -1185,7 +1209,7 @@ const Planning = () => {
       plannedQtyNum: Number(row.plannedQty ?? 0) || 0,
       orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
       orderedQtyNum,
-      net: `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`,
+      net: netDisplay,
       netNum,
       inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
       reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
@@ -1701,6 +1725,16 @@ const Planning = () => {
       return false;
     }
 
+    const slabMoq = Number(releaseToPlanningForm.moq) || 0;
+    if (slabMoq > 0 && qty + 1e-4 < slabMoq) {
+      const u = planningRow.itemType === 'RM' ? 'kg' : 'pcs';
+      addToast(
+        'error',
+        `Order quantity must be at least the selected vendor MOQ (${slabMoq} ${u}). Increase qty or pick another vendor tier.`
+      );
+      return false;
+    }
+
     const vendorName = releaseToPlanningForm.vendorName.trim();
     const paymentTerms = formatPaymentTermsString(
       releaseToPlanningForm.paymentTermsType,
@@ -1730,6 +1764,7 @@ const Planning = () => {
       line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
       ...(rmId != null ? { raw_material_id: rmId } : {}),
       ...(pmId != null ? { pack_material_id: pmId } : {}),
+      ...(slabMoq > 0 ? { moq_min: slabMoq } : {}),
     };
 
     const peId = Number(planningRow.planningExtractedId);
@@ -1768,6 +1803,7 @@ const Planning = () => {
           shortage: (Number(old.shortage ?? 0) || 0) + qty,
           quantity_requested: qNew,
           line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+          moq_min: old.moq_min ?? newRequestItem.moq_min,
         };
       } else {
         merged = [...existingItems, newRequestItem];
@@ -2156,6 +2192,10 @@ const Planning = () => {
 
   const handleConfirmBOM = async () => {
     if (!selectedSOForBatch) return;
+    if (!canConfirmBomPerBatch) {
+      addToast('error', 'Add at least one raw material or packaging line to the BOM before confirming.');
+      return;
+    }
     const rmLines: BOMRmLine[] = bomFormula.map((item) => ({
       phase: item.phase ?? 'Phase A',
       inci_name: item.name,
@@ -2190,9 +2230,13 @@ const Planning = () => {
         }
         queryClient.invalidateQueries({ queryKey: ['planning-bom-override', selectedSOForBatch.id] });
       }
-      await updatePlanningExtracted(selectedSOForBatch.id, {
+      const confirmed = await updatePlanningExtracted(selectedSOForBatch.id, {
         bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       });
+      if (!confirmed) {
+        addToast('error', 'Failed to confirm BOM. Check stock and try again.');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
       addToast('success', `BOM confirmed for ${selectedSOForBatch.productName}. Go to Batch Plan to set batches and schedule.`);
@@ -4569,8 +4613,17 @@ const Planning = () => {
                 </button> */}
                 {!canSendToProduction ? (
                   <button
+                    type="button"
                     onClick={() => handleConfirmBOM()}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                    disabled={!canConfirmBomPerBatch}
+                    title={
+                      canConfirmBomPerBatch
+                        ? 'Confirm BOM: available stock is reserved; raise POs for any gaps'
+                        : 'Add RM/PM lines in the BOM editor first'
+                    }
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${
+                      canConfirmBomPerBatch ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'
+                    }`}
                   >
                     Confirm BOM
                   </button>

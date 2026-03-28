@@ -14,6 +14,8 @@ export interface ProcurementRequestItem {
   raw_material_id?: number;
   pack_material_id?: number;
   product_id?: number;
+  /** Vendor tier MOQ (kg or pcs) from Items List when set from Planning — server enforces MOQ. */
+  moq_min?: number;
 }
 
 export interface ProcurementRequest {
@@ -33,6 +35,11 @@ export interface ProcurementRequest {
   stockCheckNotes?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** From planning_extracted + sales_orders + products (API-enriched). */
+  planningSoNumber?: string | null;
+  planningCustomerName?: string | null;
+  planningProductName?: string | null;
+  planningProductCode?: string | null;
 }
 
 export interface CreateProcurementPayload {
@@ -55,6 +62,15 @@ export async function fetchProcurementRequests(planningExtractedId?: number): Pr
   }
 }
 
+function extractApiErrorMessage(e: unknown): string | null {
+  const err = e as Error & { body?: unknown };
+  if (err?.body && typeof err.body === 'object' && err.body !== null && 'error' in err.body) {
+    const msg = (err.body as { error?: unknown }).error;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return null;
+}
+
 export async function createProcurementRequest(
   payload: CreateProcurementPayload
 ): Promise<ServiceResult<ProcurementRequest>> {
@@ -62,6 +78,8 @@ export async function createProcurementRequest(
     const data = await api.post<ProcurementRequest>('/api/v1/procurement', payload);
     return { data: data ?? null, error: null, success: true };
   } catch (error) {
+    const apiMsg = extractApiErrorMessage(error);
+    if (apiMsg) return { data: null, error: apiMsg, success: false };
     const err = error instanceof Error ? error.message : 'Failed to create procurement request';
     return { data: null, error: err, success: false };
   }
@@ -88,6 +106,8 @@ export async function updateProcurementRequest(
     const data = await api.patch<ProcurementRequest>(`/api/v1/procurement/${id}`, payload);
     return { data: data ?? null, error: null, success: true };
   } catch (error) {
+    const apiMsg = extractApiErrorMessage(error);
+    if (apiMsg) return { data: null, error: apiMsg, success: false };
     const err = error instanceof Error ? error.message : 'Failed to update procurement request';
     return { data: null, error: err, success: false };
   }

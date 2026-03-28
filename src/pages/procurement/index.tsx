@@ -36,6 +36,9 @@ import {
   mapVendorClientToVendor,
   mapOrderToPurchaseOrder,
   mapPurchaseOrderToDraftPO,
+  draftLineItemsToPurchaseOrderItems,
+  assignPrItemToDraftLines,
+  matchBackendPrItemForDraftLine,
 } from './procurementDataMappers';
 import type {
   RequestType,
@@ -919,18 +922,6 @@ const Procurement: React.FC = () => {
   }, [draftPOs, quotes, requests]);
 
   const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
-    const poByRequestCode = new Map<string, PurchaseOrder>();
-    purchaseOrders.forEach((po) => {
-      if (po.requestCode) {
-        poByRequestCode.set(po.requestCode, po);
-      }
-    });
-
-    const draftPoByRequestId = new Map<string, DraftPO>();
-    draftPOs.forEach((dpo) => {
-      draftPoByRequestId.set(dpo.requestId, dpo);
-    });
-
     const quotesByRequestId = new Map<string, VendorQuote[]>();
     quotes.forEach((quote) => {
       const list = quotesByRequestId.get(quote.requestId) ?? [];
@@ -944,8 +935,16 @@ const Procurement: React.FC = () => {
       const requestQuotes = quotesByRequestId.get(request.id) ?? [];
       const confirmedQuote = requestQuotes.find((q) => q.status === 'Confirmed') ?? null;
       const primaryQuote = confirmedQuote ?? requestQuotes[0] ?? null;
-      const draftPo = draftPoByRequestId.get(request.id) ?? null;
-      const po = poByRequestCode.get(request.code) ?? null;
+
+      const draftCandidates = draftPOs.filter((d) => d.requestId === request.id);
+      const releasedPosForRequest = purchaseOrders.filter(
+        (p) =>
+          p.status === 'Released' &&
+          (String((p.formData as { requestId?: string } | undefined)?.requestId) === String(request.id) ||
+            String((p.formData as { requestCode?: string } | undefined)?.requestCode).toUpperCase() ===
+              String(request.code).toUpperCase() ||
+            p.requestCode === request.code),
+      );
 
       const details: ItemDetail[] =
         request.itemDetails && request.itemDetails.length > 0
@@ -968,6 +967,27 @@ const Procurement: React.FC = () => {
 
       details.forEach((detail) => {
         const itemName = detail.itemName;
+        const norm = (s: string) => String(s ?? '').trim().toLowerCase();
+
+        const po =
+          releasedPosForRequest.find((p) => {
+            const raw = Array.isArray(p.rawItems) ? (p.rawItems as { itemName?: string; name?: string; itemCode?: string; code?: string }[]) : [];
+            return raw.some(
+              (ri) =>
+                (norm(ri.itemName ?? ri.name ?? '') && norm(ri.itemName ?? ri.name ?? '') === norm(itemName)) ||
+                (!!detail.itemCode &&
+                  norm(String(ri.itemCode ?? ri.code ?? '')) &&
+                  norm(String(ri.itemCode ?? ri.code ?? '')) === norm(detail.itemCode)),
+            );
+          }) ??
+          (releasedPosForRequest.length === 1 ? releasedPosForRequest[0] : null);
+
+        const draftPo =
+          draftCandidates.find((d) =>
+            d.lineItems.some(
+              (ln) => norm(ln.item) === norm(itemName) || (!!detail.itemCode && norm(ln.itemCode) === norm(detail.itemCode)),
+            ),
+          ) ?? (draftCandidates.length === 1 ? draftCandidates[0] : null);
 
         let quotedVendor: string | null = null;
         let actualPrice: number | null = null;
@@ -1557,9 +1577,19 @@ const Procurement: React.FC = () => {
   }, [issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
-    const backendPo = purchaseOrders.find(
-      (p) => p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO')
-    );
+    const recBackend = (record as { backendPoId?: string }).backendPoId;
+    const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+    let backendPo: PurchaseOrder | undefined;
+    if (recBackend) {
+      backendPo = purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === String(recBackend).replace(/^PO-/, ''));
+    }
+    if (!backendPo) {
+      backendPo = purchaseOrders.find(
+        (p) =>
+          normPoKey(p.poNumber ?? '') === normPoKey(record.poNumber) ||
+          normPoKey(String((p as { orderId?: string }).orderId ?? '')) === normPoKey(record.poNumber),
+      );
+    }
     const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
     const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
     const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
@@ -1663,20 +1693,28 @@ const Procurement: React.FC = () => {
 
       // Linked path: update procurement request + create GRN.
       if (requestId) {
-        let linkedPO = purchaseOrders.find(
-          (p) =>
-            p.status === 'Released' &&
-            (String(p.formData?.requestId) === String(requestId) ||
-              String(p.formData?.requestCode).toUpperCase() === String(requestCode).toUpperCase()),
-        );
+        const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+        const recBackend = record?.backendPoId != null ? String(record.backendPoId).replace(/^PO-/, '') : '';
+        let linkedPO: PurchaseOrder | undefined;
+        if (recBackend) {
+          linkedPO = purchaseOrders.find(
+            (p) => p.status === 'Released' && String(p.id ?? '').replace(/^PO-/, '') === recBackend,
+          );
+        }
         if (!linkedPO) {
           linkedPO = purchaseOrders.find(
             (p) =>
               p.status === 'Released' &&
-              (p.poNumber === record.poNumber ||
-                p.poNumber === record.poNumber.replace(/^PO/, 'DPO') ||
-                (p as { orderId?: string }).orderId === record.poNumber ||
-                (p as { orderId?: string }).orderId === record.poNumber.replace(/^PO/, 'DPO')),
+              (normPoKey(p.poNumber ?? '') === normPoKey(poNo) ||
+                normPoKey(String((p as { orderId?: string }).orderId ?? '')) === normPoKey(poNo)),
+          );
+        }
+        if (!linkedPO) {
+          linkedPO = purchaseOrders.find(
+            (p) =>
+              p.status === 'Released' &&
+              (String(p.formData?.requestId) === String(requestId) ||
+                String(p.formData?.requestCode).toUpperCase() === String(requestCode).toUpperCase()),
           );
         }
 
@@ -1716,7 +1754,20 @@ const Procurement: React.FC = () => {
               status: 'Under GRN',
               receivedDate: today,
               lineItems: record.lineItems.map((line: any, idx: number) => {
-                const prItem = items[idx];
+                const prItem =
+                  matchBackendPrItemForDraftLine(
+                    {
+                      item: String(line.item ?? ''),
+                      itemCode: String(line.itemCode ?? ''),
+                      type: (record.request?.type ?? 'RM') as RequestType,
+                      qty: String(line.qty ?? ''),
+                      pricePerUnit: Number(line.pricePerUnit) || 0,
+                      gstPercent: Number(line.gstPercent) || 18,
+                      gstAmount: Number(line.gstAmount) || 0,
+                      lineTotal: Number(line.lineTotal) || 0,
+                    },
+                    items
+                  ) ?? items[idx];
                 return {
                   id: `line-${idx}`,
                   item: String(line.item ?? ''),
@@ -2056,7 +2107,7 @@ const Procurement: React.FC = () => {
     return true;
   };
 
-  const approveDraftPO = (draftPoId: string) => {
+  const approveDraftPO = async (draftPoId: string) => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
@@ -2069,6 +2120,32 @@ const Procurement: React.FC = () => {
       return;
     }
 
+    const approvedAt = new Date();
+    const dateLabel = approvedAt.toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const alertMessage = `Approved on ${dateLabel}. Ready for release.`;
+
+    if (target.backendPoId) {
+      const normalizedId = String(target.backendPoId).replace(/^PO-/, '');
+      const sourcePo = purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedId);
+      const baseForm =
+        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+          ? { ...(sourcePo.formData as Record<string, unknown>) }
+          : {};
+      const res = await updatePurchaseOrder(target.backendPoId, {
+        formData: {
+          ...baseForm,
+          procurementApprovalStatus: 'Approved',
+          procurementApprovedAt: approvedAt.toISOString(),
+        },
+      });
+      if (!res.success) {
+        const err = res.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to save approval'));
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    }
+
     updateProcurementState((current) => ({
       draftPOs: current.draftPOs.map((draftPo) =>
         draftPo.id === draftPoId
@@ -2076,7 +2153,7 @@ const Procurement: React.FC = () => {
             ...draftPo,
             status: 'Approved',
             alertType: 'ok',
-            alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
+            alertMessage,
           }
           : draftPo,
       ),
@@ -2089,7 +2166,7 @@ const Procurement: React.FC = () => {
             ...prev,
             status: 'Approved',
             alertType: 'ok',
-            alertMessage: `Approved on ${new Date('2026-02-28').toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}. Ready for release.`,
+            alertMessage,
           }
           : prev,
       );
@@ -2156,7 +2233,9 @@ const Procurement: React.FC = () => {
         status: 'PO Released',
       });
     }
-    await updateRequestStatus(backendRequestId, 'PO Released');
+    // Split draft POs (…-S1 / …-S2): do not PATCH the full PR item list — vendor-facing lines come from the PO only.
+    const isSplitDraft = /-S[12]$/.test(target.dpoNumber);
+    await updateRequestStatus(backendRequestId, 'PO Released', isSplitDraft ? { skipItems: true } : undefined);
     applyRouteState('Procurement', 'Issued POs');
   };
 
@@ -2204,6 +2283,11 @@ const Procurement: React.FC = () => {
     // Update PO table: set status to Released and ensure request link is stored
     if (draft.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(draft);
+      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || draft.requestId)) as
+        | { items?: BackendPRItem[] }
+        | undefined;
+      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const poItemsPayload = draftLineItemsToPurchaseOrderItems(draft.lineItems, prItemsForLines);
       if (DEBUG_PROC_RELEASE) {
         console.log('[PROC-RELEASE] updatePurchaseOrder formData request linkage', {
           backendPoId: draft.backendPoId,
@@ -2216,6 +2300,7 @@ const Procurement: React.FC = () => {
       const updateResult = await updatePurchaseOrder(draft.backendPoId, {
         status: 'Released',
         formData: { requestId: backendRequestId || draft.requestId, requestCode: draft.requestCode },
+        items: poItemsPayload,
       });
       if (DEBUG_PROC_RELEASE) {
         console.log('[PROC-RELEASE] updatePurchaseOrder result', {
@@ -2292,7 +2377,8 @@ const Procurement: React.FC = () => {
     }
 
     setSplitPOTarget(target);
-    setSplitSelectedLineIndexes([0]);
+    // Start with no preselection to avoid accidental S1 assignment.
+    setSplitSelectedLineIndexes([]);
   };
 
   const toggleSplitLineSelection = (lineIndex: number) => {
@@ -2324,7 +2410,7 @@ const Procurement: React.FC = () => {
     };
   };
 
-  const submitSplitPO = () => {
+  const submitSplitPO = async () => {
     if (!splitPOTarget) {
       return;
     }
@@ -2346,6 +2432,108 @@ const Procurement: React.FC = () => {
 
     const splitPOOne = createSplitDraftPO(splitPOTarget, selectedLineItems, 'S1');
     const splitPOTwo = createSplitDraftPO(splitPOTarget, remainingLineItems, 'S2');
+
+    if (splitPOTarget.backendPoId) {
+      const backendRequestId = resolveBackendProcurementRequestId(splitPOTarget);
+      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || splitPOTarget.requestId)) as
+        | { items?: BackendPRItem[] }
+        | undefined;
+      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const fullAssigned = assignPrItemToDraftLines(splitPOTarget.lineItems, prItemsForLines);
+      const assignedOne = uniqueIndexes.map((idx) => fullAssigned[idx]);
+      const remainingLineIndices = splitPOTarget.lineItems.map((_, i) => i).filter((i) => !uniqueIndexes.includes(i));
+      const assignedTwo = remainingLineIndices.map((i) => fullAssigned[i]);
+      const itemsOne = draftLineItemsToPurchaseOrderItems(selectedLineItems, prItemsForLines, assignedOne);
+      const itemsTwo = draftLineItemsToPurchaseOrderItems(remainingLineItems, prItemsForLines, assignedTwo);
+
+      const normalizedPoId = String(splitPOTarget.backendPoId).replace(/^PO-/, '');
+      const sourcePo = purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedPoId);
+      const restoreSnapshot =
+        sourcePo != null
+          ? {
+              orderId: sourcePo.poNumber,
+              vendorName: sourcePo.vendorName ?? splitPOTarget.vendor,
+              orderDate: sourcePo.date,
+              expectedShipmentDate: sourcePo.expectedShipmentDate ?? '',
+              reference: sourcePo.reference ?? '',
+              paymentTerms: sourcePo.paymentTerms ?? splitPOTarget.paymentTerms,
+              status: sourcePo.status ?? 'Draft',
+              formData:
+                sourcePo.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+                  ? { ...(sourcePo.formData as Record<string, unknown>) }
+                  : {},
+              items:
+                Array.isArray(sourcePo.rawItems) && sourcePo.rawItems.length > 0
+                  ? [...sourcePo.rawItems]
+                  : draftLineItemsToPurchaseOrderItems(splitPOTarget.lineItems, prItemsForLines, fullAssigned),
+            }
+          : null;
+      const baseForm =
+        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+          ? { ...(sourcePo.formData as Record<string, unknown>) }
+          : {};
+      baseForm.requestId = splitPOTarget.requestId;
+      baseForm.requestCode = splitPOTarget.requestCode;
+      baseForm.procurementApprovalStatus = 'Pending Approval';
+      delete (baseForm as Record<string, unknown>).procurementApprovedAt;
+
+      const up1 = await updatePurchaseOrder(splitPOTarget.backendPoId, {
+        orderId: splitPOOne.dpoNumber,
+        vendorName: splitPOTarget.vendor,
+        orderDate: splitPOTarget.createdDate,
+        expectedShipmentDate: splitPOTarget.expectedDelivery,
+        reference: splitPOTarget.requestCode,
+        paymentTerms: splitPOTarget.paymentTerms,
+        status: 'Draft',
+        formData: baseForm,
+        items: itemsOne,
+      });
+      if (!up1.success) {
+        const err = up1.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update first split PO'));
+        return;
+      }
+
+      const createPayload = {
+        orderId: splitPOTwo.dpoNumber,
+        vendorName: splitPOTarget.vendor,
+        orderDate: splitPOTarget.createdDate,
+        expectedShipmentDate: splitPOTarget.expectedDelivery,
+        reference: splitPOTarget.requestCode,
+        paymentTerms: splitPOTarget.paymentTerms,
+        status: 'Draft',
+        formData: baseForm,
+        items: itemsTwo,
+      };
+      const cr = await createPurchaseOrder(createPayload);
+      if (!cr.success) {
+        const err = cr.error;
+        const msg = typeof err === 'string' ? err : (err?.message ?? 'Failed to create second split PO');
+        if (restoreSnapshot) {
+          const rb = await updatePurchaseOrder(splitPOTarget.backendPoId, restoreSnapshot);
+          if (rb.success) {
+            addToast('error', `${msg} The original draft PO was restored.`);
+            await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+            return;
+          }
+          addToast(
+            'error',
+            `${msg} Could not restore the original draft PO automatically — please verify the first PO in the backend.`,
+          );
+          return;
+        }
+        addToast('error', msg);
+        return;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      if (selectedDraftPO?.id === splitPOTarget.id) {
+        setSelectedDraftPO(null);
+      }
+      addToast('success', `Split saved: ${splitPOOne.dpoNumber} and ${splitPOTwo.dpoNumber} (two backend draft POs).`);
+      closeSplitPOModal();
+      return;
+    }
 
     updateProcurementState((current) => ({
       draftPOs: [
@@ -2958,32 +3146,81 @@ const Procurement: React.FC = () => {
                       ) : backendPrs.length === 0 ? (
                         <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning &gt; PRs Extracted to see them here.</p>
                       ) : (
-                        <table className="w-full text-sm border-collapse">
+                        <table className="w-full text-sm border-collapse min-w-[960px]">
                           <thead>
                             <tr className="border-b border-slate-200 text-left">
-                              <th className="py-2 pr-4 font-semibold text-slate-700">ID</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Planning line</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Batch ID</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Priority</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Status</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Required by</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Items</th>
-                              <th className="py-2 pr-4 font-semibold text-slate-700">Requested by</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">ID</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">PI / SO</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Customer</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Product</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Batch</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Vendor</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Priority</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Status</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Required by</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">RM/PM lines</th>
+                              <th className="py-2 pr-3 font-semibold text-slate-700">Requested by</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {backendPrs.map((pr) => (
-                              <tr key={pr.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                <td className="py-2 pr-4 text-slate-900 font-medium">{pr.id}</td>
-                                <td className="py-2 pr-4 text-slate-600">PI #{pr.planningExtractedId}</td>
-                                <td className="py-2 pr-4 text-slate-700 font-medium">{pr.planningBatchId != null ? `#${pr.planningBatchId}` : '—'}</td>
-                                <td className="py-2 pr-4">{pr.priority}</td>
-                                <td className="py-2 pr-4">{pr.status}</td>
-                                <td className="py-2 pr-4 text-slate-600">{pr.requiredByDate ?? '—'}</td>
-                                <td className="py-2 pr-4 text-slate-600">{(pr.items?.length ?? 0)} line(s)</td>
-                                <td className="py-2 pr-4 text-slate-500 text-xs">{pr.requestedBy ?? '—'}</td>
-                              </tr>
-                            ))}
+                            {backendPrs.map((pr) => {
+                              const lines = Array.isArray(pr.items) ? pr.items : [];
+                              const lineSummary = lines
+                                .map((ln: BackendPRItem) => {
+                                  const t =
+                                    ln?.type === 'PM' || (ln?.pack_material_id != null && Number(ln.pack_material_id) > 0)
+                                      ? 'PM'
+                                      : 'RM';
+                                  const label = (ln?.name && String(ln.name).trim()) || (ln?.code && String(ln.code).trim()) || t;
+                                  const qty = Number(ln?.quantity_requested) || 0;
+                                  const u = String(ln?.unit || (t === 'PM' ? 'PCS' : 'KG'));
+                                  return `${label} (${t}) ${qty} ${u}`;
+                                })
+                                .join(' · ');
+                              return (
+                                <tr key={pr.id} className="border-b border-slate-100 hover:bg-slate-50 align-top">
+                                  <td className="py-2 pr-3 text-slate-900 font-medium whitespace-nowrap">{pr.id}</td>
+                                  <td className="py-2 pr-3 text-slate-700">
+                                    <div className="font-medium">PI #{pr.planningExtractedId}</div>
+                                    <div className="text-xs text-slate-500 font-mono mt-0.5">
+                                      {pr.planningSoNumber != null && String(pr.planningSoNumber).trim()
+                                        ? `SO ${pr.planningSoNumber}`
+                                        : '—'}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-600 max-w-[140px] truncate" title={pr.planningCustomerName ?? ''}>
+                                    {pr.planningCustomerName != null && String(pr.planningCustomerName).trim()
+                                      ? pr.planningCustomerName
+                                      : '—'}
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-700 max-w-[180px]">
+                                    <div className="truncate font-medium" title={pr.planningProductName ?? ''}>
+                                      {pr.planningProductName != null && String(pr.planningProductName).trim()
+                                        ? pr.planningProductName
+                                        : '—'}
+                                    </div>
+                                    {pr.planningProductCode != null && String(pr.planningProductCode).trim() ? (
+                                      <div className="text-xs text-slate-500 font-mono truncate">{pr.planningProductCode}</div>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-700 whitespace-nowrap">
+                                    {pr.planningBatchId != null ? `#${pr.planningBatchId}` : '—'}
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-700 max-w-[140px] truncate" title={pr.preferredVendor ?? ''}>
+                                    {pr.preferredVendor != null && String(pr.preferredVendor).trim() ? pr.preferredVendor : '—'}
+                                  </td>
+                                  <td className="py-2 pr-3 whitespace-nowrap">{pr.priority}</td>
+                                  <td className="py-2 pr-3 whitespace-nowrap">{pr.status}</td>
+                                  <td className="py-2 pr-3 text-slate-600 whitespace-nowrap">{pr.requiredByDate ?? '—'}</td>
+                                  <td className="py-2 pr-3 text-slate-600 text-xs max-w-[280px]">
+                                    <span className="line-clamp-2" title={lineSummary}>
+                                      {lines.length === 0 ? '—' : lineSummary}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-500 text-xs">{pr.requestedBy ?? '—'}</td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       )}
@@ -3065,7 +3302,7 @@ const Procurement: React.FC = () => {
                           <input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search from name, request #"
+                            placeholder="Search request #, SO, product, vendor, RM/PM"
                             className="w-64 px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                           <button
@@ -3122,8 +3359,22 @@ const Procurement: React.FC = () => {
                           if (searchQuery.trim()) {
                             const query = searchQuery.toLowerCase();
                             const matchesCode = req.code.toLowerCase().includes(query);
-                            const matchesItems = req.items.some(item => item.toLowerCase().includes(query));
-                            if (!matchesCode && !matchesItems) return false;
+                            const matchesItems = req.items.some((item) => item.toLowerCase().includes(query));
+                            const matchesPlanning =
+                              (req.planningSoNumber != null && String(req.planningSoNumber).toLowerCase().includes(query)) ||
+                              (req.planningCustomerName != null && String(req.planningCustomerName).toLowerCase().includes(query)) ||
+                              (req.planningProductName != null && String(req.planningProductName).toLowerCase().includes(query)) ||
+                              (req.planningProductCode != null && String(req.planningProductCode).toLowerCase().includes(query));
+                            const matchesVendor =
+                              req.preferredVendor != null && String(req.preferredVendor).toLowerCase().includes(query);
+                            const matchesItemDetails = (req.itemDetails ?? []).some(
+                              (d) =>
+                                (d.itemName != null && String(d.itemName).toLowerCase().includes(query)) ||
+                                (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query))
+                            );
+                            if (!matchesCode && !matchesItems && !matchesPlanning && !matchesVendor && !matchesItemDetails) {
+                              return false;
+                            }
                           }
                           return true;
                         });
@@ -3157,9 +3408,9 @@ const Procurement: React.FC = () => {
                           return (
                             <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                               {/* Card Header */}
-                              <div className="px-5 py-3 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-slate-200">
+                              <div className="px-5 py-3 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-slate-200 space-y-2">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <span className="px-3 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
                                       {req.code}
                                     </span>
@@ -3189,6 +3440,29 @@ const Procurement: React.FC = () => {
                                     </span>
                                   </div>
                                 </div>
+                                {(req.planningSoNumber != null && String(req.planningSoNumber).trim()) ||
+                                (req.planningProductName != null && String(req.planningProductName).trim()) ? (
+                                  <div className="text-xs text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    {req.planningSoNumber != null && String(req.planningSoNumber).trim() ? (
+                                      <span>
+                                        <span className="font-semibold text-slate-700">SO</span> {req.planningSoNumber}
+                                      </span>
+                                    ) : null}
+                                    {req.planningCustomerName != null && String(req.planningCustomerName).trim() ? (
+                                      <span className="truncate max-w-[200px]" title={req.planningCustomerName}>
+                                        {req.planningCustomerName}
+                                      </span>
+                                    ) : null}
+                                    {req.planningProductName != null && String(req.planningProductName).trim() ? (
+                                      <span className="truncate max-w-[280px]" title={req.planningProductName}>
+                                        <span className="font-semibold text-slate-700">Product</span> {req.planningProductName}
+                                        {req.planningProductCode != null && String(req.planningProductCode).trim()
+                                          ? ` (${req.planningProductCode})`
+                                          : ''}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </div>
 
                               {/* Card Body - Item Details Grid */}
@@ -3196,15 +3470,30 @@ const Procurement: React.FC = () => {
                                 {req.items.map((item, itemIdx) => {
                                   const detail = req.itemDetails?.[itemIdx];
                                   const reqQtyNum = Number(detail?.reqQty ?? 0) || 0;
-                                  const unitLabel = detail?.unit || (req.type === 'RM' ? 'KG' : 'pcs');
+                                  const lineType = detail?.type === 'PM' ? 'PM' : detail?.type === 'FG' ? 'FG' : 'RM';
+                                  const unitLabel = detail?.unit || (lineType === 'PM' ? 'PCS' : 'KG');
                                   const plannedPrice = Number(detail?.plannedPrice ?? 0) || 0;
                                   const estValue = reqQtyNum * plannedPrice;
+                                  const leadDays = Number(detail?.leadTimeDays ?? 0) || 0;
                                   return (
                                     <div key={itemIdx} className="mb-4 last:mb-0">
-                                      <div className="flex items-start justify-between mb-3">
-                                        <div className="flex-1">
-                                          <h4 className="font-bold text-slate-900 text-sm mb-1">{item}</h4>
-                                          <p className="text-xs text-slate-500 font-mono">{detail?.itemCode || '—'}</p>
+                                      <div className="flex items-start justify-between mb-3 gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                                            <span
+                                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                lineType === 'PM'
+                                                  ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                                  : lineType === 'FG'
+                                                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                                    : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                              }`}
+                                            >
+                                              {lineType}
+                                            </span>
+                                            <h4 className="font-bold text-slate-900 text-sm">{item}</h4>
+                                          </div>
+                                          <p className="text-xs text-slate-500 font-mono truncate">{detail?.itemCode || '—'}</p>
                                         </div>
                                       </div>
 
@@ -3248,7 +3537,7 @@ const Procurement: React.FC = () => {
                                         </div>
                                         <div>
                                           <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                          <p className="font-semibold text-slate-900">{itemIdx === 0 ? '21d' : '14d'}</p>
+                                          <p className="font-semibold text-slate-900">{leadDays > 0 ? `${leadDays}d` : '—'}</p>
                                         </div>
                                         <div>
                                           <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
@@ -3266,11 +3555,35 @@ const Procurement: React.FC = () => {
                                   );
                                 })}
 
-                                {/* Notes Section */}
-                                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                  <p className="text-xs text-slate-600">
-                                    <span className="font-semibold text-slate-700">Notes:</span> {req.priority === 'High' ? 'Currently replenishment target for RM. Batch 1M2 production run from Feb 28.' : 'Q2 faceroll production. Need 100% tubes by batch date. Estimated Nov batch or DTC.'}
-                                  </p>
+                                {/* Notes + planning context */}
+                                <div className="mt-4 space-y-2">
+                                  {(req.planningSoNumber != null && String(req.planningSoNumber).trim()) ||
+                                  (req.planningProductName != null && String(req.planningProductName).trim()) ? (
+                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+                                      {req.planningSoNumber != null && String(req.planningSoNumber).trim() ? (
+                                        <p>
+                                          <span className="font-semibold text-slate-800">SO:</span> {req.planningSoNumber}
+                                          {req.planningCustomerName != null && String(req.planningCustomerName).trim()
+                                            ? ` · ${req.planningCustomerName}`
+                                            : ''}
+                                        </p>
+                                      ) : null}
+                                      {req.planningProductName != null && String(req.planningProductName).trim() ? (
+                                        <p className="mt-1">
+                                          <span className="font-semibold text-slate-800">Product:</span> {req.planningProductName}
+                                          {req.planningProductCode != null && String(req.planningProductCode).trim()
+                                            ? ` (${req.planningProductCode})`
+                                            : ''}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                    <p className="text-xs text-slate-600">
+                                      <span className="font-semibold text-slate-700">Notes:</span>{' '}
+                                      {req.notes != null && String(req.notes).trim() ? String(req.notes) : '—'}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
 
@@ -5545,6 +5858,9 @@ const Procurement: React.FC = () => {
       {splitPOTarget && (() => {
         const selectedCount = splitSelectedLineIndexes.length;
         const remainingCount = splitPOTarget.lineItems.length - selectedCount;
+        const selectedSet = new Set(splitSelectedLineIndexes);
+        const po1PreviewItems = splitPOTarget.lineItems.filter((_, index) => selectedSet.has(index));
+        const po2PreviewItems = splitPOTarget.lineItems.filter((_, index) => !selectedSet.has(index));
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeSplitPOModal}>
@@ -5588,6 +5904,29 @@ const Procurement: React.FC = () => {
                       </label>
                     );
                   })}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <p className="text-[10px] tracking-widest uppercase text-emerald-700 font-semibold mb-1">
+                      PO 1 ({splitPOTarget.dpoNumber}-S1)
+                    </p>
+                    <p className="text-xs text-emerald-900">
+                      {po1PreviewItems.length > 0
+                        ? po1PreviewItems.map((line) => line.item).join(', ')
+                        : 'No items selected yet'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                    <p className="text-[10px] tracking-widest uppercase text-sky-700 font-semibold mb-1">
+                      PO 2 ({splitPOTarget.dpoNumber}-S2)
+                    </p>
+                    <p className="text-xs text-sky-900">
+                      {po2PreviewItems.length > 0
+                        ? po2PreviewItems.map((line) => line.item).join(', ')
+                        : 'No items remaining'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -6608,6 +6947,12 @@ const Procurement: React.FC = () => {
             ...(item.raw_material_id != null ? { raw_material_id: Number(item.raw_material_id) } : {}),
             ...(item.pack_material_id != null ? { pack_material_id: Number(item.pack_material_id) } : {}),
           }];
+        const releaseModalSubtotal = lineItemsForModal.reduce(
+          (sum, ln) => sum + (Number(ln.qty) || 0) * (Number(ln.unitPrice) || 0),
+          0
+        );
+        const releaseModalGstTotal = parseFloat((releaseModalSubtotal * 0.18).toFixed(2));
+        const releaseModalGrand = parseFloat((releaseModalSubtotal + releaseModalGstTotal).toFixed(2));
         const allVendorNamesFromItemsList = new Set<string>();
         lineItemsForModal.forEach((ln) => {
           const source = ln.type === 'PM' ? itemsListPm : itemsListRm;
@@ -6643,10 +6988,18 @@ const Procurement: React.FC = () => {
           if (codeKey.length > 0 && rc.length > 0 && rc === codeKey) return true;
           return false;
         };
+        const selectedVendorName = String(releaseToPlannedForm.vendor ?? '').trim().toLowerCase();
         const previousPurchases = !hasMatchKey
           ? []
           : (purchaseOrders ?? [])
+            // Backend source of truth: purchase_orders API (skip local draft-only rows)
             .filter((po) => {
+              const status = String(po.status ?? '').trim().toLowerCase();
+              if (status === 'draft') return false;
+              if (selectedVendorName) {
+                const poVendor = String(po.vendorName ?? '').trim().toLowerCase();
+                if (!poVendor || poVendor !== selectedVendorName) return false;
+              }
               const raw = po.rawItems ?? [];
               return raw.some((r: any) => poLineMatches(r));
             })
@@ -6667,9 +7020,9 @@ const Procurement: React.FC = () => {
           ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0))
           : (item.reqQty ?? item.qty);
         return (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setReleaseToPlannedTarget(null)}>
+          <div className="fixed inset-0 z-60 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setReleaseToPlannedTarget(null)}>
             <div className="absolute inset-0 bg-black/40" />
-            <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-xl border border-slate-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-5xl my-2 sm:my-4 max-h-[94vh] overflow-hidden rounded-xl bg-white shadow-xl border border-slate-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">
@@ -6690,91 +7043,91 @@ const Procurement: React.FC = () => {
                 </div>
                 <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
               </div>
-              <div className="flex-1 overflow-y-auto p-5">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="font-bold text-slate-900 text-sm mb-1">PO lines</h3>
-                    <p className="text-xs text-slate-500 mb-3">Vendor-specific checkpoint before Draft PO creation.</p>
-                    <div className="border-t border-slate-200 my-3" />
+              <div className="flex-1 overflow-auto p-3 sm:p-5 space-y-5">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm w-full">
+                  <h3 className="font-bold text-slate-900 text-sm mb-1">PO lines</h3>
+                  <p className="text-xs text-slate-500 mb-3">Quantities and rates from the request; adjust pricing via vendor and MOQ slab below.</p>
+                  <div className="border-t border-slate-200 my-3" />
+                  <div className="overflow-x-auto w-full">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-2 font-medium">Item</th>
-                          <th className="text-right py-2 font-medium">MOQ</th>
-                          <th className="text-right py-2 font-medium">Qty</th>
-                          <th className="text-right py-2 font-medium">Unit ₹</th>
-                          <th className="text-right py-2 font-medium">Line ₹</th>
-                          <th className="text-right py-2 font-medium">Lead</th>
+                          <th className="text-left py-2 pr-3 font-medium">Item</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">MOQ</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">Qty</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">Unit</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">Unit ₹</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">Line ₹</th>
+                          <th className="text-right py-2 font-medium whitespace-nowrap">Lead</th>
                         </tr>
                       </thead>
                       <tbody>
                         {lineItemsForModal.map((ln, i) => (
                           <tr key={`${ln.itemCode}-${i}`} className="border-b border-slate-100">
-                            <td className="py-2">
-                              <div className="font-medium text-slate-900">{ln.itemName}</div>
-                              <div className="text-[10px] text-slate-500 font-mono">{ln.itemCode}</div>
+                            <td className="py-2 pr-2 align-top">
+                              <div className="font-medium text-slate-900 leading-5 break-words">{ln.itemName}</div>
+                              <div className="text-[10px] text-slate-500 font-mono truncate">{ln.itemCode}</div>
                             </td>
-                            <td className="py-2 text-right text-slate-700">{ln.moq || '—'}</td>
-                            <td className="py-2 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                value={ln.qty}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value) || 0;
-                                  setReleaseToPlannedLineEdits((prev) => prev.map((x, idx) => idx === i ? { ...x, qty: v } : x));
-                                }}
-                                className="w-20 rounded border border-slate-300 px-2 py-1 text-right"
-                              />
+                            <td className="py-2 text-right text-slate-800 whitespace-nowrap align-top tabular-nums">
+                              {ln.moq != null && Number(ln.moq) > 0 ? Number(ln.moq).toLocaleString('en-IN') : '—'}
                             </td>
-                            <td className="py-2 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                value={ln.unitPrice}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value) || 0;
-                                  setReleaseToPlannedLineEdits((prev) => prev.map((x, idx) => idx === i ? { ...x, unitPrice: v } : x));
-                                }}
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-right"
-                              />
+                            <td className="py-2 text-right text-slate-900 font-medium whitespace-nowrap align-top tabular-nums">
+                              {Number(ln.qty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </td>
-                            <td className="py-2 text-right font-medium">₹{(ln.qty * ln.unitPrice * 1.18).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                            <td className="py-2 text-right text-slate-700">{ln.leadDays}d</td>
+                            <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.unit}</td>
+                            <td className="py-2 text-right text-slate-900 whitespace-nowrap align-top tabular-nums">
+                              ₹{Number(ln.unitPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 text-right font-medium whitespace-nowrap align-top tabular-nums">
+                              ₹{((ln.qty * ln.unitPrice) * 1.18).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.leadDays}d</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {lineItemsForModal.length === 0 && <p className="text-xs text-slate-500 py-3">No request line items found.</p>}
-                    <p className="text-xs text-slate-500 mt-2">You can edit purchase qty and rate per line before creating draft.</p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                    <h3 className="font-bold text-slate-900 text-sm">Draft controls</h3>
-                    <p className="text-xs text-slate-500">Split/release multiple POs or club all items together.</p>
-                    <div className="border-t border-slate-200 pt-3">
-                      <div className="flex items-center justify-between text-xs py-1">
-                        <span className="text-slate-500">Terms</span>
-                        <span className="text-slate-900 font-medium">
-                          {formatPaymentTermsString(
-                            releaseToPlannedForm.paymentTermsType,
-                            Number(releaseToPlannedForm.advancePercent)
-                          ) || 'As per contract'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs py-1">
-                        <span className="text-slate-500">Advance %</span>
-                        <span className="text-amber-700 font-bold">
-                          {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) ? `${Number(releaseToPlannedForm.advancePercent) || 0}%` : '0%'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs py-1">
-                        <span className="text-slate-500">Total value</span>
-                        <span className="text-slate-900 font-bold">
-                          ₹{(((parseFloat(releaseToPlannedForm.qty) || 0) * (parseFloat(releaseToPlannedForm.unitPrice) || 0)) * 1.18).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                  {lineItemsForModal.length === 0 && <p className="text-xs text-slate-500 py-3">No request line items found.</p>}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3 w-full">
+                  <h3 className="font-bold text-slate-900 text-sm">Draft controls</h3>
+                  <p className="text-xs text-slate-500">Select vendor and MOQ slab to apply Items List rates; payment terms apply to the draft PO.</p>
+                  <div className="border-t border-slate-200 pt-3">
+                    <div className="flex items-center justify-between text-xs py-1">
+                      <span className="text-slate-500">Terms</span>
+                      <span className="text-slate-900 font-medium">
+                        {formatPaymentTermsString(
+                          releaseToPlannedForm.paymentTermsType,
+                          Number(releaseToPlannedForm.advancePercent)
+                        ) || 'As per contract'}
+                      </span>
                     </div>
-                    <div className="border-t border-slate-200 my-3" />
+                    <div className="flex items-center justify-between text-xs py-1">
+                      <span className="text-slate-500">Advance %</span>
+                      <span className="text-amber-700 font-bold">
+                        {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) ? `${Number(releaseToPlannedForm.advancePercent) || 0}%` : '0%'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs py-1">
+                      <span className="text-slate-500">Subtotal (ex GST)</span>
+                      <span className="text-slate-900 font-medium tabular-nums">
+                        ₹{releaseModalSubtotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs py-1">
+                      <span className="text-slate-500">GST (18%)</span>
+                      <span className="text-slate-800 font-medium tabular-nums">
+                        ₹{releaseModalGstTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs py-1 border-t border-slate-100 pt-2">
+                      <span className="text-slate-600 font-semibold">Total (incl. GST)</span>
+                      <span className="text-slate-900 font-bold tabular-nums">
+                        ₹{releaseModalGrand.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-200 my-3" />
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
@@ -6841,6 +7194,17 @@ const Procurement: React.FC = () => {
                                   (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                 );
                               }
+                              if (slab) {
+                                next.leadTimeDays = slab.leadDays;
+                                setReleaseToPlannedLineEdits((prev) =>
+                                  prev.map((ln) => ({
+                                    ...ln,
+                                    moq: slab.moq,
+                                    unitPrice: slab.unitPrice,
+                                    leadDays: slab.leadDays,
+                                  }))
+                                );
+                              }
                               return next;
                             });
                           }}
@@ -6855,30 +7219,6 @@ const Procurement: React.FC = () => {
                             <option value={releaseToPlannedForm.moqDisplay}>{releaseToPlannedForm.moqDisplay}</option>
                           )}
                         </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Quantity</label>
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="Enter qty"
-                          value={releaseToPlannedForm.qty}
-                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, qty: e.target.value }))}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Unit price (₹)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="Unit price"
-                          value={releaseToPlannedForm.unitPrice}
-                          onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, unitPrice: e.target.value }))}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
-                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 mb-3">
@@ -6903,8 +7243,12 @@ const Procurement: React.FC = () => {
                         <p className="text-[10px] text-slate-500 mt-1">Advance % drives Treasury on draft release.</p>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
-                        <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlannedForm.leadTimeDays} days</div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time (max line)</label>
+                        <div className="py-1.5 text-sm font-medium text-slate-800">
+                          {(lineItemsForModal.length
+                            ? Math.max(...lineItemsForModal.map((ln) => Number(ln.leadDays) || 0))
+                            : 0)} days
+                        </div>
                       </div>
                     </div>
                     {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) && (
@@ -6953,7 +7297,6 @@ const Procurement: React.FC = () => {
                         {previousPurchases.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-slate-500 text-xs">No previous purchases for this item.</td></tr>}
                       </tbody>
                     </table>
-                  </div>
                 </div>
               </div>
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
@@ -6963,20 +7306,11 @@ const Procurement: React.FC = () => {
                   <button
                     type="button"
                     onClick={async () => {
-                      const linesForCreate = (releaseToPlannedLineEdits.length > 0 ? releaseToPlannedLineEdits : [{
-                        itemName: itemName ?? '',
-                        itemCode: itemCode ?? '',
-                        type: req.type,
-                        qty: parseFloat(releaseToPlannedForm.qty) || 0,
-                        unit: item.unit ?? 'KG',
-                        moq: Number(item.moq ?? 0) || 0,
-                        unitPrice: parseFloat(releaseToPlannedForm.unitPrice) || 0,
-                        leadDays: Number(releaseToPlannedForm.leadTimeDays ?? 0) || 0,
-                        ...(item.raw_material_id != null ? { raw_material_id: Number(item.raw_material_id) } : {}),
-                        ...(item.pack_material_id != null ? { pack_material_id: Number(item.pack_material_id) } : {}),
-                      }]).filter((ln) => ln.qty > 0 && ln.unitPrice > 0);
+                      const linesForCreate = lineItemsForModal.filter(
+                        (ln) => (Number(ln.qty) || 0) > 0 && (Number(ln.unitPrice) || 0) > 0
+                      );
                       if (!releaseToPlannedForm.vendor || linesForCreate.length === 0) {
-                        addToast('warning', 'Select vendor and enter valid line quantities and prices.');
+                        addToast('warning', 'Select vendor and ensure lines have quantity and unit price from Items List or slab.');
                         return;
                       }
 

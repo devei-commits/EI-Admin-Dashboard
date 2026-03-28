@@ -53,6 +53,13 @@ export type ProcurementRequest = {
   stockCheckStatus?: string | null;
   stockCheckDueDate?: string | null;
   stockCheckNotes?: string | null;
+  /** PR notes from Planning / procurement */
+  notes?: string | null;
+  /** Enriched from backend: SO + product on planning line */
+  planningSoNumber?: string | null;
+  planningCustomerName?: string | null;
+  planningProductName?: string | null;
+  planningProductCode?: string | null;
 };
 
 export type QuoteLine = {
@@ -114,6 +121,9 @@ export type DraftPOLineItem = {
   gstPercent: number;
   gstAmount: number;
   lineTotal: number;
+  /** From persisted PO line — used for stable PR↔PO matching when splitting */
+  raw_material_id?: number;
+  pack_material_id?: number;
 };
 
 export type DraftPO = {

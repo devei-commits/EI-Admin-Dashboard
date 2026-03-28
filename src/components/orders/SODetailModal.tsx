@@ -42,13 +42,6 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
   saleOrder,
   onAction,
 }) => {
-  if (!saleOrder) return null;
-
-  const progress = calculateSOProgress(saleOrder);
-  const totalValue = calculateOrderValue(saleOrder);
-  const daysLeft = getDaysLeft(saleOrder.dueDate);
-  const daysLeftFormatted = formatDaysLeft(daysLeft);
-
   const [planningAvailability, setPlanningAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
 
@@ -84,6 +77,13 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
     }
     return m;
   }, [planningAvailability]);
+
+  if (!saleOrder) return null;
+
+  const progress = calculateSOProgress(saleOrder);
+  const totalValue = calculateOrderValue(saleOrder);
+  const daysLeft = getDaysLeft(saleOrder.dueDate);
+  const daysLeftFormatted = formatDaysLeft(daysLeft);
 
   const hasFGReady = saleOrder.items.some((i) =>
     i.batchSplits.some((sp) => sp.ffStatus === 'fg_ready')

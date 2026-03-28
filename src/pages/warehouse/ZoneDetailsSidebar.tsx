@@ -99,8 +99,6 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
     adjustedBy: 'Karan Nair',
   });
 
-  if (!zone) return null;
-
   const baysFromLocation = useMemo((): Bay[] => {
     if (!location?.racks?.length) return [];
     return location.racks.map((r: WarehouseRackDTO) => ({
@@ -206,12 +204,13 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
         ];
 
   useEffect(() => {
+    if (!zone) return;
     if (location?.racks?.length) {
       setBays(baysFromLocation);
     } else {
       setBays(getInitialBays(zone.id));
     }
-  }, [zone.id, location, baysFromLocation]);
+  }, [zone, location, baysFromLocation]);
 
   const zoneItemsFromLocation = useMemo((): ZoneItem[] => {
     if (!location?.racks) return [];
@@ -242,6 +241,7 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
   const [zoneItems, setZoneItems] = useState<ZoneItem[]>([]);
 
   useEffect(() => {
+    if (!zone) return;
     if (location?.racks?.length && zoneItemsFromLocation.length > 0) {
       setZoneItems(zoneItemsFromLocation);
       return;
@@ -432,12 +432,14 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
         },
       },
     ]);
-  }, [zone.id, location, zoneItemsFromLocation]);
+  }, [zone, location, zoneItemsFromLocation]);
 
   const selectedItem = useMemo(() => {
     if (!selectedItemId) return null;
     return zoneItems.find((item) => item.id === selectedItemId) || null;
   }, [selectedItemId, zoneItems]);
+
+  if (!zone) return null;
 
   const selectedItemAvg = selectedItem?.avgConsumption ?? {
     aug: 16000,
