@@ -37,6 +37,15 @@ function isMtrOutbound(mrn: { source?: string }): boolean {
   return String(mrn.source || '').trim() === 'MTR';
 }
 
+/** Lines already released from WH cannot be toggled again for initiate transfer. */
+function mtrOutboundLineIsPastInitiation(
+  lts: Record<string, string | undefined> | undefined,
+  lineId: string
+): boolean {
+  const p = String(lts?.[lineId] || 'not_initiated');
+  return p !== 'not_initiated';
+}
+
 function manualStatusOptions(current: OutboundUiStatus): OutboundUiStatus[] {
   if (['In Transit', 'Received at MU'].includes(current)) return [current];
   const idx = NON_MTR_MANUAL_FLOW.indexOf(current);
@@ -141,6 +150,8 @@ const OutboundDashboard = () => {
   >({});
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
+  const persistedPickerLocked = Boolean((selectedMRN?.assignedPicker || '').trim());
+  const savePickAvailable = selectedMRN?.status === 'Pending Pick';
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +201,10 @@ const OutboundDashboard = () => {
     setSelectedMRNId(mrn.id);
 
     const existingState = pickStateByMrn[mrn.id];
-    setAssignedPicker(existingState?.assignedPicker ?? mrn.assignedPicker ?? '');
+    const serverPicker = (mrn.assignedPicker || '').trim();
+    setAssignedPicker(
+      serverPicker ? mrn.assignedPicker : (existingState?.assignedPicker ?? mrn.assignedPicker ?? ''),
+    );
     setAssignedTransferBy(existingState?.assignedTransferBy ?? mrn.transferTeam ?? '');
     setPickedItems(existingState?.pickedItems ?? {});
 
@@ -254,6 +268,14 @@ const OutboundDashboard = () => {
 
   const handleSavePick = async () => {
     if (!selectedMRN) return;
+    if (!String(assignedPicker || '').trim()) {
+      showToast('Assign a picker before saving pick.', 'error');
+      return;
+    }
+    if (selectedMRN.status !== 'Pending Pick') {
+      showToast('Pick was already saved for this transfer.', 'error');
+      return;
+    }
     persistPanelState(selectedMRN.id);
     try {
       await updateMRN(selectedMRN.id, {
@@ -606,16 +628,26 @@ const OutboundDashboard = () => {
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
                     <label className="block text-[9px] text-slate-500 uppercase mb-1">Picker</label>
-                    <select
-                      value={assignedPicker}
-                      onChange={(e) => setAssignedPicker(e.target.value)}
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
-                    >
-                      <option value="">— Assign Picker —</option>
-                      {assignablePickers.map((p) => (
-                        <option key={p.id} value={p.displayName}>{p.displayName}</option>
-                      ))}
-                    </select>
+                    {persistedPickerLocked ? (
+                      <div
+                        className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                        title="Picker is saved on this transfer and cannot be changed."
+                      >
+                        <span className="font-semibold">{selectedMRN.assignedPicker}</span>
+                        <p className="text-[9px] text-slate-500 mt-1 normal-case font-normal">Locked after assignment</p>
+                      </div>
+                    ) : (
+                      <select
+                        value={assignedPicker}
+                        onChange={(e) => setAssignedPicker(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      >
+                        <option value="">— Assign Picker —</option>
+                        {assignablePickers.map((p) => (
+                          <option key={p.id} value={p.displayName}>{p.displayName}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer Team</label>
@@ -643,14 +675,31 @@ const OutboundDashboard = () => {
                   {activePickItems.map((item) => {
                     const shortQty = pickedQty[item.id] ?? String(item.required);
                     const hasShort = Number(shortQty) < item.required;
+                    const initiated =
+                      isMtrOutbound(selectedMRN) &&
+                      mtrOutboundLineIsPastInitiation(selectedMRN.lineTransferStatus, item.id);
                     return (
-                      <div key={item.id} className="px-2.5 py-2 border-b border-slate-100 last:border-b-0 bg-white">
+                      <div
+                        key={item.id}
+                        className={`px-2.5 py-2 border-b border-slate-100 last:border-b-0 ${
+                          initiated ? 'bg-slate-100/90 opacity-70' : 'bg-white'
+                        }`}
+                      >
                         <div className="flex items-start gap-2">
                           <input
                             type="checkbox"
-                            checked={!!pickedItems[item.id]}
-                            onChange={(e) => setPickedItems((prev) => ({ ...prev, [item.id]: e.target.checked }))}
-                            className="mt-0.5"
+                            disabled={initiated}
+                            checked={!initiated && !!pickedItems[item.id]}
+                            title={
+                              initiated
+                                ? 'This line is already in transit or completed — it cannot be selected again for initiate transfer.'
+                                : undefined
+                            }
+                            onChange={(e) => {
+                              if (initiated) return;
+                              setPickedItems((prev) => ({ ...prev, [item.id]: e.target.checked }));
+                            }}
+                            className="mt-0.5 disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-semibold text-slate-900">
@@ -667,8 +716,13 @@ const OutboundDashboard = () => {
                             <span className="text-[10px] text-slate-500">Required:</span>
                             <input
                               value={shortQty}
-                              onChange={(e) => setPickedQty((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                              className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900"
+                              disabled={initiated}
+                              title={initiated ? 'Quantity is fixed after this line has been released from the warehouse.' : undefined}
+                              onChange={(e) => {
+                                if (initiated) return;
+                                setPickedQty((prev) => ({ ...prev, [item.id]: e.target.value }));
+                              }}
+                              className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
                             />
                             <span className="text-[10px] text-slate-500">{item.uom}</span>
                             <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${hasShort ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
@@ -697,8 +751,15 @@ const OutboundDashboard = () => {
                 Save changes
               </button>
               <button
+                type="button"
                 onClick={handleSavePick}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
+                disabled={!savePickAvailable}
+                title={
+                  !savePickAvailable
+                    ? 'Pick was already saved (status is no longer Pending pick).'
+                    : 'Requires an assigned picker. Sets status to In pick.'
+                }
+                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cyan-500"
               >
                 Save Pick
               </button>
