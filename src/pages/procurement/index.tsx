@@ -73,6 +73,8 @@ import {
   validateAdvancePercentForType,
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
+import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
+import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
@@ -2157,8 +2159,22 @@ const Procurement: React.FC = () => {
     }
 
     if (target.status === 'Approved') {
-      addToast('info', `${target.dpoNumber} is already approved`);
-      return;
+      const isSplitChild = /-S\d+$/i.test(String(target.dpoNumber ?? '').trim());
+      const normalizedPoId = target.backendPoId ? String(target.backendPoId).replace(/^PO-/, '') : '';
+      const sourcePo =
+        isSplitChild && normalizedPoId
+          ? purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedPoId)
+          : undefined;
+      const fd =
+        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+          ? (sourcePo.formData as Record<string, unknown>)
+          : null;
+      const serverSaysApproved = String(fd?.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+      if (!isSplitChild || serverSaysApproved) {
+        addToast('info', `${target.dpoNumber} is already approved`);
+        return;
+      }
+      // UI still shows Approved from before split/refetch; server form_data is pending — allow approval to proceed.
     }
 
     const approvedAt = new Date();
@@ -2442,8 +2458,10 @@ const Procurement: React.FC = () => {
       ...baseDraftPo,
       id: `${baseDraftPo.id}-${suffix}`,
       dpoNumber: `${baseDraftPo.dpoNumber}-${suffix}`,
-      alertType: 'ok',
-      alertMessage: `Split from ${baseDraftPo.dpoNumber}. Ready for release.`,
+      // Split changes line structure — must not inherit Approved from the pre-split draft (would block approve + show "already approved").
+      status: 'Pending Approval',
+      alertType: 'warning',
+      alertMessage: `Split from ${baseDraftPo.dpoNumber}. Approve this PO before release.`,
       lineItems,
       subtotal,
       gstTotal,
@@ -2452,9 +2470,7 @@ const Procurement: React.FC = () => {
   };
 
   const submitSplitPO = async () => {
-    if (!splitPOTarget) {
-      return;
-    }
+    if (!splitPOTarget) return;
 
     const uniqueIndexes = Array.from(new Set(splitSelectedLineIndexes)).sort((a, b) => a - b);
 
@@ -2518,7 +2534,20 @@ const Procurement: React.FC = () => {
       baseForm.procurementApprovalStatus = 'Pending Approval';
       delete (baseForm as Record<string, unknown>).procurementApprovedAt;
 
-      const up1 = await updatePurchaseOrder(splitPOTarget.backendPoId, {
+      const formDataS1: Record<string, unknown> = {
+        ...baseForm,
+        poNumber: splitPOOne.dpoNumber,
+        orderId: splitPOOne.dpoNumber,
+        procurementApprovedAt: null,
+      };
+      const formDataS2: Record<string, unknown> = {
+        ...baseForm,
+        poNumber: splitPOTwo.dpoNumber,
+        orderId: splitPOTwo.dpoNumber,
+        procurementApprovedAt: null,
+      };
+
+      const updateFirstPayload = {
         orderId: splitPOOne.dpoNumber,
         vendorName: splitPOTarget.vendor,
         orderDate: splitPOTarget.createdDate,
@@ -2526,9 +2555,10 @@ const Procurement: React.FC = () => {
         reference: splitPOTarget.requestCode,
         paymentTerms: splitPOTarget.paymentTerms,
         status: 'Draft',
-        formData: baseForm,
+        formData: formDataS1,
         items: itemsOne,
-      });
+      };
+      const up1 = await updatePurchaseOrder(splitPOTarget.backendPoId, updateFirstPayload);
       if (!up1.success) {
         const err = up1.error;
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update first split PO'));
@@ -2543,7 +2573,7 @@ const Procurement: React.FC = () => {
         reference: splitPOTarget.requestCode,
         paymentTerms: splitPOTarget.paymentTerms,
         status: 'Draft',
-        formData: baseForm,
+        formData: formDataS2,
         items: itemsTwo,
       };
       const cr = await createPurchaseOrder(createPayload);
@@ -2568,6 +2598,13 @@ const Procurement: React.FC = () => {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      void fetchPoTracking(normalizedPoId);
+      const po2NumericId = cr.data?.id ? String(cr.data.id).replace(/^PO-/, '') : '';
+      if (po2NumericId) void fetchPoTracking(po2NumericId);
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', normalizedPoId] });
+      if (po2NumericId) await queryClient.invalidateQueries({ queryKey: ['po-tracking', po2NumericId] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-unlinked-map'] });
+
       if (selectedDraftPO?.id === splitPOTarget.id) {
         setSelectedDraftPO(null);
       }
@@ -2577,11 +2614,7 @@ const Procurement: React.FC = () => {
     }
 
     updateProcurementState((current) => ({
-      draftPOs: [
-        splitPOOne,
-        splitPOTwo,
-        ...current.draftPOs.filter((draftPo) => draftPo.id !== splitPOTarget.id),
-      ],
+      draftPOs: [splitPOOne, splitPOTwo, ...current.draftPOs.filter((draftPo) => draftPo.id !== splitPOTarget.id)],
     }));
 
     if (selectedDraftPO?.id === splitPOTarget.id) {
@@ -3959,7 +3992,7 @@ const Procurement: React.FC = () => {
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Terms:</span>
-                                  <span className="font-semibold">{quote.terms}</span>
+                                  <span className="font-semibold">{formatStagedPaymentTermsSummary(quote.terms)}</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Valid till:</span>
@@ -4177,7 +4210,10 @@ const Procurement: React.FC = () => {
                               </div>
                             </div>
                             <div className="space-y-1 text-slate-600">
-                              <p><strong>Payment Terms</strong> {dpo.paymentTerms}</p>
+                              <div>
+                                <p className="font-bold text-slate-800 mb-1">Payment Terms</p>
+                                <PaymentTermsDisplay value={dpo.paymentTerms} />
+                              </div>
                               <p><strong>Expected Delivery</strong> {new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
                               <p><strong>Delivery Address</strong> {dpo.deliveryAddress}</p>
                               <p><strong>Vendor Rating</strong> {dpo.vendorRating}</p>
@@ -4543,7 +4579,9 @@ const Procurement: React.FC = () => {
                                 <td className="px-4 py-2 align-top text-right text-[11px] font-semibold text-amber-700">
                                   ₹{line.lineTotal.toLocaleString('en-IN')}
                                 </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-600">{record.paymentTerms}</td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-600 max-w-56">
+                                  <PaymentTermsDisplay compact value={record.paymentTerms} />
+                                </td>
                                 <td className="px-4 py-2 align-top">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.status === 'In Transit'
                                     ? 'bg-sky-50 text-sky-700 border border-sky-200'
@@ -5764,21 +5802,53 @@ const Procurement: React.FC = () => {
               <div className="flex-1 px-5 py-4 space-y-5">
                 {/* DPO Summary */}
                 <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-sm">
-                  {[
-                    { label: 'Vendor', value: dpo.vendor },
-                    { label: 'Created', value: new Date(dpo.createdDate).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
-                    { label: 'Payment Terms', value: dpo.paymentTerms },
-                    { label: 'Expected Delivery', value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
-                    { label: 'Lead time', value: `${maxLeadDaysForDpo} days` },
-                    { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
-                    { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between px-4 py-2">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
-                        }`}>{row.value}</span>
-                    </div>
-                  ))}
+                  {(
+                    [
+                      { label: 'Vendor', value: dpo.vendor },
+                      {
+                        label: 'Created',
+                        value: new Date(dpo.createdDate).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        }),
+                      },
+                      { label: 'Payment Terms', paymentTerms: dpo.paymentTerms },
+                      {
+                        label: 'Expected Delivery',
+                        value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        }),
+                      },
+                      { label: 'Lead time', value: `${maxLeadDaysForDpo} days` },
+                      { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
+                      { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
+                    ] as Array<
+                      | { label: string; value: string; bold?: boolean; highlight?: boolean }
+                      | { label: string; paymentTerms: string }
+                    >
+                  ).map((row) =>
+                    'paymentTerms' in row ? (
+                      <div key={row.label} className="flex items-start justify-between gap-3 px-4 py-2">
+                        <span className="text-slate-500 shrink-0 pt-0.5">{row.label}</span>
+                        <div className="min-w-0 max-w-[min(100%,18rem)]">
+                          <PaymentTermsDisplay value={row.paymentTerms} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={row.label} className="flex items-center justify-between px-4 py-2">
+                        <span className="text-slate-500">{row.label}</span>
+                        <span
+                          className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                            }`}
+                        >
+                          {row.value}
+                        </span>
+                      </div>
+                    ),
+                  )}
                 </div>
 
                 {(totals && (() => {
@@ -6493,7 +6563,9 @@ const Procurement: React.FC = () => {
                                   {row.moqMax != null && row.moqMax > row.moqMin ? ` - ${row.moqMax}` : '+'}
                                 </td>
                                 <td className="px-3 py-2 text-right text-slate-700">{row.leadTimeDays}d</td>
-                                <td className="px-3 py-2 text-slate-700">{row.paymentTerms || '—'}</td>
+                                <td className="px-3 py-2 text-slate-700 max-w-48 align-top">
+                                  <PaymentTermsDisplay compact value={row.paymentTerms} />
+                                </td>
                               </tr>
                             ))}
                           </tbody>

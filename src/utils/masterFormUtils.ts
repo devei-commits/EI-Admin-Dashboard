@@ -181,6 +181,76 @@ export const autoPopulateDerivedFields = (
 };
 
 /**
+ * When true, HSN (and RM: GST %) must be filled with valid values.
+ * Exempted / NonGST preferences skip tax detail requirements.
+ */
+export function taxPreferenceRequiresDetails(preference: string | undefined): boolean {
+ return String(preference ?? '').trim() === 'Taxable';
+}
+
+/** India HSN/SAC: typically 4–8 digits; allow up to 12 digits. */
+export function isValidHsnOrSacCode(raw: string): boolean {
+ const s = String(raw ?? '').replace(/\s/g, '');
+ if (!s) return false;
+ return /^\d{4,12}$/.test(s);
+}
+
+/** GST %: 0–100; allows optional % suffix in input. */
+export function isValidGstPercent(raw: string | number | undefined): boolean {
+ const s = typeof raw === 'number' ? String(raw) : String(raw ?? '').trim().replace(/%/g, '').replace(/,/g, '');
+ if (s === '') return false;
+ const n = parseFloat(s);
+ return Number.isFinite(n) && n >= 0 && n <= 100;
+}
+
+/**
+ * Validate tax classification lines for masters that use Zoho-style tax preference.
+ * - rawMaterial: requires hsnCode + gst when rmTaxPreference === Taxable
+ * - packaging: requires pkgHsn when pkgTaxPreference === Taxable
+ */
+export function validateMasterTaxDetails(
+ formData: Record<string, unknown>,
+ masterType: 'rawMaterial' | 'packaging'
+): { valid: boolean; errors: Record<string, string> } {
+ const errors: Record<string, string> = {};
+
+ if (masterType === 'rawMaterial') {
+  if (!taxPreferenceRequiresDetails(String(formData.rmTaxPreference ?? ''))) {
+   return { valid: true, errors: {} };
+  }
+  const hsn = String(formData.hsnCode ?? '').trim();
+  if (!hsn) {
+   errors.hsnCode = 'HSN code is required when Tax Preference is Taxable';
+  } else if (!isValidHsnOrSacCode(hsn)) {
+   errors.hsnCode = 'Enter a valid HSN code (4–12 digits)';
+  }
+  const gstRaw = formData.gst;
+  const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
+  if (!gstStr) {
+   errors.gst = 'GST % is required when Tax Preference is Taxable';
+  } else if (!isValidGstPercent(gstStr)) {
+   errors.gst = 'GST % must be a number from 0 to 100';
+  }
+  return { valid: Object.keys(errors).length === 0, errors };
+ }
+
+ if (masterType === 'packaging') {
+  if (!taxPreferenceRequiresDetails(String(formData.pkgTaxPreference ?? ''))) {
+   return { valid: true, errors: {} };
+  }
+  const hsn = String(formData.pkgHsn ?? '').trim();
+  if (!hsn) {
+   errors.pkgHsn = 'HSN code is required when Tax Preference is Taxable';
+  } else if (!isValidHsnOrSacCode(hsn)) {
+   errors.pkgHsn = 'Enter a valid HSN code (4–12 digits)';
+  }
+  return { valid: Object.keys(errors).length === 0, errors };
+ }
+
+ return { valid: true, errors: {} };
+}
+
+/**
  * Validate required primary fields
  */
 export const validatePrimaryFields = (

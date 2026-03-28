@@ -50,6 +50,11 @@ import {
   validateAdvancePercentForType,
   type PaymentTermsStructuredType,
 } from '../lib/paymentTermsStructured';
+import {
+  formatStagedPaymentTermsObject,
+  formatStagedPaymentTermsSummary,
+  resolveStagedPaymentTermsForForm,
+} from '../lib/stagedPaymentTerms';
 
 interface RawMaterial {
   id: string;
@@ -394,6 +399,8 @@ const Planning = () => {
     paymentTermsType: PaymentTermsStructuredType;
     advancePercent: string;
     leadTimeDays: number;
+    /** Items List `payment_terms` JSON string when picked from a rate; cleared when user edits type/advance manually. */
+    paymentTermsRaw: string | null;
   }>({
     vendorId: null,
     vendorName: '',
@@ -403,6 +410,7 @@ const Planning = () => {
     paymentTermsType: 'as_per_contract',
     advancePercent: '50',
     leadTimeDays: 0,
+    paymentTermsRaw: null,
   });
   const [releaseToPlanningSaving, setReleaseToPlanningSaving] = useState(false);
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
@@ -1703,6 +1711,7 @@ const Planning = () => {
         (paymentTermsTypeRequiresAdvancePercent(parsedTerms.type) ? 50 : 0)
       ),
       leadTimeDays: first?.leadTimeDays ?? 0,
+      paymentTermsRaw: first ? String(first.paymentTerms ?? '').trim() || null : null,
     });
   };
 
@@ -3360,6 +3369,11 @@ const Planning = () => {
           })
           .slice(0, 10);
         const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
+        const releasePtStages = resolveStagedPaymentTermsForForm(
+          releaseToPlanningForm.paymentTermsRaw,
+          releaseToPlanningForm.paymentTermsType,
+          Number(releaseToPlanningForm.advancePercent)
+        );
         return (
           <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
@@ -3383,6 +3397,7 @@ const Planning = () => {
                           <th className="text-left py-2 font-medium">MOQ</th>
                           <th className="text-right py-2 font-medium">Unit ₹</th>
                           <th className="text-right py-2 font-medium">Lead</th>
+                          <th className="text-left py-2 font-medium min-w-[8rem]">Terms</th>
                           <th className="w-16" />
                         </tr>
                       </thead>
@@ -3393,6 +3408,9 @@ const Planning = () => {
                             <td className="py-2 text-slate-700">{s.moq || '—'}</td>
                             <td className="py-2 text-right font-medium">₹{s.unitPrice.toLocaleString('en-IN')}</td>
                             <td className="py-2 text-right text-slate-700">{s.leadTimeDays}d</td>
+                            <td className="py-2 text-slate-600 text-[11px] leading-snug max-w-[11rem]">
+                              {formatStagedPaymentTermsSummary(s.paymentTerms)}
+                            </td>
                             <td className="py-2">
                               <button
                                 type="button"
@@ -3410,6 +3428,7 @@ const Planning = () => {
                                       (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                     ),
                                     leadTimeDays: s.leadTimeDays,
+                                    paymentTermsRaw: String(s.paymentTerms || '').trim() || null,
                                   }));
                                 }}
                                 className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
@@ -3419,7 +3438,7 @@ const Planning = () => {
                             </td>
                           </tr>
                         ))}
-                        {slabs.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-500">No vendor rates found for this item in Items List (shown in Procurement &gt; Quotations).</td></tr>}
+                        {slabs.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-500">No vendor rates found for this item in Items List (shown in Procurement &gt; Quotations).</td></tr>}
                       </tbody>
                     </table>
                     <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
@@ -3431,7 +3450,33 @@ const Planning = () => {
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
                         <select
                           value={releaseToPlanningForm.vendorName}
-                          onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, vendorName: e.target.value }))}
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            const match = slabs.find((s) => s.vendorName === name);
+                            if (!name.trim()) {
+                              setReleaseToPlanningForm((f) => ({ ...f, vendorName: '', paymentTermsRaw: null }));
+                              return;
+                            }
+                            if (match) {
+                              const p = parsePaymentTermsString(match.paymentTerms || '');
+                              setReleaseToPlanningForm((f) => ({
+                                ...f,
+                                vendorName: name,
+                                vendorId: match.vendorId,
+                                moq: match.moq,
+                                unitPrice: String(match.unitPrice),
+                                paymentTermsType: p.type,
+                                advancePercent: String(
+                                  p.advancePercent ||
+                                  (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+                                ),
+                                leadTimeDays: match.leadTimeDays,
+                                paymentTermsRaw: String(match.paymentTerms || '').trim() || null,
+                              }));
+                            } else {
+                              setReleaseToPlanningForm((f) => ({ ...f, vendorName: name, paymentTermsRaw: null }));
+                            }
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         >
                           <option value="">— Select —</option>
@@ -3468,6 +3513,7 @@ const Planning = () => {
                             setReleaseToPlanningForm((f) => ({
                               ...f,
                               paymentTermsType: e.target.value as PaymentTermsStructuredType,
+                              paymentTermsRaw: null,
                             }))
                           }
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
@@ -3492,11 +3538,43 @@ const Planning = () => {
                           min={1}
                           max={99}
                           value={releaseToPlanningForm.advancePercent}
-                          onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, advancePercent: e.target.value }))}
+                          onChange={(e) =>
+                            setReleaseToPlanningForm((f) => ({
+                              ...f,
+                              advancePercent: e.target.value,
+                              paymentTermsRaw: null,
+                            }))
+                          }
                           className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         />
                       </div>
                     )}
+                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
+                        Payment split (advance · pre-shipment · post-shipment)
+                      </p>
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div>
+                          <div className="text-[10px] text-slate-500">Advance</div>
+                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.advance_pct}%</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Pre-shipment</div>
+                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.pre_shipment_pct}%</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Post-shipment</div>
+                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.post_shipment_pct}%</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Credit</div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {releasePtStages.credit_days > 0 ? `Net ${releasePtStages.credit_days}d` : '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-2">{formatStagedPaymentTermsObject(releasePtStages)}</p>
+                    </div>
                     {/* <div className="flex gap-2 mb-3">
                       <button type="button" onClick={() => setReleaseToPlanningForm((f) => ({ ...f, qty: String(shortfall) }))} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">Prefill qty = Gap</button>
                       <button
@@ -3552,6 +3630,7 @@ const Planning = () => {
                                       (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                     ),
                                     leadTimeDays: r.leadTimeDays,
+                                    paymentTermsRaw: String(r.paymentTerms || '').trim() || null,
                                   }));
                                 }}
                                 className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"

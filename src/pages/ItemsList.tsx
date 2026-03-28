@@ -17,6 +17,7 @@ import { fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import {
+  formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
   serializeStagedPaymentTerms,
   validateStagedPercents,
@@ -142,14 +143,6 @@ const ItemsList: React.FC = () => {
   }, [pageItems]);
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
-
-  const formatRatePaymentTermsLabel = (raw: string | null | undefined) => {
-    const p = parseStagedPaymentTerms(raw ?? '');
-    if (p) {
-      return `Adv ${p.advance_pct}% · Pre ${p.pre_shipment_pct}% · Post ${p.post_shipment_pct}%${p.credit_days ? ` · Net ${p.credit_days}d` : ''}`;
-    }
-    return raw?.trim() || '';
-  };
 
   useEffect(() => {
     if (!showAddTierModal || !addPriceListMode || tierTarget) {
@@ -621,8 +614,8 @@ const ItemsList: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
                           {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
-                          {(rate.payment_terms && formatRatePaymentTermsLabel(rate.payment_terms)) ? (
-                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatRatePaymentTermsLabel(rate.payment_terms)}</span>
+                          {(rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms)) ? (
+                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatStagedPaymentTermsSummary(rate.payment_terms)}</span>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">

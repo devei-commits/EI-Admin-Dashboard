@@ -16,6 +16,7 @@ export interface RawMaterialFromApi {
   price_per_kg: number;
   gst: number;
   shelf: string;
+  lead_time_days?: number | null;
   status: string;
   products: string[];
   group: string | null;
@@ -42,6 +43,7 @@ export interface RawMaterialRecord {
   pricePerKg: number;
   gst: number;
   shelf: string;
+  leadTimeDays: number | null;
   status: string;
   products: string[];
   group: string | null;
@@ -71,6 +73,7 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     pricePerKg: row.price_per_kg != null ? Number(row.price_per_kg) : 0,
     gst: row.gst != null ? Number(row.gst) : 0,
     shelf: row.shelf ?? '',
+    leadTimeDays: row.lead_time_days != null ? Number(row.lead_time_days) : null,
     status: row.status ?? '',
     products: Array.isArray(row.products) ? row.products : [],
     group: row.group || null,

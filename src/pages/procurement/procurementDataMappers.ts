@@ -158,6 +158,8 @@ export function mapBackendQuotationToQuote(
 ): VendorQuote {
   const lines: QuoteLine[] = (q.items ?? []).map((item) => {
     const total = item.totalValue ?? item.orderQty * item.pricePerUnit;
+    const ld = item.leadTimeDays ?? (item as { lead_time_days?: number }).lead_time_days;
+    const leadTimeDays = ld != null && ld !== '' ? Number(ld) : undefined;
     return {
       item: item.name,
       itemId: item.itemId,
@@ -165,6 +167,7 @@ export function mapBackendQuotationToQuote(
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
+      leadTimeDays: Number.isFinite(leadTimeDays) && (leadTimeDays as number) > 0 ? (leadTimeDays as number) : undefined,
       raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
       pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
     };
@@ -189,6 +192,17 @@ export function mapBackendQuotationToQuote(
   };
 }
 
+function parseLeadDaysFromString(s: string | undefined | null): number {
+  if (s == null || !String(s).trim()) return 0;
+  const m = String(s).match(/(\d+)\s*[-–]?\s*(\d+)?/);
+  if (!m) return 0;
+  const a = parseInt(m[1], 10);
+  const b = m[2] != null ? parseInt(m[2], 10) : a;
+  if (!Number.isFinite(a)) return 0;
+  if (!Number.isFinite(b)) return a;
+  return Math.round((a + b) / 2);
+}
+
 /** VendorClientRecord (vendor only) -> Vendor (procurement) */
 export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
   const category = (v.category ?? '').toUpperCase();
@@ -204,7 +218,7 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
     rating: v.rating ?? 0,
     confirmedQuotes: 0,
     posIssued: 0,
-    avgLeadTime: 0,
+    avgLeadTime: parseLeadDaysFromString(v.leadTime),
     paymentTerms: v.paymentTerms ?? '',
     contact: '',
     email: v.email ?? '',
@@ -291,7 +305,12 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
   const grandTotal = subtotal + gstTotal;
   const backendPoId = String(po.id ?? '').replace(/^PO-/, '') || undefined;
 
-  const approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  const isSplitChildPo = /-S\d+$/i.test(String(po.poNumber ?? '').trim());
+  let approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  // Split POs reset approval in form_data; stale "Approved" without a timestamp should not block re-approval in the UI.
+  if (isSplitChildPo && approvalApproved && (formData.procurementApprovedAt == null || formData.procurementApprovedAt === '')) {
+    approvalApproved = false;
+  }
   const approvedAtIso = formData.procurementApprovedAt;
   let approvedLabel = '';
   if (approvalApproved && approvedAtIso) {
