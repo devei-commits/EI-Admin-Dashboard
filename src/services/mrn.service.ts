@@ -22,6 +22,9 @@ export interface GeneratedMRNLabel {
   qrImageDataUrl: string;
 }
 
+/** Outbound MTR: per line item id — warehouse / MU progression */
+export type MtrLineTransferPhase = 'not_initiated' | 'in_transit' | 'received_at_mu' | 'completed';
+
 export interface MRNRecordFromApi {
   id: string;
   mrnNo: string;
@@ -30,6 +33,8 @@ export interface MRNRecordFromApi {
   assignedPicker: string;
   transferTeam: string;
   lineItems: MRNLineItemFromApi[];
+  /** Outbound MTR only: map line id → phase */
+  lineTransferStatus?: Record<string, MtrLineTransferPhase | string>;
   notes: string;
   bmrNo?: string;
   source?: string;
@@ -97,6 +102,12 @@ export interface UpdateMRNPayload {
   assignedPicker?: string;
   transferTeam?: string;
   lineItems?: MRNLineItemFromApi[];
+  /** Outbound MTR: warehouse — move only these lines from not_initiated → in_transit */
+  initiateTransferLineIds?: string[];
+  /** Outbound MTR: production — move only these lines from in_transit → received_at_mu */
+  receiveAtMuLineIds?: string[];
+  /** Outbound MTR: production — complete stock move for these received_at_mu lines */
+  completeTransferLineIds?: string[];
   notes?: string;
   isInboundFromMu?: boolean;
   receivedAtMu?: string | null;

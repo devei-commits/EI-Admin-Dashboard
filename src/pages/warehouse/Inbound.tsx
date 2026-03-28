@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -35,6 +35,18 @@ function boxesTimesUnitsEqualsRcvd(noOfBoxes: number, unitsPerBox: number, rcvdQ
 }
 
 /** Uniform cartons, or full cartons + optional partial last box: (n−1)×u + last = rcvd. */
+/** Item code from the first saved/generated QR (GRN stores one label set at a time). */
+function parseItemCodeFromGeneratedLabels(labels: GeneratedLabel[] | null | undefined): string | null {
+  if (!labels?.length) return null;
+  try {
+    const p = JSON.parse(labels[0].qrPayload || '{}') as { item_code?: string };
+    const c = String(p.item_code || '').trim();
+    return c || null;
+  } catch {
+    return null;
+  }
+}
+
 function labelPackagingMatchesRcvd(
   rcvdQty: number,
   numBoxes: number,
@@ -219,6 +231,17 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
 
+  const labelItemCodeOnFile = useMemo(() => parseItemCodeFromGeneratedLabels(labels), [labels]);
+  const labelsAreForSelectedLine = Boolean(
+    selectedLineItem &&
+      labelItemCodeOnFile &&
+      labelItemCodeOnFile.toLowerCase() === selectedLineItem.itemCode.trim().toLowerCase(),
+  );
+  /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
+  const needsGenerateForSelection = Boolean(
+    selectedLineItemId && (!labelItemCodeOnFile || !labelsAreForSelectedLine),
+  );
+
   useEffect(() => {
     if (!labels || labels.length === 0) {
       setSelectedLabelBoxIndex(null);
@@ -375,7 +398,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         return;
       }
     }
-    const wasRegenerating = labelsGenerated;
+    const wasRegenerating = Boolean(labelItemCodeOnFile && labelsAreForSelectedLine);
     setLabelError(null);
     setGeneratingLabels(true);
     try {
@@ -737,7 +760,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Select product / line item <span className="text-red-500">*</span></label>
                 <select
                   value={selectedLineItemId}
-                  onChange={(e) => setSelectedLineItemId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedLineItemId(e.target.value);
+                    setLabelError(null);
+                  }}
                   className={`w-full px-2 py-1.5 border rounded text-sm ${!selectedLineItemId ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`}
                 >
                   <option value="">— Select a product —</option>
@@ -792,20 +818,30 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              {!labelsGenerated ? (
-                <button
-                  type="button"
-                  onClick={() => void runGenerateLabels()}
-                  disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
-                </button>
-              ) : (
-                <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 max-w-xl">
-                  Labels are saved on the server. Change boxes, rack/location, batch, or product line above, then use{' '}
-                  <strong>Regenerate all QR labels</strong> in the preview section to update every box QR.
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                {needsGenerateForSelection && (
+                  <button
+                    type="button"
+                    onClick={() => void runGenerateLabels()}
+                    disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
+                  </button>
+                )}
+                {labelsAreForSelectedLine && labelsGenerated && labels && labels.length > 0 && (
+                  <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 max-w-xl">
+                    Labels on file match this line. Change boxes, rack/location, or batch above, then use{' '}
+                    <strong>Regenerate all QR labels</strong> in the preview section to update every box QR.
+                  </p>
+                )}
+              </div>
+              {labelItemCodeOnFile && selectedLineItem && !labelsAreForSelectedLine && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-xl">
+                  Saved QR labels are for item <span className="font-mono font-semibold">{labelItemCodeOnFile}</span>.
+                  Select another line or use <strong>Generate Labels</strong> to create QR codes for{' '}
+                  <span className="font-semibold">{selectedLineItem.item}</span> (this replaces the previous set for this GRN).
                 </p>
               )}
             </div>
@@ -813,7 +849,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           </section>
 
           {/* QR Label Preview — dropdown to pick a box; regenerate updates all QRs from form fields */}
-          {labelsGenerated && labels && labels.length > 0 && activeLabel && (
+          {labelsGenerated && labels && labels.length > 0 && activeLabel && labelsAreForSelectedLine && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
               <div className="flex flex-wrap items-end gap-3">

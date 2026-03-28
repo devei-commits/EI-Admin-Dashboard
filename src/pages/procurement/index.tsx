@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -73,7 +73,6 @@ import {
   validateAdvancePercentForType,
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
-import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -90,6 +89,54 @@ function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
     if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
+}
+
+/** Avoid setDraftPOs on every purchase-orders refetch when mapped drafts are logically unchanged (prevents update-depth loops + flickering ids). */
+function draftPOsFromApiSyncKey(list: DraftPO[]): string {
+  try {
+    const byId = [...list].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return JSON.stringify(
+      byId.map((d) => ({
+        id: d.id,
+        dpoNumber: d.dpoNumber,
+        backendPoId: d.backendPoId ?? '',
+        requestId: d.requestId,
+        requestCode: d.requestCode,
+        vendorId: d.vendorId,
+        vendor: d.vendor,
+        type: d.type,
+        status: d.status,
+        paymentTerms: d.paymentTerms,
+        expectedDelivery: d.expectedDelivery,
+        deliveryAddress: d.deliveryAddress,
+        createdDate: d.createdDate,
+        createdBy: d.createdBy,
+        vendorRating: d.vendorRating,
+        alertMessage: d.alertMessage,
+        alertType: d.alertType,
+        subtotal: d.subtotal,
+        gstTotal: d.gstTotal,
+        grandTotal: d.grandTotal,
+        lineItems: [...d.lineItems]
+          .sort((a, b) => String(a.itemCode || a.item).localeCompare(String(b.itemCode || b.item)))
+          .map((l) => ({
+            item: l.item,
+            itemCode: l.itemCode,
+            type: l.type,
+            qty: l.qty,
+            leadTimeDays: l.leadTimeDays,
+            pricePerUnit: l.pricePerUnit,
+            gstPercent: l.gstPercent,
+            gstAmount: l.gstAmount,
+            lineTotal: l.lineTotal,
+            raw_material_id: l.raw_material_id,
+            pack_material_id: l.pack_material_id,
+          })),
+      })),
+    );
+  } catch {
+    return `n:${list.length}`;
+  }
 }
 
 /** Vendor quote line vs PR line in Release to PO Planned Stage — RM/PM id match only when IDs exist on the PR line. */
@@ -174,6 +221,35 @@ function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
 /** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
 function normPoNumberKeyForTimeline(n: string) {
   return String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+}
+
+/** Matches DPO-001, DPO-001-S1, etc. — use the first numeric block after `DPO-`. */
+const DPO_ORDER_ID_SEQUENCE_RE = /^DPO-(\d+)/i;
+
+/**
+ * Next `order_id` for a new draft PO. Uses every persisted PO (`purchaseOrders`), any status — not `draftPOs.length`:
+ * released rows still hold `DPO-###` in the DB but disappear from the Draft-only list, which used to reuse numbers.
+ */
+function nextSequentialDpoOrderId(
+  allPurchaseOrders: Array<{ poNumber?: string }>,
+  localDraftPOs?: Array<{ id?: string; dpoNumber?: string }>,
+): string {
+  let maxSeq = 0;
+  const consider = (raw: string | undefined | null) => {
+    const s = String(raw ?? '').trim();
+    const m = s.match(DPO_ORDER_ID_SEQUENCE_RE);
+    if (!m) return;
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n)) maxSeq = Math.max(maxSeq, n);
+  };
+  for (const p of allPurchaseOrders) consider(p.poNumber);
+  if (localDraftPOs?.length) {
+    for (const d of localDraftPOs) {
+      consider(d.id);
+      consider(d.dpoNumber);
+    }
+  }
+  return `DPO-${String(maxSeq + 1).padStart(3, '0')}`;
 }
 
 type IssuedPoTimelineOverride = { shipped?: boolean; delivered?: boolean; underGrn?: boolean };
@@ -754,10 +830,24 @@ const Procurement: React.FC = () => {
     if (quotationsResult !== undefined) setQuotes(quotesFromApi);
   }, [quotationsResult, quotesFromApi]);
 
+  const lastDraftPOsFromApiKeyRef = useRef<string>('');
   useEffect(() => {
-    if (isProcurementDataLoading) return;
+    if (isProcurementDataLoading) {
+      return;
+    }
+    const nextKey = draftPOsFromApiSyncKey(draftPOsFromApi);
+    if (nextKey === lastDraftPOsFromApiKeyRef.current) {
+      return;
+    }
+    lastDraftPOsFromApiKeyRef.current = nextKey;
     setDraftPOs(draftPOsFromApi);
   }, [isProcurementDataLoading, draftPOsFromApi]);
+
+  /** Reset draft sync guard so the next PO list fetch always applies to `draftPOs` (covers approve/split/release and any mapper-only deltas). */
+  const invalidatePurchaseOrdersQueries = useCallback(async () => {
+    lastDraftPOsFromApiKeyRef.current = '';
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+  }, [queryClient]);
 
   useEffect(() => {
     if (!editRequestTarget) return;
@@ -891,23 +981,35 @@ const Procurement: React.FC = () => {
     if (next.stockCheckUpdates) setStockCheckUpdates(next.stockCheckUpdates);
   };
 
+  const procurementUrlSyncKey = searchParams.toString();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are procurementUrlSyncKey only; including `searchParams` can retrigger every render.
   useEffect(() => {
     const routeTab = getInitialMainTab(searchParams);
     const routeSection = getInitialSideSection(searchParams);
-
-    if (routeTab !== mainTab) {
-      setMainTab(routeTab);
+    setMainTab((prev) => (routeTab !== prev ? routeTab : prev));
+    if (routeTab === 'Procurement') {
+      setSideSection((prev) => (routeSection !== prev ? routeSection : prev));
     }
+  }, [procurementUrlSyncKey]);
 
-    if (routeTab === 'Procurement' && routeSection !== sideSection) {
-      setSideSection(routeSection);
-    }
-  }, [mainTab, searchParams, sideSection]);
-
+  const lastLiveStoragePayloadRef = useRef<string>('');
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
+
+    const payloadKey = JSON.stringify({
+      requests,
+      quotes,
+      draftPOs,
+      completedGrns,
+      stockCheckStatuses,
+      stockCheckUpdates,
+    });
+    if (payloadKey === lastLiveStoragePayloadRef.current) {
+      return;
+    }
+    lastLiveStoragePayloadRef.current = payloadKey;
 
     const liveState: LiveProcurementState = {
       requests,
@@ -2085,7 +2187,7 @@ const Procurement: React.FC = () => {
       }
     }
 
-    const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+    const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
     const lineItems: DraftPOLineItem[] = items.map((it, idx) => {
       const qty = Number(it.quantity_requested) || 0;
       const prName = String(it.name ?? '').trim().toLowerCase();
@@ -2203,7 +2305,7 @@ const Procurement: React.FC = () => {
     updateProcurementState((current) => ({
       draftPOs: [newDraftPO, ...current.draftPOs],
     }));
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    void invalidatePurchaseOrdersQueries();
     await updateProcurementRequestApi(requestId, { status: 'PO Draft' });
     queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
     updateProcurementState((current) => ({
@@ -2263,7 +2365,7 @@ const Procurement: React.FC = () => {
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to save approval'));
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      await invalidatePurchaseOrdersQueries();
     }
 
     updateProcurementState((current) => ({
@@ -2464,7 +2566,7 @@ const Procurement: React.FC = () => {
       draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
     }));
 
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    void invalidatePurchaseOrdersQueries();
     if (draft.paymentTerms?.trim()) {
       addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
     } else {
@@ -2647,7 +2749,7 @@ const Procurement: React.FC = () => {
           const rb = await updatePurchaseOrder(splitPOTarget.backendPoId, restoreSnapshot);
           if (rb.success) {
             addToast('error', `${msg} The original draft PO was restored.`);
-            await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+            await invalidatePurchaseOrdersQueries();
             return;
           }
           addToast(
@@ -2660,7 +2762,7 @@ const Procurement: React.FC = () => {
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      await invalidatePurchaseOrdersQueries();
       void fetchPoTracking(normalizedPoId);
       const po2NumericId = cr.data?.id ? String(cr.data.id).replace(/^PO-/, '') : '';
       if (po2NumericId) void fetchPoTracking(po2NumericId);
@@ -4047,15 +4149,11 @@ const Procurement: React.FC = () => {
 
                           {/* Footer Info */}
                           <div className="px-5 py-3 bg-slate-50 border-t border-slate-200">
-                            <div className="flex items-center justify-between text-xs text-slate-700">
-                              <div className="flex items-center gap-6">
+                            <div className="flex flex-wrap items-start justify-between gap-3 text-xs text-slate-700">
+                              <div className="flex flex-wrap items-center gap-6">
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Lead time:</span>
                                   <span className="font-semibold">{quote.leadTimeDays} days</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">Terms:</span>
-                                  <span className="font-semibold">{formatStagedPaymentTermsSummary(quote.terms)}</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Valid till:</span>
@@ -4070,10 +4168,14 @@ const Procurement: React.FC = () => {
                               </div>
                               <button
                                 onClick={() => setExpandedQuoteId(isExpanded ? null : quote.id)}
-                                className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors"
+                                className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors shrink-0"
                               >
                                 {isExpanded ? 'Hide Details' : 'View Details'}
                               </button>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-slate-200/90">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Payment terms</p>
+                              <PaymentTermsDisplay value={quote.terms} />
                             </div>
                           </div>
 
@@ -4187,7 +4289,10 @@ const Procurement: React.FC = () => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => { setMainTab('Procurement'); setSideSection('Draft POs'); setSelectedRequest(req); }}
+                            onClick={() => {
+                              applyRouteState('Procurement', 'Draft POs');
+                              setSelectedRequest(req);
+                            }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
                           >
                             Open PR & create Draft PO
@@ -5515,7 +5620,7 @@ const Procurement: React.FC = () => {
             addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save request link'));
             return;
           }
-          queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+          void invalidatePurchaseOrdersQueries();
           addToast('success', 'Request link saved. Mark Delivered at WH and timeline will use this PO.');
         };
 
@@ -5886,9 +5991,9 @@ const Procurement: React.FC = () => {
                     >
                   ).map((row) =>
                     'paymentTerms' in row ? (
-                      <div key={row.label} className="flex items-start justify-between gap-3 px-4 py-2">
+                      <div key={row.label} className="flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <span className="text-slate-500 shrink-0 pt-0.5">{row.label}</span>
-                        <div className="min-w-0 max-w-[min(100%,18rem)]">
+                        <div className="min-w-0 w-full sm:max-w-md sm:flex-1 sm:flex sm:justify-end">
                           <PaymentTermsDisplay value={row.paymentTerms} />
                         </div>
                       </div>
@@ -6279,9 +6384,16 @@ const Procurement: React.FC = () => {
               {/* Header */}
               <div className="sticky top-0 z-10 rounded-t-xl bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-blue-200 px-6 py-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
-                  <h2 className="text-lg font-bold text-slate-900 leading-tight">
-                    {req.code} — {req.description ?? req.items[0]?.toUpperCase()}
-                  </h2>
+                  <div className="min-w-0 pr-2">
+                    <h2 className="text-lg font-bold text-slate-900 leading-tight">
+                      {req.code} — {(req.preferredVendor ?? '').trim() || 'No preferred vendor'}
+                    </h2>
+                    {(req.description?.trim() || req.items[0]) && (
+                      <p className="text-sm text-slate-600 mt-1.5 font-medium leading-snug">
+                        {req.description?.trim() || req.items[0]}
+                      </p>
+                    )}
+                  </div>
                   <button
                     onClick={() => setSelectedRequest(null)}
                     className="text-slate-400 hover:text-slate-700 text-2xl leading-none transition-colors"
@@ -7503,7 +7615,7 @@ const Procurement: React.FC = () => {
                       const createdDateStr = today.toISOString().split('T')[0];
                       const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
-                      const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                      const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
                       const gstPercent = 18;
                       const draftLines: DraftPOLineItem[] = linesForCreate.map((ln) => {
                         const sub = (Number(ln.qty) || 0) * (Number(ln.unitPrice) || 0);
@@ -7608,7 +7720,7 @@ const Procurement: React.FC = () => {
                         draftPOs: [newDraftPO, ...current.draftPOs],
                       }));
 
-                      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                      void invalidatePurchaseOrdersQueries();
                       addToast(
                         'success',
                         `Draft PO ${newDpoId} created for ${req.code}`
@@ -7779,7 +7891,7 @@ const Procurement: React.FC = () => {
                         : po
                     )
                   );
-                  queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                  void invalidatePurchaseOrdersQueries();
                   setEditDraftPOTarget(null);
                   addToast('success', `Draft PO ${d.dpoNumber} updated`);
                 }}
@@ -8892,7 +9004,7 @@ const Procurement: React.FC = () => {
                               const createdDateStr = today.toISOString().split('T')[0];
                               const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
-                              const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                              const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
                               const fallbackItemCode =
                                 selectedQuote.requestType === 'PM' ? `EI-PM-001` : `EI-RM-001`;
                               const lineItem: DraftPOLineItem = {
@@ -8998,7 +9110,7 @@ const Procurement: React.FC = () => {
                                 draftPOs: [newDraftPO, ...current.draftPOs],
                               }));
 
-                              queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                              void invalidatePurchaseOrdersQueries();
                               addToast(
                                 'success',
                                 `Draft PO ${newDpoId} created for ${requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode}`
