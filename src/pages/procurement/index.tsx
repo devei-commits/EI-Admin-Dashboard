@@ -2368,32 +2368,6 @@ const Procurement: React.FC = () => {
       await invalidatePurchaseOrdersQueries();
     }
 
-    const approvedAt = new Date();
-    const dateLabel = approvedAt.toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const alertMessage = `Approved on ${dateLabel}. Ready for release.`;
-
-    if (target.backendPoId) {
-      const normalizedId = String(target.backendPoId).replace(/^PO-/, '');
-      const sourcePo = purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedId);
-      const baseForm =
-        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
-          ? { ...(sourcePo.formData as Record<string, unknown>) }
-          : {};
-      const res = await updatePurchaseOrder(target.backendPoId, {
-        formData: {
-          ...baseForm,
-          procurementApprovalStatus: 'Approved',
-          procurementApprovedAt: approvedAt.toISOString(),
-        },
-      });
-      if (!res.success) {
-        const err = res.error;
-        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to save approval'));
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    }
-
     updateProcurementState((current) => ({
       draftPOs: current.draftPOs.map((draftPo) =>
         draftPo.id === draftPoId
