@@ -26,6 +26,8 @@ const PR_STATUS_MAP: Record<string, ProcurementRequest['status']> = {
   'PO Draft': 'PO Draft',
   'PO Released': 'PO Released',
   'Delivery Pending': 'Delivery Pending',
+  /** Persisted when a PO is marked delivered → GRN from Procurement; must round-trip for Issued POs list. */
+  'Under GRN': 'Under GRN',
 };
 
 const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {

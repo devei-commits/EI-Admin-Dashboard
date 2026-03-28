@@ -157,6 +157,57 @@ function resolveMasterIdsFromRawItem(raw: any): {
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
 const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
 
+/**
+ * Procurement requests whose released POs should appear under Issued POs.
+ * Includes Under GRN: marking one split PO delivered sets the whole PR to Under GRN, but sibling POs (e.g. …-S2) must stay visible.
+ */
+const REQUEST_STATUSES_FOR_ISSUED_PO_LIST: readonly RequestStatus[] = [
+  'PO Released',
+  'Delivery Pending',
+  'Under GRN',
+];
+
+function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
+  return REQUEST_STATUSES_FOR_ISSUED_PO_LIST.includes(status);
+}
+
+/** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
+function normPoNumberKeyForTimeline(n: string) {
+  return String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+}
+
+type IssuedPoTimelineOverride = { shipped?: boolean; delivered?: boolean; underGrn?: boolean };
+
+/**
+ * Highest completed step index for Issued PO cards (0 = PO Released … 6 = GRN Complete).
+ * Uses po-tracking timestamps; GRN Complete also when warehouse GRN list shows GRN Complete for this PO.
+ */
+function issuedPoCardTimelineCompletedIndex(
+  recordStatus: string,
+  tracking: PoTrackingRecord | null | undefined,
+  ov: IssuedPoTimelineOverride | undefined,
+  grnCompleteForPo: boolean,
+): number {
+  const has = (v: unknown) => v != null && String(v).trim() !== '';
+  let idx = 0;
+  if (tracking) {
+    if (has(tracking.advancePaidAt)) idx = 1;
+    if (has(tracking.vendorConfirmedAt)) idx = Math.max(idx, 2);
+    if (has(tracking.shippedAt) || ov?.shipped) idx = Math.max(idx, 3);
+    if (has(tracking.deliveredAt) || ov?.delivered) idx = Math.max(idx, 4);
+    if (has(tracking.underGrnAt) || ov?.underGrn) idx = Math.max(idx, 5);
+    if (has(tracking.grnCompleteAt) || grnCompleteForPo) idx = Math.max(idx, 6);
+  } else {
+    if (ov?.shipped) idx = Math.max(idx, 3);
+    if (ov?.delivered) idx = Math.max(idx, 4);
+    if (ov?.underGrn) idx = Math.max(idx, 5);
+    if (grnCompleteForPo) idx = Math.max(idx, 6);
+  }
+  if (idx > 0) return idx;
+  if (recordStatus === 'In Transit' || recordStatus === 'At Risk') return 3;
+  return 0;
+}
+
 const isMainTab = (value: string | null): value is MainTab => Boolean(value && MAIN_TABS.includes(value as MainTab));
 const isSideSection = (value: string | null): value is SideSection => Boolean(value && SIDE_SECTIONS.includes(value as SideSection));
 
@@ -504,8 +555,18 @@ const Procurement: React.FC = () => {
   const { data: grnListFromApi, isLoading: grnListLoading } = useQuery({
     queryKey: ['grn-list'],
     queryFn: fetchGRNList,
-    enabled: sideSection === 'GRN Monitor',
+    enabled: sideSection === 'GRN Monitor' || sideSection === 'Issued POs',
   });
+
+  const grnCompletePoNormSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of grnListFromApi ?? []) {
+      if (String(g.status || '').trim() === 'GRN Complete') {
+        set.add(normPoNumberKeyForTimeline(g.poNo));
+      }
+    }
+    return set;
+  }, [grnListFromApi]);
 
   const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading } = useQuery({
     queryKey: ['warehouse-inventory'],
@@ -550,32 +611,20 @@ const Procurement: React.FC = () => {
     [purchaseOrdersRaw]
   );
 
-  // For Planning-created / unlinked POs: the card timeline should be driven by po-tracking
-  // persisted in backend (not just the in-memory click overrides).
-  const unlinkedReleasedPoIds = useMemo(() => {
-    // A released PO is considered "linked" if it matches at least one procurement_request row
-    // via formData.requestId OR formData.requestCode.
-    const getLinked = (p: PurchaseOrder) =>
-      requests.some(
-        (r) =>
-          (String(p.formData?.requestId) &&
-            String(p.formData?.requestId) === String(r.id)) ||
-          (String(p.formData?.requestCode).toUpperCase() &&
-            String(p.formData?.requestCode).toUpperCase() === String(r.code).toUpperCase()),
-      );
-
-    return purchaseOrders
+  /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
+  const releasedPoBackendIdsForTracking = useMemo(() => {
+    const ids = purchaseOrders
       .filter((p) => p.status === 'Released')
-      .filter((p) => !getLinked(p))
       .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
       .filter((id) => /^\d+$/.test(id));
-  }, [purchaseOrders, requests]);
+    return [...new Set(ids)].sort();
+  }, [purchaseOrders]);
 
-  const { data: unlinkedPoTrackingByBackendId } = useQuery({
-    queryKey: ['po-tracking-unlinked-map', unlinkedReleasedPoIds.join(',')],
+  const { data: releasedPoTrackingByBackendId } = useQuery({
+    queryKey: ['po-tracking-released-map', releasedPoBackendIdsForTracking.join(',')],
     queryFn: async () => {
       const entries = await Promise.all(
-        unlinkedReleasedPoIds.map(async (id) => {
+        releasedPoBackendIdsForTracking.map(async (id) => {
           const res = await fetchPoTracking(id);
           return { id, tracking: res.success ? res.data : null };
         }),
@@ -585,7 +634,7 @@ const Procurement: React.FC = () => {
         return acc;
       }, {} as Record<string, PoTrackingRecord>);
     },
-    enabled: sideSection === 'Issued POs' && unlinkedReleasedPoIds.length > 0,
+    enabled: sideSection === 'Issued POs' && releasedPoBackendIdsForTracking.length > 0,
     staleTime: 30_000,
   });
 
@@ -908,7 +957,7 @@ const Procurement: React.FC = () => {
     const requestCount = requests.length;
     const quotationsCount = quotes.length;
     const draftPosCount = draftPOs.length;
-    const issuedPos = requests.filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending').length;
+    const issuedPos = requests.filter((request) => requestStatusShowsIssuedPOs(request.status)).length;
     const grnCount = Math.max(issuedPos, 1);
     const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
 
@@ -1125,7 +1174,7 @@ const Procurement: React.FC = () => {
         }
       } else if (sideSection === 'Issued POs') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || linkedRequest.status !== 'PO Released') {
+        if (!linkedRequest || !requestStatusShowsIssuedPOs(linkedRequest.status)) {
           return false;
         }
       } else if (sideSection === 'Requests') {
@@ -1370,7 +1419,7 @@ const Procurement: React.FC = () => {
     const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
 
     const requestRecords = requests
-      .filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending')
+      .filter((request) => requestStatusShowsIssuedPOs(request.status))
       .flatMap((request) => {
         const linkedQuote = quotes.find((quote) => quote.requestId === request.id && quote.status === 'Confirmed') ??
           quotes.find((quote) => quote.requestId === request.id);
@@ -1532,7 +1581,7 @@ const Procurement: React.FC = () => {
       const inferredType: RequestType = rawItems.some((it) => it?.pack_material_id != null) ? 'PM' : 'RM';
       const backendPoId = String(po.id ?? '').replace(/^PO-/, '');
       const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-      const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
+      const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
 
       const lineItems = rawItems.map((i: any, idx: number) => {
         const qty = Number(i.quantity) || 0;
@@ -1591,8 +1640,16 @@ const Procurement: React.FC = () => {
       };
     });
 
-    return [...requestRecords, ...unlinkedRecords];
-  }, [draftPOs, purchaseOrders, quotes, requests, unlinkedPoTimelineOverrides, unlinkedPoTrackingByBackendId]);
+    const merged = [...requestRecords, ...unlinkedRecords];
+    const dedupedByPo = new Map<string, (typeof merged)[number]>();
+    for (const r of merged) {
+      const bid = r.backendPoId && /^\d+$/.test(String(r.backendPoId)) ? String(r.backendPoId) : '';
+      const poNorm = normPoKey(r.poNumber);
+      const key = bid ? `id:${bid}` : `po:${poNorm}|req:${r.request.id}`;
+      if (!dedupedByPo.has(key)) dedupedByPo.set(key, r);
+    }
+    return Array.from(dedupedByPo.values());
+  }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
@@ -1635,7 +1692,9 @@ const Procurement: React.FC = () => {
     }
     const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
     const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
-    const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
+    const tracking = backendPoId ? releasedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
+    const hasT = (v: unknown) => v != null && String(v).trim() !== '';
+    const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
     setSelectedPO({
       id: record.poNumber,
       vendorId: record.vendor,
@@ -1653,11 +1712,12 @@ const Procurement: React.FC = () => {
       backendPoId: backendPoId ?? undefined,
       timeline: [
         { stage: 'PO Released', done: true, timestamp: record.createdDate, actor: 'Procurement', note: 'PO shared with vendor' },
-        { stage: 'Vendor Confirmed', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'Shipped', done: !!(ov?.shipped || tracking?.shippedAt), timestamp: null, actor: null, note: null },
-        { stage: 'Delivered', done: !!(ov?.delivered || tracking?.deliveredAt), timestamp: null, actor: null, note: null },
-        { stage: 'Under GRN', done: !!(ov?.underGrn || tracking?.underGrnAt), timestamp: null, actor: null, note: null },
-        { stage: 'GRN Complete', done: !!(tracking?.grnCompleteAt), timestamp: null, actor: null, note: null },
+        { stage: 'Advance Paid', done: hasT(tracking?.advancePaidAt), timestamp: tracking?.advancePaidAt ?? null, actor: null, note: tracking?.advancePaidNote ?? null },
+        { stage: 'Vendor Confirmed', done: hasT(tracking?.vendorConfirmedAt), timestamp: tracking?.vendorConfirmedAt ?? null, actor: null, note: tracking?.vendorConfirmedNote ?? null },
+        { stage: 'Shipped', done: hasT(tracking?.shippedAt) || !!ov?.shipped, timestamp: tracking?.shippedAt ?? null, actor: null, note: tracking?.shippedNote ?? null },
+        { stage: 'Delivered', done: hasT(tracking?.deliveredAt) || !!ov?.delivered, timestamp: tracking?.deliveredAt ?? null, actor: null, note: tracking?.deliveredNote ?? null },
+        { stage: 'Under GRN', done: hasT(tracking?.underGrnAt) || !!ov?.underGrn, timestamp: tracking?.underGrnAt ?? null, actor: null, note: tracking?.underGrnNote ?? null },
+        { stage: 'GRN Complete', done: hasT(tracking?.grnCompleteAt) || grnDone, timestamp: tracking?.grnCompleteAt ?? null, actor: null, note: tracking?.grnCompleteNote ?? null },
       ],
     });
   };
@@ -1698,6 +1758,7 @@ const Procurement: React.FC = () => {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       setUnlinkedPoTimelineOverrides((prev) => ({
         ...prev,
         [backendPoId]: {
@@ -1849,6 +1910,7 @@ const Procurement: React.FC = () => {
 
         queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
         queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+        queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
         queryClient.invalidateQueries({ queryKey: ['grn-list'] });
         updateProcurementState((current: any) => ({
           requests: current.requests.map((req: any) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
@@ -1954,6 +2016,7 @@ const Procurement: React.FC = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       queryClient.invalidateQueries({ queryKey: ['grn-list'] });
       addToast(
         'success',
@@ -2603,7 +2666,7 @@ const Procurement: React.FC = () => {
       if (po2NumericId) void fetchPoTracking(po2NumericId);
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', normalizedPoId] });
       if (po2NumericId) await queryClient.invalidateQueries({ queryKey: ['po-tracking', po2NumericId] });
-      await queryClient.invalidateQueries({ queryKey: ['po-tracking-unlinked-map'] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
 
       if (selectedDraftPO?.id === splitPOTarget.id) {
         setSelectedDraftPO(null);
@@ -4374,6 +4437,8 @@ const Procurement: React.FC = () => {
               )}
 
               {sideSection === 'Issued POs' && (() => {
+                const normPoKeyLocal = (n: string) =>
+                  String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
                 const totalPos = issuedPORecords.length;
                 const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
                 const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
@@ -4381,9 +4446,9 @@ const Procurement: React.FC = () => {
                 const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
                 const grnComplete = completedGrns.length;
 
-                const itemisedRows = filteredIssuedPORecords.flatMap(record =>
-                  record.lineItems.map((line, index) => ({
-                    key: `${record.poNumber}-${line.itemCode}-${index}`,
+                const itemisedRows = filteredIssuedPORecords.flatMap((record, recordIndex) =>
+                  record.lineItems.map((line, lineIndex) => ({
+                    key: `${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-r${recordIndex}-li${lineIndex}-${line.itemCode}`,
                     record,
                     line,
                   })),
@@ -4399,23 +4464,12 @@ const Procurement: React.FC = () => {
                   'GRN Complete',
                 ] as const;
 
-                const getTimelineCompletedIndex = (status: string) => {
-                  if (status === 'Released') return 0;
-                  if (status === 'In Transit') return 3;
-                  if (status === 'At Risk') return 3;
-                  return 0;
-                };
-
                 const getTimelineCompletedIndexForRecord = (record: any) => {
                   const backendPoId = record?.backendPoId ? String(record.backendPoId) : '';
                   const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-                  const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
-
-                  if (tracking?.grnCompleteAt) return 6;
-                  if (ov?.underGrn || tracking?.underGrnAt) return 5;
-                  if (ov?.delivered || tracking?.deliveredAt) return 4;
-                  if (ov?.shipped || tracking?.shippedAt) return 3;
-                  return getTimelineCompletedIndex(record.status);
+                  const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+                  const grnDone = grnCompletePoNormSet.has(normPoKeyLocal(record.poNumber));
+                  return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
                 };
 
                 return (
@@ -4622,12 +4676,12 @@ const Procurement: React.FC = () => {
 
                     {/* Tracking cards under the itemised view */}
                     <div className="space-y-3">
-                      {filteredIssuedPORecords.map(record => {
+                      {filteredIssuedPORecords.map((record, cardIndex) => {
                         const completedIndex = getTimelineCompletedIndexForRecord(record);
 
                         return (
                           <div
-                            key={`${record.request.id}-${record.poNumber}-card`}
+                            key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-card-${cardIndex}`}
                             className="rounded-lg border border-blue-200 bg-white px-4 py-4 text-xs text-slate-800 shadow-sm"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -4666,7 +4720,7 @@ const Procurement: React.FC = () => {
                                   const done = index <= completedIndex;
                                   return (
                                     <div
-                                      key={`${record.poNumber}-${stage}`}
+                                      key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-${stage}`}
                                       className="relative flex flex-col items-center flex-1"
                                     >
                                       <div
@@ -4695,7 +4749,7 @@ const Procurement: React.FC = () => {
                                 <p className="mb-1 font-semibold">Items Ordered</p>
                                 {record.lineItems.map((line, index) => (
                                   <div
-                                    key={`${record.poNumber}-${line.itemCode}-${index}`}
+                                    key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-li-${line.itemCode}-${index}`}
                                     className="flex items-center justify-between gap-2 py-1 border-t border-slate-800 first:border-t-0"
                                   >
                                     <div className="flex flex-col">
@@ -5185,7 +5239,7 @@ const Procurement: React.FC = () => {
                           if (row.requestStatus === 'New') actionLabel = 'Quote';
                           else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
                           else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
-                          else if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') actionLabel = 'PO';
+                          else if (requestStatusShowsIssuedPOs(row.requestStatus)) actionLabel = 'PO';
 
                           const handleActionClick = () => {
                             if (!actionLabel) return;
@@ -5219,7 +5273,7 @@ const Procurement: React.FC = () => {
                               return;
                             }
 
-                            if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') {
+                            if (requestStatusShowsIssuedPOs(row.requestStatus)) {
                               if (row.poId) {
                                 const po = purchaseOrders.find((p) => p.id === row.poId);
                                 if (po) {
@@ -5447,6 +5501,7 @@ const Procurement: React.FC = () => {
             return;
           }
           await queryClient.invalidateQueries({ queryKey: ['po-tracking', po.backendPoId] });
+          await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
           await queryClient.refetchQueries({ queryKey: ['po-tracking', po.backendPoId] });
           addToast('success', 'Tracking updated');
         };
