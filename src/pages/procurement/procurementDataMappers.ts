@@ -26,6 +26,8 @@ const PR_STATUS_MAP: Record<string, ProcurementRequest['status']> = {
   'PO Draft': 'PO Draft',
   'PO Released': 'PO Released',
   'Delivery Pending': 'Delivery Pending',
+  /** Persisted when a PO is marked delivered → GRN from Procurement; must round-trip for Issued POs list. */
+  'Under GRN': 'Under GRN',
 };
 
 const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
@@ -34,12 +36,25 @@ const QUOTE_STATUS_MAP: Record<string, VendorQuote['status']> = {
   pending: 'Pending Review',
 };
 
+/** Qty from API: numbers, strings, comma-separated (en-IN). */
+export function parseQuantityRequested(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).replace(/,/g, '').replace(/\s/g, '').trim();
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number } {
   const raw = String(lineNotes ?? '');
   let plannedPrice = 0;
   let leadTimeDays = 0;
-  const rateMatch = raw.match(/Planned rate\s*[₹]?\s*([\d.]+)/i) || raw.match(/[₹]\s*([\d.]+)/);
-  if (rateMatch) plannedPrice = Number(rateMatch[1]) || 0;
+  const rateMatch =
+    raw.match(/Planned rate\s*[₹]?\s*([\d.,]+)/i) || raw.match(/[₹]\s*([\d.,]+)/);
+  if (rateMatch) {
+    const n = parseFloat(String(rateMatch[1]).replace(/,/g, ''));
+    if (Number.isFinite(n)) plannedPrice = n;
+  }
   const leadMatch = raw.match(/Lead:\s*(\d+)\s*d/i);
   if (leadMatch) leadTimeDays = Number(leadMatch[1]) || 0;
   return { plannedPrice, leadTimeDays };
@@ -86,18 +101,26 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
       (i: {
         code?: string;
         name?: string;
-        quantity_requested?: number;
+        quantity_requested?: number | string;
         unit?: string;
         line_notes?: string;
         moq_min?: number;
+        planned_unit_price?: number;
+        lead_time_days?: number;
         raw_material_id?: number;
         pack_material_id?: number;
         type?: string;
       }) => {
         const parsed = parsePlannedLineNotes(i?.line_notes);
+        const fieldRate = Number(i?.planned_unit_price);
+        const plannedPrice =
+          Number.isFinite(fieldRate) && fieldRate > 0 ? fieldRate : parsed.plannedPrice;
+        const fieldLead = Number(i?.lead_time_days);
+        const leadTimeDays =
+          Number.isFinite(fieldLead) && fieldLead > 0 ? fieldLead : parsed.leadTimeDays;
         const moqMin = i?.moq_min != null ? Number(i.moq_min) : NaN;
         const moqStr = Number.isFinite(moqMin) && moqMin > 0 ? String(moqMin) : '';
-        const reqQty = Number(i?.quantity_requested) || 0;
+        const reqQty = parseQuantityRequested(i?.quantity_requested);
         const lineType: ItemDetail['type'] =
           i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM';
         return {
@@ -107,9 +130,9 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
           unit: i?.unit ?? '',
           moq: moqStr,
           packSize: '',
-          plannedPrice: parsed.plannedPrice,
-          leadTimeDays: parsed.leadTimeDays,
-          estValue: reqQty * parsed.plannedPrice,
+          plannedPrice,
+          leadTimeDays,
+          estValue: reqQty * plannedPrice,
           raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
           pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
           type: lineType,
@@ -137,6 +160,8 @@ export function mapBackendQuotationToQuote(
 ): VendorQuote {
   const lines: QuoteLine[] = (q.items ?? []).map((item) => {
     const total = item.totalValue ?? item.orderQty * item.pricePerUnit;
+    const ld = item.leadTimeDays ?? (item as { lead_time_days?: number }).lead_time_days;
+    const leadTimeDays = ld != null && ld !== '' ? Number(ld) : undefined;
     return {
       item: item.name,
       itemId: item.itemId,
@@ -144,6 +169,7 @@ export function mapBackendQuotationToQuote(
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
+      leadTimeDays: Number.isFinite(leadTimeDays) && (leadTimeDays as number) > 0 ? (leadTimeDays as number) : undefined,
       raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
       pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
     };
@@ -168,6 +194,17 @@ export function mapBackendQuotationToQuote(
   };
 }
 
+function parseLeadDaysFromString(s: string | undefined | null): number {
+  if (s == null || !String(s).trim()) return 0;
+  const m = String(s).match(/(\d+)\s*[-–]?\s*(\d+)?/);
+  if (!m) return 0;
+  const a = parseInt(m[1], 10);
+  const b = m[2] != null ? parseInt(m[2], 10) : a;
+  if (!Number.isFinite(a)) return 0;
+  if (!Number.isFinite(b)) return a;
+  return Math.round((a + b) / 2);
+}
+
 /** VendorClientRecord (vendor only) -> Vendor (procurement) */
 export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
   const category = (v.category ?? '').toUpperCase();
@@ -183,7 +220,7 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
     rating: v.rating ?? 0,
     confirmedQuotes: 0,
     posIssued: 0,
-    avgLeadTime: 0,
+    avgLeadTime: parseLeadDaysFromString(v.leadTime),
     paymentTerms: v.paymentTerms ?? '',
     contact: '',
     email: v.email ?? '',
@@ -270,7 +307,12 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
   const grandTotal = subtotal + gstTotal;
   const backendPoId = String(po.id ?? '').replace(/^PO-/, '') || undefined;
 
-  const approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  const isSplitChildPo = /-S\d+$/i.test(String(po.poNumber ?? '').trim());
+  let approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  // Split POs reset approval in form_data; stale "Approved" without a timestamp should not block re-approval in the UI.
+  if (isSplitChildPo && approvalApproved && (formData.procurementApprovedAt == null || formData.procurementApprovedAt === '')) {
+    approvalApproved = false;
+  }
   const approvedAtIso = formData.procurementApprovedAt;
   let approvedLabel = '';
   if (approvalApproved && approvedAtIso) {

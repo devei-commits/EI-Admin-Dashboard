@@ -15,6 +15,8 @@ export interface ProcurementQuotationItem {
   pricePerUnit: number;
   uom: string;
   totalValue: number;
+  /** Days; from Items List vendor rate or persisted quote line */
+  leadTimeDays?: number | null;
 }
 
 export interface ProcurementQuotation {

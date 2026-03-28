@@ -72,6 +72,8 @@ export type QuoteLine = {
   pricePerUnit: number;
   totalValue: number;
   vsPlanned: string;
+  /** Line-level lead (days) when API provides it */
+  leadTimeDays?: number;
   raw_material_id?: number;
   pack_material_id?: number;
 };

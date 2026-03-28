@@ -17,6 +17,7 @@ import { fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import {
+  formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
   serializeStagedPaymentTerms,
   validateStagedPercents,
@@ -621,8 +622,8 @@ const ItemsList: React.FC = () => {
                         <div>
                           <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
                           {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
-                          {(rate.payment_terms && formatRatePaymentTermsLabel(rate.payment_terms)) ? (
-                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatRatePaymentTermsLabel(rate.payment_terms)}</span>
+                          {(rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms)) ? (
+                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatStagedPaymentTermsSummary(rate.payment_terms)}</span>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
@@ -823,27 +824,17 @@ const ItemsList: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
                   <input
                     type="number"
                     min={0}
                     value={leadTimeDays}
                     onChange={(e) => setLeadTimeDays(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full max-w-xs px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
                     placeholder="0"
                   />
-                </div>
-                <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={leadTimeDays}
-                    onChange={(e) => setLeadTimeDays(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
-                    placeholder="0"
-                  />
+                  <p className="text-[10px] text-gray-500 mt-1">Applies to this vendor rate (all tiers added below).</p>
                 </div>
               </div>
               <div>

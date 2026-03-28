@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -35,6 +35,18 @@ function boxesTimesUnitsEqualsRcvd(noOfBoxes: number, unitsPerBox: number, rcvdQ
 }
 
 /** Uniform cartons, or full cartons + optional partial last box: (n−1)×u + last = rcvd. */
+/** Item code from the first saved/generated QR (GRN stores one label set at a time). */
+function parseItemCodeFromGeneratedLabels(labels: GeneratedLabel[] | null | undefined): string | null {
+  if (!labels?.length) return null;
+  try {
+    const p = JSON.parse(labels[0].qrPayload || '{}') as { item_code?: string };
+    const c = String(p.item_code || '').trim();
+    return c || null;
+  } catch {
+    return null;
+  }
+}
+
 function labelPackagingMatchesRcvd(
   rcvdQty: number,
   numBoxes: number,
@@ -195,6 +207,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   );
   const [labelsGenerated, setLabelsGenerated] = useState(!!(grn.generatedLabels && grn.generatedLabels.length > 0));
   const [labels, setLabels] = useState<GeneratedLabel[] | null>(grn.generatedLabels ?? null);
+  /** Which box's label is shown in the preview dropdown (1-based box index from API). */
+  const [selectedLabelBoxIndex, setSelectedLabelBoxIndex] = useState<number | null>(null);
   const [generatingLabels, setGeneratingLabels] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
@@ -216,6 +230,44 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [showQcByDropdown, setShowQcByDropdown] = useState(false);
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
+
+  const labelItemCodeOnFile = useMemo(() => parseItemCodeFromGeneratedLabels(labels), [labels]);
+  const labelsAreForSelectedLine = Boolean(
+    selectedLineItem &&
+      labelItemCodeOnFile &&
+      labelItemCodeOnFile.toLowerCase() === selectedLineItem.itemCode.trim().toLowerCase(),
+  );
+  /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
+  const needsGenerateForSelection = Boolean(
+    selectedLineItemId && (!labelItemCodeOnFile || !labelsAreForSelectedLine),
+  );
+
+  useEffect(() => {
+    if (!labels || labels.length === 0) {
+      setSelectedLabelBoxIndex(null);
+      return;
+    }
+    setSelectedLabelBoxIndex((prev) => {
+      if (prev != null && labels.some((l) => l.boxIndex === prev)) return prev;
+      return labels[0].boxIndex;
+    });
+  }, [labels]);
+
+  /** When reopening a GRN that already has saved labels, preselect the line item from QR payload so Regenerate works. */
+  useEffect(() => {
+    if (selectedLineItemId) return;
+    const gl = grn.generatedLabels;
+    if (!Array.isArray(gl) || gl.length === 0) return;
+    try {
+      const p = JSON.parse(gl[0].qrPayload || '{}') as { item_code?: string };
+      const code = String(p.item_code || '').trim();
+      if (!code) return;
+      const match = editedLineItems.find((li) => li.itemCode === code);
+      if (match) setSelectedLineItemId(match.id);
+    } catch {
+      /* ignore */
+    }
+  }, [grn.id, grn.generatedLabels, editedLineItems, selectedLineItemId]);
 
   useEffect(() => {
     setQcStatus(normalizeQcStatus(grn.qcStatus));
@@ -315,6 +367,94 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     void persistUpdate({});
   };
 
+  const runGenerateLabels = async () => {
+    if (qcStatus !== 'Passed') {
+      setLabelError('QC must be Passed before generating labels.');
+      return;
+    }
+    if (!qcBy.trim()) {
+      setLabelError('Assign QC by before generating labels.');
+      return;
+    }
+    if (!assignedTo.trim()) {
+      setLabelError('Assign this GRN (Assigned To) before generating labels.');
+      return;
+    }
+    if (!selectedLineItemId || !selectedLineItem) {
+      setLabelError('Please select a product / line item before generating labels.');
+      return;
+    }
+    const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
+    const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
+    if (selectedLineItem != null) {
+      const pack = labelPackagingMatchesRcvd(
+        selectedLineItem.rcvdQty,
+        numBoxes,
+        numUnitsPerBox,
+        lastBoxUnitsStr
+      );
+      if (!pack.ok) {
+        setLabelError(pack.message);
+        return;
+      }
+    }
+    const wasRegenerating = Boolean(labelItemCodeOnFile && labelsAreForSelectedLine);
+    setLabelError(null);
+    setGeneratingLabels(true);
+    try {
+      const saved = await persistUpdate({});
+      if (!saved) {
+        addToast('error', 'Could not save changes. Fix the error above, then try again.');
+        return;
+      }
+      const res = await generateGRNLabels(grn.id, {
+        noOfBoxes: numBoxes,
+        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
+        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
+        locationPrefix: locationPrefix || undefined,
+        grnBatchMfg: grnBatchMfg || undefined,
+        expiry: expiry || undefined,
+        mfgBatch: mfgBatch || undefined,
+        productName: selectedLineItem?.item || undefined,
+        itemCode: selectedLineItem?.itemCode || undefined,
+      });
+      setLabels(res.labels);
+      setLabelsGenerated(true);
+      if (res.workflowSteps) {
+        setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
+      }
+      const merged: GRNRecord = {
+        ...saved,
+        generatedLabels: res.labels,
+        workflowSteps: (res.workflowSteps ?? saved.workflowSteps) as WorkflowStep[],
+      };
+      onSaveChanges(merged);
+      addToast(
+        'success',
+        wasRegenerating ? 'QR labels regenerated with your updates.' : 'QR labels generated.',
+      );
+    } catch (e: unknown) {
+      const err = e as { status?: number; body?: { error?: string }; message?: string };
+      const status = err?.status;
+      const bodyError =
+        err?.body && typeof err.body === 'object' && 'error' in err.body
+          ? (err.body as { error?: string }).error
+          : undefined;
+      const msg = bodyError || (e instanceof Error ? e.message : 'Failed to generate labels');
+      setLabelError(msg);
+      if (status === 403) {
+        addToast(
+          'error',
+          'QC must be Passed on the server before labels can be generated. Save failed or QC was not persisted.',
+        );
+      } else {
+        addToast('error', msg);
+      }
+    } finally {
+      setGeneratingLabels(false);
+    }
+  };
+
   const completionBlockers: string[] = [];
   if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
   if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
@@ -323,6 +463,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     completionBlockers.push('QR labels must be generated.');
   }
   const canMarkComplete = completionBlockers.length === 0;
+
+  const activeLabel: GeneratedLabel | null =
+    labels && labels.length > 0
+      ? labels.find((l) => l.boxIndex === selectedLabelBoxIndex) ?? labels[0]
+      : null;
 
   const handleCompleteGRN = () => {
     if (!canMarkComplete) {
@@ -615,7 +760,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Select product / line item <span className="text-red-500">*</span></label>
                 <select
                   value={selectedLineItemId}
-                  onChange={(e) => setSelectedLineItemId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedLineItemId(e.target.value);
+                    setLabelError(null);
+                  }}
                   className={`w-full px-2 py-1.5 border rounded text-sm ${!selectedLineItemId ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`}
                 >
                   <option value="">— Select a product —</option>
@@ -670,167 +818,153 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              {!labelsGenerated ? (
-                <button
-                  onClick={async () => {
-                    if (qcStatus !== 'Passed') {
-                      setLabelError('QC must be Passed before generating labels.');
-                      return;
-                    }
-                    if (!qcBy.trim()) {
-                      setLabelError('Assign QC by before generating labels.');
-                      return;
-                    }
-                    if (!assignedTo.trim()) {
-                      setLabelError('Assign this GRN (Assigned To) before generating labels.');
-                      return;
-                    }
-                    if (!selectedLineItemId || !selectedLineItem) {
-                      setLabelError('Please select a product / line item before generating labels.');
-                      return;
-                    }
-                    const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-                    const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
-                    if (selectedLineItem != null) {
-                      const pack = labelPackagingMatchesRcvd(
-                        selectedLineItem.rcvdQty,
-                        numBoxes,
-                        numUnitsPerBox,
-                        lastBoxUnitsStr
-                      );
-                      if (!pack.ok) {
-                        setLabelError(pack.message);
-                        return;
-                      }
-                    }
-                    setLabelError(null);
-                    setGeneratingLabels(true);
-                    try {
-                      const saved = await persistUpdate({});
-                      if (!saved) {
-                        addToast('error', 'Could not save changes. Fix the error above, then try Generate Labels again.');
-                        return;
-                      }
-                      const res = await generateGRNLabels(grn.id, {
-                        noOfBoxes: numBoxes,
-                        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
-                        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
-                        locationPrefix: locationPrefix || undefined,
-                        grnBatchMfg: grnBatchMfg || undefined,
-                        expiry: expiry || undefined,
-                        mfgBatch: mfgBatch || undefined,
-                        productName: selectedLineItem?.item || undefined,
-                        itemCode: selectedLineItem?.itemCode || undefined,
-                      });
-                      setLabels(res.labels);
-                      setLabelsGenerated(true);
-                      if (res.workflowSteps) {
-                        setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
-                      }
-                      const merged: GRNRecord = {
-                        ...saved,
-                        generatedLabels: res.labels,
-                        workflowSteps: (res.workflowSteps ?? saved.workflowSteps) as WorkflowStep[],
-                      };
-                      onSaveChanges(merged);
-                    } catch (e: unknown) {
-                      const err = e as { status?: number; body?: { error?: string }; message?: string };
-                      const status = err?.status;
-                      const bodyError = err?.body && typeof err.body === 'object' && 'error' in err.body ? (err.body as { error?: string }).error : undefined;
-                      const msg = bodyError || (e instanceof Error ? e.message : 'Failed to generate labels');
-                      setLabelError(msg);
-                      if (status === 403) {
-                        addToast('error', 'QC must be Passed on the server before labels can be generated. Save failed or QC was not persisted.');
-                      } else {
-                        addToast('error', msg);
-                      }
-                    } finally {
-                      setGeneratingLabels(false);
-                    }
-                  }}
-                  disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => { setLabelsGenerated(false); setLabels(null); }}
-                  className="px-4 py-2 bg-slate-400 text-white rounded-lg font-medium text-sm hover:bg-slate-500 transition-colors"
-                >
-                  Hide Labels
-                </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                {needsGenerateForSelection && (
+                  <button
+                    type="button"
+                    onClick={() => void runGenerateLabels()}
+                    disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
+                  </button>
+                )}
+                {labelsAreForSelectedLine && labelsGenerated && labels && labels.length > 0 && (
+                  <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 max-w-xl">
+                    Labels on file match this line. Change boxes, rack/location, or batch above, then use{' '}
+                    <strong>Regenerate all QR labels</strong> in the preview section to update every box QR.
+                  </p>
+                )}
+              </div>
+              {labelItemCodeOnFile && selectedLineItem && !labelsAreForSelectedLine && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-xl">
+                  Saved QR labels are for item <span className="font-mono font-semibold">{labelItemCodeOnFile}</span>.
+                  Select another line or use <strong>Generate Labels</strong> to create QR codes for{' '}
+                  <span className="font-semibold">{selectedLineItem.item}</span> (this replaces the previous set for this GRN).
+                </p>
               )}
             </div>
             {labelError && <p className="text-sm text-red-600">{labelError}</p>}
           </section>
 
-          {/* QR Label Preview — one card per box with scan payload */}
-          {labelsGenerated && labels && labels.length > 0 && (
+          {/* QR Label Preview — dropdown to pick a box; regenerate updates all QRs from form fields */}
+          {labelsGenerated && labels && labels.length > 0 && activeLabel && labelsAreForSelectedLine && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {labels.map((label) => {
-                  let payload: {
-                    grn_id?: number;
-                    grn_no?: string;
-                    product_name?: string;
-                    item_code?: string;
-                    units_per_box?: number;
-                    full_carton_units?: number;
-                    partial_last_box?: boolean;
-                    location_prefix?: string;
-                    toRack?: string | null;
-                    toZone?: string | null;
-                    rack?: string | null;
-                    zone?: string | null;
-                    grn_batch_mfg?: string;
-                    expiry?: string;
-                    mfg_batch?: string;
-                    box_index?: number;
-                  } = {};
-                  try {
-                    payload = JSON.parse(label.qrPayload);
-                  } catch {
-                    payload = {};
-                  }
-                  return (
-                    <div key={label.boxIndex} className="bg-white border-2 border-slate-300 rounded-lg p-4 shadow-sm">
-                      <div className="text-center mb-2">
-                        <p className="text-xs font-mono font-bold text-slate-900">Box {label.boxIndex}</p>
-                      </div>
-                      <div className="flex justify-center mb-3">
-                        <img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-32 h-32 object-contain" />
-                      </div>
-                      <div className="space-y-1 text-xs text-slate-600">
-                        {payload.product_name && <p><span className="font-semibold">Product:</span> {payload.product_name}</p>}
-                        {payload.item_code && <p><span className="font-semibold">Item code:</span> {payload.item_code}</p>}
-                        <p><span className="font-semibold">GRN:</span> {payload.grn_no || payload.grn_id}</p>
-                        <p><span className="font-semibold">Units in this box:</span> {payload.units_per_box}</p>
-                        {payload.full_carton_units != null && (
-                          <p><span className="font-semibold">Full carton size:</span> {payload.full_carton_units}</p>
-                        )}
-                        {payload.partial_last_box && (
-                          <p className="text-amber-700 font-medium">Partial last carton</p>
-                        )}
-                        <p>
-                          <span className="font-semibold">Rack:</span>{' '}
-                          {payload.toRack || payload.rack || payload.location_prefix || '—'}
-                        </p>
-                        <p>
-                          <span className="font-semibold">Zone:</span>{' '}
-                          {payload.toZone || payload.zone || '—'}
-                        </p>
-                        <p><span className="font-semibold">Batch mfg:</span> {payload.grn_batch_mfg || '—'}</p>
-                        <p><span className="font-semibold">Expiry:</span> {payload.expiry || '—'}</p>
-                        <p><span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}</p>
-                      </div>
-                      <p className="mt-2 text-[10px] text-slate-500">On scan: decoder shows all text above + action (e.g. View GRN).</p>
-                    </div>
-                  );
-                })}
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Select generated label</label>
+                  <select
+                    value={selectedLabelBoxIndex ?? activeLabel.boxIndex}
+                    onChange={(e) => setSelectedLabelBoxIndex(parseInt(e.target.value, 10) || null)}
+                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                  >
+                    {labels.map((label) => {
+                      let unitsSummary = '—';
+                      try {
+                        const p = JSON.parse(label.qrPayload) as { units_per_box?: number };
+                        unitsSummary = p.units_per_box != null ? String(p.units_per_box) : '—';
+                      } catch {
+                        unitsSummary = '—';
+                      }
+                      return (
+                        <option key={label.boxIndex} value={label.boxIndex}>
+                          Box {label.boxIndex} — {unitsSummary} units
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void runGenerateLabels()}
+                  disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : generatingLabels ? 'Regenerating…' : 'Regenerate all QR labels'}
+                </button>
               </div>
+              <p className="text-[11px] text-slate-500">
+                Updating applies to <strong>all</strong> boxes (same product line, packaging, and location fields). Pick a box here to inspect its QR; then adjust fields in &quot;Labels (QR per box)&quot; above and regenerate.
+              </p>
+              {(() => {
+                const label = activeLabel;
+                let payload: {
+                  grn_id?: number;
+                  grn_no?: string;
+                  product_name?: string;
+                  item_code?: string;
+                  units_per_box?: number;
+                  full_carton_units?: number;
+                  partial_last_box?: boolean;
+                  location_prefix?: string;
+                  toRack?: string | null;
+                  toZone?: string | null;
+                  rack?: string | null;
+                  zone?: string | null;
+                  grn_batch_mfg?: string;
+                  expiry?: string;
+                  mfg_batch?: string;
+                  box_index?: number;
+                } = {};
+                try {
+                  payload = JSON.parse(label.qrPayload);
+                } catch {
+                  payload = {};
+                }
+                return (
+                  <div className="bg-white border-2 border-slate-300 rounded-lg p-4 shadow-sm max-w-md">
+                    <div className="text-center mb-2">
+                      <p className="text-xs font-mono font-bold text-slate-900">Box {label.boxIndex}</p>
+                    </div>
+                    <div className="flex justify-center mb-3">
+                      <img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-40 h-40 object-contain" />
+                    </div>
+                    <div className="space-y-1 text-xs text-slate-600">
+                      {payload.product_name && (
+                        <p>
+                          <span className="font-semibold">Product:</span> {payload.product_name}
+                        </p>
+                      )}
+                      {payload.item_code && (
+                        <p>
+                          <span className="font-semibold">Item code:</span> {payload.item_code}
+                        </p>
+                      )}
+                      <p>
+                        <span className="font-semibold">GRN:</span> {payload.grn_no || payload.grn_id}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Units in this box:</span> {payload.units_per_box}
+                      </p>
+                      {payload.full_carton_units != null && (
+                        <p>
+                          <span className="font-semibold">Full carton size:</span> {payload.full_carton_units}
+                        </p>
+                      )}
+                      {payload.partial_last_box && <p className="text-amber-700 font-medium">Partial last carton</p>}
+                      <p>
+                        <span className="font-semibold">Rack:</span>{' '}
+                        {payload.toRack || payload.rack || payload.location_prefix || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Zone:</span> {payload.toZone || payload.zone || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Batch mfg:</span> {payload.grn_batch_mfg || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Expiry:</span> {payload.expiry || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-500">On scan: decoder shows all text above + action (e.g. View GRN).</p>
+                  </div>
+                );
+              })()}
 
               {/* On scan: simulate paste payload → show all text + action */}
               {/* <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">

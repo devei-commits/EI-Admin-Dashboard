@@ -4,7 +4,7 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { getPrimaryFields, validatePrimaryFields } from '../utils/masterFormUtils';
+import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
 import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -264,6 +264,14 @@ const RawMaterialRefactored: React.FC = () => {
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
+  if (id === 'hsnCode' || id === 'gst' || id === 'rmTaxPreference') {
+   setErrors((prev) => {
+    const next = { ...prev };
+    delete next.hsnCode;
+    delete next.gst;
+    return next;
+   });
+  }
   if (id === 'rmCategoryKey') {
    const cat = value ? RM_CATEGORIES[value] : null;
    setFormData(prev => ({
@@ -412,9 +420,15 @@ const RawMaterialRefactored: React.FC = () => {
    }
   }
   const validation = validatePrimaryFields(formData, 'rawMaterial');
-  if (!validation.valid) {
-   setErrors(validation.errors);
-   addToast('error', 'Please fill all primary fields');
+  const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'rawMaterial');
+  if (!validation.valid || !taxValidation.valid) {
+   setErrors({ ...validation.errors, ...taxValidation.errors });
+   if (!taxValidation.valid) {
+    addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Units, Tax & Procurement). Exempt / NonGST can leave them blank.');
+    setCurrentStage(3);
+   } else {
+    addToast('error', 'Please fill all primary fields');
+   }
    return;
   }
   try {
@@ -480,6 +494,9 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
     />
+    <p className="text-xs text-gray-500 -mt-2">
+     Taxable: HSN and GST % are required (see Units, Tax &amp; Procurement). Exempted / NonGST: optional.
+    </p>
     <CheckboxField
      label="Returnable Item"
      id="rmReturnable"
@@ -735,6 +752,8 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.hsnCode}
      onChange={handleInputChange}
      placeholder="Tax classification code"
+     error={errors.hsnCode}
+     requiredMark={formData.rmTaxPreference === 'Taxable'}
     />
     <InputField
      label="GST %"
@@ -742,6 +761,8 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.gst}
      onChange={handleInputChange}
      placeholder="e.g. 18"
+     error={errors.gst}
+     requiredMark={formData.rmTaxPreference === 'Taxable'}
     />
     <InputField
      label="Accounting Category"
@@ -1646,17 +1667,26 @@ const InputField: React.FC<{
  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
  type?: string;
  placeholder?: string;
-}> = ({ label, id, value, onChange, type = 'text', placeholder }) => (
+ error?: string;
+ requiredMark?: boolean;
+}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark }) => (
  <div>
-  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+   {label}
+   {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+  </label>
   <input
    type={type}
    id={id}
    value={value || ''}
    onChange={onChange}
    placeholder={placeholder}
-   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+   aria-invalid={error ? true : undefined}
+   className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+    error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+   }`}
   />
+  {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
  </div>
 );
 

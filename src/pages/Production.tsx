@@ -2607,9 +2607,9 @@ function findOpenPmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNReco
 /** Short label for BMR/BPR chip — reflects warehouse pipeline (not editable). */
 function outboundMtrStageTitle(m: MRNRecordFromApi): string {
   const s = String(m.status || '').trim();
-  if (s === 'Pending') return 'MTR: Awaiting warehouse release';
-  if (s === 'Picked') return 'MTR: Picked at warehouse — release to send in transit';
-  if (s === 'In Transfer') return 'MTR: Warehouse initiated transfer — tap Release to set In transit';
+  if (s === 'Pending') return 'MTR: Awaiting warehouse (Initiate transfer → In transit)';
+  if (s === 'Picked') return 'MTR: Picked at warehouse — Initiate transfer in Warehouse when ready';
+  if (s === 'In Transfer') return 'MTR: In transfer — Warehouse: Initiate transfer again to set In transit';
   if (s === 'In Transit') return 'MTR: In transit (released from WH)';
   if (s === 'Received at MU') return 'MTR: At MU — finish put-away';
   return 'MTR: In progress';
@@ -2617,9 +2617,9 @@ function outboundMtrStageTitle(m: MRNRecordFromApi): string {
 
 function outboundMtrStageHint(m: MRNRecordFromApi): string {
   const s = String(m.status || '').trim();
-  if (s === 'Pending') return 'Open Transfer orders → Release from warehouse to move stock.';
-  if (s === 'Picked') return 'Pick is saved. In Transfer orders → Release from warehouse to move stock.';
-  if (s === 'In Transfer') return 'Open Transfer orders → Release from warehouse to align to In transit (required for the next steps).';
+  if (s === 'Pending') return 'Warehouse → Transfer orders: assign picker, then Initiate transfer (sets In transit).';
+  if (s === 'Picked') return 'Warehouse → Transfer orders: Initiate transfer when goods leave the warehouse (In transit).';
+  if (s === 'In Transfer') return 'Warehouse → Transfer orders: tap Initiate transfer to set In transit.';
   if (s === 'In Transit') return 'Stock left the warehouse. When material arrives at MU, tap Verify / Received at MU.';
   if (s === 'Received at MU') return 'Enter MU zone and rack, then Mark Succeeded to complete the move.';
   return 'Complete steps in Transfer orders.';
@@ -2654,11 +2654,11 @@ function validateOutboundMtrTransition(currentStatus: string | undefined, nextSt
 
   const hintByStatus: Record<string, string> = {
     Pending:
-      'First save pick in Warehouse (optional) or in Transfer orders tap Release from warehouse so status becomes In Transit.',
+      'In Warehouse → Transfer orders, assign picker and tap Initiate transfer when ready (sets In transit).',
     Picked:
-      'Next tap Release from warehouse in Transfer orders to set In Transit (or use Warehouse Initiate transfer, then Release to align to In Transit).',
+      'In Warehouse → Transfer orders, tap Initiate transfer to set In transit.',
     'In Transfer':
-      'Tap Release from warehouse in Transfer orders to set In Transit, then when goods arrive at MU use Verify / Received at MU.',
+      'In Warehouse → Transfer orders, tap Initiate transfer to set In transit; when goods arrive at MU use Verify / Received at MU.',
     'In Transit':
       'When goods arrive at MU, tap Verify / Received at MU in Transfer orders before completing.',
     'Received at MU':
@@ -2667,8 +2667,41 @@ function validateOutboundMtrTransition(currentStatus: string | undefined, nextSt
 
   const hint =
     hintByStatus[cur] ||
-    'Follow Production → Transfer orders: Release from warehouse → In transit → Received at MU → Mark Succeeded.';
+    'Follow Warehouse → Transfer orders (Initiate transfer) → In transit → Received at MU → Mark Succeeded.';
   return `This step cannot be done yet (cannot move from "${cur}" to "${next}"). ${hint}`;
+}
+
+/** RM line on MTR (matches backend lineItemsIndicateRm heuristic). */
+function mtrLineItemIsRm(li: { unit?: string; raw_material_id?: number }): boolean {
+  if (li.raw_material_id != null) return true;
+  return String(li.unit || '').toUpperCase() === 'KG';
+}
+
+function mtrLineItemIsPm(li: { unit?: string; pack_material_id?: number }): boolean {
+  if (li.pack_material_id != null) return true;
+  const u = String(li.unit || '').toUpperCase();
+  return u === 'PCS' || u === 'PC' || u === 'PIECES';
+}
+
+const MTR_LINE_PHASE_SHORT: Record<string, string> = {
+  not_initiated: 'WH pending',
+  in_transit: 'In transit',
+  received_at_mu: 'At MU',
+  completed: 'Done',
+};
+
+function formatMtrLinePhaseShort(phase: string | undefined): string {
+  return MTR_LINE_PHASE_SHORT[phase || 'not_initiated'] || phase || '';
+}
+
+function mtrLinePhaseRaw(mrn: MRNRecordFromApi, lineId: string): string {
+  return String(mrn.lineTransferStatus?.[lineId] || 'not_initiated');
+}
+
+function mtrAllLinesCompletedApi(m: MRNRecordFromApi): boolean {
+  const ids = m.lineItems?.map((li) => li.id) || [];
+  const lts = m.lineTransferStatus || {};
+  return ids.length > 0 && ids.every((id) => lts[id] === 'completed');
 }
 
 /* ──────────── MTR MODAL ────────────────────────────────────── */
@@ -2941,7 +2974,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       });
       addToast(
         'success',
-        'Transfer request created. Warehouse must release this order from Transfer Orders (In Transit), then mark Received and Complete to unlock RM/PM dispensing.',
+        'Transfer request created. Warehouse → Transfer orders: assign picker and Initiate transfer (In transit), then use Transfer orders here for Received at MU and complete to unlock RM/PM dispensing.',
       );
       onMtrCreated?.();
       onClose();
@@ -3129,6 +3162,40 @@ function MRNDetailModal({
 
   const selectedLineItem = mrn.lineItems?.find((li) => li.id === selectedLineItemId) ?? mrn.lineItems?.[0];
 
+  const inTransitLineIds = useMemo(
+    () =>
+      (mrn.lineItems || [])
+        .filter((li) => mtrLinePhaseRaw(mrn, li.id) === 'in_transit')
+        .map((li) => li.id),
+    [mrn.lineItems, mrn.lineTransferStatus],
+  );
+  const receivedAtMuLineIds = useMemo(
+    () =>
+      (mrn.lineItems || [])
+        .filter((li) => mtrLinePhaseRaw(mrn, li.id) === 'received_at_mu')
+        .map((li) => li.id),
+    [mrn.lineItems, mrn.lineTransferStatus],
+  );
+
+  const [recvLinePick, setRecvLinePick] = useState<Record<string, boolean>>({});
+  const [completeLinePick, setCompleteLinePick] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    inTransitLineIds.forEach((id) => {
+      next[id] = true;
+    });
+    setRecvLinePick(next);
+  }, [mrn.id, JSON.stringify(inTransitLineIds)]);
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    receivedAtMuLineIds.forEach((id) => {
+      next[id] = true;
+    });
+    setCompleteLinePick(next);
+  }, [mrn.id, JSON.stringify(receivedAtMuLineIds)]);
+
   useEffect(() => {
     setStatus(mrn.status);
     setAssignedPicker(mrn.assignedPicker || '');
@@ -3140,7 +3207,7 @@ function MRNDetailModal({
     setLocationPrefix(mrn.locationPrefix ?? '');
     setLabels(mrn.generatedLabels ?? null);
     setLabelsGenerated(!!(mrn.generatedLabels && mrn.generatedLabels.length > 0));
-  }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.muReceiveZone, mrn.muReceiveRack, mrn.noOfBoxes, mrn.unitsPerBox, mrn.locationPrefix, mrn.generatedLabels]);
+  }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.muReceiveZone, mrn.muReceiveRack, mrn.noOfBoxes, mrn.unitsPerBox, mrn.locationPrefix, mrn.generatedLabels, mrn.lineTransferStatus]);
 
   useEffect(() => {
     setHistoryLoading(true);
@@ -3152,22 +3219,29 @@ function MRNDetailModal({
 
   const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
   const muStorageFilled = Boolean(muReceiveZone.trim() && muReceiveRack.trim());
-  const canCompleteOutboundTransfer =
-    isOutboundMtr && status === 'Received at MU' && muStorageFilled;
+  const hasInTransitForReceive = isOutboundMtr && inTransitLineIds.length > 0;
+  const hasReceivedLinesToComplete = isOutboundMtr && receivedAtMuLineIds.length > 0;
+  const canCompleteOutboundTransfer = isOutboundMtr && hasReceivedLinesToComplete && muStorageFilled;
 
   const isClosedStatus = (value: string | undefined) => {
     const s = String(value || '').trim().toLowerCase();
     return s === 'completed' || s === 'succeeded';
   };
 
-  const persistUpdate = async (payload: Partial<MRNRecordFromApi>) => {
+  const persistUpdate = async (payload: Partial<MRNRecordFromApi> & {
+    receiveAtMuLineIds?: string[];
+    completeTransferLineIds?: string[];
+  }) => {
     const nextStatus = payload.status !== undefined ? payload.status : status;
     if (isOutboundMtr && payload.status !== undefined) {
-      const err = validateOutboundMtrTransition(mrn.status, String(payload.status));
-      if (err) {
-        setSaveError(err);
-        addToast('error', err);
-        return;
+      const st = String(payload.status);
+      if (st !== 'Succeeded' && st !== 'Completed') {
+        const err = validateOutboundMtrTransition(mrn.status, String(payload.status));
+        if (err) {
+          setSaveError(err);
+          addToast('error', err);
+          return;
+        }
       }
     }
     if (nextStatus === 'Succeeded' && !isClosedStatus(mrn.status) && isOutboundMtr) {
@@ -3179,8 +3253,9 @@ function MRNDetailModal({
         addToast('error', msg);
         return;
       }
-      if (mrn.status !== 'Received at MU') {
-        const msg = 'Confirm Received at MU first (after warehouse release), then complete.';
+      const hasRecv = (mrn.lineItems || []).some((li) => mtrLinePhaseRaw(mrn, li.id) === 'received_at_mu');
+      if (!hasRecv) {
+        const msg = 'Mark at least one line as received at MU first.';
         setSaveError(msg);
         addToast('error', msg);
         return;
@@ -3192,7 +3267,7 @@ function MRNDetailModal({
     try {
       const res = await updateMRN(mrn.id, {
         status,
-        assignedPicker: assignedPicker || undefined,
+        ...(!isOutboundMtr ? { assignedPicker: assignedPicker || undefined } : {}),
         receivedAtMu: receivedAtMu || undefined,
         muReceiveZone: muReceiveZone || undefined,
         muReceiveRack: muReceiveRack || undefined,
@@ -3207,7 +3282,10 @@ function MRNDetailModal({
       const updated = res as MRNRecordFromApi;
       setStatus(updated.status);
       onSave(updated);
-      if (payload.status === 'Succeeded' || payload.status === 'Completed') onClose();
+      const closed =
+        (payload.status === 'Succeeded' || payload.status === 'Completed') &&
+        mtrAllLinesCompletedApi(updated);
+      if (closed) onClose();
     } catch (e) {
       const msg = getApiErrorMessage(e) || 'Failed to save';
       setSaveError(msg);
@@ -3286,10 +3364,21 @@ function MRNDetailModal({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Assigned picker</label>
-                <select value={assignedPicker} onChange={(e) => setAssignedPicker(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-                  <option value="">Unassigned</option>
-                  {assignablePickers.map((u) => <option key={u.id} value={u.displayName}>{u.displayName}</option>)}
-                </select>
+                {isOutboundMtr ? (
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                    <span className={mrn.assignedPicker ? 'font-medium text-slate-900' : 'text-slate-500'}>
+                      {mrn.assignedPicker?.trim() || 'Unassigned'}
+                    </span>
+                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                      Picker is assigned in Warehouse → Transfer orders, not from Production.
+                    </p>
+                  </div>
+                ) : (
+                  <select value={assignedPicker} onChange={(e) => setAssignedPicker(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                    <option value="">Unassigned</option>
+                    {assignablePickers.map((u) => <option key={u.id} value={u.displayName}>{u.displayName}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Received at MU (date)</label>
@@ -3319,17 +3408,52 @@ function MRNDetailModal({
                       <th className="px-3 py-2 text-left font-semibold text-slate-700">Code</th>
                       <th className="px-3 py-2 text-center font-semibold text-slate-700">Quantity</th>
                       <th className="px-3 py-2 text-center font-semibold text-slate-700">Unit</th>
+                      {isOutboundMtr && (
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Line transfer</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {mrn.lineItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-900">{item.item}</td>
-                        <td className="px-3 py-2 text-slate-500">{item.itemCode}</td>
-                        <td className="px-3 py-2 text-center font-medium">{item.quantity}</td>
-                        <td className="px-3 py-2 text-center">{item.unit}</td>
-                      </tr>
-                    ))}
+                    {mrn.lineItems.map((item) => {
+                      const phase = mtrLinePhaseRaw(mrn, item.id);
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-medium text-slate-900">{item.item}</td>
+                          <td className="px-3 py-2 text-slate-500">{item.itemCode}</td>
+                          <td className="px-3 py-2 text-center font-medium">{item.quantity}</td>
+                          <td className="px-3 py-2 text-center">{item.unit}</td>
+                          {isOutboundMtr && (
+                            <td className="px-3 py-2 text-[10px] text-slate-700 align-top">
+                              <div className="font-medium text-slate-800">{formatMtrLinePhaseShort(phase)}</div>
+                              {phase === 'in_transit' && (
+                                <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!recvLinePick[item.id]}
+                                    onChange={(e) =>
+                                      setRecvLinePick((p) => ({ ...p, [item.id]: e.target.checked }))
+                                    }
+                                  />
+                                  <span>Mark received</span>
+                                </label>
+                              )}
+                              {phase === 'received_at_mu' && (
+                                <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!completeLinePick[item.id]}
+                                    onChange={(e) =>
+                                      setCompleteLinePick((p) => ({ ...p, [item.id]: e.target.checked }))
+                                    }
+                                  />
+                                  <span>Include in stock move</span>
+                                </label>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3425,15 +3549,14 @@ function MRNDetailModal({
 
           {isOutboundMtr && !isClosedStatus(status) && (
             <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              Correct order (enforced): <strong>Release from warehouse</strong> → <strong>In transit</strong> → <strong>Received at MU</strong> → enter <strong>MU zone / rack</strong> → <strong>Mark Succeeded</strong>.
-              BMR shows the same stage on the batch card (status is not editable here — use the buttons below).
+              Warehouse initiates transfer <strong>per line</strong> (checkboxes in Warehouse). Here: mark <strong>received</strong> and <strong>stock move</strong> per line (checkboxes in the table), then <strong>MU zone / rack</strong> and <strong>Mark Succeeded</strong> for selected lines. The MRN stays open until every line is completed.
             </p>
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 disabled:opacity-50">Close</button>
             <button onClick={() => persistUpdate({})} disabled={saving} className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
-            {(status === 'Pending' || status === 'Picked' || status === 'In Transfer') && (
+            {!isOutboundMtr && (status === 'Pending' || status === 'Picked' || status === 'In Transfer') && (
               <button
                 onClick={() => persistUpdate({ status: 'In Transit' })}
                 disabled={saving}
@@ -3442,24 +3565,52 @@ function MRNDetailModal({
                 Release from Warehouse
               </button>
             )}
-            {status === 'In Transit' && (
-              <button onClick={() => persistUpdate({ status: 'Received at MU', receivedAtMu: receivedAtMu || new Date().toISOString().slice(0, 10) })} disabled={saving} className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50">Verify / Received at MU</button>
+            {(isOutboundMtr ? hasInTransitForReceive : status === 'In Transit') && (
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = Object.entries(recvLinePick)
+                    .filter(([, v]) => v)
+                    .map(([k]) => k);
+                  if (ids.length === 0) {
+                    addToast('error', 'Select at least one in-transit line to mark received.');
+                    return;
+                  }
+                  persistUpdate({
+                    status: 'Received at MU',
+                    receiveAtMuLineIds: ids,
+                    receivedAtMu: receivedAtMu || new Date().toISOString().slice(0, 10),
+                  });
+                }}
+                disabled={saving}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50"
+              >
+                Verify / Received at MU
+              </button>
             )}
             {!isClosedStatus(status) && (
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  const ids = Object.entries(completeLinePick)
+                    .filter(([, v]) => v)
+                    .map(([k]) => k);
+                  if (ids.length === 0) {
+                    addToast('error', 'Select at least one line received at MU to complete stock move.');
+                    return;
+                  }
                   persistUpdate({
                     status: 'Succeeded',
+                    completeTransferLineIds: ids,
                     muReceiveZone: muReceiveZone.trim() || undefined,
                     muReceiveRack: muReceiveRack.trim() || undefined,
-                  })
-                }
+                  });
+                }}
                 disabled={saving || (isOutboundMtr && !canCompleteOutboundTransfer)}
                 title={
                   isOutboundMtr && !canCompleteOutboundTransfer
-                    ? status !== 'Received at MU'
-                      ? 'Mark as Received at MU first, then enter MU zone and rack.'
+                    ? !hasReceivedLinesToComplete
+                      ? 'No lines are at received_at_mu yet.'
                       : !muStorageFilled
                         ? 'Enter MU zone and MU rack before completing.'
                         : undefined
@@ -4000,16 +4151,38 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           )}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !openRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && openRmMtrForBatch && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
-              <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
+            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
+              <span className="inline-flex items-center gap-1.5">
+                <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
+              </span>
+              {openRmMtrForBatch.lineTransferStatus && openRmMtrForBatch.lineItems && (
+                <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
+                  {openRmMtrForBatch.lineItems.filter(mtrLineItemIsRm).map((li) => (
+                    <span key={li.id} className="mr-2 inline-block">
+                      <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openRmMtrForBatch, li.id))}
+                    </span>
+                  ))}
+                </span>
+              )}
             </span>
           )}
           {batch.rmConnected && batch.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
           {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !openPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
           {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && openPmMtrForBatch && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
-              <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
+            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
+              <span className="inline-flex items-center gap-1.5">
+                <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
+              </span>
+              {openPmMtrForBatch.lineTransferStatus && openPmMtrForBatch.lineItems && (
+                <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
+                  {openPmMtrForBatch.lineItems.filter(mtrLineItemIsPm).map((li) => (
+                    <span key={li.id} className="mr-2 inline-block">
+                      <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openPmMtrForBatch, li.id))}
+                    </span>
+                  ))}
+                </span>
+              )}
             </span>
           )}
           {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>}
@@ -4310,10 +4483,21 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !batchHasOpenRmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && openRmMtr && (
                       <span
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
+                        className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
                         title={outboundMtrStageHint(openRmMtr)}
                       >
-                        <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtr)}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtr)}</span>
+                        </span>
+                        {openRmMtr.lineTransferStatus && openRmMtr.lineItems && (
+                          <span className="text-[9px] font-normal text-amber-900/85 leading-snug pl-4">
+                            {openRmMtr.lineItems.filter(mtrLineItemIsRm).map((li) => (
+                              <span key={li.id} className="mr-1.5 inline-block">
+                                <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openRmMtr, li.id))}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     )}
                     {b.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
@@ -4443,8 +4627,19 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     )}
                     {b.bprStatus === 'pm_reserved' && !b.pmConnected && !openPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
                     {b.bprStatus === 'pm_reserved' && !b.pmConnected && openPmMtr && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]" title={outboundMtrStageHint(openPmMtr)}>
-                        <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtr)}</span>
+                      <span className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]" title={outboundMtrStageHint(openPmMtr)}>
+                        <span className="inline-flex items-center gap-1">
+                          <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtr)}</span>
+                        </span>
+                        {openPmMtr.lineTransferStatus && openPmMtr.lineItems && (
+                          <span className="text-[9px] font-normal text-amber-900/85 leading-snug pl-4">
+                            {openPmMtr.lineItems.filter(mtrLineItemIsPm).map((li) => (
+                              <span key={li.id} className="mr-1.5 inline-block">
+                                <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openPmMtr, li.id))}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     )}
                     {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>}

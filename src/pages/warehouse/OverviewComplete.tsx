@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker } from '../../services/mrn.service';
+import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase } from '../../services/mrn.service';
 
 /** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
 export type OutboundUiStatus =
@@ -74,6 +74,7 @@ interface MRN {
   bmrNo?: string;
   source?: string;
   isInboundFromMu: boolean;
+  lineTransferStatus?: Record<string, MtrLineTransferPhase | string>;
 }
 
 interface PickLineItem {
@@ -110,6 +111,7 @@ function mapApiToMRN(r: MRNRecordFromApi): MRN {
       pack_material_id: li.pack_material_id,
       product_id: li.product_id,
     })),
+    lineTransferStatus: r.lineTransferStatus,
   };
 }
 
@@ -275,21 +277,51 @@ const OutboundDashboard = () => {
   const handleInitiateTransfer = async () => {
     if (!selectedMRN) return;
     persistPanelState(selectedMRN.id);
+    const mtrOutbound = isMtrOutbound(selectedMRN);
+    if (mtrOutbound && selectedMRN.status === 'Completed') {
+      showToast('This transfer is completed.', 'error');
+      return;
+    }
     try {
-      await updateMRN(selectedMRN.id, {
-        status: UI_TO_API_STATUS['In Transfer'],
-        assignedPicker: assignedPicker || undefined,
-        transferTeam: assignedTransferBy || undefined,
-        lineItems: buildLineItemsForSave(),
-      });
-      setMrnData((prev) =>
-        prev.map((mrn) =>
-          mrn.id === selectedMRN.id
-            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Transfer' as const }
-            : mrn
-        )
-      );
-      showToast(`Transfer initiated for ${selectedMRN.mrnNo}. Status updated to In Transfer.`);
+      if (mtrOutbound) {
+        const lts = selectedMRN.lineTransferStatus || {};
+        const checkedIds = selectedMRN.lineItems
+          .filter((li) => pickedItems[li.id])
+          .map((li) => li.id);
+        if (checkedIds.length === 0) {
+          showToast('Select at least one line (checkbox) to initiate transfer.', 'error');
+          return;
+        }
+        const toInitiate = checkedIds.filter((id) => (lts[id] as string | undefined) === 'not_initiated');
+        if (toInitiate.length === 0) {
+          showToast('Selected lines are already initiated or completed.', 'error');
+          return;
+        }
+        const updatedApi = await updateMRN(selectedMRN.id, {
+          initiateTransferLineIds: toInitiate,
+          assignedPicker: assignedPicker || undefined,
+          transferTeam: assignedTransferBy || undefined,
+          lineItems: buildLineItemsForSave(),
+        });
+        const mapped = mapApiToMRN(updatedApi as MRNRecordFromApi);
+        setMrnData((prev) => prev.map((mrn) => (mrn.id === selectedMRN.id ? mapped : mrn)));
+        showToast(`${selectedMRN.mrnNo}: initiated ${toInitiate.length} line(s) to in transit.`);
+      } else {
+        await updateMRN(selectedMRN.id, {
+          status: UI_TO_API_STATUS['In Transfer'],
+          assignedPicker: assignedPicker || undefined,
+          transferTeam: assignedTransferBy || undefined,
+          lineItems: buildLineItemsForSave(),
+        });
+        setMrnData((prev) =>
+          prev.map((mrn) =>
+            mrn.id === selectedMRN.id
+              ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Transfer' as const }
+              : mrn
+          )
+        );
+        showToast(`Transfer initiated for ${selectedMRN.mrnNo}. Status updated to In Transfer.`);
+      }
       closePickPanel();
     } catch (e) {
       showToast(getApiErrorMessage(e) || 'Failed to initiate transfer', 'error');
@@ -602,6 +634,11 @@ const OutboundDashboard = () => {
                 <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">
                   Pick List — {activePickItems.length} Items
                 </h3>
+                {isMtrOutbound(selectedMRN) && (
+                  <p className="text-[9px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mb-1.5">
+                    MTR: tick lines to include in <strong>Initiate transfer</strong>. Only <em>WH pending</em> lines move to in transit; you can release lines in separate batches.
+                  </p>
+                )}
                 <div className="rounded border border-slate-200 overflow-hidden">
                   {activePickItems.map((item) => {
                     const shortQty = pickedQty[item.id] ?? String(item.required);
@@ -616,7 +653,14 @@ const OutboundDashboard = () => {
                             className="mt-0.5"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-semibold text-slate-900">{item.name}</p>
+                            <p className="text-[11px] font-semibold text-slate-900">
+                              {item.name}
+                              {isMtrOutbound(selectedMRN) && selectedMRN.lineTransferStatus?.[item.id] && (
+                                <span className="ml-1 font-normal text-[9px] text-slate-500">
+                                  ({String(selectedMRN.lineTransferStatus[item.id]).replace(/_/g, ' ')})
+                                </span>
+                              )}
+                            </p>
                             <p className="text-[10px] text-slate-500">Required: {item.required} {item.uom}{item.location !== '—' ? ` · At ${item.location}` : ''}</p>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -659,8 +703,15 @@ const OutboundDashboard = () => {
                 Save Pick
               </button>
               <button
+                type="button"
                 onClick={handleInitiateTransfer}
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
+                disabled={isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed'}
+                title={
+                  isMtrOutbound(selectedMRN)
+                    ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
+                    : undefined
+                }
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
               >
                 Initiate Transfer
               </button>

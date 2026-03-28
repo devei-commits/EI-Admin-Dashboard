@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -73,6 +73,7 @@ import {
   validateAdvancePercentForType,
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
+import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
@@ -88,6 +89,54 @@ function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
     if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
+}
+
+/** Avoid setDraftPOs on every purchase-orders refetch when mapped drafts are logically unchanged (prevents update-depth loops + flickering ids). */
+function draftPOsFromApiSyncKey(list: DraftPO[]): string {
+  try {
+    const byId = [...list].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return JSON.stringify(
+      byId.map((d) => ({
+        id: d.id,
+        dpoNumber: d.dpoNumber,
+        backendPoId: d.backendPoId ?? '',
+        requestId: d.requestId,
+        requestCode: d.requestCode,
+        vendorId: d.vendorId,
+        vendor: d.vendor,
+        type: d.type,
+        status: d.status,
+        paymentTerms: d.paymentTerms,
+        expectedDelivery: d.expectedDelivery,
+        deliveryAddress: d.deliveryAddress,
+        createdDate: d.createdDate,
+        createdBy: d.createdBy,
+        vendorRating: d.vendorRating,
+        alertMessage: d.alertMessage,
+        alertType: d.alertType,
+        subtotal: d.subtotal,
+        gstTotal: d.gstTotal,
+        grandTotal: d.grandTotal,
+        lineItems: [...d.lineItems]
+          .sort((a, b) => String(a.itemCode || a.item).localeCompare(String(b.itemCode || b.item)))
+          .map((l) => ({
+            item: l.item,
+            itemCode: l.itemCode,
+            type: l.type,
+            qty: l.qty,
+            leadTimeDays: l.leadTimeDays,
+            pricePerUnit: l.pricePerUnit,
+            gstPercent: l.gstPercent,
+            gstAmount: l.gstAmount,
+            lineTotal: l.lineTotal,
+            raw_material_id: l.raw_material_id,
+            pack_material_id: l.pack_material_id,
+          })),
+      })),
+    );
+  } catch {
+    return `n:${list.length}`;
+  }
 }
 
 /** Vendor quote line vs PR line in Release to PO Planned Stage — RM/PM id match only when IDs exist on the PR line. */
@@ -154,6 +203,86 @@ function resolveMasterIdsFromRawItem(raw: any): {
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
 const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
+
+/**
+ * Procurement requests whose released POs should appear under Issued POs.
+ * Includes Under GRN: marking one split PO delivered sets the whole PR to Under GRN, but sibling POs (e.g. …-S2) must stay visible.
+ */
+const REQUEST_STATUSES_FOR_ISSUED_PO_LIST: readonly RequestStatus[] = [
+  'PO Released',
+  'Delivery Pending',
+  'Under GRN',
+];
+
+function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
+  return REQUEST_STATUSES_FOR_ISSUED_PO_LIST.includes(status);
+}
+
+/** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
+function normPoNumberKeyForTimeline(n: string) {
+  return String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+}
+
+/** Matches DPO-001, DPO-001-S1, etc. — use the first numeric block after `DPO-`. */
+const DPO_ORDER_ID_SEQUENCE_RE = /^DPO-(\d+)/i;
+
+/**
+ * Next `order_id` for a new draft PO. Uses every persisted PO (`purchaseOrders`), any status — not `draftPOs.length`:
+ * released rows still hold `DPO-###` in the DB but disappear from the Draft-only list, which used to reuse numbers.
+ */
+function nextSequentialDpoOrderId(
+  allPurchaseOrders: Array<{ poNumber?: string }>,
+  localDraftPOs?: Array<{ id?: string; dpoNumber?: string }>,
+): string {
+  let maxSeq = 0;
+  const consider = (raw: string | undefined | null) => {
+    const s = String(raw ?? '').trim();
+    const m = s.match(DPO_ORDER_ID_SEQUENCE_RE);
+    if (!m) return;
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n)) maxSeq = Math.max(maxSeq, n);
+  };
+  for (const p of allPurchaseOrders) consider(p.poNumber);
+  if (localDraftPOs?.length) {
+    for (const d of localDraftPOs) {
+      consider(d.id);
+      consider(d.dpoNumber);
+    }
+  }
+  return `DPO-${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+type IssuedPoTimelineOverride = { shipped?: boolean; delivered?: boolean; underGrn?: boolean };
+
+/**
+ * Highest completed step index for Issued PO cards (0 = PO Released … 6 = GRN Complete).
+ * Uses po-tracking timestamps; GRN Complete also when warehouse GRN list shows GRN Complete for this PO.
+ */
+function issuedPoCardTimelineCompletedIndex(
+  recordStatus: string,
+  tracking: PoTrackingRecord | null | undefined,
+  ov: IssuedPoTimelineOverride | undefined,
+  grnCompleteForPo: boolean,
+): number {
+  const has = (v: unknown) => v != null && String(v).trim() !== '';
+  let idx = 0;
+  if (tracking) {
+    if (has(tracking.advancePaidAt)) idx = 1;
+    if (has(tracking.vendorConfirmedAt)) idx = Math.max(idx, 2);
+    if (has(tracking.shippedAt) || ov?.shipped) idx = Math.max(idx, 3);
+    if (has(tracking.deliveredAt) || ov?.delivered) idx = Math.max(idx, 4);
+    if (has(tracking.underGrnAt) || ov?.underGrn) idx = Math.max(idx, 5);
+    if (has(tracking.grnCompleteAt) || grnCompleteForPo) idx = Math.max(idx, 6);
+  } else {
+    if (ov?.shipped) idx = Math.max(idx, 3);
+    if (ov?.delivered) idx = Math.max(idx, 4);
+    if (ov?.underGrn) idx = Math.max(idx, 5);
+    if (grnCompleteForPo) idx = Math.max(idx, 6);
+  }
+  if (idx > 0) return idx;
+  if (recordStatus === 'In Transit' || recordStatus === 'At Risk') return 3;
+  return 0;
+}
 
 const isMainTab = (value: string | null): value is MainTab => Boolean(value && MAIN_TABS.includes(value as MainTab));
 const isSideSection = (value: string | null): value is SideSection => Boolean(value && SIDE_SECTIONS.includes(value as SideSection));
@@ -502,8 +631,18 @@ const Procurement: React.FC = () => {
   const { data: grnListFromApi, isLoading: grnListLoading } = useQuery({
     queryKey: ['grn-list'],
     queryFn: fetchGRNList,
-    enabled: sideSection === 'GRN Monitor',
+    enabled: sideSection === 'GRN Monitor' || sideSection === 'Issued POs',
   });
+
+  const grnCompletePoNormSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of grnListFromApi ?? []) {
+      if (String(g.status || '').trim() === 'GRN Complete') {
+        set.add(normPoNumberKeyForTimeline(g.poNo));
+      }
+    }
+    return set;
+  }, [grnListFromApi]);
 
   const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading } = useQuery({
     queryKey: ['warehouse-inventory'],
@@ -548,32 +687,20 @@ const Procurement: React.FC = () => {
     [purchaseOrdersRaw]
   );
 
-  // For Planning-created / unlinked POs: the card timeline should be driven by po-tracking
-  // persisted in backend (not just the in-memory click overrides).
-  const unlinkedReleasedPoIds = useMemo(() => {
-    // A released PO is considered "linked" if it matches at least one procurement_request row
-    // via formData.requestId OR formData.requestCode.
-    const getLinked = (p: PurchaseOrder) =>
-      requests.some(
-        (r) =>
-          (String(p.formData?.requestId) &&
-            String(p.formData?.requestId) === String(r.id)) ||
-          (String(p.formData?.requestCode).toUpperCase() &&
-            String(p.formData?.requestCode).toUpperCase() === String(r.code).toUpperCase()),
-      );
-
-    return purchaseOrders
+  /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
+  const releasedPoBackendIdsForTracking = useMemo(() => {
+    const ids = purchaseOrders
       .filter((p) => p.status === 'Released')
-      .filter((p) => !getLinked(p))
       .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
       .filter((id) => /^\d+$/.test(id));
-  }, [purchaseOrders, requests]);
+    return [...new Set(ids)].sort();
+  }, [purchaseOrders]);
 
-  const { data: unlinkedPoTrackingByBackendId } = useQuery({
-    queryKey: ['po-tracking-unlinked-map', unlinkedReleasedPoIds.join(',')],
+  const { data: releasedPoTrackingByBackendId } = useQuery({
+    queryKey: ['po-tracking-released-map', releasedPoBackendIdsForTracking.join(',')],
     queryFn: async () => {
       const entries = await Promise.all(
-        unlinkedReleasedPoIds.map(async (id) => {
+        releasedPoBackendIdsForTracking.map(async (id) => {
           const res = await fetchPoTracking(id);
           return { id, tracking: res.success ? res.data : null };
         }),
@@ -583,7 +710,7 @@ const Procurement: React.FC = () => {
         return acc;
       }, {} as Record<string, PoTrackingRecord>);
     },
-    enabled: sideSection === 'Issued POs' && unlinkedReleasedPoIds.length > 0,
+    enabled: sideSection === 'Issued POs' && releasedPoBackendIdsForTracking.length > 0,
     staleTime: 30_000,
   });
 
@@ -703,10 +830,24 @@ const Procurement: React.FC = () => {
     if (quotationsResult !== undefined) setQuotes(quotesFromApi);
   }, [quotationsResult, quotesFromApi]);
 
+  const lastDraftPOsFromApiKeyRef = useRef<string>('');
   useEffect(() => {
-    if (isProcurementDataLoading) return;
+    if (isProcurementDataLoading) {
+      return;
+    }
+    const nextKey = draftPOsFromApiSyncKey(draftPOsFromApi);
+    if (nextKey === lastDraftPOsFromApiKeyRef.current) {
+      return;
+    }
+    lastDraftPOsFromApiKeyRef.current = nextKey;
     setDraftPOs(draftPOsFromApi);
   }, [isProcurementDataLoading, draftPOsFromApi]);
+
+  /** Reset draft sync guard so the next PO list fetch always applies to `draftPOs` (covers approve/split/release and any mapper-only deltas). */
+  const invalidatePurchaseOrdersQueries = useCallback(async () => {
+    lastDraftPOsFromApiKeyRef.current = '';
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+  }, [queryClient]);
 
   useEffect(() => {
     if (!editRequestTarget) return;
@@ -840,23 +981,35 @@ const Procurement: React.FC = () => {
     if (next.stockCheckUpdates) setStockCheckUpdates(next.stockCheckUpdates);
   };
 
+  const procurementUrlSyncKey = searchParams.toString();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are procurementUrlSyncKey only; including `searchParams` can retrigger every render.
   useEffect(() => {
     const routeTab = getInitialMainTab(searchParams);
     const routeSection = getInitialSideSection(searchParams);
-
-    if (routeTab !== mainTab) {
-      setMainTab(routeTab);
+    setMainTab((prev) => (routeTab !== prev ? routeTab : prev));
+    if (routeTab === 'Procurement') {
+      setSideSection((prev) => (routeSection !== prev ? routeSection : prev));
     }
+  }, [procurementUrlSyncKey]);
 
-    if (routeTab === 'Procurement' && routeSection !== sideSection) {
-      setSideSection(routeSection);
-    }
-  }, [mainTab, searchParams, sideSection]);
-
+  const lastLiveStoragePayloadRef = useRef<string>('');
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
+
+    const payloadKey = JSON.stringify({
+      requests,
+      quotes,
+      draftPOs,
+      completedGrns,
+      stockCheckStatuses,
+      stockCheckUpdates,
+    });
+    if (payloadKey === lastLiveStoragePayloadRef.current) {
+      return;
+    }
+    lastLiveStoragePayloadRef.current = payloadKey;
 
     const liveState: LiveProcurementState = {
       requests,
@@ -906,7 +1059,7 @@ const Procurement: React.FC = () => {
     const requestCount = requests.length;
     const quotationsCount = quotes.length;
     const draftPosCount = draftPOs.length;
-    const issuedPos = requests.filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending').length;
+    const issuedPos = requests.filter((request) => requestStatusShowsIssuedPOs(request.status)).length;
     const grnCount = Math.max(issuedPos, 1);
     const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
 
@@ -1123,7 +1276,7 @@ const Procurement: React.FC = () => {
         }
       } else if (sideSection === 'Issued POs') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || linkedRequest.status !== 'PO Released') {
+        if (!linkedRequest || !requestStatusShowsIssuedPOs(linkedRequest.status)) {
           return false;
         }
       } else if (sideSection === 'Requests') {
@@ -1365,18 +1518,26 @@ const Procurement: React.FC = () => {
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
+    const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+
     const requestRecords = requests
-      .filter((request) => request.status === 'PO Released' || request.status === 'Delivery Pending')
-      .map((request) => {
-        const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
-        const linkedPO = purchaseOrders.find(
-          (p) =>
-            p.status === 'Released' &&
-            (String(p.formData?.requestId) === String(request.id) ||
-              String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase())
-        );
+      .filter((request) => requestStatusShowsIssuedPOs(request.status))
+      .flatMap((request) => {
         const linkedQuote = quotes.find((quote) => quote.requestId === request.id && quote.status === 'Confirmed') ??
           quotes.find((quote) => quote.requestId === request.id);
+
+        const releasedPosForRequest = purchaseOrders
+          .filter(
+            (p) =>
+              p.status === 'Released' &&
+              (String(p.formData?.requestId) === String(request.id) ||
+                String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase()),
+          )
+          .sort((a, b) => {
+            const na = parseInt(String(a.id).replace(/\D/g, ''), 10) || 0;
+            const nb = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
+            return nb - na;
+          });
 
         const etaDays = Math.ceil((new Date(request.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         const computedStatus: 'Released' | 'In Transit' | 'At Risk' =
@@ -1419,10 +1580,9 @@ const Procurement: React.FC = () => {
             })
             : lines;
 
-        const lineItems =
-          linkedDraftPO?.lineItems ??
+        const lineItemsForReleasedPo = (linkedPO: PurchaseOrder) =>
           withQuotePrices(
-            linkedPO?.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
+            linkedPO.rawItems && Array.isArray(linkedPO.rawItems) && linkedPO.rawItems.length > 0
               ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => {
                 const qty = Number(i.quantity) || 0;
                 const rate = Number(i.rate ?? i.price ?? 0);
@@ -1445,26 +1605,60 @@ const Procurement: React.FC = () => {
                   lineTotal,
                 };
               })
-              : fallbackLineItems
+              : fallbackLineItems,
           );
 
-        const grandTotal =
-          linkedDraftPO?.grandTotal ??
-          linkedPO?.value ??
-          lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+        // After a split, a *draft* split (e.g. …-S2) still shares requestId with the released half (…-S1).
+        // Never let that draft override lines / PO number for Issued POs — vendor-facing data must come from each Released PO row.
+        if (releasedPosForRequest.length > 0) {
+          return releasedPosForRequest.map((linkedPO) => {
+            const lineItems = lineItemsForReleasedPo(linkedPO);
+            const grandTotal =
+              Number(linkedPO.value) > 0
+                ? Number(linkedPO.value)
+                : lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+            const draftOverlay = draftPOs.find(
+              (d) =>
+                String(d.requestId) === String(request.id) &&
+                normPoKey(d.dpoNumber) === normPoKey(String(linkedPO.poNumber ?? '')),
+            );
+            const backendPoId = String(linkedPO.id ?? '').replace(/^PO-/, '');
+            return {
+              request,
+              poNumber: String(linkedPO.poNumber ?? draftOverlay?.dpoNumber ?? request.code).replace('DPO', 'PO'),
+              vendor: linkedPO.vendorName ?? draftOverlay?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
+              status: computedStatus,
+              etaDays,
+              lineItems,
+              grandTotal,
+              requestCode: request.code,
+              createdDate: linkedPO.date ?? draftOverlay?.createdDate ?? request.createdDate ?? '',
+              paymentTerms: linkedPO.paymentTerms ?? draftOverlay?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+              backendPoId: /^\d+$/.test(backendPoId) ? backendPoId : undefined,
+            };
+          });
+        }
 
-        return {
-          request,
-          poNumber: (linkedDraftPO?.dpoNumber ?? linkedPO?.poNumber ?? request.code).replace('DPO', 'PO'),
-          vendor: linkedDraftPO?.vendor ?? linkedPO?.vendorName ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
-          status: computedStatus,
-          etaDays,
-          lineItems,
-          grandTotal,
-          requestCode: request.code,
-          createdDate: linkedDraftPO?.createdDate ?? linkedPO?.date ?? request.createdDate ?? '',
-          paymentTerms: linkedDraftPO?.paymentTerms ?? linkedPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
-        };
+        const linkedDraftPO = draftPOs.find((draftPo) => draftPo.requestId === request.id);
+        const lineItems =
+          linkedDraftPO?.lineItems ?? withQuotePrices(fallbackLineItems);
+        const grandTotal =
+          linkedDraftPO?.grandTotal ?? lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
+
+        return [
+          {
+            request,
+            poNumber: String(linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO'),
+            vendor: linkedDraftPO?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
+            status: computedStatus,
+            etaDays,
+            lineItems,
+            grandTotal,
+            requestCode: request.code,
+            createdDate: linkedDraftPO?.createdDate ?? request.createdDate ?? '',
+            paymentTerms: linkedDraftPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+          },
+        ];
       });
 
     // Include released PO records even when there is no linked procurement request.
@@ -1489,7 +1683,7 @@ const Procurement: React.FC = () => {
       const inferredType: RequestType = rawItems.some((it) => it?.pack_material_id != null) ? 'PM' : 'RM';
       const backendPoId = String(po.id ?? '').replace(/^PO-/, '');
       const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-      const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
+      const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
 
       const lineItems = rawItems.map((i: any, idx: number) => {
         const qty = Number(i.quantity) || 0;
@@ -1548,8 +1742,16 @@ const Procurement: React.FC = () => {
       };
     });
 
-    return [...requestRecords, ...unlinkedRecords];
-  }, [draftPOs, purchaseOrders, quotes, requests, unlinkedPoTimelineOverrides, unlinkedPoTrackingByBackendId]);
+    const merged = [...requestRecords, ...unlinkedRecords];
+    const dedupedByPo = new Map<string, (typeof merged)[number]>();
+    for (const r of merged) {
+      const bid = r.backendPoId && /^\d+$/.test(String(r.backendPoId)) ? String(r.backendPoId) : '';
+      const poNorm = normPoKey(r.poNumber);
+      const key = bid ? `id:${bid}` : `po:${poNorm}|req:${r.request.id}`;
+      if (!dedupedByPo.has(key)) dedupedByPo.set(key, r);
+    }
+    return Array.from(dedupedByPo.values());
+  }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
@@ -1592,7 +1794,9 @@ const Procurement: React.FC = () => {
     }
     const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
     const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
-    const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
+    const tracking = backendPoId ? releasedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
+    const hasT = (v: unknown) => v != null && String(v).trim() !== '';
+    const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
     setSelectedPO({
       id: record.poNumber,
       vendorId: record.vendor,
@@ -1610,11 +1814,12 @@ const Procurement: React.FC = () => {
       backendPoId: backendPoId ?? undefined,
       timeline: [
         { stage: 'PO Released', done: true, timestamp: record.createdDate, actor: 'Procurement', note: 'PO shared with vendor' },
-        { stage: 'Vendor Confirmed', done: false, timestamp: null, actor: null, note: null },
-        { stage: 'Shipped', done: !!(ov?.shipped || tracking?.shippedAt), timestamp: null, actor: null, note: null },
-        { stage: 'Delivered', done: !!(ov?.delivered || tracking?.deliveredAt), timestamp: null, actor: null, note: null },
-        { stage: 'Under GRN', done: !!(ov?.underGrn || tracking?.underGrnAt), timestamp: null, actor: null, note: null },
-        { stage: 'GRN Complete', done: !!(tracking?.grnCompleteAt), timestamp: null, actor: null, note: null },
+        { stage: 'Advance Paid', done: hasT(tracking?.advancePaidAt), timestamp: tracking?.advancePaidAt ?? null, actor: null, note: tracking?.advancePaidNote ?? null },
+        { stage: 'Vendor Confirmed', done: hasT(tracking?.vendorConfirmedAt), timestamp: tracking?.vendorConfirmedAt ?? null, actor: null, note: tracking?.vendorConfirmedNote ?? null },
+        { stage: 'Shipped', done: hasT(tracking?.shippedAt) || !!ov?.shipped, timestamp: tracking?.shippedAt ?? null, actor: null, note: tracking?.shippedNote ?? null },
+        { stage: 'Delivered', done: hasT(tracking?.deliveredAt) || !!ov?.delivered, timestamp: tracking?.deliveredAt ?? null, actor: null, note: tracking?.deliveredNote ?? null },
+        { stage: 'Under GRN', done: hasT(tracking?.underGrnAt) || !!ov?.underGrn, timestamp: tracking?.underGrnAt ?? null, actor: null, note: tracking?.underGrnNote ?? null },
+        { stage: 'GRN Complete', done: hasT(tracking?.grnCompleteAt) || grnDone, timestamp: tracking?.grnCompleteAt ?? null, actor: null, note: tracking?.grnCompleteNote ?? null },
       ],
     });
   };
@@ -1655,6 +1860,7 @@ const Procurement: React.FC = () => {
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       setUnlinkedPoTimelineOverrides((prev) => ({
         ...prev,
         [backendPoId]: {
@@ -1806,6 +2012,7 @@ const Procurement: React.FC = () => {
 
         queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
         queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+        queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
         queryClient.invalidateQueries({ queryKey: ['grn-list'] });
         updateProcurementState((current: any) => ({
           requests: current.requests.map((req: any) => (req.id === requestId ? { ...req, status: 'Under GRN' as RequestStatus } : req)),
@@ -1911,6 +2118,7 @@ const Procurement: React.FC = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       queryClient.invalidateQueries({ queryKey: ['grn-list'] });
       addToast(
         'success',
@@ -1979,7 +2187,7 @@ const Procurement: React.FC = () => {
       }
     }
 
-    const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+    const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
     const lineItems: DraftPOLineItem[] = items.map((it, idx) => {
       const qty = Number(it.quantity_requested) || 0;
       const prName = String(it.name ?? '').trim().toLowerCase();
@@ -2097,7 +2305,7 @@ const Procurement: React.FC = () => {
     updateProcurementState((current) => ({
       draftPOs: [newDraftPO, ...current.draftPOs],
     }));
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    void invalidatePurchaseOrdersQueries();
     await updateProcurementRequestApi(requestId, { status: 'PO Draft' });
     queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
     updateProcurementState((current) => ({
@@ -2116,8 +2324,48 @@ const Procurement: React.FC = () => {
     }
 
     if (target.status === 'Approved') {
-      addToast('info', `${target.dpoNumber} is already approved`);
-      return;
+      const isSplitChild = /-S\d+$/i.test(String(target.dpoNumber ?? '').trim());
+      const normalizedPoId = target.backendPoId ? String(target.backendPoId).replace(/^PO-/, '') : '';
+      const sourcePo =
+        isSplitChild && normalizedPoId
+          ? purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedPoId)
+          : undefined;
+      const fd =
+        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+          ? (sourcePo.formData as Record<string, unknown>)
+          : null;
+      const serverSaysApproved = String(fd?.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+      if (!isSplitChild || serverSaysApproved) {
+        addToast('info', `${target.dpoNumber} is already approved`);
+        return;
+      }
+      // UI still shows Approved from before split/refetch; server form_data is pending — allow approval to proceed.
+    }
+
+    const approvedAt = new Date();
+    const dateLabel = approvedAt.toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const alertMessage = `Approved on ${dateLabel}. Ready for release.`;
+
+    if (target.backendPoId) {
+      const normalizedId = String(target.backendPoId).replace(/^PO-/, '');
+      const sourcePo = purchaseOrders.find((p) => String(p.id ?? '').replace(/^PO-/, '') === normalizedId);
+      const baseForm =
+        sourcePo?.formData && typeof sourcePo.formData === 'object' && !Array.isArray(sourcePo.formData)
+          ? { ...(sourcePo.formData as Record<string, unknown>) }
+          : {};
+      const res = await updatePurchaseOrder(target.backendPoId, {
+        formData: {
+          ...baseForm,
+          procurementApprovalStatus: 'Approved',
+          procurementApprovedAt: approvedAt.toISOString(),
+        },
+      });
+      if (!res.success) {
+        const err = res.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to save approval'));
+        return;
+      }
+      await invalidatePurchaseOrdersQueries();
     }
 
     const approvedAt = new Date();
@@ -2344,7 +2592,7 @@ const Procurement: React.FC = () => {
       draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
     }));
 
-    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    void invalidatePurchaseOrdersQueries();
     if (draft.paymentTerms?.trim()) {
       addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
     } else {
@@ -2401,8 +2649,10 @@ const Procurement: React.FC = () => {
       ...baseDraftPo,
       id: `${baseDraftPo.id}-${suffix}`,
       dpoNumber: `${baseDraftPo.dpoNumber}-${suffix}`,
-      alertType: 'ok',
-      alertMessage: `Split from ${baseDraftPo.dpoNumber}. Ready for release.`,
+      // Split changes line structure — must not inherit Approved from the pre-split draft (would block approve + show "already approved").
+      status: 'Pending Approval',
+      alertType: 'warning',
+      alertMessage: `Split from ${baseDraftPo.dpoNumber}. Approve this PO before release.`,
       lineItems,
       subtotal,
       gstTotal,
@@ -2411,9 +2661,7 @@ const Procurement: React.FC = () => {
   };
 
   const submitSplitPO = async () => {
-    if (!splitPOTarget) {
-      return;
-    }
+    if (!splitPOTarget) return;
 
     const uniqueIndexes = Array.from(new Set(splitSelectedLineIndexes)).sort((a, b) => a - b);
 
@@ -2477,7 +2725,20 @@ const Procurement: React.FC = () => {
       baseForm.procurementApprovalStatus = 'Pending Approval';
       delete (baseForm as Record<string, unknown>).procurementApprovedAt;
 
-      const up1 = await updatePurchaseOrder(splitPOTarget.backendPoId, {
+      const formDataS1: Record<string, unknown> = {
+        ...baseForm,
+        poNumber: splitPOOne.dpoNumber,
+        orderId: splitPOOne.dpoNumber,
+        procurementApprovedAt: null,
+      };
+      const formDataS2: Record<string, unknown> = {
+        ...baseForm,
+        poNumber: splitPOTwo.dpoNumber,
+        orderId: splitPOTwo.dpoNumber,
+        procurementApprovedAt: null,
+      };
+
+      const updateFirstPayload = {
         orderId: splitPOOne.dpoNumber,
         vendorName: splitPOTarget.vendor,
         orderDate: splitPOTarget.createdDate,
@@ -2485,9 +2746,10 @@ const Procurement: React.FC = () => {
         reference: splitPOTarget.requestCode,
         paymentTerms: splitPOTarget.paymentTerms,
         status: 'Draft',
-        formData: baseForm,
+        formData: formDataS1,
         items: itemsOne,
-      });
+      };
+      const up1 = await updatePurchaseOrder(splitPOTarget.backendPoId, updateFirstPayload);
       if (!up1.success) {
         const err = up1.error;
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update first split PO'));
@@ -2502,7 +2764,7 @@ const Procurement: React.FC = () => {
         reference: splitPOTarget.requestCode,
         paymentTerms: splitPOTarget.paymentTerms,
         status: 'Draft',
-        formData: baseForm,
+        formData: formDataS2,
         items: itemsTwo,
       };
       const cr = await createPurchaseOrder(createPayload);
@@ -2513,7 +2775,7 @@ const Procurement: React.FC = () => {
           const rb = await updatePurchaseOrder(splitPOTarget.backendPoId, restoreSnapshot);
           if (rb.success) {
             addToast('error', `${msg} The original draft PO was restored.`);
-            await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+            await invalidatePurchaseOrdersQueries();
             return;
           }
           addToast(
@@ -2526,7 +2788,14 @@ const Procurement: React.FC = () => {
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      await invalidatePurchaseOrdersQueries();
+      void fetchPoTracking(normalizedPoId);
+      const po2NumericId = cr.data?.id ? String(cr.data.id).replace(/^PO-/, '') : '';
+      if (po2NumericId) void fetchPoTracking(po2NumericId);
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', normalizedPoId] });
+      if (po2NumericId) await queryClient.invalidateQueries({ queryKey: ['po-tracking', po2NumericId] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+
       if (selectedDraftPO?.id === splitPOTarget.id) {
         setSelectedDraftPO(null);
       }
@@ -2536,11 +2805,7 @@ const Procurement: React.FC = () => {
     }
 
     updateProcurementState((current) => ({
-      draftPOs: [
-        splitPOOne,
-        splitPOTwo,
-        ...current.draftPOs.filter((draftPo) => draftPo.id !== splitPOTarget.id),
-      ],
+      draftPOs: [splitPOOne, splitPOTwo, ...current.draftPOs.filter((draftPo) => draftPo.id !== splitPOTarget.id)],
     }));
 
     if (selectedDraftPO?.id === splitPOTarget.id) {
@@ -3910,15 +4175,11 @@ const Procurement: React.FC = () => {
 
                           {/* Footer Info */}
                           <div className="px-5 py-3 bg-slate-50 border-t border-slate-200">
-                            <div className="flex items-center justify-between text-xs text-slate-700">
-                              <div className="flex items-center gap-6">
+                            <div className="flex flex-wrap items-start justify-between gap-3 text-xs text-slate-700">
+                              <div className="flex flex-wrap items-center gap-6">
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Lead time:</span>
                                   <span className="font-semibold">{quote.leadTimeDays} days</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">Terms:</span>
-                                  <span className="font-semibold">{quote.terms}</span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   <span className="text-slate-500">Valid till:</span>
@@ -3933,10 +4194,14 @@ const Procurement: React.FC = () => {
                               </div>
                               <button
                                 onClick={() => setExpandedQuoteId(isExpanded ? null : quote.id)}
-                                className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors"
+                                className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors shrink-0"
                               >
                                 {isExpanded ? 'Hide Details' : 'View Details'}
                               </button>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-slate-200/90">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Payment terms</p>
+                              <PaymentTermsDisplay value={quote.terms} />
                             </div>
                           </div>
 
@@ -4050,7 +4315,10 @@ const Procurement: React.FC = () => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => { setMainTab('Procurement'); setSideSection('Draft POs'); setSelectedRequest(req); }}
+                            onClick={() => {
+                              applyRouteState('Procurement', 'Draft POs');
+                              setSelectedRequest(req);
+                            }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
                           >
                             Open PR & create Draft PO
@@ -4136,7 +4404,10 @@ const Procurement: React.FC = () => {
                               </div>
                             </div>
                             <div className="space-y-1 text-slate-600">
-                              <p><strong>Payment Terms</strong> {dpo.paymentTerms}</p>
+                              <div>
+                                <p className="font-bold text-slate-800 mb-1">Payment Terms</p>
+                                <PaymentTermsDisplay value={dpo.paymentTerms} />
+                              </div>
                               <p><strong>Expected Delivery</strong> {new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
                               <p><strong>Delivery Address</strong> {dpo.deliveryAddress}</p>
                               <p><strong>Vendor Rating</strong> {dpo.vendorRating}</p>
@@ -4297,6 +4568,8 @@ const Procurement: React.FC = () => {
               )}
 
               {sideSection === 'Issued POs' && (() => {
+                const normPoKeyLocal = (n: string) =>
+                  String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
                 const totalPos = issuedPORecords.length;
                 const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
                 const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
@@ -4304,9 +4577,9 @@ const Procurement: React.FC = () => {
                 const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
                 const grnComplete = completedGrns.length;
 
-                const itemisedRows = filteredIssuedPORecords.flatMap(record =>
-                  record.lineItems.map((line, index) => ({
-                    key: `${record.poNumber}-${line.itemCode}-${index}`,
+                const itemisedRows = filteredIssuedPORecords.flatMap((record, recordIndex) =>
+                  record.lineItems.map((line, lineIndex) => ({
+                    key: `${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-r${recordIndex}-li${lineIndex}-${line.itemCode}`,
                     record,
                     line,
                   })),
@@ -4322,23 +4595,12 @@ const Procurement: React.FC = () => {
                   'GRN Complete',
                 ] as const;
 
-                const getTimelineCompletedIndex = (status: string) => {
-                  if (status === 'Released') return 0;
-                  if (status === 'In Transit') return 3;
-                  if (status === 'At Risk') return 3;
-                  return 0;
-                };
-
                 const getTimelineCompletedIndexForRecord = (record: any) => {
                   const backendPoId = record?.backendPoId ? String(record.backendPoId) : '';
                   const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-                  const tracking = backendPoId ? unlinkedPoTrackingByBackendId?.[backendPoId] : undefined;
-
-                  if (tracking?.grnCompleteAt) return 6;
-                  if (ov?.underGrn || tracking?.underGrnAt) return 5;
-                  if (ov?.delivered || tracking?.deliveredAt) return 4;
-                  if (ov?.shipped || tracking?.shippedAt) return 3;
-                  return getTimelineCompletedIndex(record.status);
+                  const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+                  const grnDone = grnCompletePoNormSet.has(normPoKeyLocal(record.poNumber));
+                  return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
                 };
 
                 return (
@@ -4502,7 +4764,9 @@ const Procurement: React.FC = () => {
                                 <td className="px-4 py-2 align-top text-right text-[11px] font-semibold text-amber-700">
                                   ₹{line.lineTotal.toLocaleString('en-IN')}
                                 </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-600">{record.paymentTerms}</td>
+                                <td className="px-4 py-2 align-top text-[11px] text-slate-600 max-w-56">
+                                  <PaymentTermsDisplay compact value={record.paymentTerms} />
+                                </td>
                                 <td className="px-4 py-2 align-top">
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.status === 'In Transit'
                                     ? 'bg-sky-50 text-sky-700 border border-sky-200'
@@ -4543,12 +4807,12 @@ const Procurement: React.FC = () => {
 
                     {/* Tracking cards under the itemised view */}
                     <div className="space-y-3">
-                      {filteredIssuedPORecords.map(record => {
+                      {filteredIssuedPORecords.map((record, cardIndex) => {
                         const completedIndex = getTimelineCompletedIndexForRecord(record);
 
                         return (
                           <div
-                            key={`${record.request.id}-${record.poNumber}-card`}
+                            key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-card-${cardIndex}`}
                             className="rounded-lg border border-blue-200 bg-white px-4 py-4 text-xs text-slate-800 shadow-sm"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -4587,7 +4851,7 @@ const Procurement: React.FC = () => {
                                   const done = index <= completedIndex;
                                   return (
                                     <div
-                                      key={`${record.poNumber}-${stage}`}
+                                      key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-${stage}`}
                                       className="relative flex flex-col items-center flex-1"
                                     >
                                       <div
@@ -4616,7 +4880,7 @@ const Procurement: React.FC = () => {
                                 <p className="mb-1 font-semibold">Items Ordered</p>
                                 {record.lineItems.map((line, index) => (
                                   <div
-                                    key={`${record.poNumber}-${line.itemCode}-${index}`}
+                                    key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-li-${line.itemCode}-${index}`}
                                     className="flex items-center justify-between gap-2 py-1 border-t border-slate-800 first:border-t-0"
                                   >
                                     <div className="flex flex-col">
@@ -5106,7 +5370,7 @@ const Procurement: React.FC = () => {
                           if (row.requestStatus === 'New') actionLabel = 'Quote';
                           else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
                           else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
-                          else if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') actionLabel = 'PO';
+                          else if (requestStatusShowsIssuedPOs(row.requestStatus)) actionLabel = 'PO';
 
                           const handleActionClick = () => {
                             if (!actionLabel) return;
@@ -5140,7 +5404,7 @@ const Procurement: React.FC = () => {
                               return;
                             }
 
-                            if (row.requestStatus === 'PO Released' || row.requestStatus === 'Delivery Pending') {
+                            if (requestStatusShowsIssuedPOs(row.requestStatus)) {
                               if (row.poId) {
                                 const po = purchaseOrders.find((p) => p.id === row.poId);
                                 if (po) {
@@ -5368,6 +5632,7 @@ const Procurement: React.FC = () => {
             return;
           }
           await queryClient.invalidateQueries({ queryKey: ['po-tracking', po.backendPoId] });
+          await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
           await queryClient.refetchQueries({ queryKey: ['po-tracking', po.backendPoId] });
           addToast('success', 'Tracking updated');
         };
@@ -5381,7 +5646,7 @@ const Procurement: React.FC = () => {
             addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save request link'));
             return;
           }
-          queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+          void invalidatePurchaseOrdersQueries();
           addToast('success', 'Request link saved. Mark Delivered at WH and timeline will use this PO.');
         };
 
@@ -5723,21 +5988,53 @@ const Procurement: React.FC = () => {
               <div className="flex-1 px-5 py-4 space-y-5">
                 {/* DPO Summary */}
                 <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-sm">
-                  {[
-                    { label: 'Vendor', value: dpo.vendor },
-                    { label: 'Created', value: new Date(dpo.createdDate).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
-                    { label: 'Payment Terms', value: dpo.paymentTerms },
-                    { label: 'Expected Delivery', value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) },
-                    { label: 'Lead time', value: `${maxLeadDaysForDpo} days` },
-                    { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
-                    { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between px-4 py-2">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
-                        }`}>{row.value}</span>
-                    </div>
-                  ))}
+                  {(
+                    [
+                      { label: 'Vendor', value: dpo.vendor },
+                      {
+                        label: 'Created',
+                        value: new Date(dpo.createdDate).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        }),
+                      },
+                      { label: 'Payment Terms', paymentTerms: dpo.paymentTerms },
+                      {
+                        label: 'Expected Delivery',
+                        value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        }),
+                      },
+                      { label: 'Lead time', value: `${maxLeadDaysForDpo} days` },
+                      { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
+                      { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
+                    ] as Array<
+                      | { label: string; value: string; bold?: boolean; highlight?: boolean }
+                      | { label: string; paymentTerms: string }
+                    >
+                  ).map((row) =>
+                    'paymentTerms' in row ? (
+                      <div key={row.label} className="flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <span className="text-slate-500 shrink-0 pt-0.5">{row.label}</span>
+                        <div className="min-w-0 w-full sm:max-w-md sm:flex-1 sm:flex sm:justify-end">
+                          <PaymentTermsDisplay value={row.paymentTerms} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={row.label} className="flex items-center justify-between px-4 py-2">
+                        <span className="text-slate-500">{row.label}</span>
+                        <span
+                          className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                            }`}
+                        >
+                          {row.value}
+                        </span>
+                      </div>
+                    ),
+                  )}
                 </div>
 
                 {(totals && (() => {
@@ -6113,9 +6410,16 @@ const Procurement: React.FC = () => {
               {/* Header */}
               <div className="sticky top-0 z-10 rounded-t-xl bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-blue-200 px-6 py-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
-                  <h2 className="text-lg font-bold text-slate-900 leading-tight">
-                    {req.code} — {req.description ?? req.items[0]?.toUpperCase()}
-                  </h2>
+                  <div className="min-w-0 pr-2">
+                    <h2 className="text-lg font-bold text-slate-900 leading-tight">
+                      {req.code} — {(req.preferredVendor ?? '').trim() || 'No preferred vendor'}
+                    </h2>
+                    {(req.description?.trim() || req.items[0]) && (
+                      <p className="text-sm text-slate-600 mt-1.5 font-medium leading-snug">
+                        {req.description?.trim() || req.items[0]}
+                      </p>
+                    )}
+                  </div>
                   <button
                     onClick={() => setSelectedRequest(null)}
                     className="text-slate-400 hover:text-slate-700 text-2xl leading-none transition-colors"
@@ -6452,7 +6756,9 @@ const Procurement: React.FC = () => {
                                   {row.moqMax != null && row.moqMax > row.moqMin ? ` - ${row.moqMax}` : '+'}
                                 </td>
                                 <td className="px-3 py-2 text-right text-slate-700">{row.leadTimeDays}d</td>
-                                <td className="px-3 py-2 text-slate-700">{row.paymentTerms || '—'}</td>
+                                <td className="px-3 py-2 text-slate-700 max-w-48 align-top">
+                                  <PaymentTermsDisplay compact value={row.paymentTerms} />
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -7335,7 +7641,7 @@ const Procurement: React.FC = () => {
                       const createdDateStr = today.toISOString().split('T')[0];
                       const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
-                      const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                      const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
                       const gstPercent = 18;
                       const draftLines: DraftPOLineItem[] = linesForCreate.map((ln) => {
                         const sub = (Number(ln.qty) || 0) * (Number(ln.unitPrice) || 0);
@@ -7440,7 +7746,7 @@ const Procurement: React.FC = () => {
                         draftPOs: [newDraftPO, ...current.draftPOs],
                       }));
 
-                      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                      void invalidatePurchaseOrdersQueries();
                       addToast(
                         'success',
                         `Draft PO ${newDpoId} created for ${req.code}`
@@ -7611,7 +7917,7 @@ const Procurement: React.FC = () => {
                         : po
                     )
                   );
-                  queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                  void invalidatePurchaseOrdersQueries();
                   setEditDraftPOTarget(null);
                   addToast('success', `Draft PO ${d.dpoNumber} updated`);
                 }}
@@ -8724,7 +9030,7 @@ const Procurement: React.FC = () => {
                               const createdDateStr = today.toISOString().split('T')[0];
                               const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
-                              const newDpoId = `DPO-${String(draftPOs.length + 1).padStart(3, '0')}`;
+                              const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
                               const fallbackItemCode =
                                 selectedQuote.requestType === 'PM' ? `EI-PM-001` : `EI-RM-001`;
                               const lineItem: DraftPOLineItem = {
@@ -8830,7 +9136,7 @@ const Procurement: React.FC = () => {
                                 draftPOs: [newDraftPO, ...current.draftPOs],
                               }));
 
-                              queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                              void invalidatePurchaseOrdersQueries();
                               addToast(
                                 'success',
                                 `Draft PO ${newDpoId} created for ${requests.find((r) => r.id === createPoFromQuoteState.requestId)?.code ?? selectedQuote.requestCode}`

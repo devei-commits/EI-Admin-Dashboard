@@ -5,6 +5,7 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
+import { validateMasterTaxDetails } from '../utils/masterFormUtils';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -224,6 +225,13 @@ const PackagingRefactored: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
+    if (id === 'pkgHsn' || id === 'pkgTaxPreference') {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.pkgHsn;
+        return next;
+      });
+    }
     setFormData(prev => ({
       ...prev,
       [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
@@ -380,6 +388,13 @@ const PackagingRefactored: React.FC = () => {
   const handleSubmit = async () => {
     if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
     if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
+    const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
+    if (!taxValidation.valid) {
+      setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
+      addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code. Exempt / NonGST can leave HSN blank.');
+      setCurrentSection(0);
+      return;
+    }
     const payload = buildPayload();
     try {
       if (existingPmId) {
@@ -542,13 +557,21 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.pkgHsn}
                   onChange={handleInputChange}
                   placeholder="e.g. 3923, 4819, 7010"
+                  error={errors.pkgHsn}
+                  requiredMark={formData.pkgTaxPreference === 'Taxable'}
                 />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Preference</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tax Preference
+                    {formData.pkgTaxPreference === 'Taxable' ? (
+                      <span className="text-gray-500 font-normal text-xs ml-1">(HSN required)</span>
+                    ) : null}
+                  </label>
                   <select id="pkgTaxPreference" value={formData.pkgTaxPreference} onChange={handleInputChange}
                     className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">Taxable: valid HSN required. Exempted / NonGST: HSN optional.</p>
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-2">
@@ -1752,11 +1775,26 @@ const InputField: React.FC<{
   label: string; id: string; value: any;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
   type?: string; placeholder?: string;
-}> = ({ label, id, value, onChange, type = 'text', placeholder }) => (
+  error?: string;
+  requiredMark?: boolean;
+}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark }) => (
   <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <input type={type} id={id} value={value ?? ''} onChange={onChange} placeholder={placeholder}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+      {label}
+      {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+    </label>
+    <input
+      type={type}
+      id={id}
+      value={value ?? ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      aria-invalid={error ? true : undefined}
+      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+        error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+      }`}
+    />
+    {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
   </div>
 );
 

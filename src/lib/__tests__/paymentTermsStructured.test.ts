@@ -24,6 +24,45 @@ describe('paymentTermsStructured', () => {
     expect(parsePaymentTermsString('COD').type).toBe('cod');
   });
 
+  it('parses Items List JSON payment_terms', () => {
+    const net30 = JSON.stringify({
+      advance_pct: 0,
+      pre_shipment_pct: 100,
+      post_shipment_pct: 0,
+      credit_days: 30,
+    });
+    expect(parsePaymentTermsString(net30).type).toBe('net_30');
+    expect(parsePaymentTermsString(net30).advancePercent).toBe(0);
+
+    const net45 = JSON.stringify({
+      advance_pct: 0,
+      pre_shipment_pct: 100,
+      post_shipment_pct: 0,
+      credit_days: 45,
+    });
+    expect(parsePaymentTermsString(net45).type).toBe('net_45');
+
+    const advBefore = JSON.stringify({
+      advance_pct: 30,
+      pre_shipment_pct: 70,
+      post_shipment_pct: 0,
+      credit_days: 0,
+    });
+    const p = parsePaymentTermsString(advBefore);
+    expect(p.type).toBe('advance_before_dispatch');
+    expect(p.advancePercent).toBe(30);
+
+    const advDel = JSON.stringify({
+      advance_pct: 40,
+      pre_shipment_pct: 0,
+      post_shipment_pct: 60,
+      credit_days: 0,
+    });
+    const p2 = parsePaymentTermsString(advDel);
+    expect(p2.type).toBe('advance_on_delivery');
+    expect(p2.advancePercent).toBe(40);
+  });
+
   it('validates advance %', () => {
     expect(validateAdvancePercentForType('advance_on_delivery', 0)).toBeTruthy();
     expect(validateAdvancePercentForType('advance_on_delivery', 50)).toBeNull();
