@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [react(), tailwindcss()],
   build: {
-    // Target modern browsers for smaller bundles
+    // Target modern browsers for smaller bundle
     target: "esnext",
     // Code splitting configuration
     rollupOptions: {
