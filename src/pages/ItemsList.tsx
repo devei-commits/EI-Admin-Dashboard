@@ -144,6 +144,14 @@ const ItemsList: React.FC = () => {
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
+  const formatRatePaymentTermsLabel = (raw: string | null | undefined) => {
+    const p = parseStagedPaymentTerms(raw ?? '');
+    if (p) {
+      return `Adv ${p.advance_pct}% · Pre ${p.pre_shipment_pct}% · Post ${p.post_shipment_pct}%${p.credit_days ? ` · Net ${p.credit_days}d` : ''}`;
+    }
+    return raw?.trim() || '';
+  };
+
   useEffect(() => {
     if (!showAddTierModal || !addPriceListMode || tierTarget) {
       setAddPriceListCombinedItems([]);
