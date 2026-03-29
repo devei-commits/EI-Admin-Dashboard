@@ -3119,7 +3119,7 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        // Release should only be available when NET is negative (actual shortage).
+                        // Release opens procurement when NET is negative (free SIH + in-transit < required). Not used for BMR — use Plan Batches → Production after stock is covered.
                         const hasShortfall = item.netNum < 0;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
                         const canReleaseToPlanning = hasShortfall;
@@ -3195,7 +3195,7 @@ const Planning = () => {
                                   title={
                                     canReleaseToPlanning
                                       ? undefined
-                                      : 'Disabled because NET is not negative (stock is sufficient).'
+                                      : 'No planning shortage: NET (free stock + in transit − required) is ≥ 0. You do not need Release here. For vendor quotes without a shortage, use Procurement / Items List. BMR: confirm batches and send to Production — not gated by this button.'
                                   }
                                   onClick={() => openReleaseToPlanningModal(item)}
                                 >
