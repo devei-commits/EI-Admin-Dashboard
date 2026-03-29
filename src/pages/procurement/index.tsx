@@ -153,17 +153,9 @@ function quoteLineMatchesReleaseTarget(line: QuoteLine, rel: ReleaseToPlannedIte
   const codeKey = (rel.itemCode ?? '').trim().toLowerCase();
   const lineName = (line.item ?? '').trim().toLowerCase();
   const lineCode = (line.itemId ?? '').trim().toLowerCase();
-  // Fallback matching (only when both sides have non-empty strings).
-  // Use guarded "includes" so small formatting differences don't hide the vendor,
-  // while avoiding the old bug where `includes('')` matched everything.
-  if (nameKey.length > 0 && lineName.length > 0) {
-    if (lineName === nameKey) return true;
-    if (lineName.includes(nameKey) || nameKey.includes(lineName)) return true;
-  }
-  if (codeKey.length > 0 && lineCode.length > 0) {
-    if (lineCode === codeKey) return true;
-    if (lineCode.includes(codeKey) || codeKey.includes(lineCode)) return true;
-  }
+  // Exact name/code only (no substring match) — avoids split-PO style bugs like "new rm mat" ↔ "new rm mat22".
+  if (nameKey.length > 0 && lineName.length > 0 && lineName === nameKey) return true;
+  if (codeKey.length > 0 && lineCode.length > 0 && lineCode === codeKey) return true;
   return false;
 }
 
@@ -1397,7 +1389,11 @@ const Procurement: React.FC = () => {
     });
   }, [categoryFilter, itemsListQuotes, searchQuery, statusFilter, vendorFilter]);
 
-  const quotesForQuotationsSection = sideSection === 'Quotations' ? filteredItemsListQuotes : filteredQuotes;
+  /** Quotations tab: show recorded procurement quotations (DB) and Items List–derived price cards. IL-* rows are not procurement_quotations rows. */
+  const quotesForQuotationsSection = useMemo(() => {
+    if (sideSection !== 'Quotations') return filteredQuotes;
+    return [...filteredQuotes, ...filteredItemsListQuotes];
+  }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
 
   const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
     const meta = line as QuoteLine & {
@@ -2178,6 +2174,9 @@ const Procurement: React.FC = () => {
     const vendor = preferredVendor?.trim() || quoteToUse?.vendor?.trim() || 'Unassigned';
     const matchedVendorForZoho = vendors.find((v) => (v.name || '').trim().toLowerCase() === vendor.toLowerCase());
     const vendorId = matchedVendorForZoho?.id;
+    const quoteTerms = String(quoteToUse?.terms ?? '').trim();
+    const vendorMasterTerms = String(matchedVendorForZoho?.paymentTerms ?? '').trim();
+    const resolvedPaymentTerms = quoteTerms || vendorMasterTerms || 'As per contract';
 
     let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
     if (vendorId && vendor !== 'Unassigned') {
@@ -2242,7 +2241,7 @@ const Procurement: React.FC = () => {
       orderDate: createdDateStr,
       expectedShipmentDate: expectedDeliveryStr,
       reference: requestCode,
-      paymentTerms: 'As per contract',
+      paymentTerms: resolvedPaymentTerms,
       status: 'Draft',
       formData: {
         requestId,
@@ -2286,7 +2285,7 @@ const Procurement: React.FC = () => {
       status: 'Pending Approval',
       createdDate: createdDateStr,
       createdBy: 'Procurement — Admin',
-      paymentTerms: 'As per contract',
+      paymentTerms: resolvedPaymentTerms,
       expectedDelivery: expectedDeliveryStr,
       deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
       vendorRating: 0,
@@ -2870,8 +2869,16 @@ const Procurement: React.FC = () => {
   };
 
   const deleteQuote = async (quoteId: string) => {
-    const id = parseInt(quoteId, 10);
-    if (Number.isNaN(id)) {
+    const raw = String(quoteId ?? '').trim();
+    if (raw.startsWith('IL-')) {
+      addToast(
+        'info',
+        'This card reflects Items List vendor rates, not a saved procurement quotation. Remove or edit rates under Vendor Client → Items List.',
+      );
+      return;
+    }
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(id)) {
       addToast('error', 'Invalid quotation id');
       return;
     }
@@ -4205,18 +4212,24 @@ const Procurement: React.FC = () => {
                             </div>
                           )}
 
-                          {/* Action Buttons — quotations are record-only; draft POs are created from PR / Draft POs flow */}
+                          {/* Action Buttons — DB quotations delete via API; IL-* cards are Items List aggregates (not procurement_quotations rows). */}
                           <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-end">
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete quote ${quote.id}?`)) {
-                                  deleteQuote(quote.id);
-                                }
-                              }}
-                              className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-medium transition-colors"
-                            >
-                              Delete
-                            </button>
+                            {String(quote.id).startsWith('IL-') ? (
+                              <span className="text-[11px] text-slate-500">
+                                Managed from Items List / vendor rates
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete quote ${quote.id}?`)) {
+                                    deleteQuote(quote.id);
+                                  }
+                                }}
+                                className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-medium transition-colors"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </article>
                       );

@@ -37,6 +37,18 @@ function isMtrOutbound(mrn: { source?: string }): boolean {
   return String(mrn.source || '').trim() === 'MTR';
 }
 
+/** WH may only batch-initiate lines still in not_initiated; later phases are read-only in this modal. */
+function mtrOutboundLinePhase(
+  lineId: string,
+  lineTransferStatus: Record<string, MtrLineTransferPhase | string> | undefined
+): string {
+  return String(lineTransferStatus?.[lineId] ?? 'not_initiated');
+}
+
+function mtrLineLockedAtWh(lineId: string, lineTransferStatus: Record<string, MtrLineTransferPhase | string> | undefined): boolean {
+  return mtrOutboundLinePhase(lineId, lineTransferStatus) !== 'not_initiated';
+}
+
 function manualStatusOptions(current: OutboundUiStatus): OutboundUiStatus[] {
   if (['In Transit', 'Received at MU'].includes(current)) return [current];
   const idx = NON_MTR_MANUAL_FLOW.indexOf(current);
@@ -190,9 +202,21 @@ const OutboundDashboard = () => {
     setSelectedMRNId(mrn.id);
 
     const existingState = pickStateByMrn[mrn.id];
-    setAssignedPicker(existingState?.assignedPicker ?? mrn.assignedPicker ?? '');
-    setAssignedTransferBy(existingState?.assignedTransferBy ?? mrn.transferTeam ?? '');
-    setPickedItems(existingState?.pickedItems ?? {});
+    const serverPicker = String(mrn.assignedPicker || '').trim();
+    const serverTeam = String(mrn.transferTeam || '').trim();
+    setAssignedPicker(serverPicker ? mrn.assignedPicker : (existingState?.assignedPicker ?? ''));
+    setAssignedTransferBy(serverTeam ? mrn.transferTeam : (existingState?.assignedTransferBy ?? ''));
+
+    const sessionPicked = existingState?.pickedItems ?? {};
+    const nextPicked: Record<string, boolean> = {};
+    mrn.lineItems.forEach((li) => {
+      if (isMtrOutbound(mrn) && mtrLineLockedAtWh(li.id, mrn.lineTransferStatus)) {
+        nextPicked[li.id] = false;
+      } else {
+        nextPicked[li.id] = !!sessionPicked[li.id];
+      }
+    });
+    setPickedItems(nextPicked);
 
     const initialQty: Record<string, string> = {};
     mrn.lineItems.forEach((li) => {
@@ -290,6 +314,11 @@ const OutboundDashboard = () => {
           .map((li) => li.id);
         if (checkedIds.length === 0) {
           showToast('Select at least one line (checkbox) to initiate transfer.', 'error');
+          return;
+        }
+        const bad = checkedIds.filter((id) => mtrLineLockedAtWh(id, lts));
+        if (bad.length > 0) {
+          showToast('Remove lines that already left the warehouse (in transit or completed) from the selection.', 'error');
           return;
         }
         const toInitiate = checkedIds.filter((id) => (lts[id] as string | undefined) === 'not_initiated');
@@ -606,16 +635,25 @@ const OutboundDashboard = () => {
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
                     <label className="block text-[9px] text-slate-500 uppercase mb-1">Picker</label>
-                    <select
-                      value={assignedPicker}
-                      onChange={(e) => setAssignedPicker(e.target.value)}
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
-                    >
-                      <option value="">— Assign Picker —</option>
-                      {assignablePickers.map((p) => (
-                        <option key={p.id} value={p.displayName}>{p.displayName}</option>
-                      ))}
-                    </select>
+                    {String(selectedMRN.assignedPicker || '').trim() ? (
+                      <div
+                        className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                        title="Picker was saved once and cannot be changed. Contact an admin if this was a mistake."
+                      >
+                        {selectedMRN.assignedPicker}
+                      </div>
+                    ) : (
+                      <select
+                        value={assignedPicker}
+                        onChange={(e) => setAssignedPicker(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      >
+                        <option value="">— Assign Picker —</option>
+                        {assignablePickers.map((p) => (
+                          <option key={p.id} value={p.displayName}>{p.displayName}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer Team</label>
@@ -636,43 +674,84 @@ const OutboundDashboard = () => {
                 </h3>
                 {isMtrOutbound(selectedMRN) && (
                   <p className="text-[9px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mb-1.5">
-                    MTR: tick lines to include in <strong>Initiate transfer</strong>. Only <em>WH pending</em> lines move to in transit; you can release lines in separate batches.
+                    MTR: tick <strong>WH pending</strong> lines only (green badge) to include in <strong>Initiate transfer</strong>. Lines already in transit / received / completed are grayed and cannot be selected again. Save changes after assigning a picker so it persists across refresh.
                   </p>
                 )}
                 <div className="rounded border border-slate-200 overflow-hidden">
                   {activePickItems.map((item) => {
                     const shortQty = pickedQty[item.id] ?? String(item.required);
                     const hasShort = Number(shortQty) < item.required;
+                    const mtr = isMtrOutbound(selectedMRN);
+                    const phase = mtr ? mtrOutboundLinePhase(item.id, selectedMRN.lineTransferStatus) : 'not_initiated';
+                    const locked = mtr && mtrLineLockedAtWh(item.id, selectedMRN.lineTransferStatus);
+                    const phaseLabel = phase.replace(/_/g, ' ');
                     return (
-                      <div key={item.id} className="px-2.5 py-2 border-b border-slate-100 last:border-b-0 bg-white">
-                        <div className="flex items-start gap-2">
+                      <div
+                        key={item.id}
+                        className={`px-2.5 py-2 border-b border-slate-100 last:border-b-0 ${
+                          locked ? 'bg-slate-100/80 border-slate-200' : 'bg-white'
+                        }`}
+                      >
+                        <div className={`flex items-start gap-2 ${locked ? 'opacity-70' : ''}`}>
                           <input
                             type="checkbox"
-                            checked={!!pickedItems[item.id]}
-                            onChange={(e) => setPickedItems((prev) => ({ ...prev, [item.id]: e.target.checked }))}
-                            className="mt-0.5"
+                            checked={locked ? false : !!pickedItems[item.id]}
+                            disabled={locked}
+                            title={
+                              locked
+                                ? `This line is ${phaseLabel} — it already left WH or finished. You cannot include it in a new initiate transfer.`
+                                : 'Select for Initiate transfer (WH pending lines only).'
+                            }
+                            onChange={(e) => {
+                              if (locked) return;
+                              setPickedItems((prev) => ({ ...prev, [item.id]: e.target.checked }));
+                            }}
+                            className="mt-0.5 disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-semibold text-slate-900">
                               {item.name}
-                              {isMtrOutbound(selectedMRN) && selectedMRN.lineTransferStatus?.[item.id] && (
-                                <span className="ml-1 font-normal text-[9px] text-slate-500">
-                                  ({String(selectedMRN.lineTransferStatus[item.id]).replace(/_/g, ' ')})
+                              {mtr && (
+                                <span
+                                  className={`ml-1.5 inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-semibold ${
+                                    locked
+                                      ? 'border-slate-300 bg-slate-200 text-slate-700'
+                                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                  }`}
+                                  title="Per-line MTR transfer phase from server"
+                                >
+                                  {phaseLabel}
                                 </span>
                               )}
                             </p>
-                            <p className="text-[10px] text-slate-500">Required: {item.required} {item.uom}{item.location !== '—' ? ` · At ${item.location}` : ''}</p>
+                            <p className="text-[10px] text-slate-500">
+                              Required: {item.required} {item.uom}
+                              {item.location !== '—' ? ` · At ${item.location}` : ''}
+                              {locked && (
+                                <span className="ml-1 text-slate-600 font-medium">· Not selectable for outbound batch</span>
+                              )}
+                            </p>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-slate-500">Required:</span>
+                            <span className="text-[10px] text-slate-500">Qty:</span>
                             <input
                               value={shortQty}
+                              disabled={mtr && locked}
+                              title={mtr && locked ? 'Quantity is fixed for lines that already left WH.' : undefined}
                               onChange={(e) => setPickedQty((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                              className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900"
+                              className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                             />
                             <span className="text-[10px] text-slate-500">{item.uom}</span>
-                            <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${hasShort ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-                              {hasShort ? 'Short' : 'Pending'}
+                            <span
+                              className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${
+                                locked
+                                  ? 'bg-slate-200 text-slate-600 border-slate-300'
+                                  : hasShort
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {locked ? 'WH done' : hasShort ? 'Short' : 'Pending'}
                             </span>
                           </div>
                         </div>

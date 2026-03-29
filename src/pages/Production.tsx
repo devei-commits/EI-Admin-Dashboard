@@ -205,9 +205,28 @@ function canRescheduleProductionDates(batch: Batch): boolean {
   return ['pm_reserved', 'pm_connected', 'pm_dispensing', 'scheduled', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'qc_failed'].includes(batch.bprStatus);
 }
 
+/** True once bulk QC approved (cleared) — also accept flag if bmrStatus is briefly stale after PATCH/refresh. */
+function bmrBulkQcReleased(batch: Batch): boolean {
+  return batch.bmrStatus === 'cleared' || batch.bulkBatchAccepted === true;
+}
+
 /** BPR is mid-flight before FG; used for copy in dispensing / schedule. */
 function bprAwaitingBmrRelease(batch: Batch): boolean {
-  return batch.bmrStatus !== 'cleared' && ['pm_dispensing', 'scheduled', 'filling'].includes(batch.bprStatus);
+  return !bmrBulkQcReleased(batch) && ['pm_dispensing', 'scheduled', 'filling'].includes(batch.bprStatus);
+}
+
+/** BMR pipeline when `rm_connected` flag is set but `bmr_status` was not yet advanced from rm_reserved/scheduled. */
+function bmrStatusForPipelineDisplay(batch: Batch): BMRStatus {
+  if (batch.rmConnected && (batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled')) {
+    return 'rm_connected';
+  }
+  return batch.bmrStatus;
+}
+
+/** Offer RM dispensing after transfer — tolerate rm_connected flag OR status, and pre-dispensing BMR steps only. */
+function canOfferRmDispensingUi(batch: Batch): boolean {
+  const preDispense: BMRStatus[] = ['rm_reserved', 'scheduled', 'rm_connected'];
+  return (batch.rmConnected || batch.bmrStatus === 'rm_connected') && preDispense.includes(batch.bmrStatus);
 }
 
 /** Footer: avoid duplicate Set Schedule + Reschedule when only first-time scheduling applies. */
@@ -2120,8 +2139,8 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
   const total = localItems.length;
   const pct = total > 0 ? Math.round(done / total * 100) : 0;
   const unit = type === 'rm' ? 'KG' : 'pcs';
-  /** BPR cannot move to Filling until BMR QC is completed (cleared). */
-  const bprBlockedByBmr = type === 'pm' && batch.bmrStatus !== 'cleared';
+  /** BPR cannot move to Filling until BMR bulk QC is released (cleared or approved flag). */
+  const bprBlockedByBmr = type === 'pm' && !bmrBulkQcReleased(batch);
 
   const handleDispense = (idx: number) => {
     const val = parseFloat(inputVals[idx] || '') || localItems[idx].required;
@@ -2623,6 +2642,17 @@ function outboundMtrStageHint(m: MRNRecordFromApi): string {
   if (s === 'In Transit') return 'Stock left the warehouse. When material arrives at MU, tap Verify / Received at MU.';
   if (s === 'Received at MU') return 'Enter MU zone and rack, then Mark Succeeded to complete the move.';
   return 'Complete steps in Transfer orders.';
+}
+
+/** Picker / transfer team from warehouse MRN — shown on BMR/BPR MTR chips (read-only). */
+function outboundMtrWarehouseMeta(m: MRNRecordFromApi | null | undefined): string | null {
+  if (!m) return null;
+  const p = String(m.assignedPicker || '').trim();
+  const t = String(m.transferTeam || '').trim();
+  if (!p && !t) return null;
+  if (p && t) return `Picker: ${p} · Transfer: ${t}`;
+  if (p) return `Picker: ${p}`;
+  return `Transfer: ${t}`;
 }
 
 /** Mirrors backend outbound MTR allowed transitions. Returns error message or null. */
@@ -3369,8 +3399,11 @@ function MRNDetailModal({
                     <span className={mrn.assignedPicker ? 'font-medium text-slate-900' : 'text-slate-500'}>
                       {mrn.assignedPicker?.trim() || 'Unassigned'}
                     </span>
+                    {mrn.transferTeam?.trim() ? (
+                      <p className="text-[11px] text-slate-800 mt-1 font-medium">Transfer: {mrn.transferTeam}</p>
+                    ) : null}
                     <p className="text-[11px] text-slate-600 mt-1 leading-snug">
-                      Picker is assigned in Warehouse → Transfer orders, not from Production.
+                      Picker is assigned in Warehouse → Transfer orders (locked after first save). Production sees the same values here.
                     </p>
                   </div>
                 ) : (
@@ -3767,7 +3800,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const [tab, setTab] = useState('overview');
   const [type, setType] = useState<'bmr' | 'bpr'>(initialTab);
   const pipeline = type === 'bmr' ? BMR_PIPELINE : BPR_PIPELINE;
-  const curStatus = type === 'bmr' ? batch.bmrStatus : (batch.bprStatus === 'qc_failed' ? (batch.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : batch.bprStatus);
+  const curStatus = type === 'bmr' ? bmrStatusForPipelineDisplay(batch) : (batch.bprStatus === 'qc_failed' ? (batch.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : batch.bprStatus);
   const pIdx = pipelineIndex(curStatus, pipeline);
 
   const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
@@ -3776,6 +3809,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
   const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const openPmMtrForBatch = useMemo(() => findOpenPmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
+  const openRmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openRmMtrForBatch), [openRmMtrForBatch]);
+  const openPmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openPmMtrForBatch), [openPmMtrForBatch]);
 
   useEffect(() => {
     if (!batch.sku && !batch.productName) return;
@@ -3895,7 +3930,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             <div id="bdm-status-badges" className="flex gap-1.5 flex-wrap shrink-0 items-center">
               <button type="button" onClick={() => setType('bmr')} className={`text-[10px] px-2 py-0.5 rounded font-semibold border transition-colors ${type === 'bmr' ? 'bg-orange-500 text-white border-orange-500' : 'text-gray-500 border-gray-200 hover:bg-gray-50'}`}>BMR</button>
               <button type="button" onClick={() => setType('bpr')} className={`text-[10px] px-2 py-0.5 rounded font-semibold border transition-colors ${type === 'bpr' ? 'bg-purple-500 text-white border-purple-500' : 'text-gray-500 border-gray-200 hover:bg-gray-50'}`}>BPR</button>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">{bmrStatusLabel[batch.bmrStatus]}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">{bmrStatusLabel[bmrStatusForPipelineDisplay(batch)]}</span>
               {batch.bmrStatus === 'batch_confirmed' && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Confirmed</span>}
               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[batch.bprStatus]}</span>
             </div>
@@ -4155,6 +4190,11 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
               </span>
+              {openRmMtrWarehouseMeta && (
+                <span className="text-[10px] font-semibold text-amber-950/90 leading-snug pl-5 border-l-2 border-amber-300/60 ml-1">
+                  {openRmMtrWarehouseMeta}
+                </span>
+              )}
               {openRmMtrForBatch.lineTransferStatus && openRmMtrForBatch.lineItems && (
                 <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
                   {openRmMtrForBatch.lineItems.filter(mtrLineItemIsRm).map((li) => (
@@ -4166,7 +4206,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               )}
             </span>
           )}
-          {batch.rmConnected && batch.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
+          {canOfferRmDispensingUi(batch) && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
           {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !openPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
           {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && openPmMtrForBatch && (
@@ -4174,6 +4214,11 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
               </span>
+              {openPmMtrWarehouseMeta && (
+                <span className="text-[10px] font-semibold text-amber-950/90 leading-snug pl-5 border-l-2 border-amber-300/60 ml-1">
+                  {openPmMtrWarehouseMeta}
+                </span>
+              )}
               {openPmMtrForBatch.lineTransferStatus && openPmMtrForBatch.lineItems && (
                 <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
                   {openPmMtrForBatch.lineItems.filter(mtrLineItemIsPm).map((li) => (
@@ -4440,6 +4485,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.teal;
               const openRmMtr = findOpenRmMtrForBatch(b.bmrNo, outboundMrns);
+              const rmMtrWhMeta = outboundMtrWarehouseMeta(openRmMtr);
               return (
                 <div key={b.bmrNo} className={`rounded-xl border p-4 ${b.bmrStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
@@ -4489,6 +4535,11 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                         <span className="inline-flex items-center gap-1">
                           <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtr)}</span>
                         </span>
+                        {rmMtrWhMeta && (
+                          <span className="text-[9px] font-semibold text-amber-950/90 leading-snug pl-4 border-l border-amber-300/50">
+                            {rmMtrWhMeta}
+                          </span>
+                        )}
                         {openRmMtr.lineTransferStatus && openRmMtr.lineItems && (
                           <span className="text-[9px] font-normal text-amber-900/85 leading-snug pl-4">
                             {openRmMtr.lineItems.filter(mtrLineItemIsRm).map((li) => (
@@ -4500,7 +4551,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                         )}
                       </span>
                     )}
-                    {b.bmrStatus === 'rm_connected' && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
+                    {canOfferRmDispensingUi(b) && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>}
                     {b.bmrStatus === 'in_production' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Bulk QC</Btn>}
                     {b.bmrStatus === 'bulk_qc' && <Btn color="blue" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Review QC</Btn>}
                     {b.bmrStatus === 'qc_failed' && <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>Retry QC</Btn>}
@@ -4581,6 +4632,7 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.purple;
               const openPmMtr = findOpenPmMtrForBatch(b.bmrNo, outboundMrns);
+              const pmMtrWhMeta = outboundMtrWarehouseMeta(openPmMtr);
               return (
                 <div key={b.bprNo} className={`rounded-xl border p-4 ${b.bprStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
@@ -4631,6 +4683,11 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                         <span className="inline-flex items-center gap-1">
                           <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtr)}</span>
                         </span>
+                        {pmMtrWhMeta && (
+                          <span className="text-[9px] font-semibold text-amber-950/90 leading-snug pl-4 border-l border-amber-300/50">
+                            {pmMtrWhMeta}
+                          </span>
+                        )}
                         {openPmMtr.lineTransferStatus && openPmMtr.lineItems && (
                           <span className="text-[9px] font-normal text-amber-900/85 leading-snug pl-4">
                             {openPmMtr.lineItems.filter(mtrLineItemIsPm).map((li) => (
@@ -5650,6 +5707,14 @@ const Production = () => {
       const pmCodes = Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => l.code) : [];
       apiBatchUpdate(batch._pk, updates)
         .then((patched: any) => {
+          const row = patched as BatchRow;
+          if (row?.bmrNo) {
+            setState((prev) => ({
+              ...prev,
+              batches: prev.batches.map((b) => (b.bmrNo === bmrNo ? apiBatchToBatch(row) : b)),
+              lastUpdated: new Date().toISOString(),
+            }));
+          }
           if (touchesDispensing) {
             console.log(DISPENDING_MU_ERR_TAG, 'updateBatch: PATCH success', {
               batchPk: batch._pk,
@@ -5746,8 +5811,9 @@ const Production = () => {
           addToast('error', apiMsg || (err instanceof Error ? err.message : 'Failed to save batch'));
           refreshBatches();
         });
+    } else {
+      setState((prev) => ({ ...prev, batches: prev.batches.map((b) => (b.bmrNo === bmrNo ? { ...b, ...updates } : b)) }));
     }
-    setState(prev => ({ ...prev, batches: prev.batches.map(b => b.bmrNo === bmrNo ? { ...b, ...updates } : b) }));
   }, [state.batches, addToast, refreshBatches]);
 
   const openScheduleWizard = useCallback((slot?: ScheduleSlot) => {
