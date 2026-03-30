@@ -1457,15 +1457,32 @@ const Planning = () => {
 
   const getUsedInBatchesForItem = (item: ItemsInvolvedDisplayRow) => {
     const itemCode = String(item.code ?? '').trim().toLowerCase();
+    const itemName = String(item.name ?? '').trim().toLowerCase();
     const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
     return (allPlanningBatches as PlanningBatchAllRow[])
-      .filter((b) => b.sent === true)
+      // Include both sent and draft batches so the operator sees every batch for the
+      // selected product/item.
+      .filter((b) => {
+        const allowedProductNames = (item.usedInProducts ?? [])
+          .map((p) => String(p ?? '').trim().toLowerCase())
+          .filter(Boolean);
+        if (allowedProductNames.length === 0) return true;
+        return allowedProductNames.includes(String(b.productName ?? '').trim().toLowerCase());
+      })
       .filter((b) => {
         const lines = item.itemType === 'RM' ? (b.rmLines ?? []) : (b.pmLines ?? []);
-        return lines.some((line: { raw_material_id?: number; pack_material_id?: number; rm_code?: string; pm_code?: string; code?: string }) => {
+        return lines.some((line: { raw_material_id?: number; pack_material_id?: number; rm_code?: string; pm_code?: string; code?: string; inci_name?: string; name?: string; description?: string }) => {
           const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
           const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
-          return (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId) || (itemCode.length > 0 && lineCode === itemCode);
+          const lineLabel = String(line.inci_name ?? line.name ?? line.description ?? '')
+            .trim()
+            .toLowerCase();
+
+          const matchesById = Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId;
+          const matchesByCode = itemCode.length > 0 && lineCode === itemCode;
+          const matchesByName = itemName.length > 0 && lineLabel === itemName;
+
+          return matchesById || matchesByCode || matchesByName;
         });
       });
   };
@@ -1794,7 +1811,9 @@ const Planning = () => {
 
     const existing = reqRes.data.find((r) => {
       const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
-      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN'].includes(String(r.status || ''));
+      // If the earlier request has already reached `PO Draft`, a subsequent planning release should
+      // create a new request rather than consolidate (otherwise it looks like the new release was ignored).
+      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN', 'PO Draft'].includes(String(r.status || ''));
       return sameVendor && openStatus;
     });
 
@@ -3301,7 +3320,7 @@ const Planning = () => {
 
       </div>
 
-      {/* Used In popup: list sent batches that consume selected RM/PM */}
+      {/* Used In popup: list all batches (sent + draft) that consume selected RM/PM */}
       {usedInModalItem && (() => {
         const rows = getUsedInBatchesForItem(usedInModalItem);
         return (
@@ -3322,7 +3341,7 @@ const Planning = () => {
               </div>
               <div className="p-4 overflow-auto max-h-[70vh]">
                 {rows.length === 0 ? (
-                  <div className="text-sm text-gray-500 p-6 text-center">No sent batches found for this item.</div>
+                  <div className="text-sm text-gray-500 p-6 text-center">No batches found for this item.</div>
                 ) : (
                   <table className="w-full text-xs border-collapse">
                     <thead>
