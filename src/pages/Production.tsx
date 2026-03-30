@@ -2734,6 +2734,25 @@ function mtrAllLinesCompletedApi(m: MRNRecordFromApi): boolean {
   return ids.length > 0 && ids.every((id) => lts[id] === 'completed');
 }
 
+/** Every RM line on this MTR is verified at MU (or stock move completed) — required before starting RM dispensing. */
+function mtrAllRmLinesReceivedAtMu(mrn: MRNRecordFromApi): boolean {
+  const lines = (mrn.lineItems || []).filter(mtrLineItemIsRm);
+  if (lines.length === 0) return true;
+  return lines.every((li) => {
+    const p = mtrLinePhaseRaw(mrn, li.id);
+    return p === 'received_at_mu' || p === 'completed';
+  });
+}
+
+function mtrAllPmLinesReceivedAtMu(mrn: MRNRecordFromApi): boolean {
+  const lines = (mrn.lineItems || []).filter(mtrLineItemIsPm);
+  if (lines.length === 0) return true;
+  return lines.every((li) => {
+    const p = mtrLinePhaseRaw(mrn, li.id);
+    return p === 'received_at_mu' || p === 'completed';
+  });
+}
+
 /* ──────────── MTR MODAL ────────────────────────────────────── */
 /* Transfer From: always Main Warehouse. Transfer To: MU1 / MU2 (RM) or main warehouse (PM). Quantity editable. */
 
@@ -3450,7 +3469,10 @@ function MRNDetailModal({
                     {mrn.lineItems.map((item) => {
                       const phase = mtrLinePhaseRaw(mrn, item.id);
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50">
+                        <tr
+                          key={item.id}
+                          className={`hover:bg-slate-50 ${phase === 'completed' ? 'bg-slate-100/80 text-slate-500' : ''}`}
+                        >
                           <td className="px-3 py-2 font-medium text-slate-900">{item.item}</td>
                           <td className="px-3 py-2 text-slate-500">{item.itemCode}</td>
                           <td className="px-3 py-2 text-center font-medium">{item.quantity}</td>
@@ -3458,6 +3480,9 @@ function MRNDetailModal({
                           {isOutboundMtr && (
                             <td className="px-3 py-2 text-[10px] text-slate-700 align-top">
                               <div className="font-medium text-slate-800">{formatMtrLinePhaseShort(phase)}</div>
+                              {phase === 'not_initiated' && (
+                                <p className="mt-1 text-slate-500 italic">Not released from warehouse — cannot receive here.</p>
+                              )}
                               {phase === 'in_transit' && (
                                 <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
                                   <input
@@ -3481,6 +3506,9 @@ function MRNDetailModal({
                                   />
                                   <span>Include in stock move</span>
                                 </label>
+                              )}
+                              {phase === 'completed' && (
+                                <p className="mt-1 text-slate-500">Stock move completed — no further action.</p>
                               )}
                             </td>
                           )}
@@ -3603,10 +3631,10 @@ function MRNDetailModal({
                 type="button"
                 onClick={() => {
                   const ids = Object.entries(recvLinePick)
-                    .filter(([, v]) => v)
+                    .filter(([k, v]) => v && mtrLinePhaseRaw(mrn, k) === 'in_transit')
                     .map(([k]) => k);
                   if (ids.length === 0) {
-                    addToast('error', 'Select at least one in-transit line to mark received.');
+                    addToast('error', 'Select at least one line that is in transit from the warehouse to mark received.');
                     return;
                   }
                   persistUpdate({
@@ -3626,10 +3654,10 @@ function MRNDetailModal({
                 type="button"
                 onClick={() => {
                   const ids = Object.entries(completeLinePick)
-                    .filter(([, v]) => v)
+                    .filter(([k, v]) => v && mtrLinePhaseRaw(mrn, k) === 'received_at_mu')
                     .map(([k]) => k);
                   if (ids.length === 0) {
-                    addToast('error', 'Select at least one line received at MU to complete stock move.');
+                    addToast('error', 'Select at least one line that is received at MU to complete the stock move.');
                     return;
                   }
                   persistUpdate({
@@ -4230,7 +4258,14 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               )}
             </span>
           )}
-          {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>}
+          {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && (!openPmMtrForBatch || mtrAllPmLinesReceivedAtMu(openPmMtrForBatch)) && (
+            <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>
+          )}
+          {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && openPmMtrForBatch && !mtrAllPmLinesReceivedAtMu(openPmMtrForBatch) && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Verify every PM line at MU in Transfer orders before PM dispensing.">
+              <Info size={14} /> Receive all PM lines at MU first
+            </span>
+          )}
           {batch.bprStatus === 'filling' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Fill QC</Btn>}
           {batch.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Pack QC</Btn>}
           {batch.bprStatus === 'qc_failed' && batch.fillBatchAccepted === false && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Retry Fill QC</Btn>}
@@ -4699,7 +4734,14 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                         )}
                       </span>
                     )}
-                    {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>}
+                    {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && (!openPmMtr || mtrAllPmLinesReceivedAtMu(openPmMtr)) && (
+                      <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>
+                    )}
+                    {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && openPmMtr && !mtrAllPmLinesReceivedAtMu(openPmMtr) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Receive all PM lines at MU in Transfer orders first.">
+                        <Info size={10} /> Receive PM at MU
+                      </span>
+                    )}
                     {canShowRescheduleFooterButton(b) && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Reschedule</Btn>
                     )}

@@ -153,6 +153,8 @@ const OutboundDashboard = () => {
   >({});
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
+  const persistedPickerLocked = Boolean((selectedMRN?.assignedPicker || '').trim());
+  const savePickAvailable = selectedMRN?.status === 'Pending Pick';
 
   useEffect(() => {
     let cancelled = false;
@@ -278,6 +280,14 @@ const OutboundDashboard = () => {
 
   const handleSavePick = async () => {
     if (!selectedMRN) return;
+    if (!String(assignedPicker || '').trim()) {
+      showToast('Assign a picker before saving pick.', 'error');
+      return;
+    }
+    if (selectedMRN.status !== 'Pending Pick') {
+      showToast('Pick was already saved for this transfer.', 'error');
+      return;
+    }
     persistPanelState(selectedMRN.id);
     try {
       await updateMRN(selectedMRN.id, {
@@ -776,8 +786,15 @@ const OutboundDashboard = () => {
                 Save changes
               </button>
               <button
+                type="button"
                 onClick={handleSavePick}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold"
+                disabled={!savePickAvailable}
+                title={
+                  !savePickAvailable
+                    ? 'Pick was already saved (status is no longer Pending pick).'
+                    : 'Requires an assigned picker. Sets status to In pick.'
+                }
+                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cyan-500"
               >
                 Save Pick
               </button>
