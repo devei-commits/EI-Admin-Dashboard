@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vite.dev/config
 export default defineConfig(({ mode }) => {
-  // Local backend by default so Client/Vendor Master matches your DB when developing
+  // Local backend by default so Client-Vendor Master matches your DB when developing
   // Override: VITE_DEV_API_PROXY=https://your-deployed-api.example/ npm run dev
   const env = loadEnv(mode, process.cwd(), "");
   const apiProxyTarget =
