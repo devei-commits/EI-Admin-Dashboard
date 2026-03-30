@@ -3565,11 +3565,11 @@ const Procurement: React.FC = () => {
                     <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
                       <div className="flex items-center gap-2 overflow-x-auto">
                         {(['All', 'Active', 'New', 'Quoted', 'PO Draft', 'PO Released'] as const).map((tabStatus) => {
-                          const count = tabStatus === 'All'
-                            ? requests.length
-                            : tabStatus === 'Active'
-                              ? requests.filter(r => r.status !== 'PO Released').length
-                              : requests.filter(r => r.status === tabStatus).length;
+                          const actionableCount = requests.filter((r) => r.status === 'New' || r.status === 'Quoted').length;
+                          const count =
+                            tabStatus === 'All' || tabStatus === 'Active'
+                              ? actionableCount
+                              : requests.filter((r) => r.status === tabStatus).length;
 
                           const isActive = requestStatusFilter === (tabStatus === 'All' ? 'All Statuses' : tabStatus === 'Active' ? 'All Statuses' : tabStatus);
 
@@ -3601,7 +3601,13 @@ const Procurement: React.FC = () => {
                         const filteredRequests = requests.filter(req => {
                           // Apply filters
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
-                          if (requestStatusFilter !== 'All Statuses' && req.status !== requestStatusFilter) return false;
+                          // Requests stage default view should show only actionable PRs.
+                          // Once a PR becomes `PO Draft`, it should disappear here and move to "Draft POs".
+                          if (requestStatusFilter === 'All Statuses') {
+                            if (req.status !== 'New' && req.status !== 'Quoted') return false;
+                          } else if (req.status !== requestStatusFilter) {
+                            return false;
+                          }
                           if (searchQuery.trim()) {
                             const query = searchQuery.toLowerCase();
                             const matchesCode = req.code.toLowerCase().includes(query);
