@@ -373,9 +373,10 @@ export function matchBackendPrItemForDraftLine(
     const inName = String(it.name ?? '').trim().toLowerCase();
     const inCode = String(it.code ?? '').trim().toLowerCase();
     if (!inName && !inCode) return false;
+    // Exact name only: substring match linked "new rm mat" to "new rm mat22" and wrong split-PO master ids.
     return (
-      (inName && (inName === nameNorm || (!!nameNorm && (nameNorm.includes(inName) || inName.includes(nameNorm))))) ||
-      (!!inCode && (!!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm))))
+      (!!inName && !!nameNorm && inName === nameNorm) ||
+      (!!inCode && !!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm)))
     );
   });
 }
@@ -423,8 +424,8 @@ export function assignPrItemToDraftLines(
         const inCode = String(it.code ?? '').trim().toLowerCase();
         if (!inName && !inCode) return false;
         return (
-          (inName && (inName === nameNorm || (!!nameNorm && (nameNorm.includes(inName) || inName.includes(nameNorm))))) ||
-          (!!inCode && (!!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm))))
+          (!!inName && !!nameNorm && inName === nameNorm) ||
+          (!!inCode && !!codeNorm && (inCode === codeNorm || codeNorm.includes(inCode) || inCode.includes(codeNorm)))
         );
       });
     }
