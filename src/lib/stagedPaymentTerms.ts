@@ -37,6 +37,46 @@ export function parseStagedPaymentTerms(raw: string | null | undefined): StagedP
   }
 }
 
+/**
+ * Vendor master (VendorForm) saves a single line like:
+ * `Advanced X% + Before dispatch Y% + After dispatch/On delivery Z%`
+ * Parse into staged percents for display / Items List JSON.
+ */
+export function parseVendorThreeWayFromPlainText(raw: string | null | undefined): StagedPaymentTerms | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const m = s.match(
+    /Advanced\s*([\d.]+)\s*%\s*\+\s*Before\s*dispatch\s*([\d.]+)\s*%\s*\+\s*After\s*dispatch(?:\/On\s*delivery)?\s*([\d.]+)\s*%/i,
+  );
+  if (!m) return null;
+  return {
+    advance_pct: clampPct(m[1]),
+    pre_shipment_pct: clampPct(m[2]),
+    post_shipment_pct: clampPct(m[3]),
+    credit_days: 0,
+  };
+}
+
+/** Read payables* fields from vendor-client `data` blob (same keys as VendorForm). */
+export function stagedPaymentTermsFromVendorData(
+  data: Record<string, unknown> | null | undefined,
+): StagedPaymentTerms | null {
+  if (!data || typeof data !== 'object') return null;
+  const adv = Number(String((data as { payablesAdvancedPct?: unknown }).payablesAdvancedPct ?? '').replace(/[^\d.-]/g, ''));
+  const pre = Number(String((data as { payablesBeforeDispatchPct?: unknown }).payablesBeforeDispatchPct ?? '').replace(/[^\d.-]/g, ''));
+  const post = Number(String((data as { payablesAfterDispatchPct?: unknown }).payablesAfterDispatchPct ?? '').replace(/[^\d.-]/g, ''));
+  const a = Number.isFinite(adv) ? adv : 0;
+  const b = Number.isFinite(pre) ? pre : 0;
+  const c = Number.isFinite(post) ? post : 0;
+  if (a === 0 && b === 0 && c === 0) return null;
+  return {
+    advance_pct: clampPct(a),
+    pre_shipment_pct: clampPct(b),
+    post_shipment_pct: clampPct(c),
+    credit_days: 0,
+  };
+}
+
 export function serializeStagedPaymentTerms(p: StagedPaymentTerms): string {
   return JSON.stringify({
     advance_pct: clampPct(p.advance_pct),

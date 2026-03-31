@@ -3,7 +3,7 @@
  * Generate invoice for picked orders — fetches invoice no and transporters from DB
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Check, DollarSign, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { InvoiceModalProps, OrderItem } from '../../types/orderFulfillment';
@@ -22,6 +22,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   selectedBprNos,
   onGenerateInvoice,
 }) => {
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [invoiceNo, setInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(getTodayISO());
   const [dueDate, setDueDate] = useState('');
@@ -68,6 +69,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   }, [isOpen, saleOrder]);
 
   const handleConfirm = async () => {
+    const formEl = formRef.current;
+    if (formEl && !formEl.reportValidity()) {
+      const firstInvalid = formEl.querySelector(':invalid');
+      if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
+      return;
+    }
+
     if (pickedSplits.length === 0 || !preparedBy || !invoiceNo) return;
 
     const subtotal = pickedSplits.reduce(
@@ -157,15 +165,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+            <form ref={formRef} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4" onSubmit={(e) => e.preventDefault()}>
               <div className="space-y-4">
                 <div>
                   <Input label="Invoice No." value={invoiceNo} readOnly disabled />
                   <p className="text-xs text-gray-400 mt-1">Auto-generated</p>
                 </div>
-                <Input label="Invoice Date" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
-                <Input label="Due Date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                <Input label="Prepared By" value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} placeholder="Enter your name" />
+                <Input label="Invoice Date" type="date" required value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+                <Input label="Due Date" type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                <Input label="Prepared By" required value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} placeholder="Enter your name" />
               </div>
 
               <div className="space-y-4">
@@ -181,7 +189,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <Input label="LR / AWB No." value={lrNo} onChange={(e) => setLrNo(e.target.value)} placeholder="Tracking number" />
                 <Input label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional notes for invoice" />
               </div>
-            </div>
+            </form>
 
             <div className="mt-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">Items to be Invoiced</h3>

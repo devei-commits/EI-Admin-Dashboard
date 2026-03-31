@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useLocation, NavLink, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
@@ -41,6 +41,27 @@ import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
+
+/** Merge a newly created batch into the planning-batches list cache so selection is not reset before refetch (fixes dropdown + batch label). */
+function mergePlanningBatchIntoListCache(
+  queryClient: QueryClient,
+  planningExtractedId: string,
+  newBatch: PlanningBatchRow
+): void {
+  const nid = Number(newBatch.id);
+  if (Number.isNaN(nid)) return;
+  const normalized: PlanningBatchRow = {
+    ...newBatch,
+    id: nid,
+    sequence: Number(newBatch.sequence) || 0,
+  };
+  queryClient.setQueryData<PlanningBatchRow[]>(['planning-batches', planningExtractedId], (old) => {
+    const prev = Array.isArray(old) ? old : [];
+    const without = prev.filter((b) => Number(b.id) !== nid);
+    return [...without, normalized].sort((a, b) => (Number(a.sequence) || 0) - (Number(b.sequence) || 0));
+  });
+  queryClient.setQueryData<PlanningBatchRow>(['planning-batch', planningExtractedId, nid], normalized);
+}
 import { fetchPurchaseOrders } from '../services/salesPurchase.service';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
@@ -646,8 +667,9 @@ const Planning = () => {
       addOneBatchFromMaster(planningIdForBatch)
         .then((newBatch) => {
           if (newBatch) {
+            mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
             queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-            setSelectedBatchId(newBatch.id);
+            setSelectedBatchId(Number(newBatch.id));
           } else {
             addedOneBatchRef.current = false;
           }
@@ -660,8 +682,11 @@ const Planning = () => {
     if (planningBatches.length > 0) {
       addedOneBatchRef.current = true;
       const first = planningBatches[0] as PlanningBatchRow;
-      if (selectedBatchId === null || !planningBatches.some((b: PlanningBatchRow) => b.id === selectedBatchId)) {
-        setSelectedBatchId(first.id);
+      if (
+        selectedBatchId === null ||
+        !planningBatches.some((b: PlanningBatchRow) => Number(b.id) === Number(selectedBatchId))
+      ) {
+        setSelectedBatchId(Number(first.id));
       }
       setCustomBatches(planningBatches.map((b: PlanningBatchRow) => ({ sizeKg: b.sizeKg ?? 500 })));
     }
@@ -2266,7 +2291,7 @@ const Planning = () => {
     if (!selectedSOForBatch || !canSendToProduction) return;
     // Send only the batch currently selected in the top dropdown (the one the user is viewing), not all checked boxes
     const selectedIndex = selectedBatchId != null && planningBatches.length > 0
-      ? (planningBatches as PlanningBatchRow[]).findIndex((b) => b.id === selectedBatchId)
+      ? (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId))
       : -1;
     const toSend = selectedIndex >= 0 && selectedIndex < customBatches.length ? [selectedIndex] : [];
     if (toSend.length === 0) {
@@ -3990,7 +4015,7 @@ const Planning = () => {
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</span>
                 <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
                   <select
-                    value={selectedBatchId ?? ''}
+                    value={selectedBatchId != null ? String(selectedBatchId) : ''}
                     onChange={(e) => {
                       const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
                       setSelectedBatchId(Number.isNaN(v) ? null : v);
@@ -4001,12 +4026,15 @@ const Planning = () => {
                       <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
                     )}
                     {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
-                      <option key={b.id} value={b.id}>
+                      <option key={b.id} value={String(b.id)}>
                         {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
                       </option>
                     ))}
-                    {selectedBatchId != null && !(planningBatches as PlanningBatchRow[]).some((b) => b.id === selectedBatchId) && (
-                      <option value={selectedBatchId}>Loading...</option>
+                    {selectedBatchId != null &&
+                      !(planningBatches as PlanningBatchRow[]).some(
+                        (b) => Number(b.id) === Number(selectedBatchId)
+                      ) && (
+                      <option value={String(selectedBatchId)}>Loading...</option>
                     )}
                   </select>
                   <button
@@ -4020,8 +4048,9 @@ const Planning = () => {
                       try {
                         const newBatch = await addOneBatchFromMaster(planningIdForBatch);
                         if (newBatch) {
+                          mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
                           queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                          setSelectedBatchId(newBatch.id);
+                          setSelectedBatchId(Number(newBatch.id));
                           addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
                         } else {
                           addToast('error', 'Failed to add batch');
@@ -4279,8 +4308,9 @@ const Planning = () => {
                   try {
                     const newBatch = await addOneBatchFromMaster(selectedSOForBatch.id);
                     if (newBatch) {
+                      mergePlanningBatchIntoListCache(queryClient, selectedSOForBatch.id, newBatch);
                       queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-                      setSelectedBatchId(newBatch.id);
+                      setSelectedBatchId(Number(newBatch.id));
                       addToast('success', `Added ${newBatch.batchCode ?? 'batch'} (BOM from master).`);
                     } else {
                       addToast('error', 'Failed to add batch');

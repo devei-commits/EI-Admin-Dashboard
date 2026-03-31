@@ -6,6 +6,7 @@ import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
 import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
 const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -49,6 +50,93 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
   return null;
 }
 
+/** Fresh RM form state for new entry or after closing the popup (avoids stale data). */
+function createEmptyRmFormData() {
+  return {
+    rmSku: '',
+    zohoId: '',
+    sku: '',
+    rmTaxPreference: 'Taxable',
+    rmReturnable: false,
+    rmAssociateItems: '',
+    rmCategoryKey: '',
+    rmCategory: '',
+    qcInspectionGroup: '',
+    subCategory: '',
+    hazardHandlingClass: '',
+    seriesPrefix: '',
+    rmDefaultStorageType: '',
+    inciName: '',
+    tradeCommercialName: '',
+    functionRole: '',
+    rmType: '',
+    casNo: '',
+    einecs: '',
+    countryOfOrigin: '',
+    manufacturer: '',
+    synonyms: '',
+    internalNotes: '',
+    primaryUom: '',
+    issueUom: '',
+    conversionFactor: '',
+    standardPackSize: '',
+    hsnCode: '',
+    gst: '',
+    accountingCategory: '',
+    preferredCurrency: 'INR',
+    grade: '',
+    compliance: '',
+    allergenRequired: false,
+    gmoRequired: false,
+    sdsAvailable: false,
+    coaAvailable: false,
+    regulatoryNotes: '',
+    assayPurity: '',
+    appearanceSpec: '',
+    phSpec: '',
+    moistureLod: '',
+    heavyMetalsSpec: '',
+    microbialSpec: '',
+    odorColorSpec: '',
+    otherSpecs: '',
+    recommendedUseLevel: '',
+    maxUseLevel: '',
+    solubility: '',
+    processingGuidance: '',
+    incompatibilities: '',
+    stabilityNotes: '',
+    claims: '',
+    storageConditions: '',
+    shelfLife: '',
+    retestPeriod: '',
+    warehouseLocation: '',
+    batchTracking: '',
+    fifoFefo: '',
+    minimumStock: '',
+    reorderLevel: '',
+    handlingNotes: '',
+    vendors: [] as Array<{
+      id: string;
+      name: string;
+      location: string;
+      moq: number;
+      unitPrice: number;
+      leadTime: number;
+      approved: string;
+      priceValidTill: string;
+    }>,
+    documents: [] as Array<{ id: string; type: string; link: string; date: string }>,
+    tests: [] as Array<{
+      id: string;
+      name: string;
+      result: string;
+      date: string;
+      approvedBy: string;
+      remarks: string;
+    }>,
+  };
+}
+
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
  const queryClient = useQueryClient();
@@ -59,114 +147,7 @@ const RawMaterialRefactored: React.FC = () => {
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
  const [editRmLoading, setEditRmLoading] = useState(false);
  const [generatedRmCode, setGeneratedRmCode] = useState('');
-
- const [formData, setFormData] = useState({
-  // Primary Info (Zoho Books: new RMs sync on save when integration is enabled on the API)
-  rmSku: '',
-  zohoId: '',
-  sku: '',
-  rmTaxPreference: 'Taxable',
-  rmReturnable: false,
-  rmAssociateItems: '',
-
-  // QC Categorisation & Coding
-  rmCategoryKey: '',
-  rmCategory: '',
-  qcInspectionGroup: '',
-  subCategory: '',
-  hazardHandlingClass: '',
-  seriesPrefix: '',
-  rmDefaultStorageType: '',
-  
-  // Identity
-  inciName: '',
-  tradeCommercialName: '',
-  functionRole: '',
-  rmType: '',
-  casNo: '',
-  einecs: '',
-  countryOfOrigin: '',
-  manufacturer: '',
-  synonyms: '',
-  internalNotes: '',
-  
-  // Units, Tax & Procurement
-  primaryUom: '',
-  issueUom: '',
-  conversionFactor: '',
-  standardPackSize: '',
-  hsnCode: '',
-  gst: '',
-  accountingCategory: '',
-  preferredCurrency: 'INR',
-  
-  // Technical & Regulatory
-  grade: '',
-  compliance: '',
-  allergenRequired: false,
-  gmoRequired: false,
-  sdsAvailable: false,
-  coaAvailable: false,
-  regulatoryNotes: '',
-  
-  // Quality Specifications
-  assayPurity: '',
-  appearanceSpec: '',
-  phSpec: '',
-  moistureLod: '',
-  heavyMetalsSpec: '',
-  microbialSpec: '',
-  odorColorSpec: '',
-  otherSpecs: '',
-  
-  // Usage in Formulation
-  recommendedUseLevel: '',
-  maxUseLevel: '',
-  solubility: '',
-  processingGuidance: '',
-  incompatibilities: '',
-  stabilityNotes: '',
-  claims: '',
-  
-  // Inventory, Storage & WH
-  storageConditions: '',
-  shelfLife: '',
-  retestPeriod: '',
-  warehouseLocation: '',
-  batchTracking: '',
-  fifoFefo: '',
-  minimumStock: '',
-  reorderLevel: '',
-  handlingNotes: '',
-
-  // ARRAYS (no temp fields mixed in!)
-  vendors: [] as Array<{
-   id: string;
-   name: string;
-   location: string;
-   moq: number;
-   unitPrice: number;
-   leadTime: number;
-   approved: string;
-   priceValidTill: string;
-  }>,
-
-  documents: [] as Array<{
-   id: string;
-   type: string;
-   link: string;
-   date: string;
-  }>,
-
-  tests: [] as Array<{
-   id: string;
-   name: string;
-   result: string;
-   date: string;
-   approvedBy: string;
-   remarks: string;
-  }>,
- });
+ const [formData, setFormData] = useState(createEmptyRmFormData);
 
  /** Mock form data for testing submit (Fill mock values). */
  const RM_MOCK_FORM = {
@@ -248,6 +229,33 @@ const RawMaterialRefactored: React.FC = () => {
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
 
+ const focusFieldById = useCallback((fieldId: string) => {
+  window.setTimeout(() => {
+   const el = document.getElementById(fieldId);
+   if (el instanceof HTMLElement) el.focus();
+  }, 0);
+ }, []);
+
+ const resetRmFormToEmpty = useCallback(() => {
+  setFormData(createEmptyRmFormData());
+  setTempVendor({ name: '', location: '', moq: '', unitPrice: '', leadTime: '', approved: '', priceValidTill: '' });
+  setTempDocument({ type: '', link: '', date: '' });
+  setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
+  setGeneratedRmCode('');
+  setErrors({});
+  setCurrentStage(0);
+ }, []);
+
+ const { data: vendorClientData } = useQuery({
+  queryKey: ['vendor-clients', 'vendor', 'raw-material-form'],
+  queryFn: async () => {
+   const res = await fetchVendorClients('vendor');
+   return (res.success ? res.data : []) as VendorClientRecord[];
+  },
+  staleTime: 2 * 60 * 1000,
+ });
+ const vendorClientList = vendorClientData ?? [];
+
  const stages = [
   'Primary Info',
   'QC Categorisation & Coding',
@@ -259,7 +267,6 @@ const RawMaterialRefactored: React.FC = () => {
   'Vendors & Commercial',
   'QA Testing & Documents',
   'Inventory, Storage & WH',
-  'Review / JSON',
  ];
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -350,6 +357,20 @@ const RawMaterialRefactored: React.FC = () => {
   }));
  };
 
+ const handleVendorTempFieldChange = (field: string, value: string) => {
+  if (field === 'name') {
+   const selectedVendor = vendorClientList.find((v) => v.name === value);
+   setTempVendor(prev => ({
+    ...prev,
+    name: value,
+    // Auto-fill from saved vendor master; user can still edit manually.
+    location: selectedVendor?.location || prev.location,
+   }));
+   return;
+  }
+  setTempVendor(prev => ({ ...prev, [field]: value }));
+ };
+
  // Document operations
  const handleAddDocument = () => {
   if (!tempDocument.type || !tempDocument.link.trim()) {
@@ -411,11 +432,13 @@ const RawMaterialRefactored: React.FC = () => {
    if (!formData.rmCategoryKey?.trim()) {
     addToast('error', 'Select an RM Category (QC Categorisation step)');
     setCurrentStage(1);
+    focusFieldById('rmCategoryKey');
     return;
    }
    if (!formData.rmSku?.trim()) {
     addToast('error', 'Generate or enter SKU / RM code before submitting');
     setCurrentStage(1);
+    focusFieldById('rmSku');
     return;
    }
   }
@@ -423,6 +446,22 @@ const RawMaterialRefactored: React.FC = () => {
   const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'rawMaterial');
   if (!validation.valid || !taxValidation.valid) {
    setErrors({ ...validation.errors, ...taxValidation.errors });
+    const stageByField: Record<string, number> = {
+      rmSku: 0,
+      inciName: 2,
+      tradeCommercialName: 2,
+      grade: 4,
+      compliance: 4,
+      hsnCode: 3,
+      gst: 3,
+    };
+    const firstPrimaryMissing = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
+    const firstTaxMissing = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
+    const firstField = firstTaxMissing || firstPrimaryMissing;
+    if (firstField) {
+      setCurrentStage(stageByField[firstField] ?? 0);
+      focusFieldById(firstField);
+    }
    if (!taxValidation.valid) {
     addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Units, Tax & Procurement). Exempt / NonGST can leave them blank.');
     setCurrentStage(3);
@@ -453,6 +492,7 @@ const RawMaterialRefactored: React.FC = () => {
     }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
+   resetRmFormToEmpty();
    setPageTab('dashboard');
   } catch (err) {
    console.error(err);
@@ -466,13 +506,6 @@ const RawMaterialRefactored: React.FC = () => {
   case 0: // Primary Info (optional manual Zoho ID; otherwise created in Zoho on first save)
   return (
    <div className="space-y-4">
-    <InputField
-     label="SKU"
-     id="rmSku"
-     value={formData.rmSku}
-     onChange={handleInputChange}
-     placeholder="Internal raw material code (e.g. RM-000123)"
-    />
     <InputField
      label="Zoho ID"
      id="zohoId"
@@ -522,7 +555,7 @@ const RawMaterialRefactored: React.FC = () => {
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Category (Industry Buckets)</h3>
       <div className="grid grid-cols-2 gap-4">
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
         <select
          id="rmCategoryKey"
          value={formData.rmCategoryKey}
@@ -608,9 +641,18 @@ const RawMaterialRefactored: React.FC = () => {
          </button>
         )}
        </div>
-       <p className="text-xs text-gray-500 mt-3">Generated code is applied to SKU in Primary Info. You can still edit SKU there if needed.</p>
+      <p className="text-xs text-gray-500 mt-3">Generated code is applied to SKU below. You can still edit SKU if needed.</p>
       </div>
      </div>
+
+     <InputField
+      label="SKU"
+      id="rmSku"
+      value={formData.rmSku}
+      onChange={handleInputChange}
+      placeholder="Internal raw material code (e.g. RM-000123)"
+      requiredMark
+     />
 
      <div className="space-y-4">
       <InputField
@@ -648,6 +690,7 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.inciName}
      onChange={handleInputChange}
      placeholder="Official INCI name as per supplier / standard"
+     requiredMark
     />
     <InputField
      label="Trade/Commercial Name"
@@ -655,6 +698,7 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.tradeCommercialName}
      onChange={handleInputChange}
      placeholder="What vendor calls this raw material"
+     requiredMark
     />
     <InputField
      label="Function/Role"
@@ -785,6 +829,7 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.grade}
      onChange={handleInputChange}
      placeholder="e.g. Cosmetic Grade, Pharma Grade"
+     requiredMark
     />
     <InputField
      label="Compliance/Certificate"
@@ -792,6 +837,7 @@ const RawMaterialRefactored: React.FC = () => {
      value={formData.compliance}
      onChange={handleInputChange}
      placeholder="e.g. COSMOS, ECOCERT, RSPO"
+     requiredMark
     />
       <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
       <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
@@ -931,13 +977,18 @@ const RawMaterialRefactored: React.FC = () => {
       itemType="vendor"
       items={formData.vendors}
       tempFields={tempVendor}
-      onTempFieldChange={(field, value) => setTempVendor(prev => ({ ...prev, [field]: value }))}
+      onTempFieldChange={handleVendorTempFieldChange}
       onAdd={handleAddVendor}
       onRemove={(idx) => handleRemoveVendor(formData.vendors[idx].id)}
       errors={errors}
       itemLabel="Vendor"
       columns={[
-       { key: 'name', label: 'Vendor Name' },
+       {
+        key: 'name',
+        label: 'Vendor Name',
+        type: 'select',
+        options: vendorClientList.map((v) => ({ label: v.name, value: v.name })),
+       },
        { key: 'location', label: 'Location' },
        { key: 'moq', label: 'MOQ', type: 'number' },
        { key: 'unitPrice', label: 'Unit Price', type: 'number' },
@@ -1060,16 +1111,6 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="Special handling instructions for stores / production"
     />
-     </div>
-    );
-
-   case 10: // Review / JSON
-    return (
-     <div>
-      <h3 className="font-semibold text-gray-700 mb-4">Complete Form Data (JSON)</h3>
-      <pre className="bg-gray-100 p-4 rounded text-xs overflow-auto max-h-96">
-       {JSON.stringify(formData, null, 2)}
-      </pre>
      </div>
     );
 
@@ -1237,7 +1278,11 @@ const RawMaterialRefactored: React.FC = () => {
   const dashboardNode = (
     <RawMaterialDashboard
       refreshKey={0}
-      onSwitchToForm={() => { setExistingRmId(null); setPageTab('form'); setCurrentStage(0); }}
+      onSwitchToForm={() => {
+        setExistingRmId(null);
+        resetRmFormToEmpty();
+        setPageTab('form');
+      }}
       onEditRm={(rm) => { setExistingRmId(rm.id); setPageTab('form'); setCurrentStage(0); }}
       onDeleteRm={async (rm) => {
         if (!window.confirm(`Delete raw material "${rm.name}" (${rm.code})? This cannot be undone.`)) return;
@@ -1262,7 +1307,7 @@ const RawMaterialRefactored: React.FC = () => {
     setExistingRmId(null);
     setPageTab('dashboard');
     setEditRmLoading(false);
-    setCurrentStage(0);
+    resetRmFormToEmpty();
   };
 
   return (

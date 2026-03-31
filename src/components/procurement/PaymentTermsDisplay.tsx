@@ -2,6 +2,7 @@ import { parsePaymentTermsString } from '../../lib/paymentTermsStructured';
 import {
   formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
+  parseVendorThreeWayFromPlainText,
   stagedPaymentTermsFromStructured,
   type StagedPaymentTerms,
 } from '../../lib/stagedPaymentTerms';
@@ -65,6 +66,11 @@ export function PaymentTermsDisplay({ value, compact, className = '' }: Props) {
   const fromJson = parseStagedPaymentTerms(raw);
   if (fromJson) {
     return <StagedPaymentTermsTable staged={fromJson} compact={compact} className={className} />;
+  }
+
+  const fromVendorText = parseVendorThreeWayFromPlainText(raw);
+  if (fromVendorText) {
+    return <StagedPaymentTermsTable staged={fromVendorText} compact={compact} className={className} />;
   }
 
   const parsed = parsePaymentTermsString(raw);

@@ -31,6 +31,9 @@ import {
   type EquipmentData as APIEquipmentData, type BatchRow, type TeamMemberRow,
   type UserSearchResult,
   type QcReferencePayload,
+  type QCSpec,
+  type QcSpecsStored,
+  type QcSpecsByScope,
 } from '../services/production.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
@@ -74,7 +77,6 @@ type FillingType = 'bottle' | 'tube' | 'jar' | 'manual';
 type Department = 'Manufacturing' | 'Filling' | 'Packaging' | 'Quality';
 
 interface DispensingItem { code: string; inci?: string; name?: string; required: number; dispensed: number; done: boolean; }
-interface QCSpec { param: string; spec: string; result: string; passed: boolean | null; }
 
 interface MfgEquipment { id: string; name: string; cap: number; type: 'jacketed' | 'simple' | 'support'; homogenizer: boolean; processType: ProcessType[]; status: string; _pk?: number; }
 interface FillingEquipment { id: string; name: string; speed: number; type: FillingType; compatible: string[]; status: string; _pk?: number; }
@@ -101,7 +103,7 @@ interface Batch {
   dispensingRM: DispensingItem[]; dispensingPM: DispensingItem[];
   bulkYield: number | null; fillYield: number | null; fgYield: number | null;
   bulkBatchAccepted: boolean | null; fillBatchAccepted: boolean | null; fgBatchAccepted: boolean | null;
-  qcSpecs: QCSpec[]; remarks: string; dueDate: string;
+  qcSpecs: QcSpecsStored; remarks: string; dueDate: string;
   compatibleVessels?: string[]; compatibleFillLines?: string[]; compatiblePackLines?: string[];
   requiredVolumeLiters?: number | null;
   /** Production batch DB id — required for loading batch-specific BOM (planning_batches) in Reserve RM/PM. */
@@ -195,6 +197,17 @@ function bmrStatusAfterScheduleSave(batch: Batch, canMoveToScheduled: boolean): 
   return canMoveToScheduled ? 'scheduled' : 'batch_confirmed';
 }
 
+/**
+ * Reschedule (batch already has mfg date): do not send bmrStatus — client batch may be stale (e.g. still
+ * "scheduled" after DB was advanced to cleared via QC). Sending stale bmr_status caused apparent
+ * "revert" to RM transfer / scheduled in the UI until refetch.
+ */
+function scheduleSaveBmrStatusPatch(batch: Batch, canMoveToScheduled: boolean): Partial<Pick<Batch, 'bmrStatus'>> {
+  const hasMfgDate = !!(batch.mfgDate && String(batch.mfgDate).trim());
+  if (hasMfgDate) return {};
+  return { bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled) };
+}
+
 /** Shift MFG / fill / pack / FG dates while BPR is active (e.g. waiting on BMR QC release). */
 function canRescheduleProductionDates(batch: Batch): boolean {
   if (batch.bmrStatus === 'draft') return false;
@@ -217,6 +230,8 @@ function bprAwaitingBmrRelease(batch: Batch): boolean {
 
 /** BMR pipeline when `rm_connected` flag is set but `bmr_status` was not yet advanced from rm_reserved/scheduled. */
 function bmrStatusForPipelineDisplay(batch: Batch): BMRStatus {
+  const pastRmConnectUi = ['dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
+  if (pastRmConnectUi.includes(batch.bmrStatus)) return batch.bmrStatus;
   if (batch.rmConnected && (batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled')) {
     return 'rm_connected';
   }
@@ -1452,7 +1467,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     onSave({
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
+      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1470,17 +1485,20 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
       mainVessel: bestRecommendation.vessel,
       fillingLine: bestRecommendation.fillLine,
       packagingLine: bestRecommendation.packLine,
-      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
+      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
   };
 
   const handleUnschedule = () => {
     if (!batch || !confirm(`Clear schedule for ${batch.bmrNo}? Dates and equipment assignments will be removed.`)) return;
+    const lockedBmr: BMRStatus[] = ['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
     onSave({
       mfgDate: '', fillDate: '', packDate: '', fgDate: '', rmConnectDate: '', pmConnectDate: '',
       mainVessel: '', fillingLine: '', packagingLine: '',
-      bmrStatus: batch.rmReserved ? 'rm_reserved' : 'batch_confirmed',
+      ...(lockedBmr.includes(batch.bmrStatus)
+        ? {}
+        : { bmrStatus: batch.rmReserved ? 'rm_reserved' : 'batch_confirmed' }),
     });
     onClose();
   };
@@ -1830,7 +1848,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
       mfgDate: recommendation.mfgDate, fillDate: recommendation.fillDate, packDate: recommendation.packDate, fgDate: recommendation.fgDate,
       rmConnectDate: recommendation.rmConnectDate, pmConnectDate: recommendation.pmConnectDate,
       mainVessel: recommendation.vessel, fillingLine: recommendation.fillLine, packagingLine: recommendation.packLine,
-      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
+      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -1841,7 +1859,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
     onSave({
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: bmrStatusAfterScheduleSave(batch, canMoveToScheduled),
+      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
   };
@@ -2222,6 +2240,84 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
 
 /* ──────────── QC MODAL ─────────────────────────────────────── */
 
+function getStoredQcSpecsForType(stored: QcSpecsStored | undefined, qcType: 'bmr' | 'fill' | 'pack'): QCSpec[] {
+  if (!stored) return [];
+  if (Array.isArray(stored)) return qcType === 'bmr' ? stored : [];
+  const arr = stored[qcType];
+  return Array.isArray(arr) ? arr : [];
+}
+
+function getRemarksForQcType(batch: Batch, qcType: 'bmr' | 'fill' | 'pack'): string {
+  const q = batch.qcSpecs;
+  if (q && typeof q === 'object' && !Array.isArray(q)) {
+    const o = q as QcSpecsByScope;
+    if (qcType === 'bmr') return (o.remarksBmr ?? batch.remarks) ?? '';
+    if (qcType === 'fill') return o.remarksFill ?? '';
+    return o.remarksPack ?? '';
+  }
+  if (qcType === 'bmr') return batch.remarks ?? '';
+  return '';
+}
+
+function mergeQcSpecsWithRemarks(
+  batch: Batch,
+  qcType: 'bmr' | 'fill' | 'pack',
+  specs: QCSpec[],
+  remarks: string
+): QcSpecsStored {
+  const prev = batch.qcSpecs as QcSpecsStored | undefined;
+  let bmr: QCSpec[] = [];
+  let fill: QCSpec[] = [];
+  let pack: QCSpec[] = [];
+  let remarksBmr: string | undefined;
+  let remarksFill: string | undefined;
+  let remarksPack: string | undefined;
+  if (Array.isArray(prev)) {
+    bmr = [...prev];
+    remarksBmr = batch.remarks;
+  } else if (prev && typeof prev === 'object') {
+    const o = prev as QcSpecsByScope;
+    bmr = Array.isArray(o.bmr) ? [...o.bmr] : [];
+    fill = Array.isArray(o.fill) ? [...o.fill] : [];
+    pack = Array.isArray(o.pack) ? [...o.pack] : [];
+    remarksBmr = o.remarksBmr ?? batch.remarks;
+    remarksFill = o.remarksFill;
+    remarksPack = o.remarksPack;
+  }
+  if (qcType === 'bmr') {
+    bmr = specs;
+    remarksBmr = remarks;
+  } else if (qcType === 'fill') {
+    fill = specs;
+    remarksFill = remarks;
+  } else {
+    pack = specs;
+    remarksPack = remarks;
+  }
+  return { bmr, fill, pack, remarksBmr, remarksFill, remarksPack };
+}
+
+/** Detail drawer: show each QC stage separately when stored as object. */
+function collectQcSpecsRowsForDisplay(batch: Batch): { label: string; rows: QCSpec[] }[] {
+  const q = batch.qcSpecs;
+  const out: { label: string; rows: QCSpec[] }[] = [];
+  if (Array.isArray(q)) {
+    if (q.length > 0) out.push({ label: 'Bulk QC (BMR)', rows: q });
+    return out;
+  }
+  if (q && typeof q === 'object') {
+    const o = q as QcSpecsByScope;
+    const add = (label: string, key: 'bmr' | 'fill' | 'pack') => {
+      const rows = Array.isArray(o[key]) ? o[key]! : [];
+      if (rows.length > 0) out.push({ label, rows });
+    };
+    add('Bulk QC (BMR)', 'bmr');
+    add('Fill QC', 'fill');
+    add('Pack QC', 'pack');
+  }
+  return out;
+}
+
 const DEFAULT_QC_SPECS: Record<string, QCSpec[]> = {
   bmr: [
     { param: 'pH', spec: 'See BMR specification', result: '', passed: null },
@@ -2245,8 +2341,9 @@ const DEFAULT_QC_SPECS: Record<string, QCSpec[]> = {
 };
 
 function deriveQcSpecsFromBatch(batch: Batch, qcType: 'bmr' | 'fill' | 'pack'): QCSpec[] {
-  const base = batch.qcSpecs.length > 0 ? batch.qcSpecs : (DEFAULT_QC_SPECS[qcType] || []);
-  return base.map(s => ({ ...s }));
+  const forType = getStoredQcSpecsForType(batch.qcSpecs, qcType);
+  if (forType.length > 0) return forType.map((s) => ({ ...s }));
+  return (DEFAULT_QC_SPECS[qcType] || []).map((s) => ({ ...s }));
 }
 
 function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
@@ -2257,14 +2354,14 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 }) {
   const [specs, setSpecs] = useState(() => deriveQcSpecsFromBatch(batch, qcType));
   const [yieldVal, setYieldVal] = useState('');
-  const [remarks, setRemarks] = useState(() => batch.remarks ?? '');
+  const [remarks, setRemarks] = useState(() => getRemarksForQcType(batch, qcType));
 
   const batchPkId = (batch as Batch & { _pk?: number })._pk;
-  const qcSpecsFingerprint = JSON.stringify(batch.qcSpecs ?? []);
+  const qcSpecsFingerprint = JSON.stringify(batch.qcSpecs ?? null);
 
   useEffect(() => {
     setSpecs(deriveQcSpecsFromBatch(batch, qcType));
-    setRemarks(batch.remarks ?? '');
+    setRemarks(getRemarksForQcType(batch, qcType));
   }, [
     batch.bmrNo,
     batchPkId,
@@ -2350,8 +2447,10 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 
   const handleApprove = () => {
     if (!yieldValid || !allResultsFilled) return;
-    const upd: Partial<Batch> = { qcSpecs: specs, remarks };
+    const merged = mergeQcSpecsWithRemarks(batch, qcType, specs, remarks);
+    const upd: Partial<Batch> = { qcSpecs: merged };
     if (qcType === 'bmr') {
+      upd.remarks = remarks;
       upd.bulkYield = bulkYieldNum; upd.bulkBatchAccepted = true;
       upd.bmrStatus = 'cleared'; upd.bprStatus = batch.bprStatus === 'draft' ? 'pm_reserved' : batch.bprStatus;
     } else if (qcType === 'fill') {
@@ -2364,8 +2463,11 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 
   const handleReject = () => {
     if (!allResultsFilled) return;
-    const upd: Partial<Batch> = { qcSpecs: specs, remarks: remarks || 'Rejected - deviation raised' };
+    const rejectNote = remarks || 'Rejected - deviation raised';
+    const merged = mergeQcSpecsWithRemarks(batch, qcType, specs, rejectNote);
+    const upd: Partial<Batch> = { qcSpecs: merged };
     if (qcType === 'bmr') {
+      upd.remarks = rejectNote;
       upd.bulkBatchAccepted = false; upd.bmrStatus = 'qc_failed';
     } else if (qcType === 'fill') {
       upd.fillBatchAccepted = false; upd.bprStatus = 'qc_failed';
@@ -3281,6 +3383,49 @@ function MRNDetailModal({
     receiveAtMuLineIds?: string[];
     completeTransferLineIds?: string[];
   }) => {
+    if (saving) return;
+
+    if (isOutboundMtr && isClosedStatus(mrn.status)) {
+      const touchesWorkflow =
+        payload.status !== undefined ||
+        (Array.isArray(payload.receiveAtMuLineIds) && payload.receiveAtMuLineIds.length > 0) ||
+        (Array.isArray(payload.completeTransferLineIds) && payload.completeTransferLineIds.length > 0);
+      if (touchesWorkflow) {
+        const msg = 'This transfer is already completed.';
+        setSaveError(msg);
+        addToast('error', msg);
+        return;
+      }
+    }
+
+    if (
+      isOutboundMtr &&
+      Array.isArray(payload.receiveAtMuLineIds) &&
+      payload.receiveAtMuLineIds.length > 0
+    ) {
+      const anyInTransit = payload.receiveAtMuLineIds.some((id) => mtrLinePhaseRaw(mrn, id) === 'in_transit');
+      if (!anyInTransit) {
+        const msg = 'No selected lines are still in transit. Refresh the transfer and try again.';
+        setSaveError(msg);
+        addToast('error', msg);
+        return;
+      }
+    }
+
+    if (
+      isOutboundMtr &&
+      Array.isArray(payload.completeTransferLineIds) &&
+      payload.completeTransferLineIds.length > 0
+    ) {
+      const anyReceived = payload.completeTransferLineIds.some((id) => mtrLinePhaseRaw(mrn, id) === 'received_at_mu');
+      if (!anyReceived) {
+        const msg = 'No selected lines are still in received-at-MU state. Refresh the transfer and try again.';
+        setSaveError(msg);
+        addToast('error', msg);
+        return;
+      }
+    }
+
     const nextStatus = payload.status !== undefined ? payload.status : status;
     if (isOutboundMtr && payload.status !== undefined) {
       const st = String(payload.status);
@@ -3928,6 +4073,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
   const pipelineForStrip = type === 'bmr' ? BMR_PIPELINE : BPR_PIPELINE;
   const stripTitle = type === 'bmr' ? 'BMR Progress' : 'BPR Progress';
+  const qcDetailSections = useMemo(() => collectQcSpecsRowsForDisplay(batch), [batch.qcSpecs]);
 
   const overviewCards: [string, string][] = [
     ['BMR No', batch.bmrNo], ['BPR No', batch.bprNo], ['Product', batch.productName ?? ''],
@@ -4146,17 +4292,22 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
             {tab === 'qc' && (
               <div>
-                {batch.qcSpecs.length > 0 ? (
-                  <div className="rounded-xl border border-gray-100 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                      <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
-                    </div>
-                    {batch.qcSpecs.map((s, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-gray-50 items-center text-xs">
-                        <div className="font-semibold">{s.param}</div>
-                        <div className="text-gray-500 font-mono">{s.spec}</div>
-                        <div className="font-mono">{s.result || '-'}</div>
-                        <div>{s.passed === true ? <Badge className="bg-emerald-100 text-emerald-700">Pass</Badge> : s.passed === false ? <Badge className="bg-red-100 text-red-600">Fail</Badge> : <span className="text-gray-400">-</span>}</div>
+                {qcDetailSections.length > 0 ? (
+                  <div className="space-y-4">
+                    {qcDetailSections.map((section) => (
+                      <div key={section.label} className="rounded-xl border border-gray-100 overflow-hidden">
+                        <div className="px-3 py-1.5 bg-slate-100/80 border-b border-gray-100 text-[10px] font-bold text-slate-600 uppercase tracking-wider">{section.label}</div>
+                        <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                          <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
+                        </div>
+                        {section.rows.map((s, i) => (
+                          <div key={`${section.label}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-gray-50 items-center text-xs">
+                            <div className="font-semibold">{s.param}</div>
+                            <div className="text-gray-500 font-mono">{s.spec}</div>
+                            <div className="font-mono">{s.result || '-'}</div>
+                            <div>{s.passed === true ? <Badge className="bg-emerald-100 text-emerald-700">Pass</Badge> : s.passed === false ? <Badge className="bg-red-100 text-red-600">Fail</Badge> : <span className="text-gray-400">-</span>}</div>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -4858,7 +5009,7 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
     onManualSchedule(manualBatch, {
       mfgDate, fillDate, packDate, fgDate, rmConnectDate, pmConnectDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      bmrStatus: bmrStatusAfterScheduleSave(manualBatch, canMoveToScheduled),
+      ...scheduleSaveBmrStatusPatch(manualBatch, canMoveToScheduled),
     });
     setManualBatchId('');
   };
@@ -6063,13 +6214,37 @@ const Production = () => {
         />
       )}
       {modalBatch && modalType === 'qcBMR' && (
-        <QCModal batch={modalBatch} qcType="bmr" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal
+          key={`qc-${(modalBatch as Batch & { _pk?: number })._pk ?? modalBatch.bmrNo}-qcBMR`}
+          batch={modalBatch}
+          qcType="bmr"
+          team={state.team}
+          batchPk={(modalBatch as Batch & { _pk?: number })._pk}
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+        />
       )}
       {modalBatch && modalType === 'qcFill' && (
-        <QCModal batch={modalBatch} qcType="fill" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal
+          key={`qc-${(modalBatch as Batch & { _pk?: number })._pk ?? modalBatch.bmrNo}-qcFill`}
+          batch={modalBatch}
+          qcType="fill"
+          team={state.team}
+          batchPk={(modalBatch as Batch & { _pk?: number })._pk}
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+        />
       )}
       {modalBatch && modalType === 'qcPack' && (
-        <QCModal batch={modalBatch} qcType="pack" team={state.team} batchPk={(modalBatch as Batch & { _pk?: number })._pk} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <QCModal
+          key={`qc-${(modalBatch as Batch & { _pk?: number })._pk ?? modalBatch.bmrNo}-qcPack`}
+          batch={modalBatch}
+          qcType="pack"
+          team={state.team}
+          batchPk={(modalBatch as Batch & { _pk?: number })._pk}
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+        />
       )}
       {modalBatch && (modalType === 'mtrRM' || modalType === 'mtrPM') && (
         <MTRModal

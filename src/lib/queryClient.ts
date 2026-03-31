@@ -3,7 +3,8 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClient = new QueryClient({
  defaultOptions: {
   queries: {
-   staleTime: 5 * 60 * 1000, // 5 minutes
+   // Keep data fresh across different local dev machines/sessions.
+   staleTime: 30 * 1000, // 30 seconds
    gcTime: 30 * 60 * 1000, // 30 minutes (formerly cacheTime)
    retry: (failureCount, error) => {
     // Don't retry on 404s or client errors
@@ -13,7 +14,9 @@ export const queryClient = new QueryClient({
     return failureCount < 3;
    },
    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-   refetchOnWindowFocus: false,
+   refetchOnWindowFocus: true,
+   refetchOnReconnect: true,
+   refetchOnMount: true,
    throwOnError: false, // Prevent queries from throwing errors up to React
   },
   mutations: {

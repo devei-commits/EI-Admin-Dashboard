@@ -3,7 +3,7 @@
  * Modal for creating a new sale order — fetches SO number, customers, and products from DB
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 /** Default calendar days from order date to due date (business rule). */
 const LEAD_DAYS_PRODUCT = 45;
@@ -29,6 +29,7 @@ import {
 } from '../../services/fulfillment.service';
 
 export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave }) => {
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [soNo, setSoNo] = useState('');
   const [customer, setCustomer] = useState('');
   const [customerCity, setCustomerCity] = useState('');
@@ -118,9 +119,25 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   };
 
   const handleSubmit = () => {
+    const formEl = formRef.current;
+    if (formEl && !formEl.reportValidity()) {
+      const firstInvalid = formEl.querySelector(':invalid');
+      if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
+      return;
+    }
+
     const newErrors: string[] = [];
     if (!soNo.trim()) newErrors.push('SO Number is required.');
     if (!customer.trim()) newErrors.push('Customer is required.');
+    if (!items.some((item) => item.productName && item.productName.trim())) {
+      newErrors.push('At least one product must be added.');
+    }
+    const selectedNames = items
+      .map((item) => item.productName?.trim())
+      .filter((name): name is string => Boolean(name));
+    if (new Set(selectedNames).size !== selectedNames.length) {
+      newErrors.push('Duplicate products are not allowed in order items.');
+    }
     items.forEach((item, index) => {
       if (!item.productName) newErrors.push(`Product for item #${index + 1} is required.`);
       if (item.orderedQty <= 0) newErrors.push(`Quantity for item #${index + 1} must be positive.`);
@@ -176,6 +193,14 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     { value: '', label: 'Select Product (FG)' },
     ...products.map(p => ({ value: p.name, label: `${p.name} (${p.sku})` })),
   ];
+  const getProductOptionsForIndex = (index: number) => {
+    const takenByOtherRows = new Set(
+      items
+        .map((it, idx) => (idx !== index ? it.productName : ''))
+        .filter(Boolean)
+    );
+    return productOptions.filter((opt) => !opt.value || !takenByOtherRows.has(opt.value) || opt.value === items[index]?.productName);
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
@@ -196,7 +221,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               </div>
             )}
 
-            <div className="space-y-6">
+            <form ref={formRef} className="space-y-6" onSubmit={(e) => e.preventDefault()}>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Input label="SO Number" value={soNo} readOnly disabled />
@@ -206,6 +231,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   label="Customer"
                   value={customer}
                   onChange={(e) => handleCustomerChange(e.target.value)}
+                  required
                   options={[
                     { value: '', label: 'Select Customer' },
                     ...customers.map(c => ({ value: c.name, label: `${c.name}${c.city ? ` — ${c.city}` : ''}` }))
@@ -215,7 +241,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <Input label="Order Date" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+                <Input label="Order Date" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} required />
                 <Select
                   label="Lead time"
                   value={orderKind}
@@ -225,7 +251,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                     { value: 'customisation', label: `Customisation (${LEAD_DAYS_CUSTOMISATION} days)` },
                   ]}
                 />
-                <Input label="Due Date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                <Input label="Due Date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
                 <Select
                   label="Priority"
                   value={priority}
@@ -276,7 +302,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         label="Product"
                         value={item.productName}
                         onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-                        options={productOptions}
+                        required
+                        options={getProductOptionsForIndex(index)}
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2">
@@ -286,10 +313,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       <Input label="Pack Size" value={item.pack} readOnly disabled />
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <Input label="Quantity" type="number" value={item.orderedQty} onChange={(e) => handleItemChange(index, 'orderedQty', parseInt(e.target.value))} />
+                      <Input label="Quantity" type="number" min={1} required value={item.orderedQty} onChange={(e) => handleItemChange(index, 'orderedQty', parseInt(e.target.value))} />
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <Input label="Unit Price (₹)" type="number" value={item.unitPrice} onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} />
+                      <Input label="Unit Price (₹)" type="number" min={0.01} step="0.01" required value={item.unitPrice} onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} />
                     </div>
                     <div className="col-span-12 md:col-span-1">
                       {items.length > 1 && (
@@ -304,7 +331,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   <Plus className="mr-2 h-4 w-4" /> Add Another Item
                 </Button>
               </div>
-            </div>
+            </form>
           </>
         )}
       </div>
