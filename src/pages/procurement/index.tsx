@@ -2647,29 +2647,35 @@ const Procurement: React.FC = () => {
     setReleaseNotes('');
   };
 
-  const recordAdvancePaymentForReleaseDraft = async () => {
-    if (!releaseDraftBackendPoIdNormalized) {
+  const recordRequiredPaymentReceivedForPo = async (backendPoIdRaw: string | number | null | undefined) => {
+    const backendPoId = String(backendPoIdRaw ?? '').replace(/^PO-/, '').trim();
+    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
       addToast('error', 'No server purchase order id on this draft. Refresh or re-save the draft PO.');
       return;
     }
     setRecordingAdvancePayment(true);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const res = await updatePoTracking(releaseDraftBackendPoIdNormalized, {
+      const res = await updatePoTracking(backendPoId, {
         advancePaidAt: today,
-        advancePaidNote: 'Advance payment recorded (manual — treasury transaction pending)',
+        advancePaidNote: 'Required payment received (manual temp mark — treasury transaction pending)',
       });
       if (!res.success) {
-        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to record advance payment');
+        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to mark payment received');
         return;
       }
-      addToast('success', 'Advance payment recorded. You can release the PO to vendor.');
-      await queryClient.invalidateQueries({ queryKey: ['po-tracking', 'release-draft', releaseDraftBackendPoIdNormalized] });
+      addToast('success', 'Payment marked as received. You can now issue/release the PO.');
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', 'release-draft', backendPoId] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       void refetchReleaseDraftTracking();
     } finally {
       setRecordingAdvancePayment(false);
     }
+  };
+
+  const recordAdvancePaymentForReleaseDraft = async () => {
+    await recordRequiredPaymentReceivedForPo(releaseDraftBackendPoIdNormalized);
   };
 
   const submitReleasePO = async () => {
@@ -4233,7 +4239,7 @@ const Procurement: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
-                                    onClick={() => applyRouteState('Procurement', 'Quotations')}
+                                    onClick={() => setSelectedRequest(req)}
                                     className="px-3 py-1.5 rounded-lg border border-emerald-400 text-emerald-700 text-xs font-semibold hover:bg-emerald-50 transition-all"
                                   >
                                     View Quotes
@@ -6317,6 +6323,16 @@ const Procurement: React.FC = () => {
                 )}
                 {dpo.status === 'Approved' && (
                   <>
+                    {draftPaymentTermsRequireAdvance(dpo.paymentTerms) && (
+                      <button
+                        onClick={() => void recordRequiredPaymentReceivedForPo(dpo.backendPoId)}
+                        disabled={recordingAdvancePayment || !String(dpo.backendPoId ?? '').trim()}
+                        title={!String(dpo.backendPoId ?? '').trim() ? 'Draft PO must be synced to server first' : undefined}
+                        className="px-4 py-2 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 text-sm font-semibold hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {recordingAdvancePayment ? 'Saving…' : 'Received Payment (Temp)'}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         openReleasePOModal(dpo.id);
@@ -6502,7 +6518,7 @@ const Procurement: React.FC = () => {
                         onClick={() => void recordAdvancePaymentForReleaseDraft()}
                         className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {recordingAdvancePayment ? 'Saving…' : 'Record advance payment received'}
+                        {recordingAdvancePayment ? 'Saving…' : 'Received Payment (Temp)'}
                       </button>
                     </>
                   )}

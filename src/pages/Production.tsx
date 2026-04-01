@@ -2842,6 +2842,25 @@ function findOpenRmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNReco
   return found ?? null;
 }
 
+/** Any outbound RM MTR for this BMR (open or closed). */
+function findAnyRmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNRecordFromApi | null {
+  const rows = list.filter(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikeRm(m),
+  );
+  if (rows.length === 0) return null;
+  return rows
+    .slice()
+    .sort((a, b) => {
+      const ta = Date.parse(String((a as { createdAt?: string }).createdAt || '')) || 0;
+      const tb = Date.parse(String((b as { createdAt?: string }).createdAt || '')) || 0;
+      return tb - ta;
+    })[0] ?? rows[0];
+}
+
 /** Open outbound PM MTR for this BMR, if any. */
 function findOpenPmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNRecordFromApi | null {
   const isClosed = (status: string | undefined) => {
@@ -4115,6 +4134,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const [bomLoading, setBomLoading] = useState(false);
 
   const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
+  const anyRmMtrForBatch = useMemo(() => findAnyRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const openPmMtrForBatch = useMemo(() => findOpenPmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const openRmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openRmMtrForBatch), [openRmMtrForBatch]);
   const openPmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openPmMtrForBatch), [openPmMtrForBatch]);
@@ -4497,7 +4517,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {canShowRescheduleFooterButton(batch) && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Reschedule dates</Btn>
           )}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !openRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && openRmMtrForBatch && (
             <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
@@ -4517,6 +4537,11 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   ))}
                 </span>
               )}
+            </span>
+          )}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !openRmMtrForBatch && anyRmMtrForBatch && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg" title="An RM transfer already exists for this batch. Continue from Transfer orders or move to RM dispensing if material is already at MU.">
+              <Info size={14} /> RM MTR already exists for this batch
             </span>
           )}
           {batch.rmConnected && batch.bmrStatus === 'rm_connected' && (!openRmMtrForBatch || mtrAllRmLinesReceivedAtMu(openRmMtrForBatch)) && (
@@ -4813,6 +4838,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.teal;
               const openRmMtr = findOpenRmMtrForBatch(b.bmrNo, outboundMrns);
+              const anyRmMtr = findAnyRmMtrForBatch(b.bmrNo, outboundMrns);
               const rmMtrWhMeta = outboundMtrWarehouseMeta(openRmMtr);
               return (
                 <div key={b.bmrNo} className={`rounded-xl border p-4 ${b.bmrStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
@@ -4854,7 +4880,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {canAdjustBatchSize(b) && (
                       <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
                     )}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !batchHasOpenRmMtr(b.bmrNo, outboundMrns) && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !anyRmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && openRmMtr && (
                       <span
                         className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
@@ -4877,6 +4903,11 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                             ))}
                           </span>
                         )}
+                      </span>
+                    )}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !openRmMtr && anyRmMtr && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg" title="An RM transfer already exists for this batch. Continue from Transfer orders.">
+                        <Info size={10} /> RM MTR already exists
                       </span>
                     )}
                     {b.bmrStatus === 'rm_connected' && (!openRmMtr || mtrAllRmLinesReceivedAtMu(openRmMtr)) && (

@@ -149,75 +149,6 @@ const RawMaterialRefactored: React.FC = () => {
  const [generatedRmCode, setGeneratedRmCode] = useState('');
  const [formData, setFormData] = useState(createEmptyRmFormData);
 
- /** Mock form data for testing submit (Fill mock values). */
- const RM_MOCK_FORM = {
-  rmSku: 'EI-RM-MOCK-001',
-  zohoId: '',
-  sku: '',
-  rmTaxPreference: 'Taxable',
-  rmReturnable: false,
-  rmAssociateItems: '',
-  rmCategoryKey: 'ACT',
-  rmCategory: 'Actives / API',
-  qcInspectionGroup: 'Chemical QC',
-  subCategory: 'Actives',
-  hazardHandlingClass: '',
-  seriesPrefix: 'EI-RM-ACT',
-  rmDefaultStorageType: 'Ambient – Dry',
-  inciName: 'Glycerin',
-  tradeCommercialName: 'Glycerin USP',
-  functionRole: 'Humectant',
-  rmType: 'Liquid',
-  casNo: '56-81-5',
-  einecs: '200-289-5',
-  countryOfOrigin: 'IN',
-  manufacturer: 'Mock Supplier',
-  synonyms: '',
-  internalNotes: 'Mock data for testing',
-  primaryUom: 'KG',
-  issueUom: 'KG',
-  conversionFactor: '1',
-  standardPackSize: '25',
-  hsnCode: '29054500',
-  gst: '12',
-  accountingCategory: 'Raw Material',
-  preferredCurrency: 'INR',
-  grade: 'USP',
-  compliance: 'ISO',
-  allergenRequired: false,
-  gmoRequired: false,
-  sdsAvailable: true,
-  coaAvailable: true,
-  regulatoryNotes: '',
-  assayPurity: '99.5% min',
-  appearanceSpec: 'Clear colourless',
-  phSpec: '5-7',
-  moistureLod: '0.5% max',
-  heavyMetalsSpec: '10 ppm max',
-  microbialSpec: 'TAMC 1000',
-  odorColorSpec: 'Odourless',
-  otherSpecs: '',
-  recommendedUseLevel: '2-5%',
-  maxUseLevel: '10%',
-  solubility: 'Water miscible',
-  processingGuidance: 'Add to water phase',
-  incompatibilities: '',
-  stabilityNotes: '24M',
-  claims: 'Hydrating',
-  storageConditions: 'Cool dry',
-  shelfLife: '36M',
-  retestPeriod: '12M',
-  warehouseLocation: 'A1',
-  batchTracking: 'Yes',
-  fifoFefo: 'FIFO',
-  minimumStock: '100',
-  reorderLevel: '500',
-  handlingNotes: '',
-  vendors: [] as Array<{ id: string; name: string; location: string; moq: number; unitPrice: number; leadTime: number; approved: string; priceValidTill: string }>,
-  documents: [] as Array<{ id: string; type: string; link: string; date: string }>,
-  tests: [] as Array<{ id: string; name: string; result: string; date: string; approvedBy: string; remarks: string }>,
- };
-
  // Temp fields separated
  const [tempVendor, setTempVendor] = useState({ 
   name: '', location: '', moq: '', unitPrice: '', leadTime: '', approved: '', priceValidTill: '' 
@@ -1349,13 +1280,6 @@ const RawMaterialRefactored: React.FC = () => {
                   formData={formData}
                   onInputChange={handleInputChange}
                   primaryFields={getPrimaryFields('rawMaterial')}
-                  onFillMock={() => {
-                    setFormData(RM_MOCK_FORM);
-                    setGeneratedRmCode(RM_MOCK_FORM.rmSku);
-                  }}
-                  onSave={() => {
-                    addToast('success', 'Draft saved (session only)');
-                  }}
                   onSubmit={handleSubmit}
                 >
                   {renderStageContent()}

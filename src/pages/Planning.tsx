@@ -629,10 +629,23 @@ const Planning = () => {
     enabled: planBatchesModalOpen && !!planningIdForBatch,
   });
 
-  /** Require the current last batch to be sent to production before adding another (matches backend). */
+  /** Require the latest batch (max sequence) to be sent before adding another (matches backend). */
+  const latestPlanningBatchIndex = useMemo(() => {
+    if (planningBatches.length === 0) return -1;
+    let bestIdx = 0;
+    let bestSeq = Number((planningBatches[0] as PlanningBatchRow)?.sequence ?? 0) || 0;
+    for (let i = 1; i < planningBatches.length; i += 1) {
+      const seq = Number((planningBatches[i] as PlanningBatchRow)?.sequence ?? 0) || 0;
+      if (seq >= bestSeq) {
+        bestSeq = seq;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }, [planningBatches]);
   const canAddAnotherPlanningBatch =
     planningBatches.length === 0 ||
-    (selectedSOForBatch?.sentBatchIndices ?? []).some((x) => Number(x) === planningBatches.length - 1);
+    (selectedSOForBatch?.sentBatchIndices ?? []).some((x) => Number(x) === latestPlanningBatchIndex);
 
   /** Selected batch detail — drives BOM (bomFormula/bomPackaging) for this batch */
   const { data: selectedBatchData } = useQuery({
@@ -735,8 +748,9 @@ const Planning = () => {
     return orderQtyNum > 0 && totalKgNum > 0 ? totalKgNum / orderQtyNum : 0;
   }, [selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg]);
 
-  // When user adjusts Feasibility "Preview qty", reflect it into the next active batch-units input in Batch Plan.
+  // When preview qty changes, reflect it once into the next active batch-units input in Batch Plan.
   // "Next active" = expanded batch if any; otherwise first unsent batch.
+  const lastAppliedPreviewQtyRef = useRef<number | null>(null);
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch) return;
     if (activeBatchTab !== 'batch-plan') return;
@@ -752,6 +766,8 @@ const Planning = () => {
     if (targetIdx < 0 || targetIdx >= customBatches.length) return;
 
     const nextUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    if (lastAppliedPreviewQtyRef.current === nextUnits) return;
+    lastAppliedPreviewQtyRef.current = nextUnits;
     const currentUnits = Math.round((customBatches[targetIdx]?.sizeKg || 0) / kgPerUnitForPlanBatches);
     if (nextUnits === currentUnits) return;
 
@@ -768,6 +784,12 @@ const Planning = () => {
     kgPerUnitForPlanBatches,
     customBatches,
   ]);
+
+  useEffect(() => {
+    if (!planBatchesModalOpen) {
+      lastAppliedPreviewQtyRef.current = null;
+    }
+  }, [planBatchesModalOpen, selectedSOForBatch?.id]);
 
   const lastSyncedBomIdRef = useRef<string | null>(null);
   const syncedFallbackOrderIdRef = useRef<string | null>(null);
@@ -4349,19 +4371,31 @@ const Planning = () => {
                   setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
                 };
 
-                /** Per-batch requirements in BATCH BREAKDOWN: use that batch's own BOM (planningBatches[batchIndex]), not the selected batch. */
-                const getBatchRmRequirementsForBatchIndex = (batchSizeForCalc: number, batchIndex: number) => {
-                  const batchRow = (planningBatches as PlanningBatchRow[])[batchIndex];
+                const normalizeMassUom = (raw?: string): 'KG' | 'GM' | 'MG' => {
+                  const u = String(raw || '').trim().toUpperCase();
+                  if (u === 'G' || u === 'GM' || u === 'GRAM' || u === 'GRAMS') return 'GM';
+                  if (u === 'MG' || u === 'MILLIGRAM' || u === 'MILLIGRAMS') return 'MG';
+                  return 'KG';
+                };
+                const convertKgToMassUom = (kg: number, uom: 'KG' | 'GM' | 'MG') => {
+                  if (uom === 'GM') return kg * 1000;
+                  if (uom === 'MG') return kg * 1000 * 1000;
+                  return kg;
+                };
+
+                /** Per-batch requirements in BATCH BREAKDOWN: use that batch row's own BOM copy. */
+                const getBatchRmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
                   const rmLines = Array.isArray(batchRow?.rmLines) ? batchRow.rmLines : [];
                   if (rmLines.length === 0) return [];
                   return rmLines.map((line: { inci_name?: string; rm_code?: string; pct_w_w?: number; pct?: number; uom?: string }) => {
                     const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
-                    const required = (batchSizeForCalc * pct) / 100;
-                    return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, uom: line.uom ?? 'KG' };
+                    const requiredKg = (batchSizeForCalc * pct) / 100;
+                    const uom = normalizeMassUom(line.uom);
+                    const required = convertKgToMassUom(requiredKg, uom);
+                    return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, requiredKg, uom };
                   });
                 };
-                const getBatchPmRequirementsForBatchIndex = (batchSizeForCalc: number, batchIndex: number) => {
-                  const batchRow = (planningBatches as PlanningBatchRow[])[batchIndex];
+                const getBatchPmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
                   const pmLines = Array.isArray(batchRow?.pmLines) ? batchRow.pmLines : [];
                   if (pmLines.length === 0) return [];
                   const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
@@ -4373,6 +4407,13 @@ const Planning = () => {
                     return { name: line.description ?? line.pm_code ?? '—', code: line.pm_code ?? '', qtyPerUnit, required, uom: 'PCS' };
                   });
                 };
+                const batchPlanRows = customBatches
+                  .map((batch, originalIndex) => {
+                    const row = (planningBatches as PlanningBatchRow[])[originalIndex];
+                    const sequence = Number(row?.sequence ?? (originalIndex + 1)) || (originalIndex + 1);
+                    return { batch, originalIndex, row, sequence };
+                  })
+                  .sort((a, b) => b.sequence - a.sequence || b.originalIndex - a.originalIndex);
 
                 return (
                   <div className="space-y-6">
@@ -4457,29 +4498,29 @@ const Planning = () => {
                       )}
 
                       <div className="space-y-3">
-                        {customBatches.map((batch, idx) => {
-                          const isExpanded = expandedBatchIndex === idx;
+                        {batchPlanRows.map(({ batch, originalIndex, row, sequence }) => {
+                          const isExpanded = expandedBatchIndex === originalIndex;
                           const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
-                          const isSent = sentBatchIndices.includes(idx);
+                          const isSent = sentBatchIndices.includes(originalIndex);
                           const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
-                          const rmReqs = isExpanded ? getBatchRmRequirementsForBatchIndex(batch.sizeKg, idx) : [];
-                          const pmReqs = isExpanded ? getBatchPmRequirementsForBatchIndex(batch.sizeKg, idx) : [];
+                          const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
+                          const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
                           return (
-                            <div key={idx} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                            <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
                               <div className="flex items-center gap-3 p-4">
                                 {isSent && (
                                   <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
                                 )}
                                 <div
                                   className="flex-1 flex items-center gap-4 cursor-pointer"
-                                  onClick={() => setExpandedBatchIndex(isExpanded ? null : idx)}
+                                  onClick={() => setExpandedBatchIndex(isExpanded ? null : originalIndex)}
                                 >
                                   <span className={`text-sm font-bold px-3 py-1 rounded-md ${isSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
-                                    B-{String(idx + 1).padStart(2, '0')}
+                                    B-{String(sequence).padStart(2, '0')}
                                   </span>
-                                  {planningBatches[idx]?.batchCode && (
+                                  {row?.batchCode && (
                                     <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded" title="Batch ID (BOM copy saved for this batch)">
-                                      {planningBatches[idx].batchCode}
+                                      {row.batchCode}
                                     </span>
                                   )}
                                   <span className="text-xs text-gray-500">
@@ -4495,7 +4536,7 @@ const Planning = () => {
                                       const sizeKg = units * kgPerUnit;
                                       console.log('e.target.value', e.target.value);
                                       console.log('sizeKg', kgPerUnit, units, sizeKg);
-                                      updateBatchUnits(idx, units);
+                                      updateBatchUnits(originalIndex, units);
                                     }}
                                     disabled={isSent}
                                     className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
@@ -4508,17 +4549,17 @@ const Planning = () => {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleSendBatchToProductionIndividually(idx);
+                                        handleSendBatchToProductionIndividually(originalIndex);
                                       }}
                                       className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
-                                      Send B-{String(idx + 1).padStart(2, '0')}
+                                      Send B-{String(sequence).padStart(2, '0')}
                                     </button>
                                   )}
                                   {!isSent && (
                                     <button
                                       type="button"
-                                      onClick={() => removeBatch(idx)}
+                                      onClick={() => removeBatch(originalIndex)}
                                       className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
                                     >
                                       <X size={14} />
@@ -4532,7 +4573,7 @@ const Planning = () => {
                                 <div className="border-t border-gray-200 p-4 bg-white space-y-4">
                                   {rmReqs.length > 0 && (
                                     <div>
-                                      <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(idx + 1).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units — scales to kg below)</h4>
+                                      <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
                                       <div className="border border-gray-200 rounded-lg overflow-hidden">
                                         <table className="w-full text-xs">
                                           <thead><tr className="bg-gray-50 border-b border-gray-200">
@@ -4550,7 +4591,18 @@ const Planning = () => {
                                             ))}
                                             <tr className="bg-teal-50 border-t border-teal-200">
                                               <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
-                                              <td className="px-3 py-1.5 text-right font-bold text-teal-800">{rmReqs.reduce((s, r) => s + r.required, 0).toFixed(2)} KG</td>
+                                              <td className="px-3 py-1.5 text-right font-bold text-teal-800">
+                                                {(() => {
+                                                  const uoms = [...new Set(rmReqs.map((r) => r.uom))];
+                                                  if (uoms.length === 1) {
+                                                    const u = uoms[0] as 'KG' | 'GM' | 'MG';
+                                                    const total = convertKgToMassUom(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), u);
+                                                    return `${total.toFixed(2)} ${u}`;
+                                                  }
+                                                  const totalKg = rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0);
+                                                  return `${totalKg.toFixed(2)} KG`;
+                                                })()}
+                                              </td>
                                             </tr>
                                           </tbody>
                                         </table>
@@ -4559,7 +4611,7 @@ const Planning = () => {
                                   )}
                                   {pmReqs.length > 0 && (
                                     <div>
-                                      <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(idx + 1).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
+                                      <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
                                       <div className="border border-gray-200 rounded-lg overflow-hidden">
                                         <table className="w-full text-xs">
                                           <thead><tr className="bg-gray-50 border-b border-gray-200">
