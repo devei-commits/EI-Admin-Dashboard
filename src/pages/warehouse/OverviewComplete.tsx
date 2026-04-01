@@ -139,6 +139,7 @@ const OutboundDashboard = () => {
   const [pickedItems, setPickedItems] = useState<Record<string, boolean>>({});
   const [pickedQty, setPickedQty] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [initiatingTransfer, setInitiatingTransfer] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
   const [pickStateByMrn, setPickStateByMrn] = useState<
     Record<
@@ -364,6 +365,8 @@ const OutboundDashboard = () => {
       closePickPanel();
     } catch (e) {
       showToast(getApiErrorMessage(e) || 'Failed to initiate transfer', 'error');
+    } finally {
+      setInitiatingTransfer(false);
     }
   };
 
@@ -801,7 +804,15 @@ const OutboundDashboard = () => {
               <button
                 type="button"
                 onClick={handleInitiateTransfer}
-                disabled={isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed'}
+                disabled={
+                  initiatingTransfer ||
+                  (isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed') ||
+                  (isMtrOutbound(selectedMRN) &&
+                    selectedMRN.lineItems.length > 0 &&
+                    selectedMRN.lineItems.every((li) => mtrLineLockedAtWh(li.id, selectedMRN.lineTransferStatus))) ||
+                  (!isMtrOutbound(selectedMRN) &&
+                    ['In Transfer', 'In Transit', 'Received at MU', 'Completed'].includes(selectedMRN.status))
+                }
                 title={
                   isMtrOutbound(selectedMRN)
                     ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
@@ -809,7 +820,7 @@ const OutboundDashboard = () => {
                 }
                 className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
               >
-                Initiate Transfer
+                {initiatingTransfer ? 'Initiating…' : 'Initiate Transfer'}
               </button>
               <button
                 onClick={closePickPanel}

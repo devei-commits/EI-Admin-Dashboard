@@ -99,6 +99,17 @@ export interface QCSpec {
   param: string; spec: string; result: string; passed: boolean | null;
 }
 
+/** Stored in production_batches.qc_specs JSON — keeps BMR / fill / pack checklists separate (legacy: flat array = BMR only). */
+export interface QcSpecsByScope {
+  bmr?: QCSpec[];
+  fill?: QCSpec[];
+  pack?: QCSpec[];
+  remarksBmr?: string;
+  remarksFill?: string;
+  remarksPack?: string;
+}
+export type QcSpecsStored = QCSpec[] | QcSpecsByScope;
+
 export interface BatchRow {
   _pk: number;
   bmrNo: string; bprNo: string; productName: string; sku: string;
@@ -118,7 +129,7 @@ export interface BatchRow {
   dispensingRM: DispensingItem[]; dispensingPM: DispensingItem[];
   bulkYield: number | null; fillYield: number | null; fgYield: number | null;
   bulkBatchAccepted: boolean | null; fillBatchAccepted: boolean | null; fgBatchAccepted: boolean | null;
-  qcSpecs: QCSpec[]; remarks: string; dueDate: string;
+  qcSpecs: QcSpecsStored; remarks: string; dueDate: string;
   compatibleVessels?: string[]; compatibleFillLines?: string[]; compatiblePackLines?: string[];
   /** Required vessel volume in liters (from BOM specific gravity + batch size). */
   requiredVolumeLiters?: number | null;

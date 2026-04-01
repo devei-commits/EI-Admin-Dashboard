@@ -18,6 +18,20 @@ import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '..
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 import type { Order } from '../../types/salesPurchase.types';
+import {
+  serializeStagedPaymentTerms,
+  stagedPaymentTermsFromVendorData,
+} from '../../lib/stagedPaymentTerms';
+
+/** Prefer vendor `data` payables split as JSON; else top-level paymentTerms string (VendorForm computed line). */
+function buildVendorPaymentTermsForProcurement(v: VendorClientRecord): string {
+  const data = v.data && typeof v.data === 'object' ? (v.data as Record<string, unknown>) : {};
+  const fromData = stagedPaymentTermsFromVendorData(data);
+  if (fromData) return serializeStagedPaymentTerms(fromData);
+  const plain = String(v.paymentTerms ?? '').trim();
+  if (plain) return plain;
+  return 'As per contract';
+}
 
 const PR_STATUS_MAP: Record<string, ProcurementRequest['status']> = {
   Pending: 'New',
@@ -221,7 +235,7 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
     confirmedQuotes: 0,
     posIssued: 0,
     avgLeadTime: parseLeadDaysFromString(v.leadTime),
-    paymentTerms: v.paymentTerms ?? '',
+    paymentTerms: buildVendorPaymentTermsForProcurement(v),
     contact: '',
     email: v.email ?? '',
     phone: v.phone ?? '',

@@ -208,11 +208,13 @@ export const UnifiedInput: React.FC<UnifiedInputProps> = ({
  className,
  ...props
 }) => {
+ const isRequired = Boolean(props.required);
  return (
   <div className="space-y-2">
    {label && (
     <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
      {label}
+     {isRequired && <span className="text-red-500 ml-0.5">*</span>}
     </label>
    )}
    <input
@@ -244,11 +246,15 @@ export const UnifiedSelect: React.FC<UnifiedSelectProps> = ({
  className,
  ...props
 }) => {
+ const hasCustomEmptyOption = options.some((opt) => String(opt.value) === '');
+ const isRequired = Boolean(props.required);
+
  return (
   <div className="space-y-2">
    {label && (
     <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
      {label}
+     {isRequired && <span className="text-red-500 ml-0.5">*</span>}
     </label>
    )}
    <select
@@ -261,7 +267,7 @@ export const UnifiedSelect: React.FC<UnifiedSelectProps> = ({
      ${className}
     `}
    >
-    <option value="">Select an option</option>
+    {!hasCustomEmptyOption && <option value="">Select an option</option>}
     {options.map((opt) => (
      <option key={opt.value} value={opt.value}>
       {opt.label}

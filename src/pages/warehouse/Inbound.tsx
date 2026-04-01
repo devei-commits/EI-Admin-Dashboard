@@ -469,6 +469,89 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       ? labels.find((l) => l.boxIndex === selectedLabelBoxIndex) ?? labels[0]
       : null;
 
+  const handlePrintActiveLabel = () => {
+    if (!activeLabel) return;
+    let payload: {
+      product_name?: string;
+      item_code?: string;
+      grn_no?: string;
+      grn_id?: number;
+      box_index?: number;
+      units_per_box?: number;
+      location_prefix?: string;
+      toRack?: string | null;
+      rack?: string | null;
+      toZone?: string | null;
+      zone?: string | null;
+      grn_batch_mfg?: string;
+      expiry?: string;
+      mfg_batch?: string;
+    } = {};
+    try {
+      payload = JSON.parse(activeLabel.qrPayload || '{}');
+    } catch {
+      payload = {};
+    }
+
+    const printWin = window.open('', '_blank', 'width=520,height=760');
+    if (!printWin) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+      return;
+    }
+
+    const esc = (v: unknown) =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
+    const zone = payload.toZone || payload.zone || '—';
+    const grnDisplay = payload.grn_no || payload.grn_id || grn.grnNo;
+
+    printWin.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>QR Label - ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
+      .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; width: 320px; }
+      .head { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+      .img-wrap { text-align: center; margin-bottom: 8px; }
+      img { width: 190px; height: 190px; object-fit: contain; }
+      p { margin: 4px 0; font-size: 12px; }
+      strong { font-weight: 700; }
+      @media print { body { padding: 0; } .card { border: 1px solid #000; } }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="head">GRN ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</div>
+      <div class="img-wrap"><img src="${esc(activeLabel.qrImageDataUrl)}" alt="QR Box ${esc(activeLabel.boxIndex)}" /></div>
+      <p><strong>Product:</strong> ${esc(payload.product_name || '—')}</p>
+      <p><strong>Item code:</strong> ${esc(payload.item_code || '—')}</p>
+      <p><strong>GRN:</strong> ${esc(grnDisplay)}</p>
+      <p><strong>Units:</strong> ${esc(payload.units_per_box ?? '—')}</p>
+      <p><strong>Rack:</strong> ${esc(rack)}</p>
+      <p><strong>Zone:</strong> ${esc(zone)}</p>
+      <p><strong>Batch mfg:</strong> ${esc(payload.grn_batch_mfg || '—')}</p>
+      <p><strong>Expiry:</strong> ${esc(payload.expiry || '—')}</p>
+      <p><strong>Mfg batch:</strong> ${esc(payload.mfg_batch || '—')}</p>
+    </div>
+    <script>
+      window.onload = function () {
+        window.print();
+        window.onafterprint = function () { window.close(); };
+      };
+    </script>
+  </body>
+</html>`);
+    printWin.document.close();
+  };
+
   const handleCompleteGRN = () => {
     if (!canMarkComplete) {
       setSaveError(`Cannot mark complete yet: ${completionBlockers.join(' ')}`);
@@ -883,6 +966,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 transition-colors disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : generatingLabels ? 'Regenerating…' : 'Regenerate all QR labels'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintActiveLabel}
+                  disabled={!activeLabel}
+                  className="px-4 py-2 bg-slate-700 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  Print selected QR
                 </button>
               </div>
               <p className="text-[11px] text-slate-500">

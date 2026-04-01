@@ -102,6 +102,129 @@ type VendorFormProps = {
  onSaved?: () => void;
 };
 
+/** Simple email format check (HTML5-style). */
+function isValidEmail(s: string): boolean {
+ const t = s.trim();
+ if (!t) return false;
+ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+}
+
+/** Phone: require enough digits (10–15), allow +, spaces, hyphens. */
+function isValidPhone(s: string): boolean {
+ const d = String(s || '').replace(/\D/g, '');
+ return d.length >= 10 && d.length <= 15;
+}
+
+/** Indian GSTIN when provided (15 chars, basic pattern). */
+function isValidGstin(s: string): boolean {
+ const t = s.trim().toUpperCase();
+ if (!t) return true;
+ return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(t);
+}
+
+/** PAN when provided (10 chars). */
+function isValidPan(s: string): boolean {
+ const t = s.trim().toUpperCase();
+ if (!t) return true;
+ return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(t);
+}
+
+function paymentSplitParts(fd: VendorFormData): { adv: number; before: number; after: number; sum: number } {
+ const adv = Number(String(fd.payablesAdvancedPct ?? '').trim()) || 0;
+ const before = Number(String(fd.payablesBeforeDispatchPct ?? '').trim()) || 0;
+ const after = Number(String(fd.payablesAfterDispatchPct ?? '').trim()) || 0;
+ return { adv, before, after, sum: adv + before + after };
+}
+
+function isValidOptionalUrl(s: string): boolean {
+ const t = s.trim();
+ if (!t) return true;
+ try {
+  const u = new URL(t.includes('://') ? t : `https://${t}`);
+  return u.protocol === 'http:' || u.protocol === 'https:';
+ } catch {
+  return false;
+ }
+}
+
+const FIELD_ERROR_STAGE: Record<string, number> = {
+ setupCategory: 0,
+ legalName: 0,
+ tradeName: 0,
+ primaryEmail: 0,
+ primaryPhone: 0,
+ entityCode: 0,
+ billingAddress: 1,
+ shippingAddress: 1,
+ state: 1,
+ country: 1,
+ gstin: 2,
+ pan: 2,
+ website: 2,
+ paymentCreditType: 5,
+ paymentSplit: 5,
+};
+
+/** Full form validation for create/update submit (all required fields + formats). */
+function validateVendorForm(fd: VendorFormData, options: { isNewVendor: boolean }): { errors: Record<string, string>; firstErrorStage: number } {
+ const newErrors: Record<string, string> = {};
+ const MIN_ADDR = 5;
+
+ if (!fd.setupCategory.trim()) newErrors.setupCategory = 'Category is required';
+ if (!fd.legalName.trim()) newErrors.legalName = 'Legal name is required';
+ if (!fd.tradeName.trim()) newErrors.tradeName = 'Trade name is required';
+ if (!fd.primaryEmail.trim()) newErrors.primaryEmail = 'Primary email is required';
+ else if (!isValidEmail(fd.primaryEmail)) newErrors.primaryEmail = 'Enter a valid email address';
+ if (!fd.primaryPhone.trim()) newErrors.primaryPhone = 'Primary phone is required';
+ else if (!isValidPhone(fd.primaryPhone)) newErrors.primaryPhone = 'Enter a valid phone number (10–15 digits)';
+
+ if (options.isNewVendor && !String(fd.entityCode || '').trim()) {
+  newErrors.entityCode = 'Generate entity code before submitting';
+ }
+
+ if (!fd.billingAddress.trim() || fd.billingAddress.trim().length < MIN_ADDR) {
+  newErrors.billingAddress = `Billing address is required (at least ${MIN_ADDR} characters)`;
+ }
+ if (!fd.shippingAddress.trim() || fd.shippingAddress.trim().length < MIN_ADDR) {
+  newErrors.shippingAddress = `Shipping address is required (at least ${MIN_ADDR} characters)`;
+ }
+ if (!fd.state.trim() || fd.state.trim().length < 2) newErrors.state = 'State is required';
+ if (!fd.country.trim() || fd.country.trim().length < 2) newErrors.country = 'Country is required';
+
+ if (fd.gstin.trim() && !isValidGstin(fd.gstin)) newErrors.gstin = 'Invalid GSTIN format (15 characters, e.g. 27AABCU9603R1ZM)';
+ if (fd.pan.trim() && !isValidPan(fd.pan)) newErrors.pan = 'Invalid PAN format (e.g. ABCDE1234F)';
+ if (fd.website.trim() && !isValidOptionalUrl(fd.website)) newErrors.website = 'Enter a valid website URL';
+
+ if (!String(fd.paymentCreditType ?? '').trim()) {
+  newErrors.paymentCreditType = 'Credit type is required';
+ }
+ const { sum } = paymentSplitParts(fd);
+ if (Math.abs(sum - 100) > 0.001) {
+  newErrors.paymentSplit = 'Advance + Before dispatch + After delivery must total exactly 100%';
+ }
+
+ let firstErrorStage = 999;
+ for (const k of Object.keys(newErrors)) {
+  firstErrorStage = Math.min(firstErrorStage, FIELD_ERROR_STAGE[k] ?? 5);
+ }
+ if (Object.keys(newErrors).length === 0) firstErrorStage = 0;
+
+ return { errors: newErrors, firstErrorStage };
+}
+
+/** Payment split + credit type only (e.g. saving price list from edit). */
+function validatePaymentTermsOnly(fd: VendorFormData): { errors: Record<string, string> } {
+ const errors: Record<string, string> = {};
+ if (!String(fd.paymentCreditType ?? '').trim()) {
+  errors.paymentCreditType = 'Credit type is required';
+ }
+ const { sum } = paymentSplitParts(fd);
+ if (Math.abs(sum - 100) > 0.001) {
+  errors.paymentSplit = 'Advance + Before dispatch + After delivery must total exactly 100%';
+ }
+ return { errors };
+}
+
 const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) => {
  const queryClient = useQueryClient();
  const { addToast } = useToast();
@@ -348,52 +471,31 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   { title: 'Agreements & Status', hint: 'NDA/MSA/Rate Contract status and links.' },
  ];
 
- const draftKey = useMemo(() => {
-  return editingId ? `vendor_form_draft_${editingId}` : 'vendor_form_draft';
- }, [editingId]);
+ const payAdv = formData.payablesAdvancedPct;
+ const payBefore = formData.payablesBeforeDispatchPct;
+ const payAfter = formData.payablesAfterDispatchPct;
+ const paymentSplitSum = useMemo(() => {
+  const adv = Number(String(payAdv ?? '').trim()) || 0;
+  const before = Number(String(payBefore ?? '').trim()) || 0;
+  const after = Number(String(payAfter ?? '').trim()) || 0;
+  return adv + before + after;
+ }, [payAdv, payBefore, payAfter]);
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { name, value } = e.target;
   setFormData(prev => ({ ...prev, [name]: value }));
-  if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
- };
-
- const validateStage = (_stage: number, forSubmit = false): boolean => {
-  const newErrors: Record<string, string> = {};
-  if (forSubmit) {
-   if (!formData.legalName.trim()) {
-    newErrors.legalName = 'Legal name is required';
-    addToast('error', 'Legal name is required');
+  setErrors(prev => {
+   const next = { ...prev };
+   if (next[name]) next[name] = '';
+   if (
+    name === 'payablesAdvancedPct' ||
+    name === 'payablesBeforeDispatchPct' ||
+    name === 'payablesAfterDispatchPct'
+   ) {
+    if (next.paymentSplit) next.paymentSplit = '';
    }
-   if (!formData.tradeName.trim()) {
-    newErrors.tradeName = 'Trade name is required';
-    addToast('error', 'Trade name is required');
-   }
-   if (!formData.primaryEmail.trim()) {
-    newErrors.primaryEmail = 'Primary email is required';
-    addToast('error', 'Primary email is required');
-   }
-
-    if (_stage === 5) {
-      if (!String(formData.paymentCreditType ?? '').trim()) {
-        newErrors.paymentCreditType = 'Credit type is required';
-        addToast('error', 'Credit type is required');
-      }
-      const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
-      const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
-      const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
-      const sum = adv + before + after;
-      if (Math.abs(sum - 100) > 0.001) {
-        newErrors.paymentSplit = 'Payables times (Advanced + Before dispatch + After dispatch/on delivery) must add up to 100%';
-        addToast('error', 'Payables times must add up to 100%');
-      }
-    }
-  }
-  if (Object.keys(newErrors).length > 0) {
-   setErrors(newErrors);
-   return false;
-  }
-  return true;
+   return next;
+  });
  };
 
  const handleNextStage = () => {
@@ -567,6 +669,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    addToast('error', 'Save the vendor once from the final step first, then open Edit to save the price list to the server.');
    return;
   }
+  const ptErrs = validatePaymentTermsOnly(formData);
+  if (Object.keys(ptErrs.errors).length > 0) {
+   setErrors(prev => ({ ...prev, ...ptErrs.errors }));
+   setCurrentStage(5);
+   addToast('error', Object.values(ptErrs.errors)[0] ?? 'Fix payment terms');
+   return;
+  }
   if (!validateVendorItemsForPriceSave()) return;
   setSavingPriceList(true);
   try {
@@ -616,7 +725,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
  const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  if (!validateStage(currentStage, true)) return;
+  const { errors: ve, firstErrorStage } = validateVendorForm(formData, { isNewVendor: !editingId });
+  if (Object.keys(ve).length > 0) {
+   setErrors(ve);
+   setCurrentStage(firstErrorStage);
+   addToast('error', Object.values(ve)[0] ?? 'Please fix the highlighted fields');
+   return;
+  }
   setIsSaving(true);
 
   const { computedPaymentTerms, data } = buildVendorDataBlob();
@@ -729,6 +844,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const inputClass = "w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent transition";
  const labelClass = "block text-sm font-medium text-gray-700 mb-1.5";
  const sectionTitleClass = "text-xs font-bold text-gray-500 tracking-widest uppercase mb-4";
+ const req = <span className="text-red-600" aria-hidden>*</span>;
+ const fieldClass = (name: string) =>
+  `${inputClass} ${errors[name] ? 'border-red-500 ring-1 ring-red-200' : ''}`;
+ const pctFieldClass =
+  `${inputClass} ${errors.paymentSplit ? 'border-red-500 ring-1 ring-red-200' : ''}`;
+ const errMsg = (k: string) =>
+  errors[k] ? <p className="text-xs text-red-600 mt-1">{errors[k]}</p> : null;
 
  return (
   <div className="p-6 w-full">
@@ -794,8 +916,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          </select>
         </div>
         <div>
-         <label className={labelClass}>Category</label>
-         <select name="setupCategory" value={formData.setupCategory} onChange={handleInputChange} className={inputClass}>
+         <label className={labelClass}>Category {req}</label>
+         <select name="setupCategory" value={formData.setupCategory} onChange={handleInputChange} className={fieldClass('setupCategory')}>
           <option value="">Select</option>
           <option>RM Vendor</option>
           <option>PM Vendor</option>
@@ -804,16 +926,19 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           <option>Consultant</option>
           <option>Other</option>
          </select>
+         {errMsg('setupCategory')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Legal Name</label>
-         <input type="text" name="legalName" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN" className={inputClass} />
+         <label className={labelClass}>Legal Name {req}</label>
+         <input type="text" name="legalName" id="legalName" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN" className={fieldClass('legalName')} />
+         {errMsg('legalName')}
         </div>
         <div>
-         <label className={labelClass}>Display / Trade Name</label>
-         <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={inputClass} />
+         <label className={labelClass}>Display / Trade Name {req}</label>
+         <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={fieldClass('tradeName')} />
+         {errMsg('tradeName')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -829,12 +954,14 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Primary Email</label>
-         <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={inputClass} />
+         <label className={labelClass}>Primary Email {req}</label>
+         <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={fieldClass('primaryEmail')} />
+         {errMsg('primaryEmail')}
         </div>
         <div>
-         <label className={labelClass}>Primary Phone</label>
-         <input type="tel" name="primaryPhone" value={formData.primaryPhone} onChange={handleInputChange} placeholder="+91..." className={inputClass} />
+         <label className={labelClass}>Primary Phone {req}</label>
+         <input type="tel" name="primaryPhone" value={formData.primaryPhone} onChange={handleInputChange} placeholder="+91..." className={fieldClass('primaryPhone')} />
+         {errMsg('primaryPhone')}
         </div>
        </div>
        
@@ -845,8 +972,14 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <input type="text" value="VEN" readOnly className={`${inputClass} bg-gray-50`} />
         </div>
         <div>
-         <label className={labelClass}>Next Code Preview</label>
-         <input type="text" value={formData.entityCode || '— Generate to get code —'} readOnly className={`${inputClass} bg-gray-50`} />
+         <label className={labelClass}>Next Code Preview {!editingId ? req : null}</label>
+         <input
+          type="text"
+          value={formData.entityCode || '— Generate to get code —'}
+          readOnly
+          className={`${fieldClass('entityCode')} bg-gray-50`}
+         />
+         {errMsg('entityCode')}
         </div>
        </div>
        <div className="flex gap-2 flex-wrap">
@@ -870,28 +1003,33 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className={sectionTitleClass}>Organization Details</div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Billing Address</label>
-         <textarea name="billingAddress" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={inputClass} rows={3} />
+         <label className={labelClass}>Billing Address {req}</label>
+         <textarea name="billingAddress" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={fieldClass('billingAddress')} rows={3} />
+         {errMsg('billingAddress')}
         </div>
         <div>
-         <label className={labelClass}>Shipping Address</label>
-         <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different" className={inputClass} rows={3} />
+         <label className={labelClass}>Shipping Address {req}</label>
+         <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different" className={fieldClass('shippingAddress')} rows={3} />
+         {errMsg('shippingAddress')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>State</label>
-         <input type="text" name="state" value={formData.state} onChange={handleInputChange} className={inputClass} />
+         <label className={labelClass}>State {req}</label>
+         <input type="text" name="state" value={formData.state} onChange={handleInputChange} className={fieldClass('state')} />
+         {errMsg('state')}
         </div>
         <div>
-         <label className={labelClass}>Country</label>
-         <input type="text" name="country" value={formData.country} onChange={handleInputChange} className={inputClass} />
+         <label className={labelClass}>Country {req}</label>
+         <input type="text" name="country" value={formData.country} onChange={handleInputChange} className={fieldClass('country')} />
+         {errMsg('country')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Website</label>
-         <input type="url" name="website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={inputClass} />
+         <input type="url" name="website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={fieldClass('website')} />
+         {errMsg('website')}
         </div>
         <div>
          <label className={labelClass}>Industry / Segment</label>
@@ -912,11 +1050,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>GSTIN</label>
-         <input type="text" name="gstin" value={formData.gstin} onChange={handleInputChange} className={inputClass} />
+         <input type="text" name="gstin" value={formData.gstin} onChange={handleInputChange} className={fieldClass('gstin')} placeholder="15-character GSTIN if applicable" />
+         {errMsg('gstin')}
         </div>
         <div>
          <label className={labelClass}>PAN</label>
-         <input type="text" name="pan" value={formData.pan} onChange={handleInputChange} className={inputClass} />
+         <input type="text" name="pan" value={formData.pan} onChange={handleInputChange} className={fieldClass('pan')} placeholder="ABCDE1234F if applicable" />
+         {errMsg('pan')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1202,9 +1342,15 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
      {currentStage === 5 && (
       <div className="space-y-6">
        <div className={sectionTitleClass}>Payment Terms & Credit</div>
+       <p className="text-sm text-gray-600 mb-2">
+        Split must total <strong>100%</strong>: Advance + Before dispatch + After delivery/on delivery. Current total:{' '}
+        <span className={Math.abs(paymentSplitSum - 100) < 0.001 ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}>
+         {paymentSplitSum.toFixed(2)}%
+        </span>
+       </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Advanced (%)</label>
+         <label className={labelClass}>Advanced (%) {req}</label>
          <input
           type="number"
           name="payablesAdvancedPct"
@@ -1212,11 +1358,11 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           onChange={handleInputChange}
           step="0.01"
           min="0"
-          className={inputClass}
+          className={pctFieldClass}
          />
         </div>
         <div>
-         <label className={labelClass}>Before dispatch (%)</label>
+         <label className={labelClass}>Before dispatch (%) {req}</label>
          <input
           type="number"
           name="payablesBeforeDispatchPct"
@@ -1224,13 +1370,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           onChange={handleInputChange}
           step="0.01"
           min="0"
-          className={inputClass}
+          className={pctFieldClass}
          />
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>After dispatch / On delivery (%)</label>
+         <label className={labelClass}>After dispatch / On delivery (%) {req}</label>
          <input
           type="number"
           name="payablesAfterDispatchPct"
@@ -1238,20 +1384,24 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
           onChange={handleInputChange}
           step="0.01"
           min="0"
-          className={inputClass}
+          className={pctFieldClass}
          />
         </div>
         <div>
-         <label className={labelClass}>Credit Type</label>
-         <select name="paymentCreditType" value={formData.paymentCreditType} onChange={handleInputChange} className={inputClass}>
+         <label className={labelClass}>Credit Type {req}</label>
+         <select name="paymentCreditType" value={formData.paymentCreditType} onChange={handleInputChange} className={fieldClass('paymentCreditType')}>
           <option value="">Select</option>
           <option>Credit</option>
           <option>Advance</option>
           <option>LC</option>
           <option>Mixed</option>
          </select>
+         {errMsg('paymentCreditType')}
         </div>
        </div>
+       {errors.paymentSplit ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{errors.paymentSplit}</div>
+       ) : null}
        <div>
         <label className={labelClass}>Custom Terms (optional)</label>
         <input

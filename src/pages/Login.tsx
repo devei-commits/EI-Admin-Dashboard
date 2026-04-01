@@ -33,17 +33,13 @@ const Login: React.FC = () => {
  const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setError('');
-  
-  if (!email.trim()) {
-   setError('Please enter your email address');
+  const form = e.currentTarget as HTMLFormElement;
+  if (!form.reportValidity()) {
+   const firstInvalid = form.querySelector(':invalid');
+   if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
    return;
   }
   
-  if (!password) {
-   setError('Please enter your password');
-   return;
-  }
-
   setIsLoading(true);
 
   try {
@@ -122,7 +118,7 @@ const Login: React.FC = () => {
       {/* Email Field */}
       <div>
        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-        Email Address
+        Email Address <span className="text-red-500">*</span>
        </label>
        <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -138,6 +134,7 @@ const Login: React.FC = () => {
          className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400"
          placeholder="Enter your email"
          autoComplete="email"
+         required
          disabled={isLoading}
         />
        </div>
@@ -146,7 +143,7 @@ const Login: React.FC = () => {
       {/* Password Field */}
       <div>
        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-        Password
+        Password <span className="text-red-500">*</span>
        </label>
        <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -162,6 +159,7 @@ const Login: React.FC = () => {
          className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400"
          placeholder="Enter your password"
          autoComplete="current-password"
+         required
          disabled={isLoading}
         />
         <button

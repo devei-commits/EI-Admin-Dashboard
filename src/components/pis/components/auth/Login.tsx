@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -35,9 +35,10 @@ export function Login({ onLogin, onSignup }: LoginProps) {
  const handleLogin = async (e: React.FormEvent) => {
   e.preventDefault();
   setLoginError('');
-
-  if (!loginEmail || !loginPassword) {
-   setLoginError('Please enter both email and password');
+  const form = e.currentTarget as HTMLFormElement;
+  if (!form.reportValidity()) {
+   const firstInvalid = form.querySelector(':invalid');
+   if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
    return;
   }
 
@@ -64,9 +65,10 @@ export function Login({ onLogin, onSignup }: LoginProps) {
  const handleSignup = async (e: React.FormEvent) => {
   e.preventDefault();
   setSignupError('');
-
-  if (!signupName || !signupEmail || !signupPassword || !signupConfirmPassword) {
-   setSignupError('Please fill in all fields');
+  const form = e.currentTarget as HTMLFormElement;
+  if (!form.reportValidity()) {
+   const firstInvalid = form.querySelector(':invalid');
+   if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
    return;
   }
 
@@ -137,7 +139,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
         
         <form onSubmit={handleLogin} className="space-y-4">
          <div className="space-y-2">
-          <Label htmlFor="login-email">Email</Label>
+          <Label htmlFor="login-email">Email <span className="text-red-500">*</span></Label>
           <div className="relative">
            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -147,13 +149,14 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
             className="pl-10"
+            required
             disabled={isLoginLoading}
            />
           </div>
          </div>
 
          <div className="space-y-2">
-          <Label htmlFor="login-password">Password</Label>
+          <Label htmlFor="login-password">Password <span className="text-red-500">*</span></Label>
           <div className="relative">
            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -163,6 +166,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
             className="pl-10 pr-10"
+            required
             disabled={isLoginLoading}
            />
            <button
@@ -196,7 +200,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
         
         <form onSubmit={handleSignup} className="space-y-4">
          <div className="space-y-2">
-          <Label htmlFor="signup-name">Full Name</Label>
+          <Label htmlFor="signup-name">Full Name <span className="text-red-500">*</span></Label>
           <div className="relative">
            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -206,13 +210,14 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={signupName}
             onChange={(e) => setSignupName(e.target.value)}
             className="pl-10"
+            required
             disabled={isSignupLoading}
            />
           </div>
          </div>
 
          <div className="space-y-2">
-          <Label htmlFor="signup-email">Email</Label>
+          <Label htmlFor="signup-email">Email <span className="text-red-500">*</span></Label>
           <div className="relative">
            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -222,13 +227,14 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={signupEmail}
             onChange={(e) => setSignupEmail(e.target.value)}
             className="pl-10"
+            required
             disabled={isSignupLoading}
            />
           </div>
          </div>
 
          <div className="space-y-2">
-          <Label htmlFor="signup-password">Password</Label>
+          <Label htmlFor="signup-password">Password <span className="text-red-500">*</span></Label>
           <div className="relative">
            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -238,6 +244,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={signupPassword}
             onChange={(e) => setSignupPassword(e.target.value)}
             className="pl-10 pr-10"
+            required
             disabled={isSignupLoading}
            />
            <button
@@ -251,7 +258,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
          </div>
 
          <div className="space-y-2">
-          <Label htmlFor="signup-confirm">Confirm Password</Label>
+          <Label htmlFor="signup-confirm">Confirm Password <span className="text-red-500">*</span></Label>
           <div className="relative">
            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
            <Input
@@ -261,6 +268,7 @@ export function Login({ onLogin, onSignup }: LoginProps) {
             value={signupConfirmPassword}
             onChange={(e) => setSignupConfirmPassword(e.target.value)}
             className="pl-10"
+            required
             disabled={isSignupLoading}
            />
           </div>

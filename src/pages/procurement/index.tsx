@@ -77,6 +77,9 @@ import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDi
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
+const ENABLE_PROCUREMENT_LOCAL_PERSISTENCE =
+  typeof import.meta.env?.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === 'string'
+    && import.meta.env.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === '1';
 const DEBUG_PROC_RELEASE = import.meta.env.DEV;
 
 /** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
@@ -199,6 +202,7 @@ const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Dra
 /**
  * Procurement requests whose released POs should appear under Issued POs.
  * Includes Under GRN: marking one split PO delivered sets the whole PR to Under GRN, but sibling POs (e.g. …-S2) must stay visible.
+ * Individual PO rows are removed from the Issued list once that PO is marked delivered at warehouse (see `isIssuedPoHandedOffToWarehouse`).
  */
 const REQUEST_STATUSES_FOR_ISSUED_PO_LIST: readonly RequestStatus[] = [
   'PO Released',
@@ -208,6 +212,12 @@ const REQUEST_STATUSES_FOR_ISSUED_PO_LIST: readonly RequestStatus[] = [
 
 function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
   return REQUEST_STATUSES_FOR_ISSUED_PO_LIST.includes(status);
+}
+
+/** True when payment terms include an advance % (cannot issue PO until advance is recorded in PO tracking). */
+function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null): boolean {
+  const { type } = parsePaymentTermsString(paymentTerms);
+  return paymentTermsTypeRequiresAdvancePercent(type);
 }
 
 /** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
@@ -245,6 +255,39 @@ function nextSequentialDpoOrderId(
 }
 
 type IssuedPoTimelineOverride = { shipped?: boolean; delivered?: boolean; underGrn?: boolean };
+
+function hasPoTrackingTimestamp(v: unknown): boolean {
+  return v != null && String(v).trim() !== '';
+}
+
+/**
+ * True when this PO has been marked delivered at warehouse (or is under GRN in the warehouse flow).
+ * Used to hide the row from Issued POs — the PO is tracked in GRN Monitor / Inbound instead.
+ * Per backend PO id so split POs (e.g. S1 vs S2) are handled independently.
+ */
+function isIssuedPoHandedOffToWarehouse(
+  record: { backendPoId?: string },
+  trackingById: Record<string, PoTrackingRecord> | undefined,
+  unlinkedOverrides: Record<string, IssuedPoTimelineOverride> | undefined,
+): boolean {
+  const raw = record.backendPoId != null ? String(record.backendPoId) : '';
+  const bid = raw.replace(/^PO-/, '');
+  if (!bid || !/^\d+$/.test(bid)) return false;
+
+  const tracking = trackingById?.[bid];
+  if (tracking) {
+    if (
+      hasPoTrackingTimestamp(tracking.deliveredAt) ||
+      hasPoTrackingTimestamp(tracking.underGrnAt) ||
+      hasPoTrackingTimestamp(tracking.grnCompleteAt)
+    ) {
+      return true;
+    }
+  }
+  const ov = unlinkedOverrides?.[bid];
+  if (ov?.delivered || ov?.underGrn) return true;
+  return false;
+}
 
 /**
  * Highest completed step index for Issued PO cards (0 = PO Released … 6 = GRN Complete).
@@ -298,6 +341,18 @@ const getInitialLiveState = (): LiveProcurementState => {
   const initialStockStatuses: Record<string, StockCheckStatus> = {};
 
   if (typeof window === 'undefined') {
+    return {
+      requests: emptyRequests,
+      quotes: emptyQuotes,
+      draftPOs: DRAFT_POS_SEED,
+      completedGrns: [],
+      stockCheckStatuses: initialStockStatuses,
+      stockCheckUpdates: {},
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (!ENABLE_PROCUREMENT_LOCAL_PERSISTENCE) {
     return {
       requests: emptyRequests,
       quotes: emptyQuotes,
@@ -398,8 +453,10 @@ const Procurement: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
-  const [requestStatusFilter, setRequestStatusFilter] = useState<'All Statuses' | RequestStatus>('All Statuses');
+  /** Requests tab: All = no status filter; Active = exclude PO Released; else match exact status */
+  const [requestTab, setRequestTab] = useState<'All' | 'Active' | RequestStatus>('All');
   const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
+  const [draftPOSearch, setDraftPOSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
@@ -451,16 +508,12 @@ const Procurement: React.FC = () => {
     quoteDate: string;
     validTill: string;
     leadTimeDays: string;
-    paymentTermsType: PaymentTermsStructuredType;
-    advancePercent: string;
     notes: string;
   }>({
     vendorId: '',
     quoteDate: '',
     validTill: '',
     leadTimeDays: '',
-    paymentTermsType: 'as_per_contract',
-    advancePercent: '50',
     notes: '',
   });
   const [recordQuoteLines, setRecordQuoteLines] = useState<
@@ -521,6 +574,7 @@ const Procurement: React.FC = () => {
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
   const [releaseMethod, setReleaseMethod] = useState<'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email'>('Email + Portal');
   const [releaseNotes, setReleaseNotes] = useState('');
+  const [recordingAdvancePayment, setRecordingAdvancePayment] = useState(false);
   const [issuedSearch, setIssuedSearch] = useState('');
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
@@ -529,9 +583,6 @@ const Procurement: React.FC = () => {
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
-  const [_stockCategoryFilter, _setStockCategoryFilter] = useState<'All' | RequestType>('All');
-  const [_stockStatusFilter, _setStockStatusFilter] = useState<'All Statuses' | 'Assigned' | 'In Progress' | 'Completed' | 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock'>('All Statuses');
-  const [_stockSearch, _setStockSearch] = useState('');
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
   const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
@@ -660,6 +711,57 @@ const Procurement: React.FC = () => {
     () => backendPrArray.map(mapBackendPrToRequest),
     [backendPrArray]
   );
+  const requestStockSummaryByRequestId = useMemo(() => {
+    const whRows = warehouseInventoryData?.rows ?? [];
+    const byReq = new Map<string, { stockInHand: number; openPOQty: number; inTransit: number; openOrders: number }>();
+    if (!whRows.length) return byReq;
+
+    const byRmId = new Map<number, typeof whRows[number]>();
+    const byPmId = new Map<number, typeof whRows[number]>();
+    const byCode = new Map<string, typeof whRows[number]>();
+    const byName = new Map<string, typeof whRows[number]>();
+    for (const row of whRows) {
+      if (row.type === 'RM') byRmId.set(Number(row.sourceId), row);
+      if (row.type === 'PM') byPmId.set(Number(row.sourceId), row);
+      const codeKey = String(row.code ?? '').trim().toLowerCase();
+      const nameKey = String(row.name ?? '').trim().toLowerCase();
+      if (codeKey) byCode.set(codeKey, row);
+      if (nameKey) byName.set(nameKey, row);
+    }
+
+    for (const req of requestsFromApi) {
+      const detailRows = Array.isArray(req.itemDetails) ? req.itemDetails : [];
+      let stockInHand = 0;
+      let openPOQty = 0;
+      let inTransit = 0;
+      for (const item of detailRows) {
+        let row: (typeof whRows[number]) | undefined;
+        const rmId = item.raw_material_id != null ? Number(item.raw_material_id) : NaN;
+        const pmId = item.pack_material_id != null ? Number(item.pack_material_id) : NaN;
+        if (Number.isFinite(rmId) && rmId > 0) row = byRmId.get(rmId);
+        if (!row && Number.isFinite(pmId) && pmId > 0) row = byPmId.get(pmId);
+        if (!row) {
+          const codeKey = String(item.itemCode ?? '').trim().toLowerCase();
+          if (codeKey) row = byCode.get(codeKey);
+        }
+        if (!row) {
+          const nameKey = String(item.itemName ?? '').trim().toLowerCase();
+          if (nameKey) row = byName.get(nameKey);
+        }
+        if (!row) continue;
+        stockInHand += Number(row.stockInHand) || 0;
+        openPOQty += Number(row.poQuantity) || 0;
+        inTransit += Number(row.inTransit) || 0;
+      }
+      byReq.set(req.id, {
+        stockInHand,
+        openPOQty,
+        inTransit,
+        openOrders: detailRows.reduce((sum, i) => sum + (Number(i.reqQty) || 0), 0),
+      });
+    }
+    return byReq;
+  }, [warehouseInventoryData?.rows, requestsFromApi]);
 
   const quotesFromApi = useMemo(() => {
     const list = quotationsResult ?? [];
@@ -722,6 +824,31 @@ const Procurement: React.FC = () => {
     },
     enabled: !!selectedPO?.backendPoId,
   });
+
+  const releaseDraftBackendPoIdNormalized = useMemo(() => {
+    const raw = releasePOTarget?.backendPoId;
+    if (raw == null) return '';
+    const s = String(raw).replace(/^PO-/, '').trim();
+    return /^\d+$/.test(s) ? s : '';
+  }, [releasePOTarget?.backendPoId]);
+
+  const releaseDraftRequiresAdvance = Boolean(
+    releasePOTarget && draftPaymentTermsRequireAdvance(releasePOTarget.paymentTerms),
+  );
+
+  const { data: releaseDraftTracking, isFetching: releaseDraftTrackingLoading, refetch: refetchReleaseDraftTracking } = useQuery({
+    queryKey: ['po-tracking', 'release-draft', releaseDraftBackendPoIdNormalized],
+    queryFn: async () => {
+      const res = await fetchPoTracking(releaseDraftBackendPoIdNormalized);
+      return res.success ? res.data : null;
+    },
+    enabled: Boolean(releasePOTarget && releaseDraftRequiresAdvance && releaseDraftBackendPoIdNormalized),
+    staleTime: 15_000,
+  });
+
+  const advanceRecordedForReleaseDraft = Boolean(
+    releaseDraftTracking?.advancePaidAt != null && String(releaseDraftTracking.advancePaidAt).trim() !== '',
+  );
 
   const needItemsListForQuotesOrDraftPO =
     sideSection === 'Quotations' ||
@@ -989,6 +1116,14 @@ const Procurement: React.FC = () => {
     if (typeof window === 'undefined') {
       return;
     }
+    if (!ENABLE_PROCUREMENT_LOCAL_PERSISTENCE) {
+      try {
+        window.localStorage.removeItem(PROCUREMENT_LIVE_KEY);
+      } catch {
+        // ignore storage cleanup errors
+      }
+      return;
+    }
 
     const payloadKey = JSON.stringify({
       requests,
@@ -1019,6 +1154,9 @@ const Procurement: React.FC = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') {
+      return;
+    }
+    if (!ENABLE_PROCUREMENT_LOCAL_PERSISTENCE) {
       return;
     }
 
@@ -1231,7 +1369,9 @@ const Procurement: React.FC = () => {
         row.itemName.toLowerCase().includes(q) ||
         row.itemCode.toLowerCase().includes(q) ||
         row.requestCode.toLowerCase().includes(q) ||
-        (row.poNumber ?? '').toLowerCase().includes(q)
+        (row.poNumber ?? '').toLowerCase().includes(q) ||
+        (row.preferredVendor ?? '').toLowerCase().includes(q) ||
+        (row.quotedVendor ?? '').toLowerCase().includes(q)
       );
     });
   }, [itemTrackerCategory, itemTrackerRows, itemTrackerSearch, itemTrackerStatus, itemTrackerVendor]);
@@ -1288,7 +1428,11 @@ const Procurement: React.FC = () => {
         quote.vendor.toLowerCase().includes(query) ||
         quote.requestCode.toLowerCase().includes(query) ||
         quote.id.toLowerCase().includes(query) ||
-        quote.lines.some((line) => line.item.toLowerCase().includes(query))
+        quote.lines.some(
+          (line) =>
+            line.item.toLowerCase().includes(query) ||
+            String(line.itemId ?? '').toLowerCase().includes(query),
+        )
       );
     });
   }, [categoryFilter, vendorFilter, statusFilter, searchQuery, quotes, sideSection, requests]);
@@ -1481,13 +1625,26 @@ const Procurement: React.FC = () => {
   };
 
   const filteredDraftPOs = useMemo(() => {
+    const q = draftPOSearch.trim().toLowerCase();
     return draftPOs.filter((dpo) => {
       if (categoryFilter !== 'All' && dpo.type !== categoryFilter) return false;
       if (vendorFilter !== 'All Vendors' && dpo.vendor !== vendorFilter) return false;
       if (draftPOStatusFilter !== 'All Statuses' && dpo.status !== draftPOStatusFilter) return false;
+      if (q) {
+        const inHeader =
+          String(dpo.dpoNumber ?? '').toLowerCase().includes(q) ||
+          String(dpo.vendor ?? '').toLowerCase().includes(q) ||
+          String((dpo as { requestCode?: string }).requestCode ?? '').toLowerCase().includes(q);
+        const inLines = (dpo.lineItems ?? []).some(
+          (l) =>
+            String(l.item ?? '').toLowerCase().includes(q) ||
+            String(l.itemCode ?? '').toLowerCase().includes(q),
+        );
+        if (!inHeader && !inLines) return false;
+      }
       return true;
     });
-  }, [draftPOs, categoryFilter, vendorFilter, draftPOStatusFilter]);
+  }, [draftPOs, categoryFilter, vendorFilter, draftPOStatusFilter, draftPOSearch]);
 
   /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from PR modal + quotations) */
   const requestsPODraftNoDraftPO = useMemo(() => {
@@ -1746,7 +1903,9 @@ const Procurement: React.FC = () => {
       const key = bid ? `id:${bid}` : `po:${poNorm}|req:${r.request.id}`;
       if (!dedupedByPo.has(key)) dedupedByPo.set(key, r);
     }
-    return Array.from(dedupedByPo.values());
+    return Array.from(dedupedByPo.values()).filter(
+      (r) => !isIssuedPoHandedOffToWarehouse(r, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides),
+    );
   }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   const filteredIssuedPORecords = useMemo(() => {
@@ -1769,7 +1928,11 @@ const Procurement: React.FC = () => {
         record.poNumber.toLowerCase().includes(query) ||
         record.requestCode.toLowerCase().includes(query) ||
         record.vendor.toLowerCase().includes(query) ||
-        record.lineItems.some((line) => line.item.toLowerCase().includes(query))
+        record.lineItems.some(
+          (line) =>
+            line.item.toLowerCase().includes(query) ||
+            String((line as { itemCode?: string }).itemCode ?? '').toLowerCase().includes(query),
+        )
       );
     });
   }, [issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
@@ -2176,7 +2339,7 @@ const Procurement: React.FC = () => {
     const vendorId = matchedVendorForZoho?.id;
     const quoteTerms = String(quoteToUse?.terms ?? '').trim();
     const vendorMasterTerms = String(matchedVendorForZoho?.paymentTerms ?? '').trim();
-    const resolvedPaymentTerms = quoteTerms || vendorMasterTerms || 'As per contract';
+    const resolvedPaymentTerms = vendorMasterTerms || quoteTerms || 'As per contract';
 
     let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
     if (vendorId && vendor !== 'Unassigned') {
@@ -2484,12 +2647,53 @@ const Procurement: React.FC = () => {
     setReleaseNotes('');
   };
 
+  const recordAdvancePaymentForReleaseDraft = async () => {
+    if (!releaseDraftBackendPoIdNormalized) {
+      addToast('error', 'No server purchase order id on this draft. Refresh or re-save the draft PO.');
+      return;
+    }
+    setRecordingAdvancePayment(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await updatePoTracking(releaseDraftBackendPoIdNormalized, {
+        advancePaidAt: today,
+        advancePaidNote: 'Advance payment recorded (manual — treasury transaction pending)',
+      });
+      if (!res.success) {
+        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to record advance payment');
+        return;
+      }
+      addToast('success', 'Advance payment recorded. You can release the PO to vendor.');
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', 'release-draft', releaseDraftBackendPoIdNormalized] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      void refetchReleaseDraftTracking();
+    } finally {
+      setRecordingAdvancePayment(false);
+    }
+  };
+
   const submitReleasePO = async () => {
     if (!releasePOTarget) {
       return;
     }
 
     const draft = releasePOTarget;
+    if (draftPaymentTermsRequireAdvance(draft.paymentTerms)) {
+      const bid = draft.backendPoId ? String(draft.backendPoId).replace(/^PO-/, '') : '';
+      if (!bid || !/^\d+$/.test(bid)) {
+        addToast(
+          'error',
+          'These payment terms require advance payment before release. Ensure the draft PO exists on the server, then record advance payment.',
+        );
+        return;
+      }
+      const trackRes = await fetchPoTracking(bid);
+      const tr = trackRes.success ? trackRes.data : null;
+      if (!tr?.advancePaidAt || !String(tr.advancePaidAt).trim()) {
+        addToast('error', 'Record advance payment before releasing this PO.');
+        return;
+      }
+    }
     if (DEBUG_PROC_RELEASE) {
       console.log('[PROC-RELEASE] submitReleasePO called', {
         dpoId: draft.id,
@@ -2796,16 +3000,11 @@ const Procurement: React.FC = () => {
     }
     const defaultVendor = vendors[0];
     const todayStr = new Date().toISOString().slice(0, 10);
-    const parsed = parsePaymentTermsString(defaultVendor.paymentTerms ?? '');
     setRecordQuoteForm({
       vendorId: defaultVendor.id,
       quoteDate: todayStr,
       validTill: '',
       leadTimeDays: '',
-      paymentTermsType: parsed.type,
-      advancePercent: String(
-        parsed.advancePercent || (paymentTermsTypeRequiresAdvancePercent(parsed.type) ? 50 : 0)
-      ),
       notes: '',
     });
     setRecordQuoteLines([]);
@@ -3571,17 +3770,20 @@ const Procurement: React.FC = () => {
                               ? actionableCount
                               : requests.filter((r) => r.status === tabStatus).length;
 
-                          const isActive = requestStatusFilter === (tabStatus === 'All' ? 'All Statuses' : tabStatus === 'Active' ? 'All Statuses' : tabStatus);
+                          const isActive =
+                            tabStatus === 'All'
+                              ? requestTab === 'All'
+                              : tabStatus === 'Active'
+                                ? requestTab === 'Active'
+                                : requestTab === tabStatus;
 
                           return (
                             <button
                               key={tabStatus}
                               onClick={() => {
-                                if (tabStatus === 'All' || tabStatus === 'Active') {
-                                  setRequestStatusFilter('All Statuses');
-                                } else {
-                                  setRequestStatusFilter(tabStatus as RequestStatus);
-                                }
+                                if (tabStatus === 'All') setRequestTab('All');
+                                else if (tabStatus === 'Active') setRequestTab('Active');
+                                else setRequestTab(tabStatus as RequestStatus);
                               }}
                               className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${isActive
                                 ? 'bg-blue-500 text-white shadow-md'
@@ -3599,14 +3801,11 @@ const Procurement: React.FC = () => {
                     <div className="p-5 space-y-4 bg-slate-50">
                       {(() => {
                         const filteredRequests = requests.filter(req => {
-                          // Apply filters
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
-                          // Requests stage default view should show only actionable PRs.
-                          // Once a PR becomes `PO Draft`, it should disappear here and move to "Draft POs".
-                          if (requestStatusFilter === 'All Statuses') {
-                            if (req.status !== 'New' && req.status !== 'Quoted') return false;
-                          } else if (req.status !== requestStatusFilter) {
-                            return false;
+                          if (requestTab === 'Active') {
+                            if (req.status === 'PO Released') return false;
+                          } else if (requestTab !== 'All') {
+                            if (req.status !== requestTab) return false;
                           }
                           if (searchQuery.trim()) {
                             const query = searchQuery.toLowerCase();
@@ -4290,6 +4489,8 @@ const Procurement: React.FC = () => {
                     </div>
 
                     <input
+                      value={draftPOSearch}
+                      onChange={(e) => setDraftPOSearch(e.target.value)}
                       placeholder="Search vendor, DPO ID, item..."
                       className="w-60 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
                     />
@@ -5038,7 +5239,7 @@ const Procurement: React.FC = () => {
                           className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
                         >
                           <option value="All Vendors">All Vendors</option>
-                          {Array.from(new Set(filteredGrnLines.map((g) => g.vendor).filter(Boolean))).map((vendor) => (
+                          {Array.from(new Set(grnList.map((g) => g.vendor).filter(Boolean))).map((vendor) => (
                             <option key={String(vendor)} value={String(vendor)}>{String(vendor)}</option>
                           ))}
                         </select>
@@ -6267,6 +6468,47 @@ const Procurement: React.FC = () => {
                 You are about to release a PO to <span className="font-bold">{releasePOTarget.vendor}</span> for <span className="font-bold">₹{releasePOTarget.grandTotal.toLocaleString('en-IN')}</span>.
               </div>
 
+              <div>
+                <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment terms</label>
+                <PaymentTermsDisplay value={releasePOTarget.paymentTerms} />
+              </div>
+
+              {releaseDraftRequiresAdvance && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
+                  <p className="font-semibold">Advance payment required</p>
+                  {!releaseDraftBackendPoIdNormalized ? (
+                    <p className="text-amber-900">
+                      This draft cannot be released until the purchase order exists on the server. Create or refresh the draft PO, then try again.
+                    </p>
+                  ) : releaseDraftTrackingLoading ? (
+                    <p className="text-amber-800">Checking PO tracking…</p>
+                  ) : advanceRecordedForReleaseDraft ? (
+                    <p className="text-emerald-800 font-medium">
+                      Advance recorded
+                      {releaseDraftTracking?.advancePaidAt
+                        ? ` (${new Date(releaseDraftTracking.advancePaidAt).toLocaleDateString('en-IN')})`
+                        : ''}
+                      . You may release the PO.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-amber-900">
+                        These terms include an advance. Record that the advance has been received (manual step until treasury transactions are wired) before issuing
+                        this PO to the vendor.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={recordingAdvancePayment}
+                        onClick={() => void recordAdvancePaymentForReleaseDraft()}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {recordingAdvancePayment ? 'Saving…' : 'Record advance payment received'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">PO Number</label>
@@ -6317,7 +6559,18 @@ const Procurement: React.FC = () => {
             <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
               <button
                 onClick={submitReleasePO}
-                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
+                disabled={
+                  releaseDraftRequiresAdvance &&
+                  (!releaseDraftBackendPoIdNormalized ||
+                    !advanceRecordedForReleaseDraft ||
+                    releaseDraftTrackingLoading)
+                }
+                title={
+                  releaseDraftRequiresAdvance && !advanceRecordedForReleaseDraft && releaseDraftBackendPoIdNormalized
+                    ? 'Record advance payment before releasing'
+                    : undefined
+                }
+                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Release PO
               </button>
@@ -6654,12 +6907,17 @@ const Procurement: React.FC = () => {
                   <div>
                     <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Summary</h3>
                     <div className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
-                      {[
-                        { label: 'Stock In Hand', value: req.stockSummary.stockInHand, color: req.stockSummary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600' },
-                        { label: 'Open PO Qty', value: req.stockSummary.openPOQty, color: 'text-slate-900' },
-                        { label: 'In Transit', value: req.stockSummary.inTransit, color: req.stockSummary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900' },
-                        { label: 'Open Orders', value: req.stockSummary.openOrders, color: req.stockSummary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900' },
-                      ].map((row, idx) => (
+                      {(() => {
+                        const summary = requestStockSummaryByRequestId.get(req.id)
+                          ?? req.stockSummary
+                          ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
+                        return [
+                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600' },
+                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900' },
+                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900' },
+                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900' },
+                        ];
+                      })().map((row, idx) => (
                         <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-slate-200' : ''}`}>
                           <span className="text-slate-600 text-sm">{row.label}</span>
                           <span className={`font-bold text-lg ${row.color}`}>{row.value}</span>
@@ -7315,9 +7573,18 @@ const Procurement: React.FC = () => {
             })
             .filter((r) => r.qty > 0)
             .slice(0, 10);
-        const _gapQty = req.stockSummary
-          ? Math.max(0, (item.reqQty ?? item.qty) - (req.stockSummary.stockInHand ?? 0) - (req.stockSummary.openPOQty ?? 0))
-          : (item.reqQty ?? item.qty);
+        const reqSummary = requestStockSummaryByRequestId.get(req.id)
+          ?? req.stockSummary
+          ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
+        const _gapQty = Math.max(
+          0,
+          (item.reqQty ?? item.qty) - (reqSummary.stockInHand ?? 0) - (reqSummary.openPOQty ?? 0),
+        );
+        const releaseModalVendorName = String(releaseToPlannedForm.vendor || req.preferredVendor || '').trim();
+        const releaseModalVendorTerms =
+          vendors.find(
+            (v) => (v.name || '').trim().toLowerCase() === releaseModalVendorName.toLowerCase(),
+          )?.paymentTerms ?? '';
         return (
           <div className="fixed inset-0 z-60 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setReleaseToPlannedTarget(null)}>
             <div className="absolute inset-0 bg-black/40" />
@@ -7334,10 +7601,7 @@ const Procurement: React.FC = () => {
                     </span>
                   </h2>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Draft PO · Terms: {formatPaymentTermsString(
-                      releaseToPlannedForm.paymentTermsType,
-                      Number(releaseToPlannedForm.advancePercent)
-                    ) || 'As per contract'} · Advance: {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) ? `${Number(releaseToPlannedForm.advancePercent) || 0}%` : '0%'}
+                    Draft PO · Vendor payment splits in Draft controls; Treasury advance type below if used.
                   </p>
                 </div>
                 <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
@@ -7391,21 +7655,10 @@ const Procurement: React.FC = () => {
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3 w-full">
                   <h3 className="font-bold text-slate-900 text-sm">Draft controls</h3>
                   <p className="text-xs text-slate-500">Select vendor and MOQ slab to apply Items List rates; payment terms apply to the draft PO.</p>
-                  <div className="border-t border-slate-200 pt-3">
-                    <div className="flex items-center justify-between text-xs py-1">
-                      <span className="text-slate-500">Terms</span>
-                      <span className="text-slate-900 font-medium">
-                        {formatPaymentTermsString(
-                          releaseToPlannedForm.paymentTermsType,
-                          Number(releaseToPlannedForm.advancePercent)
-                        ) || 'As per contract'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs py-1">
-                      <span className="text-slate-500">Advance %</span>
-                      <span className="text-amber-700 font-bold">
-                        {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) ? `${Number(releaseToPlannedForm.advancePercent) || 0}%` : '0%'}
-                      </span>
+                  <div className="border-t border-slate-200 pt-3 space-y-2">
+                    <div>
+                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor payment terms</span>
+                      <PaymentTermsDisplay value={releaseModalVendorTerms} />
                     </div>
                     <div className="flex items-center justify-between text-xs py-1">
                       <span className="text-slate-500">Subtotal (ex GST)</span>
@@ -7660,6 +7913,9 @@ const Procurement: React.FC = () => {
                       const matchedVendorForZoho = vendors.find(
                         (v) => (v.name || '').trim().toLowerCase() === vendorName.trim().toLowerCase()
                       );
+                      const vendorMasterPaymentTermsForPo = String(
+                        matchedVendorForZoho?.paymentTerms ?? '',
+                      ).trim();
 
                       const poPayload = {
                         orderId: newDpoId,
@@ -7667,7 +7923,7 @@ const Procurement: React.FC = () => {
                         orderDate: createdDateStr,
                         expectedShipmentDate: expectedDeliveryStr,
                         reference: req.code,
-                        paymentTerms: composedReleasePaymentTerms || undefined,
+                        paymentTerms: vendorMasterPaymentTermsForPo || composedReleasePaymentTerms || undefined,
                         status: 'Draft',
                         formData: {
                           requestId: req.id,
@@ -7718,7 +7974,7 @@ const Procurement: React.FC = () => {
                         status: 'Pending Approval',
                         createdDate: createdDateStr,
                         createdBy: 'Procurement — Admin',
-                        paymentTerms: composedReleasePaymentTerms || 'As per contract',
+                        paymentTerms: vendorMasterPaymentTermsForPo || composedReleasePaymentTerms || 'As per contract',
                         expectedDelivery: expectedDeliveryStr,
                         deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
                         vendorRating: 0,
@@ -7775,7 +8031,16 @@ const Procurement: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Vendor</label>
                 <select
                   value={editDraftPOForm.vendor}
-                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, vendor: e.target.value }))}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const matched = vendors.find((v) => v.name === name);
+                    const fromMaster = String(matched?.paymentTerms ?? '').trim();
+                    setEditDraftPOForm((f) => ({
+                      ...f,
+                      vendor: name,
+                      paymentTerms: fromMaster || f.paymentTerms,
+                    }));
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
                   <option value="">— Select vendor —</option>
@@ -7786,12 +8051,8 @@ const Procurement: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Payment terms</label>
-                <input
-                  type="text"
-                  value={editDraftPOForm.paymentTerms}
-                  onChange={(e) => setEditDraftPOForm((f) => ({ ...f, paymentTerms: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
+                <p className="text-[11px] text-slate-500 mb-2">From vendor master (edit in Masters → Vendors).</p>
+                <PaymentTermsDisplay value={editDraftPOForm.paymentTerms} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Expected delivery</label>
@@ -8569,17 +8830,7 @@ const Procurement: React.FC = () => {
               <select
                 value={recordQuoteForm.vendorId}
                 onChange={(e) => {
-                  const id = e.target.value;
-                  const v = vendors.find((x) => String(x.id) === id);
-                  const p = parsePaymentTermsString(v?.paymentTerms ?? '');
-                  setRecordQuoteForm((f) => ({
-                    ...f,
-                    vendorId: id,
-                    paymentTermsType: p.type,
-                    advancePercent: String(
-                      p.advancePercent || (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
-                    ),
-                  }));
+                  setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }));
                 }}
                 className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
               >
@@ -8623,40 +8874,14 @@ const Procurement: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Payment terms (type)</label>
-                <select
-                  value={recordQuoteForm.paymentTermsType}
-                  onChange={(e) =>
-                    setRecordQuoteForm((f) => ({
-                      ...f,
-                      paymentTermsType: e.target.value as PaymentTermsStructuredType,
-                    }))
-                  }
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
-                >
-                  {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {paymentTermsTypeRequiresAdvancePercent(recordQuoteForm.paymentTermsType) && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Advance %</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={recordQuoteForm.advancePercent}
-                    onChange={(e) => setRecordQuoteForm((f) => ({ ...f, advancePercent: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">Balance is 100% − advance (on delivery or before dispatch).</p>
-                </div>
-              )}
+            <div className="text-sm">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Payment terms (from vendor master)</label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                The three-way split (advance, before dispatch / pre-shipment, after delivery / post-shipment) comes from the vendor record. Update it in Masters → Vendors if needed.
+              </p>
+              <PaymentTermsDisplay
+                value={vendors.find((x) => String(x.id) === String(recordQuoteForm.vendorId))?.paymentTerms ?? ''}
+              />
             </div>
 
             <div>
@@ -8699,19 +8924,8 @@ const Procurement: React.FC = () => {
                       return;
                     }
 
-                    const advErr = validateAdvancePercentForType(
-                      recordQuoteForm.paymentTermsType,
-                      Number(recordQuoteForm.advancePercent)
-                    );
-                    if (advErr) {
-                      addToast('error', advErr);
-                      return;
-                    }
-
-                    const composedPaymentTerms = formatPaymentTermsString(
-                      recordQuoteForm.paymentTermsType,
-                      Number(recordQuoteForm.advancePercent)
-                    );
+                    const selectedVendorProc = vendors.find((x) => String(x.id) === String(recordQuoteForm.vendorId));
+                    const composedPaymentTerms = selectedVendorProc?.paymentTerms?.trim() || 'As per contract';
 
                     // Save into Items List (single source of truth for vendor pricing).
                     const loadPage = async (type: 'RM' | 'PM') => {
@@ -9042,6 +9256,8 @@ const Procurement: React.FC = () => {
                               const matchedVendorForZoho = vendors.find(
                                 (v) => (v.name || '').trim().toLowerCase() === String(vendorName).trim().toLowerCase()
                               );
+                              const paymentTermsForPo =
+                                matchedVendorForZoho?.paymentTerms?.trim() || selectedQuote.terms?.trim() || undefined;
 
                               const poPayload = {
                                 orderId: newDpoId,
@@ -9049,7 +9265,7 @@ const Procurement: React.FC = () => {
                                 orderDate: createdDateStr,
                                 expectedShipmentDate: expectedDeliveryStr,
                                 reference: selectedQuote.requestCode,
-                                paymentTerms: selectedQuote.terms || undefined,
+                                paymentTerms: paymentTermsForPo,
                                 status: 'Draft',
                                 formData: {
                                   requestId: createPoFromQuoteState.requestId,
@@ -9106,7 +9322,7 @@ const Procurement: React.FC = () => {
                                 status: 'Pending Approval',
                                 createdDate: createdDateStr,
                                 createdBy: 'Procurement — Admin',
-                                paymentTerms: selectedQuote.terms,
+                                paymentTerms: paymentTermsForPo ?? selectedQuote.terms ?? '',
                                 expectedDelivery: expectedDeliveryStr,
                                 deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
                                 vendorRating: selectedQuote.rating,

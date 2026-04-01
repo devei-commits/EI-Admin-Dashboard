@@ -5,6 +5,7 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
 import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
+import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails } from '../utils/masterFormUtils';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
@@ -25,6 +26,19 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+const PM_REQUIRED_FIELDS: Array<{
+  id: string;
+  label: string;
+  section: number;
+  toastMessage: string;
+}> = [
+  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Select PM Category (Section 0)' },
+  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Generate or enter SKU before submitting' },
+  { id: 'name', label: 'Item Name', section: 1, toastMessage: 'Item Name is required (Section 1)' },
+  { id: 'level', label: 'Level', section: 1, toastMessage: 'Level is required (Section 1)' },
+  { id: 'itemCategory', label: 'Category', section: 1, toastMessage: 'Category is required (Section 1)' },
+  { id: 'specNominal', label: 'Nominal Volume', section: 2, toastMessage: 'Nominal Volume is required (Section 2)' },
+];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
   if (input == null) return null;
@@ -41,6 +55,109 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
   }
   if (typeof input === 'object' && !Array.isArray(input)) return input as Record<string, unknown>;
   return null;
+}
+
+/** Fresh PM form state when opening a new item or after closing the onboarding overlay. */
+function createEmptyPackagingFormData() {
+  return {
+    itemCode: '',
+    status: 'Draft',
+    version: 'v1.0',
+    pmCategory: '',
+    qcGroup: '',
+    subCategory: '',
+    storeLoc: '',
+    zohoId: '',
+    pkgSku: '',
+    pkgUnit: 'PCS',
+    pkgHsn: '',
+    pkgTaxPreference: 'Taxable',
+    pkgReturnable: false,
+    pkgAssociateItems: '',
+    name: '',
+    level: '',
+    itemCategory: '',
+    intendedUse: '',
+    expectedProductTypes: '',
+    reusability: '',
+    regulatory: '',
+    identityNotes: '',
+    matBody: '',
+    matClosure: '',
+    matInner: '',
+    matRecycle: false,
+    matBpa: false,
+    matGrade: '',
+    specNominal: '',
+    specBrimful: '',
+    specHeight: '',
+    specDia: '',
+    specNeck: '',
+    specWeight: '',
+    specWall: '',
+    specLink: '',
+    assayPurity: '',
+    appearanceSpec: '',
+    phSpec: '',
+    moistureLod: '',
+    heavyMetalsSpec: '',
+    microbialSpec: '',
+    odorColorSpec: '',
+    otherSpecs: '',
+    colorType: '',
+    colorCode: '',
+    finish: '',
+    deco: '',
+    images: '',
+    cusCustomizable: false,
+    cusParams: '',
+    cusStdMoq: '',
+    cusCustomMoq: '',
+    cusToolingReq: '',
+    cusToolingCost: '',
+    cusSamplingLT: '',
+    cusBulkLTStd: '',
+    cusBulkLTCustom: '',
+    cusRemarks: '',
+    compLow: false,
+    compMed: false,
+    compHigh: false,
+    compOil: false,
+    compAlc: false,
+    compAirless: false,
+    compPump: false,
+    compLeak: false,
+    compActives: '',
+    compRisk: '',
+    compRemarks: '',
+    secLabelType: '',
+    secLabelSize: '',
+    secAdhesive: '',
+    secLabelCompat: '',
+    secGsm: '',
+    secCartonFinish: '',
+    secFit: '',
+    secArtLink: '',
+    secNotes: '',
+    terShipType: '',
+    terUnits: '',
+    terDrop: '',
+    terStack: '',
+    terNotes: '',
+    apprPack: false,
+    apprRd: false,
+    apprFin: false,
+    apprLock: false,
+    catVisible: false,
+    catShare: false,
+    catWebName: '',
+    catTags: '',
+    catRecoTypes: '',
+    catWebImages: '',
+    variants: [] as Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }>,
+    vendors: [] as Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }>,
+    tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
+  };
 }
 
 /** Mock form data for testing (Pack Materials / BPR form). */
@@ -72,7 +189,6 @@ const SECTIONS = [
   '9) Tertiary Packaging',
   '10) Testing & Approval',
   '11) Catalogue / Website',
-  '12) Review / JSON',
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -88,134 +204,39 @@ const PackagingRefactored: React.FC = () => {
   const [autoSaveOn, setAutoSaveOn] = useState(true);
   const [lastSaved, setLastSaved] = useState<string>('—');
   const [generatedCode, setGeneratedCode] = useState('');
+  const focusPmField = useCallback((fieldId: string) => {
+    window.setTimeout(() => {
+      const el = document.getElementById(fieldId);
+      if (el instanceof HTMLElement) el.focus();
+    }, 0);
+  }, []);
 
-  const [formData, setFormData] = useState({
-    itemCode: '',
-    status: 'Draft',
-    version: 'v1.0',
-
-    // Section 0 – QC / PM Categorisation + Basic
-    pmCategory: '',
-    qcGroup: '',
-    subCategory: '',
-    storeLoc: '',
-    zohoId: '',
-    pkgSku: '',
-    pkgUnit: 'PCS',
-    pkgHsn: '',
-    pkgTaxPreference: 'Taxable',
-    pkgReturnable: false,
-    pkgAssociateItems: '',
-
-    // Section 1 – Identity
-    name: '',
-    level: '',
-    itemCategory: '',
-    intendedUse: '',
-    expectedProductTypes: '',
-    reusability: '',
-    regulatory: '',
-    identityNotes: '',
-
-    // Section 2 – Material & Specs
-    matBody: '',
-    matClosure: '',
-    matInner: '',
-    matRecycle: false,
-    matBpa: false,
-    matGrade: '',
-    specNominal: '',
-    specBrimful: '',
-    specHeight: '',
-    specDia: '',
-    specNeck: '',
-    specWeight: '',
-    specWall: '',
-    specLink: '',
-
-    // Bulk quality specifications (aligned with RM master — shown in Production BMR Bulk QC)
-    assayPurity: '',
-    appearanceSpec: '',
-    phSpec: '',
-    moistureLod: '',
-    heavyMetalsSpec: '',
-    microbialSpec: '',
-    odorColorSpec: '',
-    otherSpecs: '',
-
-    // Section 3 – Aesthetics
-    colorType: '',
-    colorCode: '',
-    finish: '',
-    deco: '',
-    images: '',
-
-    // Section 5 – Customization
-    cusCustomizable: false,
-    cusParams: '',
-    cusStdMoq: '',
-    cusCustomMoq: '',
-    cusToolingReq: '',
-    cusToolingCost: '',
-    cusSamplingLT: '',
-    cusBulkLTStd: '',
-    cusBulkLTCustom: '',
-    cusRemarks: '',
-
-    // Section 6 – Compatibility
-    compLow: false,
-    compMed: false,
-    compHigh: false,
-    compOil: false,
-    compAlc: false,
-    compAirless: false,
-    compPump: false,
-    compLeak: false,
-    compActives: '',
-    compRisk: '',
-    compRemarks: '',
-
-    // Section 8 – Secondary Packaging
-    secLabelType: '',
-    secLabelSize: '',
-    secAdhesive: '',
-    secLabelCompat: '',
-    secGsm: '',
-    secCartonFinish: '',
-    secFit: '',
-    secArtLink: '',
-    secNotes: '',
-
-    // Section 9 – Tertiary Packaging
-    terShipType: '',
-    terUnits: '',
-    terDrop: '',
-    terStack: '',
-    terNotes: '',
-
-    // Section 10 – Testing & Approval
-    apprPack: false,
-    apprRd: false,
-    apprFin: false,
-    apprLock: false,
-
-    // Section 11 – Catalogue
-    catVisible: false,
-    catShare: false,
-    catWebName: '',
-    catTags: '',
-    catRecoTypes: '',
-    catWebImages: '',
-
-    // Arrays
-    variants: [] as Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }>,
-    vendors: [] as Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }>,
-    tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
-  });
+  const [formData, setFormData] = useState(createEmptyPackagingFormData);
 
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
   const [tempVendor, setTempVendor] = useState({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
   const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
+
+  const { data: vendorClientData } = useQuery({
+    queryKey: ['vendor-clients', 'vendor', 'packaging-form'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('vendor');
+      return (res.success ? res.data : []) as VendorClientRecord[];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+  const vendorClientList = vendorClientData ?? [];
+
+  const resetPmFormToEmpty = useCallback(() => {
+    setFormData(createEmptyPackagingFormData());
+    setTempVariant({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
+    setTempVendor({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
+    setTempTest({ name: '', result: '', date: '', by: '', remarks: '' });
+    setGeneratedCode('');
+    setErrors({});
+    setCurrentSection(0);
+    setExistingPmId(null);
+  }, []);
 
   const doSave = (silent = false) => {
     const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -225,10 +246,11 @@ const PackagingRefactored: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
-    if (id === 'pkgHsn' || id === 'pkgTaxPreference') {
+    if (id === 'pkgHsn' || id === 'pkgTaxPreference' || id in errors) {
       setErrors((prev) => {
         const next = { ...prev };
-        delete next.pkgHsn;
+        delete next[id];
+        if (id === 'pkgTaxPreference') delete next.pkgHsn;
         return next;
       });
     }
@@ -309,6 +331,19 @@ const PackagingRefactored: React.FC = () => {
   };
   const handleRemoveVendor = (idx: number) => setFormData(prev => ({ ...prev, vendors: prev.vendors.filter((_, i) => i !== idx) }));
 
+  const handlePmVendorTempFieldChange = (field: string, value: string) => {
+    if (field === 'name') {
+      const selected = vendorClientList.find((v) => v.name === value);
+      setTempVendor((prev) => ({
+        ...prev,
+        name: value,
+        location: selected?.location || prev.location,
+      }));
+      return;
+    }
+    setTempVendor((prev) => ({ ...prev, [field]: value }));
+  };
+
   // Test ops
   const handleAddTest = () => {
     if (!tempTest.name || !tempTest.result) { addToast('error', 'Select test + result'); return; }
@@ -322,40 +357,9 @@ const PackagingRefactored: React.FC = () => {
 
   const handleReset = () => {
     if (window.confirm('Reset all form data? This cannot be undone.')) {
-      setGeneratedCode('');
-      setFormData(prev => ({ ...prev, itemCode: '', pmCategory: '', status: 'Draft', version: 'v1.0' }));
-      setCurrentSection(0);
+      resetPmFormToEmpty();
       addToast('info', 'Form reset');
     }
-  };
-
-  const handleExportJSON = () => {
-    const blob = new Blob([JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `PM_${generatedCode || 'draft'}.json`;
-    a.click();
-  };
-
-  const handleImportJSON = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const parsed = JSON.parse(ev.target?.result as string);
-          setFormData(prev => ({ ...prev, ...parsed }));
-          if (parsed.itemCode) setGeneratedCode(parsed.itemCode);
-          addToast('success', 'JSON imported');
-        } catch { addToast('error', 'Invalid JSON file'); }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
   };
 
   const buildPayload = () => {
@@ -386,8 +390,17 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.pmCategory) { addToast('error', 'Select PM Category first (Section 0)'); return; }
-    if (!generatedCode && !formData.itemCode) { addToast('error', 'Generate item code before submitting'); return; }
+    for (const field of PM_REQUIRED_FIELDS) {
+      const rawValue = formData[field.id as keyof typeof formData];
+      const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
+      if (!value) {
+        setErrors((prev) => ({ ...prev, [field.id]: `${field.label} is required` }));
+        addToast('error', field.toastMessage);
+        setCurrentSection(field.section);
+        focusPmField(field.id);
+        return;
+      }
+    }
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
     if (!taxValidation.valid) {
       setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
@@ -407,6 +420,7 @@ const PackagingRefactored: React.FC = () => {
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+      resetPmFormToEmpty();
       setPageTab('bpr');
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
@@ -426,18 +440,23 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PM Category (Industry Buckets)</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PM Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    PM Category <span className="text-red-600">*</span>
+                  </label>
                   <select
                     id="pmCategory"
                     value={formData.pmCategory}
                     onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.pmCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    }`}
                   >
                     <option value="">Select</option>
                     {Object.entries(PM_CATEGORIES).map(([k, v]) => (
                       <option key={k} value={k}>{v.label}</option>
                     ))}
                   </select>
+                  {errors.pmCategory ? <p className="mt-1 text-xs text-red-600">{errors.pmCategory}</p> : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
@@ -529,6 +548,8 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.itemCode}
                   onChange={handleInputChange}
                   placeholder="Internal code used in ERP (e.g. EI-PM-PRI-000123)"
+                  requiredMark
+                  error={errors.itemCode}
                 />
                 <InputField
                   label="Zoho ID"
@@ -604,6 +625,8 @@ const PackagingRefactored: React.FC = () => {
                 value={formData.name}
                 onChange={handleInputChange}
                 placeholder="Packaging item name as used internally"
+                requiredMark
+                error={errors.name}
               />
               <InputField
                 label="Level"
@@ -611,6 +634,8 @@ const PackagingRefactored: React.FC = () => {
                 value={formData.level}
                 onChange={handleInputChange}
                 placeholder="e.g. Primary / Secondary / Tertiary"
+                requiredMark
+                error={errors.level}
               />
               <InputField
                 label="Category"
@@ -618,6 +643,8 @@ const PackagingRefactored: React.FC = () => {
                 value={formData.itemCategory}
                 onChange={handleInputChange}
                 placeholder="e.g. Bottle, Carton, Label, Shipper"
+                requiredMark
+                error={errors.itemCategory}
               />
               <InputField
                 label="Intended Use"
@@ -707,6 +734,8 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.specNominal}
                   onChange={handleInputChange}
                   placeholder="Declared fill volume (e.g. 50 ml)"
+                  requiredMark
+                  error={errors.specNominal}
                 />
                 <InputField
                   label="Brimful Volume"
@@ -916,13 +945,18 @@ const PackagingRefactored: React.FC = () => {
             itemType="vendor"
             items={formData.vendors}
             tempFields={tempVendor}
-            onTempFieldChange={(field, value) => setTempVendor(prev => ({ ...prev, [field]: value }))}
+            onTempFieldChange={handlePmVendorTempFieldChange}
             onAdd={handleAddVendor}
             onRemove={handleRemoveVendor}
             errors={errors}
             itemLabel="Vendor"
             columns={[
-              { key: 'name', label: 'Vendor Name' },
+              {
+                key: 'name',
+                label: 'Vendor Name',
+                type: 'select',
+                options: vendorClientList.map((v) => ({ label: v.name, value: v.name })),
+              },
               { key: 'location', label: 'Location' },
               { key: 'moq', label: 'MOQ', type: 'number' },
               { key: 'price', label: 'Unit Price', type: 'number' },
@@ -1014,16 +1048,6 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 12: // Review / JSON
-        return (
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Complete Form Data (JSON)</h3>
-            <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto max-h-[60vh] border border-gray-200">
-              {JSON.stringify({ ...formData, itemCode: generatedCode || formData.itemCode }, null, 2)}
-            </pre>
-          </div>
-        );
-
       default:
         return null;
     }
@@ -1112,7 +1136,7 @@ const PackagingRefactored: React.FC = () => {
       <div className="min-h-screen bg-gray-50">
         <BprDashboard
           refreshKey={0}
-          onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); setCurrentSection(0); }}
+          onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
           onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
           onDeletePm={async (pm) => {
             if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
@@ -1136,7 +1160,7 @@ const PackagingRefactored: React.FC = () => {
   const bprNode = (
     <BprDashboard
       refreshKey={0}
-      onSwitchToForm={() => { setExistingPmId(null); setPageTab('form'); setCurrentSection(0); }}
+      onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
       onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
       onDeletePm={async (pm) => {
         if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
@@ -1163,7 +1187,7 @@ const PackagingRefactored: React.FC = () => {
           <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
             <div className="flex items-center gap-3 min-w-0">
               <button
-                onClick={() => setPageTab('bpr')}
+                onClick={() => { resetPmFormToEmpty(); setPageTab('bpr'); }}
                 className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
               >
                 BPR Dashboard
@@ -1171,7 +1195,7 @@ const PackagingRefactored: React.FC = () => {
               <span className="text-gray-300">|</span>
               <button
                 type="button"
-                onClick={() => { setExistingPmId(null); setPageTab('bpr'); setCurrentSection(0); setEditPmLoading(false); }}
+                onClick={() => { resetPmFormToEmpty(); setPageTab('bpr'); setEditPmLoading(false); }}
                 className="ml-0.5 p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
                 aria-label="Close"
               >
@@ -1187,18 +1211,6 @@ const PackagingRefactored: React.FC = () => {
                 className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
               >
                 Save
-              </button>
-              <button
-                onClick={handleExportJSON}
-                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-              >
-                Export JSON
-              </button>
-              <button
-                onClick={handleImportJSON}
-                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-              >
-                Import JSON
               </button>
               <button
                 onClick={handleReset}

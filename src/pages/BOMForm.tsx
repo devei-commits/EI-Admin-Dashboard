@@ -217,18 +217,19 @@ function inferPrCategoryKeyFromCode(code: string): string {
 }
 
 function hasMeaningfulFormulaLine(fd: BOMFormState): boolean {
-  return fd.formulaIngredients.some((ing) => {
-    const inci = ing.inciName.trim();
-    const pct =
-      ing.percentWW.trim() !== ''
-        ? parseFloat(ing.percentWW.replace(/[^\d.-]/g, ''))
-        : NaN;
-    return Boolean(inci || (!Number.isNaN(pct) && pct > 0));
-  });
+  return fd.formulaIngredients.some((ing) => Boolean(ing.inciName.trim()));
 }
 
 function hasMeaningfulPackLine(fd: BOMFormState): boolean {
   return fd.packingComponents.some((c) => Boolean(c.pmDescription.trim()));
+}
+
+function isFormulaTotalValid(fd: BOMFormState): boolean {
+  const total = fd.formulaIngredients.reduce((sum, ing) => {
+    const n = parseFloat(String(ing.percentWW).replace(/[^\d.-]/g, ''));
+    return sum + (Number.isNaN(n) ? 0 : n);
+  }, 0);
+  return Math.abs(total - 100) <= 0.001;
 }
 
 function bomFormToRmLines(fd: BOMFormState) {
@@ -269,6 +270,24 @@ function parseMrpNumber(mrp: string): number | undefined {
   if (!mrp?.trim()) return undefined;
   const n = parseFloat(mrp.replace(/[^\d.]/g, ''));
   return Number.isNaN(n) ? undefined : n;
+}
+
+/**
+ * Accept fill sizes only in `g` or `ml` to keep backend unit parsing unambiguous.
+ * Examples: 50g, 500 g, 30ml, 100 ml
+ */
+function normalizeFillSizeInput(raw: string): string {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  const m = text.match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
+  if (!m) return text;
+  const value = m[1];
+  const unit = m[2].toLowerCase();
+  return `${value}${unit}`;
+}
+
+function isValidFillSizeInput(raw: string): boolean {
+  return /^(\d+(?:\.\d+)?)\s*(g|ml)$/i.test(String(raw || '').trim());
 }
 
 function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
@@ -406,6 +425,22 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generatedPrCode, setGeneratedPrCode] = useState('');
+  const focusPrField = useCallback((target: 'prCategoryKey' | 'skuCode' | 'productName' | 'formula' | 'pack') => {
+    window.setTimeout(() => {
+      if (target === 'formula') {
+        const el = document.querySelector('input[placeholder="Or type INCI Name (manual)"]');
+        if (el instanceof HTMLElement) el.focus();
+        return;
+      }
+      if (target === 'pack') {
+        const el = document.querySelector('input[placeholder="Or type PM Description (manual)"]');
+        if (el instanceof HTMLElement) el.focus();
+        return;
+      }
+      const el = document.getElementById(target);
+      if (el instanceof HTMLElement) el.focus();
+    }, 0);
+  }, []);
   const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
@@ -455,6 +490,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     packMaterials.forEach((p) => m.set(String(p.id), p));
     return m;
   }, [packMaterials]);
+  const selectedRmIds = useMemo(
+    () => new Set(formData.formulaIngredients.map((ing) => String(ing.rawMaterialId || '')).filter(Boolean)),
+    [formData.formulaIngredients]
+  );
+  const selectedPmIds = useMemo(
+    () => new Set(formData.packingComponents.map((c) => String(c.packMaterialId || '')).filter(Boolean)),
+    [formData.packingComponents]
+  );
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
@@ -564,6 +607,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const flushIngredientDraft = (): boolean => {
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
     if (!rm && !tempIngredient.inciName.trim()) return false;
+    if (rm && selectedRmIds.has(String(rm.id))) {
+      addToast('error', 'This raw material is already added in Formula BOM');
+      return false;
+    }
     setFormData((prev) => ({
       ...prev,
       formulaIngredients: [
@@ -575,7 +622,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
           phase: tempIngredient.phase,
           percentWW: tempIngredient.percentWW,
-          uom: rm?.uom || tempIngredient.uom || 'GM',
+          // Keep operator-selected UOM; fallback to RM UOM only if no explicit input.
+          uom: tempIngredient.uom || rm?.uom || 'GM',
         },
       ],
     }));
@@ -598,6 +646,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const flushComponentDraft = (): boolean => {
     const pm = selectedPmId ? packMaterialById.get(String(selectedPmId)) : undefined;
     if (!pm && !tempComponent.pmDescription.trim()) return false;
+    if (pm && selectedPmIds.has(String(pm.id))) {
+      addToast('error', 'This pack material is already added in Pack BOM');
+      return false;
+    }
     setFormData((prev) => ({
       ...prev,
       packingComponents: [
@@ -658,34 +710,90 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const handleSubmit = async () => {
     setErrors({});
+    if (!formData.prCategoryKey.trim()) {
+      setErrors({ prCategoryKey: 'Select a PR Category' });
+      addToast('error', 'Select a PR Category (Identity & coding)');
+      setCurrentStage(0);
+      focusPrField('prCategoryKey');
+      return;
+    }
+    if (!formData.productName.trim()) {
+      setErrors({ productName: 'Product Name is required' });
+      addToast('error', 'Product Name is required');
+      setCurrentStage(0);
+      focusPrField('productName');
+      return;
+    }
+    if (!formData.category.trim()) {
+      setErrors({ category: 'Category is required' });
+      addToast('error', 'Category is required');
+      setCurrentStage(0);
+      window.setTimeout(() => {
+        const el = document.getElementById('category');
+        if (el instanceof HTMLElement) el.focus();
+      }, 0);
+      return;
+    }
+    if (!formData.productForm.trim()) {
+      setErrors({ productForm: 'Product Form is required' });
+      addToast('error', 'Product Form is required');
+      setCurrentStage(0);
+      window.setTimeout(() => {
+        const el = document.getElementById('productForm');
+        if (el instanceof HTMLElement) el.focus();
+      }, 0);
+      return;
+    }
+    if (!formData.fillSize.trim()) {
+      setErrors({ fillSize: 'Fill Size is required' });
+      addToast('error', 'Fill Size is required');
+      setCurrentStage(0);
+      window.setTimeout(() => {
+        const el = document.getElementById('fillSize');
+        if (el instanceof HTMLElement) el.focus();
+      }, 0);
+      return;
+    }
     if (!productIdFromRoute) {
-      if (!formData.prCategoryKey.trim()) {
-        setErrors({ prCategoryKey: 'Select a PR Category' });
-        addToast('error', 'Select a PR Category (Identity & coding)');
-        setCurrentStage(0);
-        return;
-      }
       if (!formData.skuCode.trim()) {
         setErrors({ skuCode: 'Generate or enter PR / BOM code' });
         addToast('error', 'Generate or enter PR code before submitting');
         setCurrentStage(0);
+        focusPrField('skuCode');
         return;
       }
     }
-    if (!formData.productName.trim()) {
-      addToast('error', 'Product Name is required');
+
+    if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
+      setErrors({ fillSize: 'Fill Size must be in g or ml format' });
+      addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml)');
       setCurrentStage(0);
+      window.setTimeout(() => {
+        const el = document.getElementById('fillSize');
+        if (el instanceof HTMLElement) el.focus();
+      }, 0);
       return;
     }
 
     if (!hasMeaningfulFormulaLine(formData)) {
+      setErrors({ formula: 'Add at least one formula ingredient' });
       addToast('error', 'Add at least one formula ingredient (INCI name or % w/w) in Formula BOM.');
       setCurrentStage(1);
+      focusPrField('formula');
+      return;
+    }
+    if (!isFormulaTotalValid(formData)) {
+      setErrors({ formulaPercentTotal: 'Formula BOM total must be exactly 100%' });
+      addToast('error', 'Formula BOM % w/w total must be exactly 100%');
+      setCurrentStage(1);
+      focusPrField('formula');
       return;
     }
     if (!hasMeaningfulPackLine(formData)) {
+      setErrors({ pack: 'Add at least one packaging component' });
       addToast('error', 'Add at least one packaging component (description) in Pack BOM.');
       setCurrentStage(2);
+      focusPrField('pack');
       return;
     }
 
@@ -742,8 +850,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category (Industry Buckets)</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PR Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PR Category <span className="text-red-600">*</span></label>
                   <select
+                    id="prCategoryKey"
                     value={formData.prCategoryKey}
                     onChange={(e) => handleInputChange('prCategoryKey', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -832,8 +941,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
               <div className="space-y-4 border-t border-slate-200 pt-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Product Name</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Product Name <span className="text-red-600">*</span></label>
                   <input
+                    id="productName"
                     type="text"
                     placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
                     value={formData.productName}
@@ -844,8 +954,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category (Formulation)</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category (Formulation) <span className="text-red-600">*</span></label>
                     <select
+                      id="category"
                       value={formData.category}
                       onChange={(e) => handleInputChange('category', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -858,8 +969,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Form</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Form <span className="text-red-600">*</span></label>
                     <select
+                      id="productForm"
                       value={formData.productForm}
                       onChange={(e) => handleInputChange('productForm', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -889,12 +1001,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size (in g or ml) <span className="text-red-600">*</span></label>
                     <input
+                      id="fillSize"
                       type="text"
-                      placeholder="e.g. 50g"
+                      placeholder="e.g. 50g or 50ml"
                       value={formData.fillSize}
-                      onChange={(e) => handleInputChange('fillSize', e.target.value)}
+                      onChange={(e) => handleInputChange('fillSize', normalizeFillSizeInput(e.target.value))}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
@@ -912,8 +1025,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code <span className="text-red-600">*</span></label>
                     <input
+                      id="skuCode"
                       type="text"
                       placeholder="PR / BOM code (generate above)"
                       value={formData.skuCode}
@@ -1051,7 +1165,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     >
                       <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
                       {rawMaterials.map((rm) => (
-                        <option key={rm.id} value={rm.id}>
+                        <option key={rm.id} value={rm.id} disabled={selectedRmIds.has(String(rm.id)) && String(selectedRmId) !== String(rm.id)}>
                           {rm.code} — {rm.inci || rm.name}
                         </option>
                       ))}
@@ -1097,7 +1211,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                   <p className="text-xs text-slate-600">
-                    Total (saved lines): <span className="font-semibold text-blue-600">{formulaPercentTotal.toFixed(2)}%</span>
+                    Total (saved lines): <span className={`font-semibold ${Math.abs(formulaPercentTotal - 100) <= 0.001 ? 'text-blue-600' : 'text-red-600'}`}>{formulaPercentTotal.toFixed(2)}%</span>
                   </p>
                   <button
                     type="button"
@@ -1161,7 +1275,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     >
                       <option value="">{masterLoading ? 'Loading pack materials…' : 'Select Pack Material (PM master)'}</option>
                       {packMaterials.map((pm) => (
-                        <option key={pm.id} value={pm.id}>
+                        <option key={pm.id} value={pm.id} disabled={selectedPmIds.has(String(pm.id)) && String(selectedPmId) !== String(pm.id)}>
                           {pm.code} — {pm.description}
                         </option>
                       ))}
