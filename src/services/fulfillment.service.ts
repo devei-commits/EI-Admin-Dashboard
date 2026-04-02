@@ -55,7 +55,30 @@ export async function deleteFulfillmentOrder(id: number) {
 /* ── Lookup endpoints for AddSOModal ── */
 
 export interface NextSoNoResponse { soNo: string; }
-export interface CustomerOption { id: number; code: string; name: string; city: string; paymentTerms: string; shippingAddress: string; }
+export interface CustomerOption {
+  id: number;
+  code: string;
+  name: string;
+  city: string;
+  /** State / region (from master `location`, `data.state`, or linked `addresses`). */
+  state?: string;
+  location?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  category?: string;
+  notes?: string;
+  priority?: string;
+  segment?: string;
+  contacts?: { name?: string; role?: string }[];
+  contactLine?: string;
+  paymentTerms: string;
+  shippingAddress: string;
+  billingAddress?: string;
+  creditLimit?: string;
+  /** Subset of vendor_clients.data for ClientForm payables + receivables credit days. */
+  clientData?: Record<string, unknown>;
+}
 export interface ProductOption { id: string; type: string; name: string; sku: string; pack: string; category: string; price: number; }
 
 export async function fetchNextSoNo(): Promise<string> {

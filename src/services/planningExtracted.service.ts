@@ -227,7 +227,7 @@ export async function addOneBatchFromMaster(planningExtractedId: string): Promis
 export async function updateBatch(
   planningExtractedId: string,
   batchId: number,
-  payload: { rmLines?: unknown[]; pmLines?: unknown[]; sizeKg?: number }
+  payload: { rmLines?: unknown[]; pmLines?: unknown[]; sizeKg?: number | null; batchCode?: string }
 ): Promise<PlanningBatchRow | null> {
   try {
     const res = await api.put<PlanningBatchRow>(

@@ -20,6 +20,7 @@ import {
   formatDaysLeft,
   calculateOrderValue,
 } from '../../utils/orderFulfillmentUtils';
+import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 
 const KPI = ({
   label,
@@ -140,7 +141,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             <span className={daysLeftFormatted.color}>{daysLeftFormatted.text}</span>
           </KPI>
           <KPI label="Total Value">{formatCurrency(totalValue)}</KPI>
-          <KPI label="Payment">{saleOrder.paymentTerms}</KPI>
+          <KPI label="Payment">{formatStagedPaymentTermsSummary(saleOrder.paymentTerms)}</KPI>
           <KPI label="Priority">
             {saleOrder.priority === 'high' ? (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">

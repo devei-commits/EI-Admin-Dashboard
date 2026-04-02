@@ -14,6 +14,7 @@ import {
   createInvoice,
   type TransporterOption,
 } from '../../services/fulfillment.service';
+import { creditDaysFromPaymentTermsStored } from '../../lib/stagedPaymentTerms';
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   isOpen,
@@ -58,7 +59,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         const today = new Date(getTodayISO());
         const due = new Date(today);
-        const daysToAdd = parseInt(saleOrder.paymentTerms?.replace(/\D/g, '') || '30') || 30;
+        const daysToAdd = creditDaysFromPaymentTermsStored(saleOrder.paymentTerms);
         due.setDate(today.getDate() + daysToAdd);
         setDueDate(due.toISOString().split('T')[0]);
       })

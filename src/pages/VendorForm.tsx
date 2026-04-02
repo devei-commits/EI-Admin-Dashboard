@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, type VendorClientRecord } from '../services/vendorClient.service';
+import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, syncVendorDraftToZoho, type VendorClientRecord } from '../services/vendorClient.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 
@@ -147,6 +147,13 @@ function isValidOptionalUrl(s: string): boolean {
  }
 }
 
+/** When shipping is left blank, treat it as the same as billing for save/sync. */
+function resolveShippingAddress(fd: VendorFormData): string {
+ const b = String(fd.billingAddress ?? '').trim();
+ const s = String(fd.shippingAddress ?? '').trim();
+ return s || b;
+}
+
 const FIELD_ERROR_STAGE: Record<string, number> = {
  setupCategory: 0,
  legalName: 0,
@@ -154,6 +161,7 @@ const FIELD_ERROR_STAGE: Record<string, number> = {
  primaryEmail: 0,
  primaryPhone: 0,
  entityCode: 0,
+ zohoId: 0,
  billingAddress: 1,
  shippingAddress: 1,
  state: 1,
@@ -181,12 +189,16 @@ function validateVendorForm(fd: VendorFormData, options: { isNewVendor: boolean 
  if (options.isNewVendor && !String(fd.entityCode || '').trim()) {
   newErrors.entityCode = 'Generate entity code before submitting';
  }
+ if (options.isNewVendor && !String(fd.zohoId || '').trim()) {
+  newErrors.zohoId = 'Use “Sync to Zoho” to obtain a Zoho ID before continuing';
+ }
 
  if (!fd.billingAddress.trim() || fd.billingAddress.trim().length < MIN_ADDR) {
   newErrors.billingAddress = `Billing address is required (at least ${MIN_ADDR} characters)`;
  }
- if (!fd.shippingAddress.trim() || fd.shippingAddress.trim().length < MIN_ADDR) {
-  newErrors.shippingAddress = `Shipping address is required (at least ${MIN_ADDR} characters)`;
+ const shipOnly = fd.shippingAddress.trim();
+ if (shipOnly && shipOnly.length < MIN_ADDR) {
+  newErrors.shippingAddress = `If provided, shipping address must be at least ${MIN_ADDR} characters (or leave blank to use billing)`;
  }
  if (!fd.state.trim() || fd.state.trim().length < 2) newErrors.state = 'State is required';
  if (!fd.country.trim() || fd.country.trim().length < 2) newErrors.country = 'Country is required';
@@ -232,6 +244,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [isSaving, setIsSaving] = useState(false);
  const [savingPriceList, setSavingPriceList] = useState(false);
+ const [zohoSyncing, setZohoSyncing] = useState(false);
  const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
  useEffect(() => {
@@ -483,6 +496,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { name, value } = e.target;
+  if (name === 'zohoId') return;
   setFormData(prev => ({ ...prev, [name]: value }));
   setErrors(prev => {
    const next = { ...prev };
@@ -498,7 +512,84 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   });
  };
 
+ const computedPaymentTermsForZoho = () => {
+  const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
+  const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
+  const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
+  return `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+ };
+
+ const handleSyncToZoho = async () => {
+  if (String(formData.zohoId || '').trim()) {
+   addToast('info', 'Zoho ID is already set.');
+   return;
+  }
+  if (!String(formData.entityCode || '').trim()) {
+   addToast('error', 'Generate entity code before syncing to Zoho.');
+   return;
+  }
+  if (!String(formData.legalName || '').trim() || !String(formData.tradeName || '').trim()) {
+   addToast('error', 'Legal name and trade name are required to sync.');
+   return;
+  }
+  if (!String(formData.primaryEmail || '').trim() || !String(formData.primaryPhone || '').trim()) {
+   addToast('error', 'Primary email and phone are required to sync.');
+   return;
+  }
+  setZohoSyncing(true);
+  try {
+   const paymentTerms = computedPaymentTermsForZoho();
+   const shippingResolved = resolveShippingAddress(formData);
+   const res = await syncVendorDraftToZoho({
+    type: 'vendor',
+    entityCode: formData.entityCode,
+    name: formData.tradeName || formData.legalName,
+    email: formData.primaryEmail,
+    phone: formData.primaryPhone,
+    location: formData.state,
+    country: formData.country,
+    category: formData.setupCategory,
+    paymentTerms,
+    notes: formData.notes,
+    data: {
+     ...formData,
+     shippingAddress: shippingResolved,
+     paymentTerms,
+     documents,
+     pocs,
+     banks,
+     vendorItems,
+    } as Record<string, unknown>,
+   });
+   if (!res.success || !res.data) {
+    addToast('error', res.error?.message ?? 'Zoho sync failed');
+    return;
+   }
+   const { zohoId, mappedFields, alreadySynced } = res.data;
+   setFormData((prev) => ({
+    ...prev,
+    ...(mappedFields || {}),
+    zohoId: String(zohoId || '').trim(),
+   }));
+   setErrors((prev) => {
+    const next = { ...prev };
+    if (next.zohoId) delete next.zohoId;
+    return next;
+   });
+   addToast(
+    'success',
+    alreadySynced ? 'Zoho ID already present.' : 'Synced to Zoho. Review fields updated from Zoho.',
+   );
+  } finally {
+   setZohoSyncing(false);
+  }
+ };
+
  const handleNextStage = () => {
+  if (!editingId && currentStage === 0 && !String(formData.zohoId || '').trim()) {
+   addToast('error', 'Sync to Zoho first to obtain a Zoho ID.');
+   return;
+  }
   if (currentStage < stages.length - 1) setCurrentStage(currentStage + 1);
  };
 
@@ -641,9 +732,18 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
   const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
   const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+  const shippingResolved = resolveShippingAddress(formData);
   return {
    computedPaymentTerms,
-   data: { ...formData, paymentTerms: computedPaymentTerms, documents, pocs, banks, vendorItems },
+   data: {
+    ...formData,
+    shippingAddress: shippingResolved,
+    paymentTerms: computedPaymentTerms,
+    documents,
+    pocs,
+    banks,
+    vendorItems,
+   },
   };
  };
 
@@ -879,14 +979,17 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       >
        Prev
       </button>
-      <button
-       type="button"
-       onClick={handleNextStage}
-       disabled={currentStage === stages.length - 1}
-       className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
-      >
-       Next
-      </button>
+       <button
+        type="button"
+        onClick={handleNextStage}
+        disabled={
+         currentStage === stages.length - 1 ||
+         (!editingId && currentStage === 0 && !String(formData.zohoId || '').trim())
+        }
+        className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
+       >
+        Next
+       </button>
      </div>
     </div>
     <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -929,6 +1032,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          {errMsg('setupCategory')}
         </div>
        </div>
+       <div className={sectionTitleClass}>Required before Zoho sync</div>
+       <p className="text-sm text-gray-600 -mt-2 mb-2">
+        Fill category, names, contact details, and generate an entity code first. Then use Sync to Zoho to obtain the Zoho ID.
+       </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Legal Name {req}</label>
@@ -943,17 +1050,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <label className={labelClass}>Zoho ID</label>
-         <input type="text" name="zohoId" value={formData.zohoId} onChange={handleInputChange} placeholder="Zoho contact/org id (for sync)" className={inputClass} />
-        </div>
-        <div>
-         <label className={labelClass}>Linked User Management ID</label>
-         <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
-         <p className="text-xs text-slate-500 mt-1">Optional link to a user account. Clear to unlink.</p>
-        </div>
-       </div>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
          <label className={labelClass}>Primary Email {req}</label>
          <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={fieldClass('primaryEmail')} />
          {errMsg('primaryEmail')}
@@ -964,7 +1060,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          {errMsg('primaryPhone')}
         </div>
        </div>
-       
+
        <div className={sectionTitleClass}>Code Series</div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -994,6 +1090,38 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          Regenerate
         </button>
        </div>
+
+       <div className={sectionTitleClass}>Zoho</div>
+       <div className="space-y-2">
+        <label className={labelClass}>Zoho ID {req}</label>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+         <input
+          type="text"
+          readOnly
+          value={formData.zohoId}
+          placeholder="— Use “Sync to Zoho” after the fields above —"
+          className={`${fieldClass('zohoId')} bg-gray-50 flex-1 min-w-0`}
+          aria-describedby="zoho-id-hint"
+         />
+         <button
+          type="button"
+          onClick={() => void handleSyncToZoho()}
+          disabled={zohoSyncing || Boolean(String(formData.zohoId || '').trim())}
+          className="shrink-0 px-4 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm whitespace-nowrap"
+         >
+          {zohoSyncing ? 'Syncing…' : 'Sync to Zoho'}
+         </button>
+        </div>
+        {errMsg('zohoId')}
+        <p id="zoho-id-hint" className="text-xs text-slate-500 mt-1">
+         Filled automatically from Zoho; it cannot be edited here.
+        </p>
+       </div>
+       <div>
+        <label className={labelClass}>Linked User Management ID</label>
+        <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
+        <p className="text-xs text-slate-500 mt-1">Optional link to a user account. Clear to unlink.</p>
+       </div>
       </div>
      )}
 
@@ -1009,7 +1137,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </div>
         <div>
          <label className={labelClass}>Shipping Address {req}</label>
-         <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different" className={fieldClass('shippingAddress')} rows={3} />
+         <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="Leave blank to use billing address" className={fieldClass('shippingAddress')} rows={3} />
          {errMsg('shippingAddress')}
         </div>
        </div>
@@ -1723,7 +1851,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       {currentStage === stages.length - 1 ? (
        <button
         type="submit"
-        disabled={isSaving}
+        disabled={isSaving || (!editingId && !String(formData.zohoId || '').trim())}
         className="px-8 py-2.5 bg-green-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
        >
         {isSaving ? 'Saving...' : 'Submit Vendor'}
@@ -1732,7 +1860,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <button
         type="button"
         onClick={handleNextStage}
-        className="px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-medium shadow-lg"
+        disabled={!editingId && currentStage === 0 && !String(formData.zohoId || '').trim()}
+        className="px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
        >
         Next
        </button>

@@ -126,6 +126,60 @@ export async function fetchVendorClientById(
   }
 }
 
+/** Response from POST /vendor-client/sync-zoho (draft → Zoho Books contact) */
+export interface SyncZohoVendorDraftResponse {
+  zohoId: string;
+  /** Fields to merge into VendorForm state (camelCase keys) */
+  mappedFields: Record<string, string>;
+  alreadySynced?: boolean;
+  zoho_sync?: { synced: boolean; contact_id?: string };
+}
+
+/**
+ * Create a Zoho Books vendor contact from the current form draft and return contact id + mapped fields.
+ * Does not persist a vendor_client row.
+ */
+export async function syncVendorDraftToZoho(
+  payload: CreateVendorClientPayload,
+): Promise<ServiceResult<SyncZohoVendorDraftResponse>> {
+  try {
+    const body = {
+      type: payload.type,
+      entityCode: payload.entityCode,
+      ...(payload.userId != null && payload.userId !== ""
+        ? { userId: payload.userId }
+        : {}),
+      zohoId: payload.zohoId ?? undefined,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      location: payload.location,
+      country: payload.country,
+      city: payload.city,
+      category: payload.category,
+      status: payload.status ?? "pending",
+      paymentTerms: payload.paymentTerms,
+      notes: payload.notes,
+      data: payload.data ?? {},
+    };
+    const row = await api.post<SyncZohoVendorDraftResponse>(
+      "/api/v1/vendor-client/sync-zoho",
+      body,
+    );
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const err = e as Error & { status?: number; body?: { error?: string } };
+    const message =
+      err.body?.error ??
+      (err instanceof Error ? err.message : "Zoho sync failed");
+    return {
+      data: null,
+      error: { code: "ERROR", message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
 export async function fetchNextCode(
   type: "vendor" | "client",
 ): Promise<ServiceResult<string>> {

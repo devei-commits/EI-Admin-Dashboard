@@ -4,8 +4,16 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import ArrayItemManager from '../components/ArrayItemManager';
+import VendorCommercialEditor, {
+  defaultTempVendorTiers,
+  type RmCommercialVendor,
+  type VendorTierDraft,
+} from '../components/VendorCommercialEditor';
+import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
+import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
-import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { validateStagedPercents } from '../lib/stagedPaymentTerms';
+import { fetchRawMaterialsPage, createRawMaterial, syncRmZoho, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -115,16 +123,7 @@ function createEmptyRmFormData() {
     minimumStock: '',
     reorderLevel: '',
     handlingNotes: '',
-    vendors: [] as Array<{
-      id: string;
-      name: string;
-      location: string;
-      moq: number;
-      unitPrice: number;
-      leadTime: number;
-      approved: string;
-      priceValidTill: string;
-    }>,
+    vendors: [] as RmCommercialVendor[],
     documents: [] as Array<{ id: string; type: string; link: string; date: string }>,
     tests: [] as Array<{
       id: string;
@@ -147,12 +146,27 @@ const RawMaterialRefactored: React.FC = () => {
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
  const [editRmLoading, setEditRmLoading] = useState(false);
  const [generatedRmCode, setGeneratedRmCode] = useState('');
+ const [draftRmId, setDraftRmId] = useState<number | null>(null);
+ const [zohoSkippedSync, setZohoSkippedSync] = useState(false);
+ const [zohoSyncing, setZohoSyncing] = useState(false);
  const [formData, setFormData] = useState(createEmptyRmFormData);
 
  // Temp fields separated
- const [tempVendor, setTempVendor] = useState({ 
-  name: '', location: '', moq: '', unitPrice: '', leadTime: '', approved: '', priceValidTill: '' 
+ const [tempVendor, setTempVendor] = useState({
+  name: '',
+  location: '',
+  moq: '',
+  unitPrice: '',
+  leadTime: '',
+  approved: '',
+  priceValidTill: '',
+  currency: 'INR',
+  advancePct: '',
+  preShipmentPct: '',
+  postShipmentPct: '',
+  creditDays: '',
  });
+ const [tempVendorTiers, setTempVendorTiers] = useState<VendorTierDraft[]>(() => defaultTempVendorTiers(4));
  const [tempDocument, setTempDocument] = useState({ 
   type: '', link: '', date: '' 
  });
@@ -169,10 +183,26 @@ const RawMaterialRefactored: React.FC = () => {
 
  const resetRmFormToEmpty = useCallback(() => {
   setFormData(createEmptyRmFormData());
-  setTempVendor({ name: '', location: '', moq: '', unitPrice: '', leadTime: '', approved: '', priceValidTill: '' });
+  setTempVendor({
+   name: '',
+   location: '',
+   moq: '',
+   unitPrice: '',
+   leadTime: '',
+   approved: '',
+   priceValidTill: '',
+   currency: 'INR',
+   advancePct: '',
+   preShipmentPct: '',
+   postShipmentPct: '',
+   creditDays: '',
+  });
+  setTempVendorTiers(defaultTempVendorTiers(4));
   setTempDocument({ type: '', link: '', date: '' });
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
   setGeneratedRmCode('');
+  setDraftRmId(null);
+  setZohoSkippedSync(false);
   setErrors({});
   setCurrentStage(0);
  }, []);
@@ -188,9 +218,7 @@ const RawMaterialRefactored: React.FC = () => {
  const vendorClientList = vendorClientData ?? [];
 
  const stages = [
-  'Primary Info',
-  'QC Categorisation & Coding',
-  'Identity',
+  'Primary info (details, code & Zoho)',
   'Units, Tax & Procurement',
   'Technical & Regulatory',
   'Quality Specifications',
@@ -200,8 +228,21 @@ const RawMaterialRefactored: React.FC = () => {
   'Inventory, Storage & WH',
  ];
 
+ const isNewRm = !existingRmId;
+ const canAdvancePastPrimary =
+  !isNewRm || Boolean(formData.zohoId?.trim()) || zohoSkippedSync;
+ const lockPrimaryAfterZohoDraft = draftRmId != null && !existingRmId;
+
+ useEffect(() => {
+  if (existingRmId) {
+   setDraftRmId(null);
+   setZohoSkippedSync(false);
+  }
+ }, [existingRmId]);
+
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
+  if (id === 'zohoId') return;
   if (id === 'hsnCode' || id === 'gst' || id === 'rmTaxPreference') {
    setErrors((prev) => {
     const next = { ...prev };
@@ -237,6 +278,10 @@ const RawMaterialRefactored: React.FC = () => {
  };
 
  const generateRmCode = async (confirm = false) => {
+  if (lockPrimaryAfterZohoDraft) {
+   addToast('error', 'RM code cannot be changed after Zoho sync.');
+   return;
+  }
   if (!formData.rmCategoryKey) {
    addToast('error', 'Select an RM Category first');
    return;
@@ -257,56 +302,168 @@ const RawMaterialRefactored: React.FC = () => {
   }
  };
 
+ const handleRmZohoSync = async () => {
+  if (!formData.rmCategoryKey?.trim()) {
+   addToast('error', 'Select an RM Category first');
+   return;
+  }
+  if (!formData.rmSku?.trim()) {
+   addToast('error', 'Generate or enter SKU / RM code before syncing with Zoho');
+   return;
+  }
+  if (!formData.inciName?.trim() || !formData.tradeCommercialName?.trim()) {
+   addToast('error', 'INCI Name and Trade/Commercial Name are required before Zoho sync');
+   return;
+  }
+  setZohoSyncing(true);
+  try {
+   const res = await syncRmZoho(formData as Record<string, unknown>);
+   if (!res.success || !res.data) {
+    addToast('error', res.error || 'Zoho sync failed');
+    return;
+   }
+   const d = res.data;
+   setDraftRmId(d.raw_material_id);
+   const zs = d.zoho_sync;
+   if (zs && 'resolvedWithoutZoho' in zs && zs.resolvedWithoutZoho) {
+    setZohoSkippedSync(true);
+    addToast(
+     'success',
+     'Draft RM saved. Zoho Books sync is off in this environment — you can continue to the next steps.'
+    );
+    return;
+   }
+   if (d.zoho_id) {
+    setFormData((prev) => ({ ...prev, zohoId: String(d.zoho_id) }));
+    setZohoSkippedSync(false);
+    addToast('success', 'Zoho item created and ID saved.');
+    return;
+   }
+   const errMsg =
+    zs && typeof zs === 'object' && zs !== null && 'error' in zs && (zs as { error?: string }).error
+     ? String((zs as { error?: string }).error)
+     : 'Zoho sync did not return an item id';
+   addToast('error', errMsg);
+  } finally {
+   setZohoSyncing(false);
+  }
+ };
+
  // Vendor operations
  const handleAddVendor = () => {
   if (!tempVendor.name.trim()) {
-   setErrors(prev => ({ ...prev, venName: 'Vendor name required' }));
-   addToast('error', 'Vendor name required');
+   setErrors(prev => ({ ...prev, venName: 'Step 6 — Vendor name is required' }));
+   addToast('error', 'Step 6 — Vendor name is required');
    return;
   }
-  setFormData(prev => ({
+  const adv = Number(tempVendor.advancePct);
+  const pre = Number(tempVendor.preShipmentPct);
+  const post = Number(tempVendor.postShipmentPct);
+  const pctErr = validateStagedPercents(adv, pre, post);
+  if (pctErr) {
+   addToast('error', pctErr);
+   return;
+  }
+  let tierRows = tempVendorTiers.filter((t) => String(t.moq).trim() && String(t.price).trim());
+  if (tierRows.length === 0 && tempVendor.moq?.trim() && tempVendor.unitPrice?.trim()) {
+   tierRows = [
+    {
+     moq: tempVendor.moq.trim(),
+     price: tempVendor.unitPrice.trim(),
+     validTill: tempVendor.priceValidTill || '',
+     note: '',
+    },
+   ];
+  }
+  if (tierRows.length === 0) {
+   addToast('error', 'Add at least one price tier (MOQ + price in the table) or fill MOQ + unit price.');
+   return;
+  }
+  const first = tierRows[0];
+  setFormData((prev) => ({
    ...prev,
-   vendors: [...prev.vendors, {
-    id: Date.now().toString(),
-    name: tempVendor.name,
-    location: tempVendor.location,
-    moq: Number(tempVendor.moq),
-    unitPrice: Number(tempVendor.unitPrice),
-    leadTime: Number(tempVendor.leadTime),
-    approved: tempVendor.approved,
-    priceValidTill: tempVendor.priceValidTill,
-   }]
+   vendors: [
+    ...prev.vendors,
+    {
+     id: Date.now().toString(),
+     name: tempVendor.name,
+     location: tempVendor.location,
+     moq: Number(tempVendor.moq) || Number(first.moq) || 0,
+     unitPrice: Number(tempVendor.unitPrice) || Number(first.price) || 0,
+     leadTime: Number(tempVendor.leadTime),
+     approved: tempVendor.approved,
+     priceValidTill: tempVendor.priceValidTill,
+     currency: tempVendor.currency || 'INR',
+     advancePct: tempVendor.advancePct,
+     preShipmentPct: tempVendor.preShipmentPct,
+     postShipmentPct: tempVendor.postShipmentPct,
+     creditDays: tempVendor.creditDays,
+     tiers: tierRows.map((t) => ({ ...t })),
+    },
+   ],
   }));
-  setTempVendor({ name: '', location: '', moq: '', unitPrice: '', leadTime: '', approved: '', priceValidTill: '' });
-  setErrors(prev => ({ ...prev, venName: '' }));
+  setTempVendor({
+   name: '',
+   location: '',
+   moq: '',
+   unitPrice: '',
+   leadTime: '',
+   approved: '',
+   priceValidTill: '',
+   currency: 'INR',
+   advancePct: '',
+   preShipmentPct: '',
+   postShipmentPct: '',
+   creditDays: '',
+  });
+  setTempVendorTiers(defaultTempVendorTiers(4));
+  setErrors((prev) => ({ ...prev, venName: '' }));
  };
 
- const handleRemoveVendor = (id: string) => {
-  setFormData(prev => ({
+ const handleRemoveVendor = (index: number) => {
+  setFormData((prev) => ({
    ...prev,
-   vendors: prev.vendors.filter(v => v.id !== id)
+   vendors: prev.vendors.filter((_, i) => i !== index),
   }));
  };
 
  const handleVendorTempFieldChange = (field: string, value: string) => {
-  if (field === 'name') {
-   const selectedVendor = vendorClientList.find((v) => v.name === value);
-   setTempVendor(prev => ({
-    ...prev,
-    name: value,
-    // Auto-fill from saved vendor master; user can still edit manually.
-    location: selectedVendor?.location || prev.location,
-   }));
-   return;
+  setTempVendor((prev) => ({ ...prev, [field]: value }));
+ };
+
+ const handleTempVendorTierChange = (rowIdx: number, field: keyof VendorTierDraft, value: string) => {
+  setTempVendorTiers((prev) => prev.map((r, i) => (i === rowIdx ? { ...r, [field]: value } : r)));
+ };
+
+ const handleAddTempVendorTierRow = () => {
+  setTempVendorTiers((prev) => [...prev, { moq: '', price: '', validTill: '', note: '' }]);
+ };
+
+ const syncRmVendorsToItemsListAfterSave = async (rmId: number): Promise<number> => {
+  if (!formData.vendors.length) return 0;
+  const mid = parseInt(String(rmId), 10);
+  if (Number.isNaN(mid)) return 0;
+  const { created, errors } = await syncMasterVendorsToPriceList({
+   variant: 'rm',
+   materialId: mid,
+   vendors: formData.vendors,
+   vendorClientList,
+  });
+  if (errors.length) {
+   addToast('error', `Items List: ${errors[0]}`);
   }
-  setTempVendor(prev => ({ ...prev, [field]: value }));
+  void queryClient.invalidateQueries({
+   predicate: (q) => Array.isArray(q.queryKey) && typeof q.queryKey[0] === 'string' && q.queryKey[0].startsWith('items-list'),
+   refetchType: 'all',
+  });
+  return created;
  };
 
  // Document operations
  const handleAddDocument = () => {
   if (!tempDocument.type || !tempDocument.link.trim()) {
-   setErrors(prev => ({ ...prev, documentType: 'Document type and link are required' }));
-   addToast('error', 'Document type and link are required');
+   setErrors(prev => ({ ...prev, documentType: 'Step 7 — Document type and link are required' }));
+   addToast('error', 'Step 7 — Document type and link are required');
    return;
   }
   setFormData(prev => ({
@@ -332,8 +489,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Test operations
  const handleAddTest = () => {
   if (!tempTest.name || !tempTest.result) {
-   setErrors(prev => ({ ...prev, testName: 'Test name and result are required' }));
-   addToast('error', 'Test name and result are required');
+   setErrors(prev => ({ ...prev, testName: 'Step 7 — Test name and result are required' }));
+   addToast('error', 'Step 7 — Test name and result are required');
    return;
   }
   setFormData(prev => ({
@@ -361,15 +518,25 @@ const RawMaterialRefactored: React.FC = () => {
  const handleSubmit = async () => {
   if (!existingRmId) {
    if (!formData.rmCategoryKey?.trim()) {
-    addToast('error', 'Select an RM Category (QC Categorisation step)');
-    setCurrentStage(1);
+    addToast('error', 'Select an RM Category (Primary info step)');
+    setCurrentStage(0);
     focusFieldById('rmCategoryKey');
     return;
    }
    if (!formData.rmSku?.trim()) {
     addToast('error', 'Generate or enter SKU / RM code before submitting');
-    setCurrentStage(1);
+    setCurrentStage(0);
     focusFieldById('rmSku');
+    return;
+   }
+   if (!draftRmId) {
+    addToast('error', 'Run “Sync with Zoho” on the Primary info step before submitting.');
+    setCurrentStage(0);
+    return;
+   }
+   if (!formData.zohoId?.trim() && !zohoSkippedSync) {
+    addToast('error', 'Complete Zoho sync — a Zoho item ID is required before saving.');
+    setCurrentStage(0);
     return;
    }
   }
@@ -379,12 +546,12 @@ const RawMaterialRefactored: React.FC = () => {
    setErrors({ ...validation.errors, ...taxValidation.errors });
     const stageByField: Record<string, number> = {
       rmSku: 0,
-      inciName: 2,
-      tradeCommercialName: 2,
-      grade: 4,
-      compliance: 4,
-      hsnCode: 3,
-      gst: 3,
+      inciName: 0,
+      tradeCommercialName: 0,
+      grade: 2,
+      compliance: 2,
+      hsnCode: 1,
+      gst: 1,
     };
     const firstPrimaryMissing = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
     const firstTaxMissing = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
@@ -394,32 +561,54 @@ const RawMaterialRefactored: React.FC = () => {
       focusFieldById(firstField);
     }
    if (!taxValidation.valid) {
-    addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Units, Tax & Procurement). Exempt / NonGST can leave them blank.');
-    setCurrentStage(3);
+    const firstTax = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
+    addToast(
+     'error',
+     firstTax
+      ? taxValidation.errors[firstTax]
+      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 2). Exempt / NonGST can leave them blank.'
+    );
+    setCurrentStage(1);
    } else {
-    addToast('error', 'Please fill all primary fields');
+    const firstPrimary = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
+    const firstMsg =
+     (firstPrimary && validation.errors[firstPrimary]) ||
+     Object.values(validation.errors)[0] ||
+     Object.values(taxValidation.errors)[0];
+    addToast('error', firstMsg || 'Please fill all required fields');
    }
    return;
   }
   try {
    if (existingRmId) {
+    const rmIdForSync = parseInt(String(existingRmId), 10);
     await updateRawMaterial(existingRmId, formData as Record<string, unknown>);
-    addToast('success', 'Raw Material updated successfully!');
+    const syncCreated = Number.isNaN(rmIdForSync) ? 0 : await syncRmVendorsToItemsListAfterSave(rmIdForSync);
+    addToast(
+     'success',
+     syncCreated > 0
+      ? `Raw Material updated successfully! ${syncCreated} vendor rate(s) synced to Items List.`
+      : 'Raw Material updated successfully!'
+    );
     setExistingRmId(null);
    } else {
-    const { zohoSync } = await createRawMaterial(formData as Record<string, unknown>);
+    const { record, zohoSync } = await createRawMaterial({
+     ...(formData as Record<string, unknown>),
+     ...(draftRmId != null ? { raw_material_id: draftRmId } : {}),
+    });
+    const newRmId = parseInt(String(record.id), 10);
+    const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
     if (zohoSync?.synced === false && zohoSync.error) {
      addToast(
       'error',
       `Saved in Esthetic Insights, but Zoho Books sync failed: ${zohoSync.error}`
      );
     } else {
-     addToast(
-      'success',
+     const base =
       zohoSync?.synced && zohoSync.item_id
        ? `Raw Material saved and linked to Zoho (item ${zohoSync.item_id}).`
-       : 'Raw Material saved successfully!'
-     );
+       : 'Raw Material saved successfully!';
+     addToast('success', syncCreated > 0 ? `${base} ${syncCreated} vendor rate(s) synced to Items List.` : base);
     }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
@@ -434,50 +623,7 @@ const RawMaterialRefactored: React.FC = () => {
  // Stage content rendering
  const renderStageContent = () => {
   switch (currentStage) {
-  case 0: // Primary Info (optional manual Zoho ID; otherwise created in Zoho on first save)
-  return (
-   <div className="space-y-4">
-    <InputField
-     label="Zoho ID"
-     id="zohoId"
-     value={formData.zohoId}
-     onChange={handleInputChange}
-     placeholder="Optional: existing Zoho item id (leave blank to create in Zoho on save)"
-    />
-    <InputField
-     label="SKU (for Zoho)"
-     id="sku"
-     value={formData.sku}
-     onChange={handleInputChange}
-     placeholder="Optional; defaults to SKU above"
-    />
-    <SelectField
-     label="Tax Preference"
-     id="rmTaxPreference"
-     value={formData.rmTaxPreference}
-     onChange={handleInputChange}
-     options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-    />
-    <p className="text-xs text-gray-500 -mt-2">
-     Taxable: HSN and GST % are required (see Units, Tax &amp; Procurement). Exempted / NonGST: optional.
-    </p>
-    <CheckboxField
-     label="Returnable Item"
-     id="rmReturnable"
-     checked={formData.rmReturnable}
-     onChange={handleInputChange}
-    />
-    <TextareaField
-     label="Associate Items"
-     id="rmAssociateItems"
-     value={formData.rmAssociateItems}
-     onChange={handleInputChange}
-     placeholder="Link related RM / PM / packaging codes if any"
-    />
-   </div>
-  );
-
-  case 1: // QC Categorisation & coding (aligned with PM master)
+  case 0: // Primary info — category, code, identity, Zoho
   {
    const { prefix, next } = getRmCodePreview();
    return (
@@ -558,7 +704,8 @@ const RawMaterialRefactored: React.FC = () => {
         <button
          type="button"
          onClick={() => generateRmCode()}
-         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+         disabled={lockPrimaryAfterZohoDraft}
+         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
          Generate Code Now
         </button>
@@ -566,7 +713,8 @@ const RawMaterialRefactored: React.FC = () => {
          <button
           type="button"
           onClick={() => generateRmCode(true)}
-          className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
+          disabled={lockPrimaryAfterZohoDraft}
+          className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
          >
           Regenerate (change category)
          </button>
@@ -583,6 +731,7 @@ const RawMaterialRefactored: React.FC = () => {
       onChange={handleInputChange}
       placeholder="Internal raw material code (e.g. RM-000123)"
       requiredMark
+      readOnly={lockPrimaryAfterZohoDraft}
      />
 
      <div className="space-y-4">
@@ -592,6 +741,7 @@ const RawMaterialRefactored: React.FC = () => {
        value={formData.rmCategory}
        onChange={handleInputChange}
        placeholder="Updates when you pick RM Category above"
+       readOnly={lockPrimaryAfterZohoDraft}
       />
       <InputField
        label="Hazard Handling Class"
@@ -608,13 +758,9 @@ const RawMaterialRefactored: React.FC = () => {
        placeholder="From RM Category; editable if needed"
       />
      </div>
-    </div>
-   );
-  }
 
-  case 2: // Identity
-  return (
-   <div className="space-y-4">
+     <div className="space-y-4 border-t border-gray-200 pt-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Identity</h3>
     <InputField
      label="INCI Name"
      id="inciName"
@@ -622,6 +768,7 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="Official INCI name as per supplier / standard"
      requiredMark
+     readOnly={lockPrimaryAfterZohoDraft}
     />
     <InputField
      label="Trade/Commercial Name"
@@ -630,6 +777,7 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="What vendor calls this raw material"
      requiredMark
+     readOnly={lockPrimaryAfterZohoDraft}
     />
     <InputField
      label="Function/Role"
@@ -687,10 +835,82 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="Any internal-only remarks for R&D, QC, or Purchase"
     />
-   </div>
-  );
+     </div>
 
-   case 3: // Units, Tax & Procurement
+     <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
+      {isNewRm ? (
+       <p className="text-xs text-gray-500">
+        Set SKU and tax for Zoho, then <strong>Sync with Zoho</strong>. Later steps stay disabled until sync succeeds (or Zoho is disabled in this environment).
+       </p>
+      ) : (
+       <p className="text-xs text-gray-500">Zoho item ID is read-only.</p>
+      )}
+      <InputField
+       label="SKU (for Zoho)"
+       id="sku"
+       value={formData.sku}
+       onChange={handleInputChange}
+       placeholder="Optional; defaults to RM SKU"
+       disabled={lockPrimaryAfterZohoDraft}
+      />
+      <SelectField
+       label="Tax Preference"
+       id="rmTaxPreference"
+       value={formData.rmTaxPreference}
+       onChange={handleInputChange}
+       options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
+       disabled={lockPrimaryAfterZohoDraft}
+      />
+      <p className="text-xs text-gray-500 -mt-2">
+       Taxable: HSN and GST % are required in the next step. Exempted / NonGST: optional.
+      </p>
+      <CheckboxField
+       label="Returnable Item"
+       id="rmReturnable"
+       checked={formData.rmReturnable}
+       onChange={handleInputChange}
+      />
+      <TextareaField
+       label="Associate Items"
+       id="rmAssociateItems"
+       value={formData.rmAssociateItems}
+       onChange={handleInputChange}
+       placeholder="Link related RM / PM / packaging codes if any"
+      />
+      {isNewRm && (
+       <div className="flex flex-wrap items-center gap-3">
+        <button
+         type="button"
+         onClick={() => void handleRmZohoSync()}
+         disabled={zohoSyncing || zohoSkippedSync || Boolean(formData.zohoId?.trim())}
+         className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+         {zohoSyncing ? 'Syncing…' : 'Sync with Zoho'}
+        </button>
+        {draftRmId != null && (
+         <span className="text-xs text-gray-500">
+          Draft RM #{draftRmId}
+          {formData.zohoId ? ' · Linked in Zoho Books' : zohoSkippedSync ? ' · Zoho Books sync off — you can continue' : ''}
+         </span>
+        )}
+       </div>
+      )}
+      <InputField
+       label="Zoho Item ID"
+       id="zohoId"
+       value={formData.zohoId}
+       onChange={() => {}}
+       placeholder="Set automatically after Zoho Books sync"
+       readOnly
+      />
+      <p className="text-xs text-gray-500 -mt-1">Read-only — populated from the server after sync.</p>
+     </div>
+    </div>
+   );
+  }
+
+   case 1: // Units, Tax & Procurement
     return (
      <div className="space-y-4">
     <InputField
@@ -751,7 +971,7 @@ const RawMaterialRefactored: React.FC = () => {
      </div>
     );
 
-   case 4: // Technical & Regulatory
+   case 2: // Technical & Regulatory
     return (
      <div className="space-y-4">
     <InputField
@@ -784,7 +1004,7 @@ const RawMaterialRefactored: React.FC = () => {
      </div>
     );
 
-   case 5: // Quality Specifications
+   case 3: // Quality Specifications
     return (
      <div className="space-y-4">
     <InputField
@@ -846,7 +1066,7 @@ const RawMaterialRefactored: React.FC = () => {
      </div>
     );
 
-   case 6: // Usage in Formulation
+   case 4: // Usage in Formulation
     return (
      <div className="space-y-4">
     <InputField
@@ -901,36 +1121,24 @@ const RawMaterialRefactored: React.FC = () => {
      </div>
     );
 
-   case 7: // Vendors & Commercial
+   case 5: // Vendors & Commercial
     return (
-     <ArrayItemManager
-      masterType="rawMaterial"
-      itemType="vendor"
-      items={formData.vendors}
+     <VendorCommercialEditor
+      variant="rm"
+      vendors={formData.vendors}
       tempFields={tempVendor}
+      tempTiers={tempVendorTiers}
+      vendorClientList={vendorClientList}
       onTempFieldChange={handleVendorTempFieldChange}
-      onAdd={handleAddVendor}
-      onRemove={(idx) => handleRemoveVendor(formData.vendors[idx].id)}
+      onTempTierChange={handleTempVendorTierChange}
+      onAddTempTierRow={handleAddTempVendorTierRow}
+      onAddVendor={handleAddVendor}
+      onRemoveVendor={handleRemoveVendor}
       errors={errors}
-      itemLabel="Vendor"
-      columns={[
-       {
-        key: 'name',
-        label: 'Vendor Name',
-        type: 'select',
-        options: vendorClientList.map((v) => ({ label: v.name, value: v.name })),
-       },
-       { key: 'location', label: 'Location' },
-       { key: 'moq', label: 'MOQ', type: 'number' },
-       { key: 'unitPrice', label: 'Unit Price', type: 'number' },
-       { key: 'leadTime', label: 'Lead Time (days)', type: 'number' },
-       { key: 'approved', label: 'Approved' },
-       { key: 'priceValidTill', label: 'Price Valid Till', type: 'date' },
-      ]}
      />
     );
 
-   case 8: // QA Testing & Documents
+   case 6: // QA Testing & Documents
     return (
      <div className="space-y-8">
       <div>
@@ -976,7 +1184,7 @@ const RawMaterialRefactored: React.FC = () => {
      </div>
     );
 
-   case 9: // Inventory, Storage & WH
+   case 7: // Inventory, Storage & WH
     return (
      <div className="space-y-4">
     <TextareaField
@@ -1056,10 +1264,15 @@ const RawMaterialRefactored: React.FC = () => {
   setCurrentStage(0);
   let cancelled = false;
   setEditRmLoading(true);
-  fetchRawMaterialById(existingRmId).then((result) => {
+  fetchRawMaterialById(existingRmId).then(async (result) => {
+   if (cancelled) return;
+   if (!result) {
+    setEditRmLoading(false);
+    return;
+   }
+   const priceRow = await fetchPriceListRowForMaterial('RM', parseInt(String(existingRmId), 10));
    if (cancelled) return;
    setEditRmLoading(false);
-   if (!result) return;
    const fdObj = safeParseMaybeJsonObject(result.form_data);
    const vendorsVal = (fdObj as any)?.vendors;
    const docsVal = (fdObj as any)?.documents;
@@ -1075,16 +1288,34 @@ const RawMaterialRefactored: React.FC = () => {
      if (Array.isArray(vendorsVal)) {
        fdNormalized = {
          ...fdNormalized,
-         vendors: vendorsVal.map((v: any, idx: number) => ({
-           id: String(v?.id ?? v?.vendorId ?? idx),
-           name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
-           location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
-           moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
-           unitPrice: Number(v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
-           leadTime: Number(v?.leadTime ?? v?.venLT ?? v?.leadTimeDays ?? 0),
-           approved: String(v?.approved ?? v?.venApproved ?? ''),
-           priceValidTill: String(v?.priceValidTill ?? v?.venValid ?? v?.validTill ?? ''),
-         })),
+         vendors: vendorsVal.map((v: any, idx: number) => {
+           const tiersRaw = v?.tiers;
+           const tiers =
+             Array.isArray(tiersRaw) && tiersRaw.length > 0
+              ? tiersRaw.map((t: any) => ({
+                 moq: String(t?.moq ?? ''),
+                 price: String(t?.price ?? ''),
+                 validTill: String(t?.validTill ?? t?.valid_till ?? ''),
+                 note: String(t?.note ?? ''),
+                }))
+              : undefined;
+           return {
+            id: String(v?.id ?? v?.vendorId ?? idx),
+            name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
+            location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
+            moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
+            unitPrice: Number(v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
+            leadTime: Number(v?.leadTime ?? v?.venLT ?? v?.leadTimeDays ?? 0),
+            approved: String(v?.approved ?? v?.venApproved ?? ''),
+            priceValidTill: String(v?.priceValidTill ?? v?.venValid ?? v?.validTill ?? ''),
+            currency: v?.currency != null ? String(v.currency) : 'INR',
+            advancePct: v?.advancePct != null ? String(v.advancePct) : '',
+            preShipmentPct: v?.preShipmentPct != null ? String(v.preShipmentPct) : '',
+            postShipmentPct: v?.postShipmentPct != null ? String(v.postShipmentPct) : '',
+            creditDays: v?.creditDays != null ? String(v.creditDays) : '',
+            tiers,
+           };
+          }),
        };
      }
      if (Array.isArray(docsVal)) {
@@ -1111,6 +1342,17 @@ const RawMaterialRefactored: React.FC = () => {
          })),
        };
      }
+   }
+
+   const vArr =
+     fdNormalized && Array.isArray((fdNormalized as { vendors?: RmCommercialVendor[] }).vendors)
+       ? ((fdNormalized as { vendors: RmCommercialVendor[] }).vendors)
+       : [];
+   const mergedVendors = mergeRmVendorsWithPriceList(vArr, priceRow);
+   if (fdNormalized) {
+     (fdNormalized as { vendors: RmCommercialVendor[] }).vendors = mergedVendors;
+   } else if (mergedVendors.length > 0) {
+     fdNormalized = { vendors: mergedVendors } as Record<string, unknown>;
    }
 
    const r = result.record;
@@ -1202,6 +1444,8 @@ const RawMaterialRefactored: React.FC = () => {
      }
      return merged;
    });
+  }).catch(() => {
+   setEditRmLoading(false);
   });
   return () => { cancelled = true; };
  }, [pageTab, existingRmId]);
@@ -1249,7 +1493,10 @@ const RawMaterialRefactored: React.FC = () => {
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4"
           onClick={closeFormPopup}
         >
-          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="w-full max-w-6xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
               <div className="text-sm font-semibold text-gray-800">
                 {isEditing ? 'Edit Raw Material' : 'New Raw Material'}
@@ -1281,6 +1528,9 @@ const RawMaterialRefactored: React.FC = () => {
                   onInputChange={handleInputChange}
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
+                  nextDisabled={isNewRm && !canAdvancePastPrimary}
+                  nextDisabledTitle="Sync with Zoho and obtain a Zoho item ID before continuing (unless Zoho is disabled in this environment)."
+                  isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}
                 </MasterFormBase>
@@ -1325,10 +1575,6 @@ function getCategoryStyle(category: string): { bg: string; text: string; border:
  for (let i = 0; i < category.length; i++) hash = ((hash << 5) - hash) + category.charCodeAt(i);
  const index = Math.abs(hash) % CATEGORY_STYLE_PALETTE.length;
  return CATEGORY_STYLE_PALETTE[index];
-}
-
-function formatPrice(n: number) {
- return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
 }
 
 function GroupChip({ group }: { group: string }) {
@@ -1486,7 +1732,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/KG</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Shelf</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
@@ -1497,7 +1742,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        <tbody className="divide-y divide-gray-50">
         {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1531,8 +1776,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
            <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.rmType}</td>
            {/* uom */}
            <td className="px-4 py-3.5 text-gray-700 font-semibold">{rm.uom}</td>
-           {/* price */}
-           <td className="px-4 py-3.5 text-right font-bold text-amber-600 group-hover:text-amber-700">{formatPrice(rm.pricePerKg)}</td>
            {/* gst */}
            <td className="px-4 py-3.5 text-right text-gray-600 font-medium">{rm.gst}%</td>
            {/* shelf */}
@@ -1638,7 +1881,9 @@ const InputField: React.FC<{
  placeholder?: string;
  error?: string;
  requiredMark?: boolean;
-}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark }) => (
+ readOnly?: boolean;
+ disabled?: boolean;
+}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark, readOnly, disabled }) => (
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
    {label}
@@ -1649,11 +1894,13 @@ const InputField: React.FC<{
    id={id}
    value={value || ''}
    onChange={onChange}
+   readOnly={readOnly}
+   disabled={disabled}
    placeholder={placeholder}
    aria-invalid={error ? true : undefined}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
     error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-   }`}
+   } ${readOnly || disabled ? 'bg-slate-100 text-slate-800 cursor-not-allowed' : ''}`}
   />
   {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
  </div>
@@ -1665,14 +1912,16 @@ const SelectField: React.FC<{
  value: any;
  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
  options: string[];
-}> = ({ label, id, value, onChange, options }) => (
+ disabled?: boolean;
+}> = ({ label, id, value, onChange, options, disabled }) => (
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
   <select
    id={id}
    value={value || ''}
    onChange={onChange}
-   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+   disabled={disabled}
+   className={`w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${disabled ? 'bg-slate-100' : ''}`}
   >
    <option value="">Select...</option>
    {options.map(opt => (

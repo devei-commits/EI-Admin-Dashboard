@@ -18,17 +18,23 @@ import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '..
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 import type { Order } from '../../types/salesPurchase.types';
+import type { PriceListItemPage } from '../../services/itemsList.service';
 import {
   serializeStagedPaymentTerms,
-  stagedPaymentTermsFromVendorData,
+  resolveStagedPaymentTermsFromVendorRecord,
 } from '../../lib/stagedPaymentTerms';
 
-/** Prefer vendor `data` payables split as JSON; else top-level paymentTerms string (VendorForm computed line). */
+/** Same resolution as Items List / VendorCommercialEditor: payables in `data`, three-way line, then fallbacks. */
 function buildVendorPaymentTermsForProcurement(v: VendorClientRecord): string {
   const data = v.data && typeof v.data === 'object' ? (v.data as Record<string, unknown>) : {};
-  const fromData = stagedPaymentTermsFromVendorData(data);
-  if (fromData) return serializeStagedPaymentTerms(fromData);
-  const plain = String(v.paymentTerms ?? '').trim();
+  const staged = resolveStagedPaymentTermsFromVendorRecord(v.paymentTerms, data);
+  const hasSplit =
+    staged.advance_pct > 0 ||
+    staged.pre_shipment_pct > 0 ||
+    staged.post_shipment_pct > 0 ||
+    staged.credit_days > 0;
+  if (hasSplit) return serializeStagedPaymentTerms(staged);
+  const plain = String(v.paymentTerms ?? (data as { paymentTerms?: unknown }).paymentTerms ?? '').trim();
   if (plain) return plain;
   return 'As per contract';
 }
@@ -59,10 +65,167 @@ export function parseQuantityRequested(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number } {
+/** Non-negative integer lead days from API/UI; undefined if missing or invalid. */
+export function normalizeLeadTimeDays(raw: unknown): number | undefined {
+  if (raw == null || raw === '') return undefined;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw).replace(/,/g, ''), 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.floor(n);
+}
+
+/** Parse YYYY-MM-DD or ISO strings to a local calendar Date (noon) to reduce TZ drift vs UTC parsing. */
+export function parseDateStringToLocalDate(raw: string | undefined | null): Date | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const dm = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dm) {
+    const y = Number(dm[1]);
+    const m = Number(dm[2]) - 1;
+    const d = Number(dm[3]);
+    const dt = new Date(y, m, d, 12, 0, 0, 0);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const t = new Date(s);
+  return Number.isNaN(t.getTime()) ? null : t;
+}
+
+export function formatDateEnInSafe(raw: string | Date | null | undefined): string {
+  const d = raw instanceof Date ? raw : parseDateStringToLocalDate(String(raw ?? ''));
+  if (!d) return '—';
+  return d.toLocaleDateString('en-IN');
+}
+
+function normItemKeyForLead(s: string): string {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Issued PO ETA: PO release date + max(per-line lead days from raw PO lines, draft, quote, PR item details).
+ * When no lead exists anywhere, falls back to PR due date / PO expected shipment date.
+ */
+export function computeIssuedPoEtaFromLeadTimes(opts: {
+  today: Date;
+  poReleaseDateStr: string | undefined;
+  request: ProcurementRequest;
+  linkedQuote: VendorQuote | undefined;
+  linkedPO?: PurchaseOrder;
+  draftOverlay?: DraftPO;
+  lineItems: { item: string; itemCode: string }[];
+}): { etaDays: number; etaDateDisplay: string; maxLeadDays: number } {
+  const { today, poReleaseDateStr, request, linkedQuote, linkedPO, draftOverlay, lineItems } = opts;
+
+  const rawArr = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as Record<string, unknown>[]) : [];
+  const details = request.itemDetails ?? [];
+  const quoteLines = linkedQuote?.lines ?? [];
+
+  const leadForLineIndex = (idx: number): number | undefined => {
+    const line = lineItems[idx];
+    if (!line) return undefined;
+
+    const raw = rawArr[idx] as Record<string, unknown> | undefined;
+    const fromRaw = normalizeLeadTimeDays(raw?.lead_time_days ?? raw?.leadTimeDays);
+    if (fromRaw !== undefined) return fromRaw;
+
+    const dLine = draftOverlay?.lineItems?.find(
+      (l) =>
+        normItemKeyForLead(l.itemCode) === normItemKeyForLead(line.itemCode) ||
+        (!!line.item && normItemKeyForLead(l.item) === normItemKeyForLead(line.item)),
+    );
+    const fromDraft = normalizeLeadTimeDays(dLine?.leadTimeDays);
+    if (fromDraft !== undefined) return fromDraft;
+
+    const qLine =
+      quoteLines[idx] ??
+      quoteLines.find(
+        (l) =>
+          normItemKeyForLead(l.item ?? '') === normItemKeyForLead(line.item) ||
+          (!!l.itemId && normItemKeyForLead(String(l.itemId)) === normItemKeyForLead(line.itemCode)),
+      );
+    const fromQuoteLine = normalizeLeadTimeDays(qLine?.leadTimeDays);
+    if (fromQuoteLine !== undefined) return fromQuoteLine;
+
+    const fromQuoteHeader = normalizeLeadTimeDays(linkedQuote?.leadTimeDays);
+    if (fromQuoteHeader !== undefined) return fromQuoteHeader;
+
+    const det = details.find(
+      (d) =>
+        normItemKeyForLead(d.itemCode) === normItemKeyForLead(line.itemCode) ||
+        (!!line.item && normItemKeyForLead(d.itemName) === normItemKeyForLead(line.item)),
+    );
+    return normalizeLeadTimeDays(det?.leadTimeDays);
+  };
+
+  let maxLead = 0;
+  let anyLead = false;
+  for (let i = 0; i < lineItems.length; i++) {
+    const ld = leadForLineIndex(i);
+    if (ld !== undefined) {
+      anyLead = true;
+      if (ld > maxLead) maxLead = ld;
+    }
+  }
+
+  const anchor =
+    parseDateStringToLocalDate(poReleaseDateStr) ??
+    parseDateStringToLocalDate(request.createdDate) ??
+    parseDateStringToLocalDate(linkedPO?.date) ??
+    today;
+
+  let etaDate: Date | null = null;
+  if (anyLead && lineItems.length > 0) {
+    etaDate = new Date(anchor.getTime());
+    etaDate.setDate(etaDate.getDate() + maxLead);
+  } else {
+    etaDate =
+      parseDateStringToLocalDate(request.dueDate) ??
+      parseDateStringToLocalDate(linkedPO?.expectedShipmentDate) ??
+      parseDateStringToLocalDate(linkedPO?.date);
+  }
+
+  if (!etaDate) {
+    return { etaDays: 0, etaDateDisplay: '—', maxLeadDays: maxLead };
+  }
+
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+  const startEta = new Date(etaDate.getFullYear(), etaDate.getMonth(), etaDate.getDate(), 12, 0, 0, 0);
+  const etaDays = Math.ceil((startEta.getTime() - startToday.getTime()) / (1000 * 60 * 60 * 24));
+
+  return {
+    etaDays,
+    etaDateDisplay: formatDateEnInSafe(etaDate),
+    maxLeadDays: maxLead,
+  };
+}
+
+/**
+ * Single resolution order for draft PO line lead (days):
+ * PR line → matched quote line → Items List vendor rate (quote-line-defaults) → quote header → 0.
+ */
+export function resolveDraftLineLeadTimeDays(opts: {
+  prLine?: Pick<ProcurementRequestItem, 'lead_time_days'> | null;
+  quoteLineLead?: number | null;
+  itemsListLead?: number | null;
+  quoteHeaderLead?: number | null;
+}): number {
+  const fromPr = normalizeLeadTimeDays(opts.prLine?.lead_time_days);
+  if (fromPr !== undefined) return fromPr;
+  const fromQuoteLine = normalizeLeadTimeDays(opts.quoteLineLead);
+  if (fromQuoteLine !== undefined) return fromQuoteLine;
+  const fromItemsList = normalizeLeadTimeDays(opts.itemsListLead);
+  if (fromItemsList !== undefined) return fromItemsList;
+  const fromHeader = normalizeLeadTimeDays(opts.quoteHeaderLead);
+  if (fromHeader !== undefined) return fromHeader;
+  return 0;
+}
+
+function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number | null } {
   const raw = String(lineNotes ?? '');
   let plannedPrice = 0;
-  let leadTimeDays = 0;
+  let leadTimeDays: number | null = null;
   const rateMatch =
     raw.match(/Planned rate\s*[₹]?\s*([\d.,]+)/i) || raw.match(/[₹]\s*([\d.,]+)/);
   if (rateMatch) {
@@ -70,8 +233,79 @@ function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: n
     if (Number.isFinite(n)) plannedPrice = n;
   }
   const leadMatch = raw.match(/Lead:\s*(\d+)\s*d/i);
-  if (leadMatch) leadTimeDays = Number(leadMatch[1]) || 0;
+  if (leadMatch) {
+    const n = Number(leadMatch[1]);
+    leadTimeDays = Number.isFinite(n) && n >= 0 ? n : null;
+  }
   return { plannedPrice, leadTimeDays };
+}
+
+function normVendorKey(s: string): string {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * When API line has no lead, resolve from Items List price-list page (same source as Planning vendor slabs).
+ * Uses preferred vendor, then quote vendor as fallback (card often shows quote vendor when PR pref is empty).
+ */
+export function fillItemLeadFromPriceListPages(
+  req: ProcurementRequest,
+  itemsListRm: PriceListItemPage[],
+  itemsListPm: PriceListItemPage[],
+  quoteVendorFallback?: string | null
+): ProcurementRequest {
+  const prefRaw =
+    String(req.preferredVendor ?? '').trim() || String(quoteVendorFallback ?? '').trim();
+  const prefN = prefRaw ? normVendorKey(prefRaw) : '';
+
+  const leadFromRate = (rate: { lead_time_days?: number | null }): number | undefined => {
+    const lead = rate.lead_time_days;
+    if (lead == null || lead === '') return undefined;
+    const n = Number(lead);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+
+  const resolveFromList = (d: ItemDetail): number | undefined => {
+    const lineType = d.type ?? (d.pack_material_id != null ? 'PM' : 'RM');
+    const source = lineType === 'PM' ? itemsListPm : itemsListRm;
+    const matched = source.find((row) => {
+      if (lineType === 'PM' && d.pack_material_id != null && Number(d.pack_material_id) > 0) {
+        return Number(row.pack_material_id) === Number(d.pack_material_id);
+      }
+      if (lineType === 'RM' && d.raw_material_id != null && Number(d.raw_material_id) > 0) {
+        return Number(row.raw_material_id) === Number(d.raw_material_id);
+      }
+      return false;
+    });
+    if (!matched?.vendorRates?.length) return undefined;
+    if (prefN) {
+      for (const rate of matched.vendorRates) {
+        const vn = normVendorKey(String(rate.vendor_name ?? ''));
+        if (!vn) continue;
+        if (vn === prefN || vn.includes(prefN) || prefN.includes(vn)) {
+          const ld = leadFromRate(rate);
+          if (ld !== undefined) return ld;
+        }
+      }
+    }
+    for (const rate of matched.vendorRates) {
+      const ld = leadFromRate(rate);
+      if (ld !== undefined) return ld;
+    }
+    return undefined;
+  };
+
+  const itemDetails = (req.itemDetails ?? []).map((d) => {
+    if (d.leadTimeDays !== undefined) return d;
+    const filled = resolveFromList(d);
+    if (filled === undefined) return d;
+    return { ...d, leadTimeDays: filled };
+  });
+
+  return { ...req, itemDetails };
 }
 
 /** Backend procurement request (from /api/v1/procurement) -> ProcurementRequest */
@@ -104,7 +338,8 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     dueDate: pr.requiredByDate ?? '',
     createdDate: pr.createdAt ?? '',
     requestedBy: pr.requestedBy ?? undefined,
-    preferredVendor: pr.preferredVendor ?? undefined,
+    preferredVendor:
+      (pr as { preferred_vendor?: string | null }).preferred_vendor ?? pr.preferredVendor ?? undefined,
     batchId: pr.planningBatchId != null ? String(pr.planningBatchId) : undefined,
     notes: pr.notes ?? null,
     planningSoNumber: pr.planningSoNumber ?? null,
@@ -125,18 +360,31 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
         pack_material_id?: number;
         type?: string;
       }) => {
-        const parsed = parsePlannedLineNotes(i?.line_notes);
+        const notes = i?.line_notes ?? (i as { lineNotes?: string }).lineNotes;
+        const parsed = parsePlannedLineNotes(notes);
         const fieldRate = Number(i?.planned_unit_price);
         const plannedPrice =
           Number.isFinite(fieldRate) && fieldRate > 0 ? fieldRate : parsed.plannedPrice;
-        const fieldLead = Number(i?.lead_time_days);
-        const leadTimeDays =
-          Number.isFinite(fieldLead) && fieldLead > 0 ? fieldLead : parsed.leadTimeDays;
+        const rawLead = i?.lead_time_days;
+        const fieldLead =
+          rawLead !== null && rawLead !== undefined && rawLead !== ''
+            ? Number(rawLead)
+            : NaN;
+        const leadTimeDays: number | undefined = Number.isFinite(fieldLead) && fieldLead >= 0
+          ? fieldLead
+          : parsed.leadTimeDays !== null && parsed.leadTimeDays !== undefined
+            ? parsed.leadTimeDays
+            : undefined;
         const moqMin = i?.moq_min != null ? Number(i.moq_min) : NaN;
         const moqStr = Number.isFinite(moqMin) && moqMin > 0 ? String(moqMin) : '';
         const reqQty = parseQuantityRequested(i?.quantity_requested);
+        const pmIdForType = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
         const lineType: ItemDetail['type'] =
-          i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM';
+          i?.type === 'PM' || (Number.isFinite(pmIdForType) && pmIdForType > 0)
+            ? 'PM'
+            : i?.type === 'FG'
+              ? 'FG'
+              : 'RM';
         return {
           itemCode: i?.code ?? '',
           itemName: i?.name ?? '',
@@ -183,7 +431,10 @@ export function mapBackendQuotationToQuote(
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
-      leadTimeDays: Number.isFinite(leadTimeDays) && (leadTimeDays as number) > 0 ? (leadTimeDays as number) : undefined,
+      leadTimeDays:
+        Number.isFinite(leadTimeDays) && (leadTimeDays as number) >= 0
+          ? (leadTimeDays as number)
+          : undefined,
       raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
       pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
     };
@@ -292,11 +543,13 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
         const codeFromApi = String(i.itemCode ?? i.code ?? '').trim();
+        const leadParsed = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
         return {
           item: i.itemName || i.name || String(items[idx] ?? ''),
           itemCode: codeFromApi || `EI-${type}-${String(idx + 1).padStart(3, '0')}`,
           type,
           qty: String(i.quantity ?? qty),
+          ...(leadParsed !== undefined ? { leadTimeDays: leadParsed } : {}),
           pricePerUnit: rate,
           gstPercent: gstPct,
           gstAmount,
@@ -465,14 +718,91 @@ export function draftLineItemsToPurchaseOrderItems(
         : [];
   return lines.map((l, idx) => {
     const src = assigned[idx];
+    const ld = normalizeLeadTimeDays(l.leadTimeDays);
     return {
       itemName: l.item,
       itemCode: l.itemCode,
       quantity: l.qty,
       rate: String(l.pricePerUnit),
       tax: String(l.gstPercent || 18),
+      ...(ld !== undefined ? { lead_time_days: ld } : {}),
       ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
       ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
     };
   });
+}
+
+/** Match a release line edit row to a backend procurement item line. */
+export function releaseEditMatchesBackendPrItem(
+  ed: {
+    itemName?: string;
+    itemCode?: string;
+    raw_material_id?: number;
+    pack_material_id?: number;
+    type?: string;
+  },
+  bi: ProcurementRequestItem
+): boolean {
+  const rmB = bi.raw_material_id != null ? Number(bi.raw_material_id) : NaN;
+  const pmB = bi.pack_material_id != null ? Number(bi.pack_material_id) : NaN;
+  const rmE = ed.raw_material_id != null ? Number(ed.raw_material_id) : NaN;
+  const pmE = ed.pack_material_id != null ? Number(ed.pack_material_id) : NaN;
+  if (Number.isFinite(rmB) && rmB > 0 && Number.isFinite(rmE) && rmE > 0) return rmB === rmE;
+  if (Number.isFinite(pmB) && pmB > 0 && Number.isFinite(pmE) && pmE > 0) return pmB === pmE;
+  const cB = String(bi.code ?? '').trim().toLowerCase();
+  const nB = String(bi.name ?? '').trim().toLowerCase();
+  const cE = String(ed.itemCode ?? '').trim().toLowerCase();
+  const nE = String(ed.itemName ?? '').trim().toLowerCase();
+  if (cE.length > 0 && cB.length > 0 && cE === cB) return true;
+  if (nE.length > 0 && nB.length > 0 && (nE === nB || nE.includes(nB) || nB.includes(nE))) return true;
+  return false;
+}
+
+export type ReleaseLineEditRow = {
+  itemName: string;
+  itemCode: string;
+  type: RequestType;
+  qty: number;
+  originalQty: number;
+  unit: string;
+  moq: number;
+  unitPrice: number;
+  leadDays: number;
+  raw_material_id?: number;
+  pack_material_id?: number;
+};
+
+/**
+ * After creating a draft PO for a subset of qty, reduce open quantities on the procurement request.
+ * Lines not included in `linesForCreate` keep their previous open qty.
+ */
+export function mergeBackendPrItemsAfterPartialRelease(
+  backendItems: ProcurementRequestItem[],
+  lineEdits: ReleaseLineEditRow[],
+  linesForCreate: ReleaseLineEditRow[]
+): ProcurementRequestItem[] {
+  const out: ProcurementRequestItem[] = [];
+  for (const bi of backendItems) {
+    const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
+    const orig = parseQuantityRequested(bi.quantity_requested);
+    if (!edit) {
+      out.push({ ...bi });
+      continue;
+    }
+    const onThisPo = linesForCreate.some((c) => releaseEditMatchesBackendPrItem(c, bi));
+    const releaseQty = onThisPo ? Math.min(Math.max(0, edit.qty), orig) : 0;
+    const remaining = Math.max(0, orig - releaseQty);
+    if (remaining <= 0) {
+      continue;
+    }
+    const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
+    const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
+    const partialFlag = lineMoq > 0 && remaining < lineMoq;
+    out.push({
+      ...bi,
+      quantity_requested: remaining,
+      ...(partialFlag ? { partial_release_remainder: true } : {}),
+    });
+  }
+  return out;
 }

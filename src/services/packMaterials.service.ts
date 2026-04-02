@@ -181,6 +181,30 @@ export interface CreatePackMaterialPayload {
   pkgAssociateItems?: string | null;
   pkg_associate_items?: string | null;
   form_data?: Record<string, unknown> | null;
+  /** When completing a draft created via syncPmZoho */
+  pack_material_id?: number | string | null;
+  draft_pack_material_id?: number | string | null;
+}
+
+export interface PmZohoSyncResponse {
+  pack_material_id: number;
+  zoho_id: string | null;
+  zoho_sync:
+    | { synced: true }
+    | { synced: false; skipped?: boolean; resolvedWithoutZoho?: boolean; reason?: string; error?: string };
+}
+
+/** Draft PM + Zoho item (wizard before full submit). POST /api/v1/pack-materials/zoho-sync */
+export async function syncPmZoho(
+  payload: CreatePackMaterialPayload | Record<string, unknown>
+): Promise<{ data: PmZohoSyncResponse | null; error: string | null; success: boolean }> {
+  try {
+    const data = await api.post<PmZohoSyncResponse>('/api/v1/pack-materials/zoho-sync', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Zoho sync failed';
+    return { data: null, error: message, success: false };
+  }
 }
 
 /**

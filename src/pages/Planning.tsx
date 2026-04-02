@@ -248,6 +248,43 @@ interface SalesOrder {
   customBatches?: { sizeKg: number }[] | null;
 }
 
+/** PIs Extracted: row background tier from RM/PM startable batch counts vs total batches. */
+type PisAvailabilityTier = 'loading' | 'unknown' | 'full' | 'partial' | 'none';
+
+function getPisAvailabilityTier(
+  item: SoPlanningAvailabilityItem | null | undefined,
+  loading: boolean
+): PisAvailabilityTier {
+  if (loading && !item) return 'loading';
+  if (!item) return 'unknown';
+  const tb = Number(item.totalBatches) || 0;
+  if (tb <= 0) return 'unknown';
+  const rm = Number(item.rmStartableCount) || 0;
+  const pm = Number(item.pmStartableCount) || 0;
+  if (rm >= tb && pm >= tb) return 'full';
+  if (rm === 0 && pm === 0) return 'none';
+  return 'partial';
+}
+
+function pisAvailabilityRowClass(tier: PisAvailabilityTier): string {
+  const base =
+    'border-b border-gray-100/80 cursor-pointer transition-all duration-200 ease-out';
+  switch (tier) {
+    case 'loading':
+      return `${base} bg-slate-50/95 border-l-[3px] border-l-slate-400 hover:bg-slate-100/95 hover:shadow-md`;
+    case 'unknown':
+      return `${base} bg-gray-50/95 border-l-[3px] border-l-gray-400 hover:bg-gray-100/95 hover:shadow-md`;
+    case 'full':
+      return `${base} bg-emerald-50/95 border-l-[4px] border-l-emerald-500 hover:bg-emerald-100/90 hover:shadow-[0_2px_12px_-2px_rgba(16,185,129,0.35)]`;
+    case 'partial':
+      return `${base} bg-amber-50/95 border-l-[4px] border-l-amber-500 hover:bg-amber-100/90 hover:shadow-[0_2px_12px_-2px_rgba(245,158,11,0.4)]`;
+    case 'none':
+      return `${base} bg-rose-50/95 border-l-[4px] border-l-rose-500 hover:bg-rose-100/90 hover:shadow-[0_2px_12px_-2px_rgba(244,63,94,0.38)]`;
+    default:
+      return `${base} hover:bg-gray-50`;
+  }
+}
+
 /** Map API row to SalesOrder shape for Plan Batches / Raise PR modals */
 function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
   return {
@@ -294,6 +331,108 @@ interface BatchDetailRowForPr {
   pack_material_id?: number;
 }
 
+/** One row on /planning/batches: edit batch code + size (kg); click elsewhere opens detail. */
+function PlanningBatchTableRow({
+  row,
+  onOpenDetail,
+}: {
+  row: PlanningBatchAllRow;
+  onOpenDetail: (row: PlanningBatchAllRow) => void;
+}) {
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
+  const [batchCode, setBatchCode] = useState(row.batchCode ?? '');
+  const [sizeKgStr, setSizeKgStr] = useState(row.sizeKg != null ? String(row.sizeKg) : '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setBatchCode(row.batchCode ?? '');
+    setSizeKgStr(row.sizeKg != null ? String(row.sizeKg) : '');
+  }, [row.id, row.batchCode, row.sizeKg]);
+
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const bc = batchCode.trim();
+    if (!bc) {
+      addToast('error', 'Batch code is required');
+      return;
+    }
+    const sizeNum = parseFloat(String(sizeKgStr).replace(/,/g, '').trim());
+    if (!Number.isFinite(sizeNum) || sizeNum < 0) {
+      addToast('error', 'Enter a valid size (kg)');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await updatePlanningBatch(String(row.planningExtractedId), row.id, {
+        sizeKg: sizeNum,
+        batchCode: bc,
+      });
+      if (updated) {
+        addToast('success', 'Batch saved');
+        await queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+      } else {
+        addToast('error', 'Could not save batch');
+      }
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Could not save batch');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+    if ((e.target as HTMLElement).closest('input,button,textarea,select')) return;
+    onOpenDetail(row);
+  };
+
+  return (
+    <tr
+      onClick={handleRowClick}
+      className="border-b border-gray-100 hover:bg-emerald-50/80 cursor-pointer transition-colors"
+    >
+      <td className="px-4 py-2 align-middle" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="text"
+          value={batchCode}
+          onChange={(e) => setBatchCode(e.target.value)}
+          className="w-full min-w-[7rem] max-w-[10rem] border border-gray-300 rounded-md px-2 py-1 text-sm font-mono text-gray-900"
+          placeholder="Batch code"
+          aria-label="Batch code"
+        />
+      </td>
+      <td className="px-4 py-3 text-gray-700">{row.soNumber ?? '—'}</td>
+      <td className="px-4 py-3 text-gray-700">{row.customerName ?? '—'}</td>
+      <td className="px-4 py-3 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
+      <td className="px-4 py-2 align-middle text-right" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={sizeKgStr}
+          onChange={(e) => setSizeKgStr(e.target.value)}
+          className="w-24 border border-gray-300 rounded-md px-2 py-1 text-sm font-mono text-right text-gray-900"
+          aria-label="Size kg"
+        />
+      </td>
+      <td className="px-4 py-3 text-gray-600">{row.dueDate ?? '—'}</td>
+      <td className="px-4 py-3 text-center">
+        {row.sent ? <span className="text-emerald-600 font-medium">Yes</span> : <span className="text-gray-400">No</span>}
+      </td>
+      <td className="px-4 py-2 align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
 /** Batches tab: list all planning batches. Row click → batch detail popup (items, stock, PR per shortfall). */
 function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatchAllRow) => void }) {
   const { data: allBatches = [], isLoading } = useQuery({
@@ -313,41 +452,26 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Batches sent to production. Click a row to view items, available stock, and raise PR for shortfalls. Only batches you have sent from Plan Batches appear here.
+        Batches sent to production. Edit batch code and size (kg), then Save. Click a row (outside fields) to view items, stock, and raise PR for shortfalls.
       </p>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch code</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">SO</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">Size (kg)</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
                 <th className="px-4 py-3 text-center font-semibold text-gray-700">Sent</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">BOM status</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 w-[1%]"> </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr
-                  key={`${row.planningExtractedId}-${row.id}`}
-                  onClick={() => onBatchClick(row)}
-                  className="border-b border-gray-100 hover:bg-emerald-50/80 cursor-pointer transition-colors"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.batchCode ?? `PE-${row.planningExtractedId}-B${row.sequence}`}</td>
-                  <td className="px-4 py-3 text-gray-700">{row.soNumber ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-700">{row.customerName ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
-                  <td className="px-4 py-3 text-right font-mono text-gray-700">{row.sizeKg != null ? Number(row.sizeKg) : '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{row.dueDate ?? '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    {row.sent ? <span className="text-emerald-600 font-medium">Yes</span> : <span className="text-gray-400">No</span>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{row.bomStatus ?? '—'}</td>
-                </tr>
+                <PlanningBatchTableRow key={`${row.planningExtractedId}-${row.id}`} row={row} onOpenDetail={onBatchClick} />
               ))}
             </tbody>
           </table>
@@ -2778,14 +2902,13 @@ const Planning = () => {
             )}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[1100px]">
+                <table className="w-full text-sm min-w-[960px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">SO No</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Units</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Availability</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Internal Progress</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer Status</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">MFG Records</th>
@@ -2794,22 +2917,6 @@ const Planning = () => {
                   </thead>
                   <tbody>
                     {filteredPisOrders.map((order) => {
-                      const createdCount = typeof order.batchCount === 'number' ? order.batchCount : 0;
-                      const requiredCount = Math.max(0, Number(order.batchesRequired ?? 0));
-                      const sentCount = (order.sentBatchIndices ?? []).length;
-                      // Internal progress metric:
-                      // - FG ready in SO (Production Ready) => 100%
-                      // - Sent to production (Production Released / sent batches exist) => 50%
-                      // - Batch created (has saved batches but not sent yet) => 25%
-                      // - Planned/none => 0%
-                      const isFgReady = order.bomStatus === 'Production Ready';
-                      const isSentToProduction = sentCount > 0 || order.bomStatus === 'Production Released';
-                      const isBatchesCreated = createdCount > 0;
-                      const internalProgressPct = isFgReady ? 100 : isSentToProduction ? 50 : isBatchesCreated ? 25 : 0;
-
-                      // For the helper text only (sent x/y), still keep the fraction.
-                      const sentPct = requiredCount > 0 ? Math.max(0, Math.min(100, Math.round((sentCount / requiredCount) * 100))) : 0;
-
                       const todayISO = new Date().toISOString().slice(0, 10);
                       const dueToday = order.dueDate === todayISO;
                       const orderDateDisplay = (() => {
@@ -2825,14 +2932,6 @@ const Planning = () => {
 
                       const dueTagBg = dueToday ? 'bg-red-100 text-red-700 border-red-200' : 'bg-amber-100 text-amber-800 border-amber-200';
 
-                      const internalTag = createdCount <= 0
-                        ? { text: 'Planned', dot: 'bg-red-500', badge: 'bg-gray-100 text-gray-700 border-gray-200' }
-                        : sentCount <= 0
-                          ? order.bomStatus === 'Production Ready'
-                            ? { text: 'Approved', dot: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-200' }
-                            : { text: 'Batch Created', dot: 'bg-green-500', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
-                          : { text: 'In Production', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200' };
-
                       const customerTag = order.bomStatus === 'Planned'
                         ? { text: 'Planned', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700 border-gray-200' }
                         : order.bomStatus === 'In Progress'
@@ -2845,11 +2944,21 @@ const Planning = () => {
                       const bmrCount = prodForSo.filter((b) => (b.bmrNo ?? '').toString().trim() !== '').length;
                       const bprCount = prodForSo.filter((b) => (b.bprNo ?? '').toString().trim() !== '').length;
 
+                      const res =
+                        planningAvailabilityBySoNo[order.soNumber] ??
+                        planningAvailabilityBySoNo[normalizeSoKey(order.soNumber)];
+                      const availItems = res?.items ?? [];
+                      const availabilityItem: SoPlanningAvailabilityItem | null =
+                        availItems.find((it) => String(it.sku || '').trim() === String(order.productCode || '').trim()) ??
+                        availItems.find((it) => String(it.productName || '').trim() === String(order.productName || '').trim()) ??
+                        (availItems.length === 1 ? availItems[0] : null);
+                      const availabilityTier = getPisAvailabilityTier(availabilityItem, planningAvailabilityLoading);
+
                       return (
                         <tr
                           key={order.id}
                           onClick={() => openDetailModal(order)}
-                          className="border-b border-gray-100 hover:bg-emerald-50/60 cursor-pointer transition-colors"
+                          className={pisAvailabilityRowClass(availabilityTier)}
                         >
                           <td className="px-4 py-3">
                             <div className="font-mono font-semibold text-gray-900">{order.soNumber}</div>
@@ -2865,58 +2974,24 @@ const Planning = () => {
                             <div className="text-xs text-gray-500">{order.totalKg} total</div>
                           </td>
                           <td className="px-4 py-3">
-                            {(() => {
-                              const res =
-                                planningAvailabilityBySoNo[order.soNumber] ??
-                                planningAvailabilityBySoNo[normalizeSoKey(order.soNumber)];
-                              const items = res?.items ?? [];
-                              const item: SoPlanningAvailabilityItem | null =
-                                items.find((it) => String(it.sku || '').trim() === String(order.productCode || '').trim()) ??
-                                items.find((it) => String(it.productName || '').trim() === String(order.productName || '').trim()) ??
-                                (items.length === 1 ? items[0] : null);
-                              if (planningAvailabilityLoading && !item) {
-                                return <span className="text-xs text-gray-400">Loading…</span>;
-                              }
-                              if (!item) {
-                                return <span className="text-xs text-gray-400">—</span>;
-                              }
-                              return (
-                                <div className="text-xs text-gray-700 leading-relaxed">
-                                  <div>
-                                    <span className="font-semibold text-teal-700">RM</span>{' '}
-                                    {item.rmStartedCount}/{item.rmStartableCount} started ·{' '}
-                                    {item.rmStartableCount}/{item.totalBatches} available
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-orange-700">PM</span>{' '}
-                                    {item.pmStartedCount}/{item.pmStartableCount} started ·{' '}
-                                    {item.pmStartableCount}/{item.totalBatches} available
-                                  </div>
+                            {planningAvailabilityLoading && !availabilityItem ? (
+                              <span className="text-xs text-gray-400">Loading…</span>
+                            ) : !availabilityItem ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : (
+                              <div className="text-xs text-gray-700 leading-relaxed">
+                                <div>
+                                  <span className="font-semibold text-teal-700">RM</span>{' '}
+                                  {availabilityItem.rmStartedCount}/{availabilityItem.rmStartableCount} started ·{' '}
+                                  {availabilityItem.rmStartableCount}/{availabilityItem.totalBatches} available
                                 </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[80px]">
-                                <div
-                                  className={`h-2 rounded-full ${internalProgressPct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                                  style={{ width: `${internalProgressPct}%` }}
-                                />
+                                <div>
+                                  <span className="font-semibold text-orange-700">PM</span>{' '}
+                                  {availabilityItem.pmStartedCount}/{availabilityItem.pmStartableCount} started ·{' '}
+                                  {availabilityItem.pmStartableCount}/{availabilityItem.totalBatches} available
+                                </div>
                               </div>
-                              <span className="text-xs text-gray-600 whitespace-nowrap">{internalProgressPct}%</span>
-                            </div>
-                            <div className="mt-2 flex items-center gap-2">
-                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${internalTag.badge}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${internalTag.dot}`} />
-                                {internalTag.text}
-                              </span>
-                              {requiredCount > 0 && createdCount > 0 && (
-                                <span className="text-xs text-gray-500 whitespace-nowrap">
-                                  {sentCount}/{createdCount} sent ({sentPct}%)
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${customerTag.badge}`}>
@@ -4051,71 +4126,73 @@ const Planning = () => {
 
             {/* Modal Body */}
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-              {/* Batch selector: dropdown + Add batch (batch-first; each batch has its own BOM) */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</span>
-                <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
-                  <select
-                    value={selectedBatchId != null ? String(selectedBatchId) : ''}
-                    onChange={(e) => {
-                      const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
-                      setSelectedBatchId(Number.isNaN(v) ? null : v);
-                    }}
-                    className="min-w-[120px] px-3 py-2 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
-                  >
-                    {planningBatches.length === 0 && (
-                      <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
-                    )}
-                    {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
-                      <option key={b.id} value={String(b.id)}>
-                        {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
-                      </option>
-                    ))}
-                    {selectedBatchId != null &&
-                      !(planningBatches as PlanningBatchRow[]).some(
-                        (b) => Number(b.id) === Number(selectedBatchId)
-                      ) && (
-                      <option value={String(selectedBatchId)}>Loading...</option>
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                    onClick={async () => {
-                      if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
-                        addToast('error', 'Send the latest batch to production before adding another.');
-                        return;
-                      }
-                      try {
-                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
-                        if (newBatch) {
-                          mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
-                          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                          setSelectedBatchId(Number(newBatch.id));
-                          addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
-                        } else {
-                          addToast('error', 'Failed to add batch');
+              {/* Batch selector lives next to Feasibility preview qty; on other tabs show it here */}
+              {activeBatchTab !== 'feasibility' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</span>
+                  <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
+                    <select
+                      value={selectedBatchId != null ? String(selectedBatchId) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        setSelectedBatchId(Number.isNaN(v) ? null : v);
+                      }}
+                      className="min-w-[120px] px-3 py-2 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
+                    >
+                      {planningBatches.length === 0 && (
+                        <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
+                      )}
+                      {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
+                        <option key={b.id} value={String(b.id)}>
+                          {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
+                        </option>
+                      ))}
+                      {selectedBatchId != null &&
+                        !(planningBatches as PlanningBatchRow[]).some(
+                          (b) => Number(b.id) === Number(selectedBatchId)
+                        ) && (
+                        <option value={String(selectedBatchId)}>Loading...</option>
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                      onClick={async () => {
+                        if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                          addToast('error', 'Send the latest batch to production before adding another.');
+                          return;
                         }
-                      } catch (e) {
-                        addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
+                        try {
+                          const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                          if (newBatch) {
+                            mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                            queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                            setSelectedBatchId(Number(newBatch.id));
+                            addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
+                          } else {
+                            addToast('error', 'Failed to add batch');
+                          }
+                        } catch (e) {
+                          addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
+                        }
+                      }}
+                      className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      title={
+                        planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                          ? 'Send the latest batch to production before adding another'
+                          : 'Add new batch (BOM from product master)'
                       }
-                    }}
-                    className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                    title={
-                      planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                        ? 'Send the latest batch to production before adding another'
-                        : 'Add new batch (BOM from product master)'
-                    }
-                  >
-                    + Add
-                  </button>
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {selectedBatchId != null && (
+                    <span className="text-xs text-gray-500">
+                      Editing BOM for this batch only. Confirm BOM saves to this batch.
+                    </span>
+                  )}
                 </div>
-                {selectedBatchId != null && (
-                  <span className="text-xs text-gray-500">
-                    Editing BOM for this batch only. Confirm BOM saves to this batch.
-                  </span>
-                )}
-              </div>
+              )}
 
               {/* Tabs */}
               {/* Tab order: BOM work first (Feasibility, BOM Editor, Swap/Add), then Batch Plan after BOM is confirmed */}
@@ -4217,27 +4294,88 @@ const Planning = () => {
                     </div>
                   </div>
 
-                  {/* Order summary + Preview qty */}
+                  {/* Preview qty + planning batch selector (same stock math context) */}
                   <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
-                    {/* <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2">
-                      <p className="text-xs font-semibold text-cyan-900">
-                        Order: {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg} · Batch KG: {selectedSOForBatch.batchSize} · {selectedSOForBatch.batchesRequired} batches required
-                      </p>
-                    </div> */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={feasibilityPreviewQty || ''}
-                        onChange={(e) => {
-                          const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
-                          setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
-                        }}
-                        className="w-24 border border-gray-300 bg-white text-gray-900 px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                      <span className="text-[11px] font-semibold text-gray-500">units</span>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={feasibilityPreviewQty || ''}
+                          onChange={(e) => {
+                            const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
+                            setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
+                          }}
+                          className="w-24 border border-gray-300 bg-white text-gray-900 px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] font-semibold text-gray-500">units</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap border-l border-gray-200 pl-4">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Planning batch</span>
+                        <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
+                          <select
+                            value={selectedBatchId != null ? String(selectedBatchId) : ''}
+                            onChange={(e) => {
+                              const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                              setSelectedBatchId(Number.isNaN(v) ? null : v);
+                            }}
+                            className="min-w-[120px] px-3 py-1.5 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
+                          >
+                            {planningBatches.length === 0 && (
+                              <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
+                            )}
+                            {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
+                              <option key={b.id} value={String(b.id)}>
+                                {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
+                              </option>
+                            ))}
+                            {selectedBatchId != null &&
+                              !(planningBatches as PlanningBatchRow[]).some(
+                                (b) => Number(b.id) === Number(selectedBatchId)
+                              ) && (
+                              <option value={String(selectedBatchId)}>Loading...</option>
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                            onClick={async () => {
+                              if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                                addToast('error', 'Send the latest batch to production before adding another.');
+                                return;
+                              }
+                              try {
+                                const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                                if (newBatch) {
+                                  mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                                  queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                                  setSelectedBatchId(Number(newBatch.id));
+                                  addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
+                                } else {
+                                  addToast('error', 'Failed to add batch');
+                                }
+                              } catch (e) {
+                                addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
+                              }
+                            }}
+                            className="px-2 py-1.5 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                            title={
+                              planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                                ? 'Send the latest batch to production before adding another'
+                                : 'Add planning batch (BOM from product master)'
+                            }
+                          >
+                            + Add batch
+                          </button>
+                        </div>
+                      </div>
                     </div>
+                    {selectedBatchId != null && (
+                      <span className="text-[11px] text-gray-500 max-w-[220px]">
+                        BOM Editor / Swap use this batch. Batch Plan allocates units across batches below.
+                      </span>
+                    )}
                   </div>
 
                   {/* BOM / Material Status — RM & PM tables driven by preview qty */}
@@ -4455,45 +4593,42 @@ const Planning = () => {
                       {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated.</p>}
                     </div>
 
-                    {/* Custom batch list */}
+                    {/* Custom batch list — add planning batches from Feasibility (next to Preview qty) or the batch bar above */}
                     <div>
-                      <div className="flex items-center justify-between mb-4">
+                      <div className="mb-4">
                         <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                            onClick={() => addBatch()}
-                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-100"
-                            title={
-                              planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                                ? 'Send the latest batch to production first'
-                                : undefined
-                            }
-                          >
-                            + Add Batch
-                          </button>
-                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Add planning batches from the <strong>Feasibility</strong> tab (next to Preview qty), or use the batch dropdown + Add above when not on Feasibility.
+                        </p>
                       </div>
 
                       {customBatches.length === 0 && (
                         <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                          <p className="text-sm text-gray-500">No batches defined. Click "+ Add Batch" to split the SO quantity.</p>
-                          {orderQtyNum > 0 && (
+                          <p className="text-sm text-gray-600">No unit split yet. Add a planning batch first, then allocate units per row below.</p>
+                          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                             <button
                               type="button"
-                              disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                              onClick={() => addBatch()}
-                              className="mt-3 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={
-                                planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                                  ? 'Send the latest batch to production first'
-                                  : undefined
-                              }
+                              onClick={() => setActiveBatchTab('feasibility')}
+                              className="px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700"
                             >
-                              Create single batch ({orderQtyNum.toLocaleString()} units)
+                              Open Feasibility (add batch)
                             </button>
-                          )}
+                            {orderQtyNum > 0 && (
+                              <button
+                                type="button"
+                                disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                                onClick={() => addBatch()}
+                                className="px-4 py-2 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={
+                                  planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                                    ? 'Send the latest batch to production first'
+                                    : undefined
+                                }
+                              >
+                                Create single batch ({orderQtyNum.toLocaleString()} units)
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
 

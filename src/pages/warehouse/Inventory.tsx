@@ -830,53 +830,32 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   );
 };
 
-/** Cell that shows stock value; hover or click shows where in warehouse (location/racks) */
+/** Cell that shows stock value; click opens where in warehouse (location/racks) */
 function StockLocationCell({
   item,
   type,
   value,
   className,
   onShowLocations,
-  onHoverLeave,
 }: {
   item: InventoryItem;
   type: 'wh' | 'ml1' | 'ml2';
   value: string;
   className: string;
   onShowLocations: (item: InventoryItem, type: 'wh' | 'ml1' | 'ml2') => void;
-  onHoverLeave?: () => void;
 }) {
   const canShow = item.warehouseInventoryId != null;
-  const hoverOpenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleMouseEnter = () => {
-    if (!canShow) return;
-    hoverOpenRef.current = setTimeout(() => onShowLocations(item, type), 400);
-  };
-  const handleMouseLeave = () => {
-    if (hoverOpenRef.current) {
-      clearTimeout(hoverOpenRef.current);
-      hoverOpenRef.current = null;
-    }
-    onHoverLeave?.();
-  };
 
   return (
     <button
       type="button"
       className={className}
-      title={canShow ? 'Hover or click to see location / racks' : undefined}
+      title={canShow ? 'Click to see location / racks' : undefined}
       disabled={!canShow}
       onClick={(e) => {
         e.stopPropagation();
-        if (hoverOpenRef.current) {
-          clearTimeout(hoverOpenRef.current);
-          hoverOpenRef.current = null;
-        }
         if (canShow) onShowLocations(item, type);
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <span className="font-semibold text-sm">{value}</span>
     </button>
@@ -969,20 +948,7 @@ const WarehouseInventory = () => {
   const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { totalRequired: number; unit: string }>>(
     () => new Map()
   );
-  const hoverCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const scheduleLocationPopoverClose = () => {
-    if (hoverCloseTimeoutRef.current) clearTimeout(hoverCloseTimeoutRef.current);
-    hoverCloseTimeoutRef.current = setTimeout(() => setLocationPopover(null), 200);
-  };
-  const cancelLocationPopoverClose = () => {
-    if (hoverCloseTimeoutRef.current) {
-      clearTimeout(hoverCloseTimeoutRef.current);
-      hoverCloseTimeoutRef.current = null;
-    }
-  };
-
-  // Fetch rack locations when user opens WH/ML1/ML2 location popover
+  // Fetch rack locations when user opens WH/ML1/ML2 location popover (click)
   useEffect(() => {
     if (!locationPopover || locationPopover.item.warehouseInventoryId == null) {
       setRackLocations([]);
@@ -1712,9 +1678,8 @@ const WarehouseInventory = () => {
                               item={item}
                               type="wh"
                               value={`${item.whStock} ${item.whUnit}`}
-                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer hover:ring-2 hover:ring-teal-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1722,9 +1687,8 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml1"
                               value={String(item.ml1Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer hover:ring-2 hover:ring-blue-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1732,9 +1696,8 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml2"
                               value={String(item.ml2Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer hover:ring-2 hover:ring-indigo-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3">
@@ -1914,7 +1877,7 @@ const WarehouseInventory = () => {
         )}
       </div>
 
-      {/* Location / Rack popover (WH stock & MUs) — opens on hover or click */}
+      {/* Location / Rack popover (WH stock & MUs) — opens on click */}
       {locationPopover && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/30"
@@ -1924,8 +1887,6 @@ const WarehouseInventory = () => {
           <div
             className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-sm w-full mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
-            onMouseEnter={cancelLocationPopoverClose}
-            onMouseLeave={scheduleLocationPopoverClose}
             role="dialog"
             aria-label="Where in warehouse — location and racks"
           >

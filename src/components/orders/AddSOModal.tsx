@@ -4,22 +4,19 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Loader2 } from 'lucide-react';
 
 /** Default calendar days from order date to due date (business rule). */
 const LEAD_DAYS_PRODUCT = 45;
 const LEAD_DAYS_CUSTOMISATION = 90;
-import { Plus, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { AddSOModalProps } from '../../types/orderFulfillment';
 import { getTodayISO, addDays } from '../../utils/orderFulfillmentUtils';
 import {
-  PAYMENT_TERMS_TYPE_OPTIONS,
-  formatPaymentTermsString,
-  parsePaymentTermsString,
-  paymentTermsTypeRequiresAdvancePercent,
-  validateAdvancePercentForType,
-  type PaymentTermsStructuredType,
-} from '../../lib/paymentTermsStructured';
+  resolveStagedPaymentTermsFromCustomerMaster,
+  serializeStagedPaymentTerms,
+  validateStagedPercents,
+} from '../../lib/stagedPaymentTerms';
 import {
   fetchNextSoNo,
   fetchCustomers,
@@ -28,18 +25,34 @@ import {
   type ProductOption,
 } from '../../services/fulfillment.service';
 
+const DEFAULT_STAGED = { advance_pct: 0, pre_shipment_pct: 100, post_shipment_pct: 0, credit_days: 30 };
+
 export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
   const [soNo, setSoNo] = useState('');
   const [customer, setCustomer] = useState('');
+  const [customerCode, setCustomerCode] = useState('');
   const [customerCity, setCustomerCity] = useState('');
   const [orderDate, setOrderDate] = useState(getTodayISO());
   const [dueDate, setDueDate] = useState(addDays(getTodayISO(), LEAD_DAYS_PRODUCT));
   const [orderKind, setOrderKind] = useState<'product' | 'customisation'>('product');
   const [priority, setPriority] = useState<'normal' | 'high'>('normal');
   const [shipAddress, setShipAddress] = useState('');
-  const [paymentTermsType, setPaymentTermsType] = useState<PaymentTermsStructuredType>('net_30');
-  const [advancePercent, setAdvancePercent] = useState('50');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerCountry, setCustomerCountry] = useState('');
+  const [customerLocation, setCustomerLocation] = useState('');
+  const [customerCategory, setCustomerCategory] = useState('');
+  const [customerSegment, setCustomerSegment] = useState('');
+  const [customerContactLine, setCustomerContactLine] = useState('');
+  const [customerCreditLimit, setCustomerCreditLimit] = useState('');
+
+  const [advancePctStr, setAdvancePctStr] = useState(String(DEFAULT_STAGED.advance_pct));
+  const [preShipmentPctStr, setPreShipmentPctStr] = useState(String(DEFAULT_STAGED.pre_shipment_pct));
+  const [postShipmentPctStr, setPostShipmentPctStr] = useState(String(DEFAULT_STAGED.post_shipment_pct));
+  const [creditDaysStr, setCreditDaysStr] = useState(String(DEFAULT_STAGED.credit_days));
+
   const [notes, setNotes] = useState('');
 
   const [items, setItems] = useState([{
@@ -80,18 +93,55 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     return () => { cancelled = true; };
   }, [isOpen]);
 
+  const applyStagedPaymentFields = (staged: typeof DEFAULT_STAGED) => {
+    setAdvancePctStr(String(staged.advance_pct));
+    setPreShipmentPctStr(String(staged.pre_shipment_pct));
+    setPostShipmentPctStr(String(staged.post_shipment_pct));
+    setCreditDaysStr(String(staged.credit_days));
+  };
+
   const handleCustomerChange = (name: string) => {
     setCustomer(name);
     const selected = customers.find(c => c.name === name);
-    if (selected) {
-      setCustomerCity(selected.city || '');
-      if (selected.paymentTerms) {
-        const parsed = parsePaymentTermsString(selected.paymentTerms);
-        setPaymentTermsType(parsed.type);
-        setAdvancePercent(String(parsed.advancePercent || (paymentTermsTypeRequiresAdvancePercent(parsed.type) ? 50 : 0)));
-      }
-      if (selected.shippingAddress) setShipAddress(selected.shippingAddress);
+    if (!selected) {
+      setCustomerCode('');
+      setCustomerCity('');
+      setShipAddress('');
+      setBillingAddress('');
+      setCustomerEmail('');
+      setCustomerPhone('');
+      setCustomerCountry('');
+      setCustomerLocation('');
+      setCustomerCategory('');
+      setCustomerSegment('');
+      setCustomerContactLine('');
+      setCustomerCreditLimit('');
+      applyStagedPaymentFields(DEFAULT_STAGED);
+      return;
     }
+
+    setCustomerCode(selected.code || '');
+    setCustomerCity(selected.city || '');
+    setShipAddress(selected.shippingAddress || '');
+    setBillingAddress(selected.billingAddress || '');
+    setCustomerEmail(selected.email || '');
+    setCustomerPhone(selected.phone || '');
+    setCustomerCountry(selected.country || '');
+    setCustomerLocation((selected.state || selected.location || '').trim());
+    setCustomerCategory(selected.category || '');
+    setCustomerSegment(selected.segment || '');
+    setCustomerContactLine(selected.contactLine || '');
+    setCustomerCreditLimit(selected.creditLimit || '');
+    setNotes(selected.notes || '');
+
+    const pr = String(selected.priority || '').toLowerCase();
+    if (pr === 'high' || pr === 'normal') setPriority(pr as 'normal' | 'high');
+
+    const staged = resolveStagedPaymentTermsFromCustomerMaster(
+      selected.paymentTerms,
+      (selected.clientData ?? {}) as Record<string, unknown>,
+    );
+    applyStagedPaymentFields(staged);
   };
 
   const handleAddItem = () => {
@@ -144,15 +194,27 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       if (item.unitPrice <= 0) newErrors.push(`Unit price for item #${index + 1} must be positive.`);
     });
 
-    const advErr = validateAdvancePercentForType(paymentTermsType, Number(advancePercent));
-    if (advErr) newErrors.push(advErr);
+    const adv = Number(advancePctStr);
+    const pre = Number(preShipmentPctStr);
+    const post = Number(postShipmentPctStr);
+    const cd = Math.max(0, Math.floor(Number(creditDaysStr) || 0));
+    const pctErr = validateStagedPercents(adv, pre, post);
+    if (pctErr) newErrors.push(pctErr);
+    if (!Number.isFinite(adv) || !Number.isFinite(pre) || !Number.isFinite(post)) {
+      newErrors.push('Payment stage percentages must be valid numbers.');
+    }
 
     if (newErrors.length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    const paymentTerms = formatPaymentTermsString(paymentTermsType, Number(advancePercent));
+    const paymentTerms = serializeStagedPaymentTerms({
+      advance_pct: adv,
+      pre_shipment_pct: pre,
+      post_shipment_pct: post,
+      credit_days: cd,
+    });
 
     const saveData = {
       soNo,
@@ -174,14 +236,23 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const handleClose = () => {
     setSoNo('');
     setCustomer('');
+    setCustomerCode('');
     setCustomerCity('');
     setOrderDate(getTodayISO());
     setOrderKind('product');
     setDueDate(addDays(getTodayISO(), LEAD_DAYS_PRODUCT));
     setPriority('normal');
     setShipAddress('');
-    setPaymentTermsType('net_30');
-    setAdvancePercent('50');
+    setBillingAddress('');
+    setCustomerEmail('');
+    setCustomerPhone('');
+    setCustomerCountry('');
+    setCustomerLocation('');
+    setCustomerCategory('');
+    setCustomerSegment('');
+    setCustomerContactLine('');
+    setCustomerCreditLimit('');
+    applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
     setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
     setErrors([]);
@@ -204,7 +275,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
-      <div className="p-6">
+      <div className="p-6 max-h-[85vh] overflow-y-auto">
         {loadingData ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="animate-spin text-orange-500 mr-3" size={20} />
@@ -234,10 +305,30 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   required
                   options={[
                     { value: '', label: 'Select Customer' },
-                    ...customers.map(c => ({ value: c.name, label: `${c.name}${c.city ? ` — ${c.city}` : ''}` }))
+                    ...customers.map((c) => {
+                      const geo = [c.city, c.state || c.location].filter(Boolean).join(', ');
+                      return { value: c.name, label: geo ? `${c.name} — ${geo}` : c.name };
+                    })
                   ]}
                 />
-                <Input label="Customer City" placeholder="e.g., Mumbai" value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} />
+                <Input label="Customer code" value={customerCode} readOnly disabled />
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Customer details (from master)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  <Input label="Customer city" placeholder="e.g., Mumbai" value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} />
+                  <Input label="State / region" value={customerLocation} onChange={(e) => setCustomerLocation(e.target.value)} />
+                  <Input label="Country" value={customerCountry} onChange={(e) => setCustomerCountry(e.target.value)} />
+                  <Input label="Email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+                  <Input label="Phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                  <Input label="Category" value={customerCategory} onChange={(e) => setCustomerCategory(e.target.value)} />
+                  <Input label="Segment" value={customerSegment} onChange={(e) => setCustomerSegment(e.target.value)} />
+                  <Input label="Primary contact" value={customerContactLine} onChange={(e) => setCustomerContactLine(e.target.value)} />
+                  <Input label="Credit limit (₹)" value={customerCreditLimit} onChange={(e) => setCustomerCreditLimit(e.target.value)} />
+                </div>
+                <Input label="Billing address" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+                <p className="text-xs text-slate-500">Prefilled when you pick a customer; edit as needed for this order.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -265,30 +356,22 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               <p className="text-xs text-gray-500 -mt-2">Due date defaults to order date + lead days; adjust if needed.</p>
 
               <div>
-                <Input label="Shipping Address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />
+                <Input label="Shipping address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />
                 <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <Select
-                    label="Payment terms (type)"
-                    value={paymentTermsType}
-                    onChange={(e) => setPaymentTermsType(e.target.value as PaymentTermsStructuredType)}
-                    options={PAYMENT_TERMS_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                  />
-                  {paymentTermsTypeRequiresAdvancePercent(paymentTermsType) && (
-                    <Input
-                      label="Advance %"
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={advancePercent}
-                      onChange={(e) => setAdvancePercent(e.target.value)}
-                    />
-                  )}
-                  <p className="text-xs text-gray-500">Pre-filled from customer when possible; balance is implied (100% − advance).</p>
+              <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Payment terms (three stages + credit days)</p>
+                <p className="text-xs text-slate-500">Aligned with customer master (advance / pre-shipment / post-shipment). Total of the three percentages must not exceed 100%.</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Input label="Advance %" type="number" min={0} max={100} step="0.01" value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} required />
+                  <Input label="Pre-shipment %" type="number" min={0} max={100} step="0.01" value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} required />
+                  <Input label="Post-shipment %" type="number" min={0} max={100} step="0.01" value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} required />
+                  <Input label="Credit days" type="number" min={0} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} required />
                 </div>
+              </div>
+
+              <div>
                 <Input label="Notes" placeholder="Optional notes or instructions" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
 

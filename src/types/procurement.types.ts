@@ -13,7 +13,8 @@ export type ItemDetail = {
   moq: string;
   packSize: string;
   plannedPrice: number;
-  leadTimeDays: number;
+  /** Set when known (incl. 0). Omitted when not resolved from API/notes/vendor list. */
+  leadTimeDays?: number;
   estValue: number;
   raw_material_id?: number;
   pack_material_id?: number;

@@ -373,7 +373,6 @@ const BOMDashboard: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">SHELF LIFE</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM INGS.</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PACK ITEMS</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">MRP</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">STATUS</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">VER.</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">OPEN SOS</th>
@@ -383,7 +382,7 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -586,9 +585,6 @@ const BOMDashboard: React.FC = () => {
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Commercials</div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-gray-500">MRP</span>
-                          {isEditMode ? <input type="number" step="0.01" value={displayProduct.mrp_price ?? ''} onChange={(e) => updateDraft({ mrp_price: e.target.value === '' ? undefined : Number(e.target.value) })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded" /> : <div className="text-lg font-semibold text-gray-900">{displayProduct.mrp_price != null ? `Rs.${displayProduct.mrp_price}` : '—'}</div>}
-                        </div>
                         <div><span className="text-gray-500">Version</span>
                           {isEditMode ? <input value={displayProduct.version ?? ''} onChange={(e) => updateDraft({ version: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.version ?? '—'}</div>}
                         </div>

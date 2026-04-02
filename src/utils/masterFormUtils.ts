@@ -214,22 +214,30 @@ export function validateMasterTaxDetails(
 ): { valid: boolean; errors: Record<string, string> } {
  const errors: Record<string, string> = {};
 
+ /** RM: Units, Tax & Procurement is stage index 1 → Step 2. PM: primary section → Step 1. */
+ const taxStepRm = 1;
+ const taxStepPm = 0;
+
  if (masterType === 'rawMaterial') {
   if (!taxPreferenceRequiresDetails(String(formData.rmTaxPreference ?? ''))) {
    return { valid: true, errors: {} };
   }
   const hsn = String(formData.hsnCode ?? '').trim();
   if (!hsn) {
-   errors.hsnCode = 'HSN code is required when Tax Preference is Taxable';
+   errors.hsnCode = formatStepFieldMessage(
+    taxStepRm,
+    'HSN code',
+    'is required when Tax Preference is Taxable'
+   );
   } else if (!isValidHsnOrSacCode(hsn)) {
-   errors.hsnCode = 'Enter a valid HSN code (4–12 digits)';
+   errors.hsnCode = formatStepFieldMessage(taxStepRm, 'HSN code', 'must be 4–12 digits');
   }
   const gstRaw = formData.gst;
   const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
   if (!gstStr) {
-   errors.gst = 'GST % is required when Tax Preference is Taxable';
+   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'is required when Tax Preference is Taxable');
   } else if (!isValidGstPercent(gstStr)) {
-   errors.gst = 'GST % must be a number from 0 to 100';
+   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'must be a number from 0 to 100');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }
@@ -240,14 +248,72 @@ export function validateMasterTaxDetails(
   }
   const hsn = String(formData.pkgHsn ?? '').trim();
   if (!hsn) {
-   errors.pkgHsn = 'HSN code is required when Tax Preference is Taxable';
+   errors.pkgHsn = formatStepFieldMessage(
+    taxStepPm,
+    'HSN code',
+    'is required when Tax Preference is Taxable'
+   );
   } else if (!isValidHsnOrSacCode(hsn)) {
-   errors.pkgHsn = 'Enter a valid HSN code (4–12 digits)';
+   errors.pkgHsn = formatStepFieldMessage(taxStepPm, 'HSN code', 'must be 4–12 digits');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }
 
  return { valid: true, errors: {} };
+}
+
+/** 0-based stage index on the master form → shown to users as Step (index + 1). */
+const PRIMARY_FIELD_STEP: Record<'packaging' | 'rawMaterial' | 'bom', Record<string, number>> = {
+ rawMaterial: {
+  rmSku: 0,
+  inciName: 0,
+  tradeCommercialName: 0,
+  grade: 2,
+  compliance: 2,
+ },
+ packaging: {
+  pkgSku: 0,
+  name: 0,
+  level: 0,
+  matBody: 1,
+  matClosure: 1,
+ },
+ bom: {
+  bomCode: 0,
+  client: 0,
+  name: 0,
+  dosage: 0,
+  type: 0,
+ },
+};
+
+const PRIMARY_FIELD_LABEL: Record<'packaging' | 'rawMaterial' | 'bom', Record<string, string>> = {
+ rawMaterial: {
+  rmSku: 'SKU / RM code',
+  inciName: 'INCI Name',
+  tradeCommercialName: 'Trade/Commercial Name',
+  grade: 'Grade',
+  compliance: 'Compliance',
+ },
+ packaging: {
+  pkgSku: 'SKU',
+  name: 'Item Name',
+  level: 'Level',
+  matBody: 'Material (Body)',
+  matClosure: 'Material (Closure)',
+ },
+ bom: {
+  bomCode: 'BOM code',
+  client: 'Client',
+  name: 'Name',
+  dosage: 'Dosage',
+  type: 'Type',
+ },
+};
+
+/** Shown in inline errors and toasts: `Step 2 — HSN code is required` */
+export function formatStepFieldMessage(stepIndex0: number, label: string, suffix = 'is required'): string {
+ return `Step ${stepIndex0 + 1} — ${label} ${suffix}`;
 }
 
 /**
@@ -259,10 +325,14 @@ export const validatePrimaryFields = (
 ): { valid: boolean; errors: Record<string, string> } => {
  const primaryFields = getPrimaryFields(masterType);
  const errors: Record<string, string> = {};
+ const stepMap = PRIMARY_FIELD_STEP[masterType];
+ const labelMap = PRIMARY_FIELD_LABEL[masterType];
 
  primaryFields.forEach(field => {
   if (!formData[field]) {
-   errors[field] = `${field} is required`;
+   const step = stepMap[field] ?? 0;
+   const label = labelMap[field] ?? field;
+   errors[field] = formatStepFieldMessage(step, label);
   }
  });
 

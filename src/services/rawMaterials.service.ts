@@ -156,8 +156,28 @@ export async function fetchNextRawMaterialCode(prefix: string): Promise<string> 
   return res?.nextCode ?? `${prefix}-00001`;
 }
 
+export interface RmZohoSyncResponse {
+  raw_material_id: number;
+  zoho_id: string | null;
+  zoho_sync:
+    | { synced: true }
+    | { synced: false; skipped?: boolean; resolvedWithoutZoho?: boolean; reason?: string; error?: string };
+}
+
+/** Draft RM + Zoho item (wizard before full submit). POST /api/v1/raw-materials/zoho-sync */
+export async function syncRmZoho(payload: RawMaterialFormPayload): Promise<{ data: RmZohoSyncResponse | null; error: string | null; success: boolean }> {
+  try {
+    const data = await api.post<RmZohoSyncResponse>('/api/v1/raw-materials/zoho-sync', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Zoho sync failed';
+    return { data: null, error: message, success: false };
+  }
+}
+
 /**
  * Create raw material. Body: full form payload (formData).
+ * Pass `raw_material_id` when completing a draft created via syncRmZoho.
  * When Zoho Books is enabled, the backend creates a Zoho item and sets `zoho_id` when sync succeeds.
  */
 export async function createRawMaterial(payload: RawMaterialFormPayload): Promise<RawMaterialCreateResult> {

@@ -449,6 +449,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
     const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
     const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+    const shippingResolved =
+      String(formData.shippingAddress || '').trim() || String(formData.billingAddress || '').trim();
 
     const payload = {
       name: formData.tradeName || formData.legalName,
@@ -459,7 +461,16 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       category: formData.setupCategory,
       paymentTerms: computedPaymentTerms,
       notes: formData.notes,
-      data: { ...formData, paymentTerms: computedPaymentTerms, advanceRequired: String(adv), documents, pocs, banks, productInterests },
+      data: {
+        ...formData,
+        shippingAddress: shippingResolved,
+        paymentTerms: computedPaymentTerms,
+        advanceRequired: String(adv),
+        documents,
+        pocs,
+        banks,
+        productInterests,
+      },
     };
 
     if (editingId && existingClient) {
@@ -715,7 +726,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 </div>
                 <div>
                   <label className={labelClass}>Shipping Address</label>
-                  <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different from billing" className={inputClass} rows={3} />
+                  <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="Leave blank to use billing address" className={inputClass} rows={3} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

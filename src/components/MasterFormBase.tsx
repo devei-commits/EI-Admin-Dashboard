@@ -22,6 +22,12 @@ interface MasterFormBaseProps {
  onFillMock?: () => void;
  onReset?: () => void;
  primaryFields?: string[];
+ /** When true, disables the Next button (e.g. Zoho sync gate on step 0). */
+ nextDisabled?: boolean;
+ /** Optional title for disabled Next (tooltip). */
+ nextDisabledTitle?: string;
+ /** When true, disables clicking a stage in the sidebar. */
+ isStageDisabled?: (stageIndex: number) => boolean;
 }
 
 /**
@@ -46,7 +52,10 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  onSubmit,
  onFillMock,
  onReset,
- primaryFields = []
+ primaryFields = [],
+ nextDisabled = false,
+ nextDisabledTitle,
+ isStageDisabled
 }) => {
  // Utility functions that may be used by child components
  const _isPrimaryField = (fieldId: string) => primaryFields.includes(fieldId);
@@ -127,19 +136,27 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        </span>
       </div>
       <nav className="flex-1 px-2 py-2">
-       {stages.map((stage, idx) => (
+       {stages.map((stage, idx) => {
+        const disabled = isStageDisabled?.(idx) ?? false;
+        return (
         <button
          key={stage}
-         onClick={() => onStageChange(idx)}
+         type="button"
+         disabled={disabled}
+         onClick={() => {
+          if (disabled) return;
+          onStageChange(idx);
+         }}
          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${
           currentStage === idx
            ? 'bg-indigo-50 text-indigo-700 font-semibold'
            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
-         }`}
+         } ${disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
         >
          {idx}) {stage}
         </button>
-       ))}
+        );
+       })}
       </nav>
       <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
        Stage {currentStage + 1} of {stages.length}
@@ -198,8 +215,10 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           Previous
          </button>
          <button
+          type="button"
+          title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
           onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
-          disabled={currentStage === stages.length - 1}
+          disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
          >
           Next

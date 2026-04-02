@@ -13,12 +13,13 @@ import {
   type PriceListItemPage,
   type ItemListTierRow,
 } from '../services/itemsList.service';
-import { fetchVendorClients } from '../services/vendorClient.service';
+import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import {
   formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
+  resolveStagedPaymentTermsFromVendorRecord,
   serializeStagedPaymentTerms,
   validateStagedPercents,
 } from '../lib/stagedPaymentTerms';
@@ -245,6 +246,21 @@ const ItemsList: React.FC = () => {
     try {
       let itemsListId = resolvedItemsListId;
       if (!itemsListId) {
+        if (tierTarget.type === 'RM' && tierTarget.raw_material_id == null) {
+          addToast('error', 'Missing raw material id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
+        if (tierTarget.type === 'PM' && tierTarget.pack_material_id == null) {
+          addToast('error', 'Missing packaging material id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
+        if (tierTarget.type === 'PR' && tierTarget.product_id == null) {
+          addToast('error', 'Missing product id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
         const payload =
           tierTarget.type === 'RM'
             ? { type: 'RM' as const, raw_material_id: tierTarget.raw_material_id!, pack_material_id: null, product_id: null }
@@ -252,12 +268,33 @@ const ItemsList: React.FC = () => {
               ? { type: 'PM' as const, raw_material_id: null, pack_material_id: tierTarget.pack_material_id!, product_id: null }
               : { type: 'PR' as const, raw_material_id: null, pack_material_id: null, product_id: tierTarget.product_id! };
         const createRes = await createItemList(payload);
-        if (!createRes.success || !createRes.data) {
-          addToast('error', createRes.error?.message ?? 'Failed to add item to list');
-          setSubmittingTiers(false);
-          return;
+        if (createRes.success && createRes.data?.id) {
+          itemsListId = createRes.data.id;
+        } else {
+          const msg = String(createRes.error?.message ?? '');
+          const lowered = msg.toLowerCase();
+          const conflict =
+            lowered.includes('already') || lowered.includes('conflict') || lowered.includes('409');
+          if (conflict) {
+            const pageType =
+              tierTarget.type === 'RM' ? 'RM' : tierTarget.type === 'PM' ? 'PM' : 'PR';
+            const pageRes = await fetchPriceListPage(pageType);
+            if (pageRes.success && pageRes.data) {
+              const match =
+                tierTarget.type === 'RM'
+                  ? pageRes.data.find((p) => Number(p.raw_material_id) === Number(tierTarget.raw_material_id))
+                  : tierTarget.type === 'PM'
+                    ? pageRes.data.find((p) => Number(p.pack_material_id) === Number(tierTarget.pack_material_id))
+                    : pageRes.data.find((p) => Number(p.product_id) === Number(tierTarget.product_id));
+              if (match?.itemsListId != null) itemsListId = String(match.itemsListId);
+            }
+          }
+          if (!itemsListId) {
+            addToast('error', msg || 'Failed to add item to list');
+            setSubmittingTiers(false);
+            return;
+          }
         }
-        itemsListId = createRes.data.id;
       }
       const staged = serializeStagedPaymentTerms({
         advance_pct: adv,
@@ -778,7 +815,40 @@ const ItemsList: React.FC = () => {
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Vendor *</label>
                   <select
                     value={selectedVendor?.id ?? ''}
-                    onChange={(e) => setSelectedVendor(vendors.find((v) => v.id === e.target.value) ?? null)}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const v = vendors.find((x) => x.id === id) ?? null;
+                      setSelectedVendor(v);
+                      if (!v) {
+                        setAdvancePctStr('');
+                        setPreShipmentPctStr('');
+                        setPostShipmentPctStr('');
+                        setCreditDaysStr('');
+                        setLeadTimeDays('');
+                        return;
+                      }
+                      void (async () => {
+                        try {
+                          let paymentTerms = v.paymentTerms;
+                          let data = v.data as Record<string, unknown> | undefined;
+                          let lead = v.leadTime ?? '';
+                          const fullRes = await fetchVendorClientById(v.id);
+                          if (fullRes.success && fullRes.data) {
+                            paymentTerms = fullRes.data.paymentTerms ?? paymentTerms;
+                            data = (fullRes.data.data ?? data) as Record<string, unknown> | undefined;
+                            lead = fullRes.data.leadTime ?? lead;
+                          }
+                          const staged = resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data);
+                          setAdvancePctStr(String(staged.advance_pct));
+                          setPreShipmentPctStr(String(staged.pre_shipment_pct));
+                          setPostShipmentPctStr(String(staged.post_shipment_pct));
+                          setCreditDaysStr(staged.credit_days ? String(staged.credit_days) : '');
+                          setLeadTimeDays(lead ? String(lead) : '');
+                        } catch {
+                          addToast('error', 'Could not apply vendor payment terms. Try again or refresh.');
+                        }
+                      })();
+                    }}
                     className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
                   >
                     <option value="">Select…</option>

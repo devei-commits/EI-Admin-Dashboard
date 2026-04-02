@@ -122,7 +122,6 @@ interface GRNRecord {
   type: GRNType;
   items: number;
   poValue: number;
-  expectedDate: string;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: QCStatus;
@@ -137,6 +136,7 @@ interface GRNRecord {
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
@@ -226,6 +226,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     grn.lastBoxUnits != null && grn.lastBoxUnits !== undefined ? String(grn.lastBoxUnits) : ''
   );
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
+  const [locationZone, setLocationZone] = useState(grn.locationZone ?? '');
   const [grnBatchMfg, setGrnBatchMfg] = useState(grn.grnBatchMfg ?? '');
   const [expiry, setExpiry] = useState(grn.expiry ?? '');
   const [mfgBatch, setMfgBatch] = useState(grn.mfgBatch ?? '');
@@ -302,6 +303,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     setQcByInput(grn.qcBy || '');
   }, [grn.id, grn.qcStatus, grn.qcBy]);
 
+  useEffect(() => {
+    setLocationPrefix(grn.locationPrefix ?? '');
+    setLocationZone(grn.locationZone ?? '');
+  }, [grn.id, grn.locationPrefix, grn.locationZone]);
+
   const filteredQcByUsers = assignableUsers.filter(
     u => (u.displayName || '').toLowerCase().includes((qcByInput || '').toLowerCase().trim())
   );
@@ -337,6 +343,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
         lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
         locationPrefix: locationPrefix || undefined,
+        locationZone: locationZone || undefined,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
@@ -352,7 +359,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         type: res.type as GRNType,
         items: res.items,
         poValue: res.poValue,
-        expectedDate: res.expectedDate,
         receivedDate: res.receivedDate,
         assignedTo: res.assignedTo,
         qcStatus: normalizeQcStatus(res.qcStatus),
@@ -367,6 +373,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         unitsPerBox: res.unitsPerBox ?? undefined,
         lastBoxUnits: res.lastBoxUnits ?? undefined,
         locationPrefix: res.locationPrefix ?? undefined,
+        locationZone: res.locationZone ?? undefined,
         grnBatchMfg: res.grnBatchMfg ?? undefined,
         expiry: res.expiry ?? undefined,
         mfgBatch: res.mfgBatch ?? undefined,
@@ -411,6 +418,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       setLabelError('Please select a product / line item before generating labels.');
       return;
     }
+    if (!locationPrefix.trim()) {
+      setLabelError('Enter location prefix (rack code) before generating labels.');
+      return;
+    }
+    if (!locationZone.trim()) {
+      setLabelError('Enter storage zone before generating labels.');
+      return;
+    }
     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
     const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
     if (selectedLineItem != null) {
@@ -439,6 +454,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
         lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
         locationPrefix: locationPrefix || undefined,
+        locationZone: locationZone || undefined,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
@@ -500,6 +516,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
   if (!allLineItemsLabeled) {
     completionBlockers.push('QR labels must be generated for all GRN materials.');
+  }
+  if (!locationPrefix.trim()) {
+    completionBlockers.push('Location prefix (rack code) is required.');
+  }
+  if (!locationZone.trim()) {
+    completionBlockers.push('Storage zone is required.');
   }
   const canMarkComplete = completionBlockers.length === 0;
 
@@ -753,10 +775,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <p className="text-sm font-bold text-amber-700">₹{grn.poValue.toLocaleString('en-IN')}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Expected Date</p>
-                <p className="text-sm font-medium text-slate-900">{new Date(grn.expectedDate).toLocaleDateString('en-IN')}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Received Date</p>
                 <p className="text-sm font-medium text-slate-900">
                   {grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}
@@ -918,7 +936,17 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 <p className="text-[10px] text-slate-500 mt-0.5">Optional. Leave empty when every box has the same count. Must be ≤ full carton size.</p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Storage zone <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={locationZone}
+                  onChange={(e) => setLocationZone(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                  placeholder="e.g. Zone A / RM bulk"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code) <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={locationPrefix}
@@ -1149,7 +1177,6 @@ function mapApiToGRNRecord(r: {
   type: 'RM' | 'PM';
   items: number;
   poValue: number;
-  expectedDate: string;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: string;
@@ -1164,6 +1191,7 @@ function mapApiToGRNRecord(r: {
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
@@ -1177,7 +1205,6 @@ function mapApiToGRNRecord(r: {
     type: r.type,
     items: r.items,
     poValue: r.poValue,
-    expectedDate: r.expectedDate,
     receivedDate: r.receivedDate,
     assignedTo: r.assignedTo,
     qcStatus: normalizeQcStatus(r.qcStatus),
@@ -1192,6 +1219,7 @@ function mapApiToGRNRecord(r: {
     unitsPerBox: r.unitsPerBox ?? undefined,
     lastBoxUnits: r.lastBoxUnits ?? undefined,
     locationPrefix: r.locationPrefix ?? undefined,
+    locationZone: r.locationZone ?? undefined,
     grnBatchMfg: r.grnBatchMfg ?? undefined,
     expiry: r.expiry ?? undefined,
     mfgBatch: r.mfgBatch ?? undefined,
@@ -1412,7 +1440,6 @@ const WarehouseInbound = () => {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Items</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">PO Value</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Expected</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Received</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned To</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">QC</th>
@@ -1422,11 +1449,11 @@ const WarehouseInbound = () => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
                 ) : filteredData.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">No GRNs found</td>
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-500">No GRNs found</td>
                   </tr>
                 ) : (
                   filteredData.map((grn) => (
@@ -1460,9 +1487,6 @@ const WarehouseInbound = () => {
                       </td>
                       <td className="px-4 py-4 text-right">
                         <span className="text-sm font-semibold text-amber-700">{formatCurrency(grn.poValue)}</span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-sm text-slate-600">{formatDate(grn.expectedDate)}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         {grn.receivedDate ? (

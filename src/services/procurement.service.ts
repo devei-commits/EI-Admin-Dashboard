@@ -19,6 +19,8 @@ export interface ProcurementRequestItem {
   /** Planned ₹/unit from Release to Planning (mirrors line_notes for Procurement UI). */
   planned_unit_price?: number;
   lead_time_days?: number;
+  /** Set when line qty is remainder after partial release; server skips strict MOQ for backlog lines. */
+  partial_release_remainder?: boolean;
 }
 
 export interface ProcurementRequest {

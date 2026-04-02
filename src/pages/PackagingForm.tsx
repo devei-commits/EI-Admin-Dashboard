@@ -4,9 +4,17 @@ import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse } from '../services/packMaterials.service';
+import VendorCommercialEditor, {
+  defaultTempVendorTiers,
+  type PmCommercialVendor,
+  type VendorTierDraft,
+} from '../components/VendorCommercialEditor';
+import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
+import { validateStagedPercents } from '../lib/stagedPaymentTerms';
+import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, syncPmZoho, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails } from '../utils/masterFormUtils';
+import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -32,12 +40,12 @@ const PM_REQUIRED_FIELDS: Array<{
   section: number;
   toastMessage: string;
 }> = [
-  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Select PM Category (Section 0)' },
-  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Generate or enter SKU before submitting' },
-  { id: 'name', label: 'Item Name', section: 1, toastMessage: 'Item Name is required (Section 1)' },
-  { id: 'level', label: 'Level', section: 1, toastMessage: 'Level is required (Section 1)' },
-  { id: 'itemCategory', label: 'Category', section: 1, toastMessage: 'Category is required (Section 1)' },
-  { id: 'specNominal', label: 'Nominal Volume', section: 2, toastMessage: 'Nominal Volume is required (Section 2)' },
+  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 1 — PM Category is required' },
+  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 1 — Generate or enter SKU before submitting' },
+  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item Name is required' },
+  { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 1 — Level is required' },
+  { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
+  { id: 'specNominal', label: 'Nominal Volume', section: 1, toastMessage: 'Step 2 — Nominal Volume is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -155,7 +163,7 @@ function createEmptyPackagingFormData() {
     catRecoTypes: '',
     catWebImages: '',
     variants: [] as Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }>,
-    vendors: [] as Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }>,
+    vendors: [] as PmCommercialVendor[],
     tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
   };
 }
@@ -177,18 +185,17 @@ const PACKAGING_FORM_MOCK = {
 };
 
 const SECTIONS = [
-  '0) QC / PM Categorisation',
-  '1) Identity',
-  '2) Material & Specs',
-  '3) Aesthetics',
-  '4) Variants Matrix',
-  '5) Customization & Tooling',
-  '6) Compatibility (R&D / QA)',
-  '7) Vendors & Commercial',
-  '8) Secondary Packaging',
-  '9) Tertiary Packaging',
-  '10) Testing & Approval',
-  '11) Catalogue / Website',
+  '0) QC · Code · Identity & Zoho',
+  '1) Material & Specs',
+  '2) Aesthetics',
+  '3) Variants Matrix',
+  '4) Customization & Tooling',
+  '5) Compatibility (R&D / QA)',
+  '6) Vendors & Commercial',
+  '7) Secondary Packaging',
+  '8) Tertiary Packaging',
+  '9) Testing & Approval',
+  '10) Catalogue / Website',
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -198,6 +205,9 @@ const PackagingRefactored: React.FC = () => {
   const queryClient = useQueryClient();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
   const [existingPmId, setExistingPmId] = useState<string | null>(null);
+  const [draftPmId, setDraftPmId] = useState<number | null>(null);
+  const [zohoSkippedSync, setZohoSkippedSync] = useState(false);
+  const [zohoSyncing, setZohoSyncing] = useState(false);
   const [editPmLoading, setEditPmLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentSection, setCurrentSection] = useState(0);
@@ -213,8 +223,29 @@ const PackagingRefactored: React.FC = () => {
 
   const [formData, setFormData] = useState(createEmptyPackagingFormData);
 
+  const isNewPm = !existingPmId;
+  const canAdvancePastPrimary =
+    !isNewPm || Boolean(formData.zohoId?.trim()) || zohoSkippedSync;
+  const lockPrimaryAfterZohoDraft = draftPmId != null && !existingPmId;
+
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
-  const [tempVendor, setTempVendor] = useState({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
+  const [tempVendor, setTempVendor] = useState({
+    name: '',
+    location: '',
+    moq: '',
+    price: '',
+    leadTime: '',
+    approved: '',
+    priceType: '',
+    validTill: '',
+    sampleCost: '',
+    currency: 'INR',
+    advancePct: '',
+    preShipmentPct: '',
+    postShipmentPct: '',
+    creditDays: '',
+  });
+  const [tempVendorTiers, setTempVendorTiers] = useState<VendorTierDraft[]>(() => defaultTempVendorTiers(4));
   const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
 
   const { data: vendorClientData } = useQuery({
@@ -230,13 +261,39 @@ const PackagingRefactored: React.FC = () => {
   const resetPmFormToEmpty = useCallback(() => {
     setFormData(createEmptyPackagingFormData());
     setTempVariant({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
-    setTempVendor({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
+    setTempVendor({
+      name: '',
+      location: '',
+      moq: '',
+      price: '',
+      leadTime: '',
+      approved: '',
+      priceType: '',
+      validTill: '',
+      sampleCost: '',
+      currency: 'INR',
+      advancePct: '',
+      preShipmentPct: '',
+      postShipmentPct: '',
+      creditDays: '',
+    });
+    setTempVendorTiers(defaultTempVendorTiers(4));
     setTempTest({ name: '', result: '', date: '', by: '', remarks: '' });
     setGeneratedCode('');
     setErrors({});
     setCurrentSection(0);
     setExistingPmId(null);
+    setDraftPmId(null);
+    setZohoSkippedSync(false);
+    setZohoSyncing(false);
   }, []);
+
+  useEffect(() => {
+    if (existingPmId) {
+      setDraftPmId(null);
+      setZohoSkippedSync(false);
+    }
+  }, [existingPmId]);
 
   const doSave = (silent = false) => {
     const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -246,6 +303,7 @@ const PackagingRefactored: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
+    if (id === 'zohoId') return;
     if (id === 'pkgHsn' || id === 'pkgTaxPreference' || id in errors) {
       setErrors((prev) => {
         const next = { ...prev };
@@ -272,6 +330,10 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const generateCode = async (confirm = false) => {
+    if (lockPrimaryAfterZohoDraft) {
+      addToast('error', 'Code is locked after Zoho sync. Open a new item to change PM code.');
+      return;
+    }
     if (!formData.pmCategory) {
       addToast('error', 'Select a PM Category first');
       return;
@@ -295,8 +357,8 @@ const PackagingRefactored: React.FC = () => {
   // Variant ops
   const handleAddVariant = () => {
     if (!tempVariant.volume || Number(tempVariant.volume) <= 0) {
-      setErrors(prev => ({ ...prev, varVolume: 'Fill volume is required' }));
-      addToast('error', 'Fill volume is required');
+      setErrors(prev => ({ ...prev, varVolume: 'Step 4 — Fill volume is required' }));
+      addToast('error', 'Step 4 — Fill volume is required');
       return;
     }
     setFormData(prev => ({
@@ -316,32 +378,108 @@ const PackagingRefactored: React.FC = () => {
 
   // Vendor ops
   const handleAddVendor = () => {
-    if (!tempVendor.name.trim()) { addToast('error', 'Vendor name required'); return; }
-    setFormData(prev => ({
-      ...prev,
-      vendors: [...prev.vendors, {
-        name: tempVendor.name, location: tempVendor.location,
-        moq: Number(tempVendor.moq), price: Number(tempVendor.price),
-        leadTime: Number(tempVendor.leadTime), approved: tempVendor.approved,
-        priceType: tempVendor.priceType, validTill: tempVendor.validTill,
-        sampleCost: Number(tempVendor.sampleCost),
-      }],
-    }));
-    setTempVendor({ name: '', location: '', moq: '', price: '', leadTime: '', approved: '', priceType: '', validTill: '', sampleCost: '' });
-  };
-  const handleRemoveVendor = (idx: number) => setFormData(prev => ({ ...prev, vendors: prev.vendors.filter((_, i) => i !== idx) }));
-
-  const handlePmVendorTempFieldChange = (field: string, value: string) => {
-    if (field === 'name') {
-      const selected = vendorClientList.find((v) => v.name === value);
-      setTempVendor((prev) => ({
-        ...prev,
-        name: value,
-        location: selected?.location || prev.location,
-      }));
+    if (!tempVendor.name.trim()) {
+      addToast('error', 'Step 7 — Vendor name is required');
       return;
     }
+    const adv = Number(tempVendor.advancePct);
+    const pre = Number(tempVendor.preShipmentPct);
+    const post = Number(tempVendor.postShipmentPct);
+    const pctErr = validateStagedPercents(adv, pre, post);
+    if (pctErr) {
+      addToast('error', pctErr);
+      return;
+    }
+    let tierRows = tempVendorTiers.filter((t) => String(t.moq).trim() && String(t.price).trim());
+    if (tierRows.length === 0 && tempVendor.moq?.trim() && tempVendor.price?.trim()) {
+      tierRows = [
+        {
+          moq: tempVendor.moq.trim(),
+          price: tempVendor.price.trim(),
+          validTill: tempVendor.validTill || '',
+          note: '',
+        },
+      ];
+    }
+    if (tierRows.length === 0) {
+      addToast('error', 'Add at least one price tier (MOQ + price in the table) or fill MOQ + unit price.');
+      return;
+    }
+    const first = tierRows[0];
+    setFormData((prev) => ({
+      ...prev,
+      vendors: [
+        ...prev.vendors,
+        {
+          id: Date.now().toString(),
+          name: tempVendor.name,
+          location: tempVendor.location,
+          moq: Number(tempVendor.moq) || Number(first.moq) || 0,
+          price: Number(tempVendor.price) || Number(first.price) || 0,
+          leadTime: Number(tempVendor.leadTime),
+          approved: tempVendor.approved,
+          priceType: tempVendor.priceType,
+          validTill: tempVendor.validTill,
+          sampleCost: Number(tempVendor.sampleCost),
+          currency: tempVendor.currency || 'INR',
+          advancePct: tempVendor.advancePct,
+          preShipmentPct: tempVendor.preShipmentPct,
+          postShipmentPct: tempVendor.postShipmentPct,
+          creditDays: tempVendor.creditDays,
+          tiers: tierRows.map((t) => ({ ...t })),
+        },
+      ],
+    }));
+    setTempVendor({
+      name: '',
+      location: '',
+      moq: '',
+      price: '',
+      leadTime: '',
+      approved: '',
+      priceType: '',
+      validTill: '',
+      sampleCost: '',
+      currency: 'INR',
+      advancePct: '',
+      preShipmentPct: '',
+      postShipmentPct: '',
+      creditDays: '',
+    });
+    setTempVendorTiers(defaultTempVendorTiers(4));
+  };
+  const handleRemoveVendor = (idx: number) => setFormData((prev) => ({ ...prev, vendors: prev.vendors.filter((_, i) => i !== idx) }));
+
+  const handlePmVendorTempFieldChange = (field: string, value: string) => {
     setTempVendor((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleTempVendorTierChange = (rowIdx: number, field: keyof VendorTierDraft, value: string) => {
+    setTempVendorTiers((prev) => prev.map((r, i) => (i === rowIdx ? { ...r, [field]: value } : r)));
+  };
+
+  const handleAddTempVendorTierRow = () => {
+    setTempVendorTiers((prev) => [...prev, { moq: '', price: '', validTill: '', note: '' }]);
+  };
+
+  const syncPmVendorsToItemsListAfterSave = async (pmId: number): Promise<number> => {
+    if (!formData.vendors.length) return 0;
+    const mid = parseInt(String(pmId), 10);
+    if (Number.isNaN(mid)) return 0;
+    const { created, errors } = await syncMasterVendorsToPriceList({
+      variant: 'pm',
+      materialId: mid,
+      vendors: formData.vendors,
+      vendorClientList,
+    });
+    if (errors.length) {
+      addToast('error', `Items List: ${errors[0]}`);
+    }
+    void queryClient.invalidateQueries({
+      predicate: (q) => Array.isArray(q.queryKey) && typeof q.queryKey[0] === 'string' && q.queryKey[0].startsWith('items-list'),
+      refetchType: 'all',
+    });
+    return created;
   };
 
   // Test ops
@@ -389,12 +527,95 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
+  const handlePmZohoSync = async () => {
+    if (!formData.pmCategory?.trim()) {
+      addToast('error', 'Select a PM Category first');
+      return;
+    }
+    const code = formData.itemCode || generatedCode;
+    if (!code?.trim()) {
+      addToast('error', 'Generate or enter SKU before syncing with Zoho');
+      return;
+    }
+    if (!formData.name?.trim() || !formData.level?.trim() || !formData.itemCategory?.trim()) {
+      addToast('error', 'Item Name, Level, and Category are required before Zoho sync');
+      return;
+    }
+    const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
+    if (!taxValidation.valid) {
+      setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
+      addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code. Exempt / NonGST can leave HSN blank.');
+      return;
+    }
+    setZohoSyncing(true);
+    try {
+      const res = await syncPmZoho(buildPayload() as CreatePackMaterialPayload);
+      if (!res.success || !res.data) {
+        addToast('error', res.error || 'Zoho sync failed');
+        return;
+      }
+      const d = res.data;
+      setDraftPmId(d.pack_material_id);
+      const zs = d.zoho_sync;
+      if (zs && 'resolvedWithoutZoho' in zs && zs.resolvedWithoutZoho) {
+        setZohoSkippedSync(true);
+        addToast(
+          'success',
+          'Draft PM saved. Zoho Books sync is off in this environment — you can continue to the next steps.'
+        );
+        return;
+      }
+      if (d.zoho_id) {
+        setFormData((prev) => ({ ...prev, zohoId: String(d.zoho_id) }));
+        setZohoSkippedSync(false);
+        addToast('success', 'Zoho item created and ID saved.');
+        return;
+      }
+      const errMsg =
+        zs && typeof zs === 'object' && zs !== null && 'error' in zs && (zs as { error?: string }).error
+          ? String((zs as { error?: string }).error)
+          : 'Zoho sync did not return an item id';
+      addToast('error', errMsg);
+    } finally {
+      setZohoSyncing(false);
+    }
+  };
+
   const handleSubmit = async () => {
+    if (!existingPmId) {
+      if (!formData.pmCategory?.trim()) {
+        addToast('error', 'Select a PM Category (primary section)');
+        setCurrentSection(0);
+        focusPmField('pmCategory');
+        return;
+      }
+      const code = formData.itemCode || generatedCode;
+      if (!code?.trim()) {
+        addToast('error', 'Generate or enter SKU before submitting');
+        setCurrentSection(0);
+        focusPmField('itemCode');
+        return;
+      }
+      if (draftPmId == null) {
+        addToast('error', 'Run “Sync with Zoho” on the primary section before submitting.');
+        setCurrentSection(0);
+        return;
+      }
+      if (!formData.zohoId?.trim() && !zohoSkippedSync) {
+        addToast('error', 'Complete Zoho sync — a Zoho item ID is required before saving.');
+        setCurrentSection(0);
+        return;
+      }
+    }
     for (const field of PM_REQUIRED_FIELDS) {
       const rawValue = formData[field.id as keyof typeof formData];
       const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
       if (!value) {
-        setErrors((prev) => ({ ...prev, [field.id]: `${field.label} is required` }));
+        const stepNo = field.section + 1;
+        setErrors((prev) => ({
+          ...prev,
+          [field.id]: `Step ${stepNo} — ${field.label} is required`,
+        }));
         addToast('error', field.toastMessage);
         setCurrentSection(field.section);
         focusPmField(field.id);
@@ -404,19 +625,41 @@ const PackagingRefactored: React.FC = () => {
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
     if (!taxValidation.valid) {
       setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
-      addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code. Exempt / NonGST can leave HSN blank.');
+      const firstTax = taxValidation.errors.pkgHsn;
+      addToast(
+        'error',
+        firstTax ||
+          'When Tax Preference is Taxable, enter a valid HSN code (Step 1). Exempt / NonGST can leave HSN blank.'
+      );
       setCurrentSection(0);
       return;
     }
     const payload = buildPayload();
     try {
       if (existingPmId) {
+        const pmIdForSync = parseInt(String(existingPmId), 10);
         await updatePackMaterial(existingPmId, payload);
-        addToast('success', 'Packaging item updated!');
+        const syncCreated = Number.isNaN(pmIdForSync) ? 0 : await syncPmVendorsToItemsListAfterSave(pmIdForSync);
+        addToast(
+          'success',
+          syncCreated > 0
+            ? `Packaging item updated! ${syncCreated} vendor rate(s) synced to Items List.`
+            : 'Packaging item updated!'
+        );
         setExistingPmId(null);
       } else {
-        await createPackMaterial(payload);
-        addToast('success', 'Packaging item saved!');
+        const saved = await createPackMaterial({
+          ...payload,
+          ...(draftPmId != null ? { pack_material_id: draftPmId } : {}),
+        });
+        const newPmId = parseInt(String(saved.id), 10);
+        const syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
+        addToast(
+          'success',
+          syncCreated > 0
+            ? `Packaging item saved! ${syncCreated} vendor rate(s) synced to Items List.`
+            : 'Packaging item saved!'
+        );
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
@@ -447,9 +690,10 @@ const PackagingRefactored: React.FC = () => {
                     id="pmCategory"
                     value={formData.pmCategory}
                     onChange={handleInputChange}
+                    disabled={lockPrimaryAfterZohoDraft}
                     className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       errors.pmCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    }`}
+                    } ${lockPrimaryAfterZohoDraft ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   >
                     <option value="">Select</option>
                     {Object.entries(PM_CATEGORIES).map(([k, v]) => (
@@ -514,7 +758,8 @@ const PackagingRefactored: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => generateCode()}
-                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                    disabled={lockPrimaryAfterZohoDraft}
+                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Generate Code Now
                   </button>
@@ -522,7 +767,8 @@ const PackagingRefactored: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => generateCode(true)}
-                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition"
+                      disabled={lockPrimaryAfterZohoDraft}
+                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Regenerate (change category)
                     </button>
@@ -538,6 +784,77 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
+            {/* Identity (merged from former section 1) */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField
+                  label="Item Name"
+                  id="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Packaging item name as used internally"
+                  requiredMark
+                  error={errors.name}
+                />
+                <InputField
+                  label="Level"
+                  id="level"
+                  value={formData.level}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Primary / Secondary / Tertiary"
+                  requiredMark
+                  error={errors.level}
+                />
+                <InputField
+                  label="Category"
+                  id="itemCategory"
+                  value={formData.itemCategory}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Bottle, Carton, Label, Shipper"
+                  requiredMark
+                  error={errors.itemCategory}
+                />
+                <InputField
+                  label="Intended Use"
+                  id="intendedUse"
+                  value={formData.intendedUse}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Face serum bottle, Outer mono-carton"
+                />
+                <InputField
+                  label="Expected Product Types"
+                  id="expectedProductTypes"
+                  value={formData.expectedProductTypes}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Creams, Serums, Shampoos"
+                />
+                <InputField
+                  label="Reusability"
+                  id="reusability"
+                  value={formData.reusability}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Single use, Refillable, Re-closable"
+                />
+              </div>
+              <div className="mt-3 space-y-3">
+                <TextareaField
+                  label="Regulatory Notes"
+                  id="regulatory"
+                  value={formData.regulatory}
+                  onChange={handleInputChange}
+                  placeholder="Any packaging-specific regulations or country notes"
+                />
+                <TextareaField
+                  label="Identity Notes"
+                  id="identityNotes"
+                  value={formData.identityNotes}
+                  onChange={handleInputChange}
+                  placeholder="Any extra description to identify this item uniquely"
+                />
+              </div>
+            </div>
+
             {/* Basic Details */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Basic Details</h3>
@@ -550,14 +867,23 @@ const PackagingRefactored: React.FC = () => {
                   placeholder="Internal code used in ERP (e.g. EI-PM-PRI-000123)"
                   requiredMark
                   error={errors.itemCode}
+                  readOnly={lockPrimaryAfterZohoDraft}
                 />
-                <InputField
-                  label="Zoho ID"
-                  id="zohoId"
-                  value={formData.zohoId}
-                  onChange={handleInputChange}
-                  placeholder="Zoho item id (sync TODO)"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoho Item ID</label>
+                  <input
+                    type="text"
+                    id="zohoId"
+                    value={formData.zohoId ?? ''}
+                    readOnly
+                    autoComplete="off"
+                    aria-readonly="true"
+                    placeholder="Set automatically after Zoho Books sync"
+                    onChange={() => {}}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Read-only — populated from the server after sync.</p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
                   <select id="pkgUnit" value={formData.pkgUnit} onChange={handleInputChange}
@@ -611,81 +937,33 @@ const PackagingRefactored: React.FC = () => {
                   className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+              <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+                <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-800 mb-2">Zoho Books</h4>
+                <p className="text-xs text-gray-600 mb-3">
+                  Sync creates or updates the draft PM row and links a Zoho item. Complete identity and tax fields above first.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handlePmZohoSync()}
+                    disabled={zohoSyncing || zohoSkippedSync || Boolean(formData.zohoId?.trim())}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {zohoSyncing ? 'Syncing…' : 'Sync with Zoho'}
+                  </button>
+                  {draftPmId != null && (
+                    <span className="text-xs text-gray-600">
+                      Draft PM #{draftPmId}
+                      {formData.zohoId ? ' · Linked in Zoho Books' : zohoSkippedSync ? ' · Zoho Books sync off — you can continue' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         );
 
-      case 1: // Identity
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <InputField
-                label="Item Name"
-                id="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Packaging item name as used internally"
-                requiredMark
-                error={errors.name}
-              />
-              <InputField
-                label="Level"
-                id="level"
-                value={formData.level}
-                onChange={handleInputChange}
-                placeholder="e.g. Primary / Secondary / Tertiary"
-                requiredMark
-                error={errors.level}
-              />
-              <InputField
-                label="Category"
-                id="itemCategory"
-                value={formData.itemCategory}
-                onChange={handleInputChange}
-                placeholder="e.g. Bottle, Carton, Label, Shipper"
-                requiredMark
-                error={errors.itemCategory}
-              />
-              <InputField
-                label="Intended Use"
-                id="intendedUse"
-                value={formData.intendedUse}
-                onChange={handleInputChange}
-                placeholder="e.g. Face serum bottle, Outer mono-carton"
-              />
-              <InputField
-                label="Expected Product Types"
-                id="expectedProductTypes"
-                value={formData.expectedProductTypes}
-                onChange={handleInputChange}
-                placeholder="e.g. Creams, Serums, Shampoos"
-              />
-              <InputField
-                label="Reusability"
-                id="reusability"
-                value={formData.reusability}
-                onChange={handleInputChange}
-                placeholder="e.g. Single use, Refillable, Re-closable"
-              />
-            </div>
-            <TextareaField
-              label="Regulatory Notes"
-              id="regulatory"
-              value={formData.regulatory}
-              onChange={handleInputChange}
-              placeholder="Any packaging-specific regulations or country notes"
-            />
-            <TextareaField
-              label="Identity Notes"
-              id="identityNotes"
-              value={formData.identityNotes}
-              onChange={handleInputChange}
-              placeholder="Any extra description to identify this item uniquely"
-            />
-          </div>
-        );
-
-      case 2: // Material & Specs
+      case 1: // Material & Specs
         return (
           <div className="space-y-6">
             <div>
@@ -805,7 +1083,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 3: // Aesthetics
+      case 2: // Aesthetics
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -848,7 +1126,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 4: // Variants Matrix
+      case 3: // Variants Matrix
         return (
           <ArrayItemManager
             masterType="packaging"
@@ -870,7 +1148,7 @@ const PackagingRefactored: React.FC = () => {
           />
         );
 
-      case 5: // Customization & Tooling
+      case 4: // Customization & Tooling
         return (
           <div className="space-y-4">
             <CheckboxField label="Customizable" id="cusCustomizable" checked={formData.cusCustomizable} onChange={handleInputChange} />
@@ -888,7 +1166,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 6: // Compatibility (R&D / QA)
+      case 5: // Compatibility (R&D / QA)
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
@@ -938,38 +1216,24 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 7: // Vendors & Commercial
+      case 6: // Vendors & Commercial
         return (
-          <ArrayItemManager
-            masterType="packaging"
-            itemType="vendor"
-            items={formData.vendors}
+          <VendorCommercialEditor
+            variant="pm"
+            vendors={formData.vendors}
             tempFields={tempVendor}
+            tempTiers={tempVendorTiers}
+            vendorClientList={vendorClientList}
             onTempFieldChange={handlePmVendorTempFieldChange}
-            onAdd={handleAddVendor}
-            onRemove={handleRemoveVendor}
+            onTempTierChange={handleTempVendorTierChange}
+            onAddTempTierRow={handleAddTempVendorTierRow}
+            onAddVendor={handleAddVendor}
+            onRemoveVendor={handleRemoveVendor}
             errors={errors}
-            itemLabel="Vendor"
-            columns={[
-              {
-                key: 'name',
-                label: 'Vendor Name',
-                type: 'select',
-                options: vendorClientList.map((v) => ({ label: v.name, value: v.name })),
-              },
-              { key: 'location', label: 'Location' },
-              { key: 'moq', label: 'MOQ', type: 'number' },
-              { key: 'price', label: 'Unit Price', type: 'number' },
-              { key: 'leadTime', label: 'Lead Time (days)', type: 'number' },
-              { key: 'approved', label: 'Approved' },
-              { key: 'priceType', label: 'Price Type' },
-              { key: 'validTill', label: 'Valid Till', type: 'date' },
-              { key: 'sampleCost', label: 'Sample Cost', type: 'number' },
-            ]}
           />
         );
 
-      case 8: // Secondary Packaging
+      case 7: // Secondary Packaging
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -986,7 +1250,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 9: // Tertiary Packaging
+      case 8: // Tertiary Packaging
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -999,7 +1263,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 10: // Testing & Approval
+      case 9: // Testing & Approval
         return (
           <>
             <div className="mb-6">
@@ -1032,7 +1296,7 @@ const PackagingRefactored: React.FC = () => {
           </>
         );
 
-      case 11: // Catalogue / Website
+      case 10: // Catalogue / Website
         return (
           <div className="space-y-4">
             <div className="flex gap-6">
@@ -1059,10 +1323,15 @@ const PackagingRefactored: React.FC = () => {
     setCurrentSection(0);
     let cancelled = false;
     setEditPmLoading(true);
-    fetchPackMaterialById(existingPmId).then((pm) => {
+    fetchPackMaterialById(existingPmId).then(async (pm) => {
+      if (cancelled) return;
+      if (!pm) {
+        setEditPmLoading(false);
+        return;
+      }
+      const priceRow = await fetchPriceListRowForMaterial('PM', parseInt(String(existingPmId), 10));
       if (cancelled) return;
       setEditPmLoading(false);
-      if (!pm) return;
       const fdObj = safeParseMaybeJsonObject(pm.form_data);
       const fdNormalizedRaw: any = fdObj ?? null;
 
@@ -1088,10 +1357,13 @@ const PackagingRefactored: React.FC = () => {
       const variantsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).variants : undefined;
       const testsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).tests : undefined;
 
+      const vendorsNormalized = normalizePmVendors(vendorsVal);
+      const vendorsMerged = mergePmVendorsWithPriceList(vendorsNormalized, priceRow);
+
       const fdNormalized = fdNormalizedRaw
         ? {
           ...(fdNormalizedRaw as typeof formData),
-          vendors: normalizePmVendors(vendorsVal),
+          vendors: vendorsMerged,
           variants: normalizePmVariants(variantsVal),
           tests: normalizePmTests(testsVal),
         }
@@ -1123,17 +1395,27 @@ const PackagingRefactored: React.FC = () => {
         ...prev,
         ...baseFromRecord,
         ...(fdOverlay ? (fdOverlay as typeof prev) : {}),
+        ...(vendorsMerged.length > 0 && !fdOverlay ? { vendors: vendorsMerged } : {}),
       }));
 
       setGeneratedCode(pm.code);
+    }).catch(() => {
+      setEditPmLoading(false);
     });
     return () => { cancelled = true; };
   }, [pageTab, existingPmId]);
 
+  const isEditingPm = !!existingPmId;
+  const closePmFormPopup = () => {
+    resetPmFormToEmpty();
+    setPageTab('bpr');
+    setEditPmLoading(false);
+  };
+
   // When editing PM, show loading until data is fetched
   if (pageTab === 'form' && existingPmId && editPmLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
         <BprDashboard
           refreshKey={0}
           onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
@@ -1149,8 +1431,30 @@ const PackagingRefactored: React.FC = () => {
             }
           }}
         />
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <p className="text-gray-200">Loading pack material…</p>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4"
+          onClick={closePmFormPopup}
+        >
+          <div
+            className="w-full max-w-6xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+              <div className="text-sm font-semibold text-gray-800">Loading…</div>
+              <button
+                type="button"
+                onClick={closePmFormPopup}
+                aria-label="Close packaging popup"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+              >
+                <span aria-hidden>✕</span>
+                <span>Close</span>
+              </button>
+            </div>
+            <div className="min-h-[50vh] bg-[#f9fafb] flex items-center justify-center">
+              <p className="text-gray-500">Loading pack material…</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1177,164 +1481,201 @@ const PackagingRefactored: React.FC = () => {
 
   if (pageTab === 'bpr') return bprNode;
 
-  // ── Main two-panel layout ────────────────────────────────────────────────────
+  // ── PM master popup: same shell as Raw Material (centered card, overlay dismiss) ──
   return (
     <>
       {bprNode}
-      <div className="fixed inset-0 z-50 min-h-screen bg-black/40 backdrop-blur-sm flex flex-col overflow-y-auto p-4">
-          {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
-          <div className="bg-white border-b border-gray-200">
-          <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => { resetPmFormToEmpty(); setPageTab('bpr'); }}
-                className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
-              >
-                BPR Dashboard
-              </button>
-              <span className="text-gray-300">|</span>
-              <button
-                type="button"
-                onClick={() => { resetPmFormToEmpty(); setPageTab('bpr'); setEditPmLoading(false); }}
-                className="ml-0.5 p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-              <h1 className="text-base font-bold text-gray-800 leading-tight truncate">
-                Packaging Item Onboarding (PM)
-              </h1>
+      <div
+        className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4"
+        onClick={closePmFormPopup}
+      >
+        <div
+          className="w-full max-w-6xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+            <div className="text-sm font-semibold text-gray-800">
+              {isEditingPm ? 'Edit Packaging Material' : 'New Packaging Material'}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => doSave(false)}
-                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-              >
-                Save
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-              >
-                Reset
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
-              >
-                Submit
-              </button>
-            </div>
-          </div>
+            <button
+              type="button"
+              onClick={closePmFormPopup}
+              aria-label="Close packaging popup"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+            >
+              <span aria-hidden>✕</span>
+              <span>Close</span>
+            </button>
           </div>
 
-        {/* ── Body: Sidebar + Content ─────────────────────────────────────────── */}
-        <div className="flex-1">
-          <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
-
-            {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────── */}
-            <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
-              {/* Sections header + autosave */}
-              <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
+          <div className="max-h-[88vh] overflow-y-auto">
+            {/* Toolbar — mirrors MasterFormBase (Raw Material master) */}
+            <div className="bg-white border-b border-gray-200">
+              <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-y-2 gap-x-6">
+                <div className="flex items-center gap-3 min-w-0">
                   <button
-                    onClick={() => setAutoSaveOn(prev => !prev)}
-                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                    type="button"
+                    onClick={() => {
+                      resetPmFormToEmpty();
+                      setPageTab('bpr');
+                    }}
+                    className="text-sm text-indigo-600 hover:underline font-medium shrink-0"
                   >
-                    Autosave: {autoSaveOn ? 'ON' : 'OFF'}
+                    BPR Dashboard
+                  </button>
+                  <h1 className="text-base md:text-lg font-bold text-gray-800 leading-tight truncate">
+                    Packaging Material Master Data
+                  </h1>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => doSave(false)}
+                    className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+                  >
+                    Reset Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
+                  >
+                    Submit
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Status + Version */}
-              <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
-                <div className="flex-1">
-                  <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
-                  <select
-                    id="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
-                    className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    {['Draft', 'Active', 'Discontinued', 'Under Review'].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className="w-12">
-                  <label className="block text-[10px] text-gray-500 mb-1">Version</label>
-                  <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
-                </div>
-              </div>
-
-              {/* Section List */}
-              <nav className="flex-1 px-2 py-2">
-                {SECTIONS.map((section, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentSection(idx)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${currentSection === idx
-                        ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
-                      }`}
-                  >
-                    {section}
-                  </button>
-                ))}
-              </nav>
-
-              {/* Stats */}
-              <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2 mt-auto">
-                {[
-                  { label: 'Variants', value: formData.variants.length },
-                  { label: 'Vendors', value: formData.vendors.length },
-                  { label: 'Tests Logged', value: formData.tests.length },
-                  { label: 'Last Saved', value: lastSaved },
-                ].map(stat => (
-                  <div key={stat.label}>
-                    <p className="text-[9px] uppercase text-gray-400 tracking-wide">{stat.label}</p>
-                    <p className="text-sm font-bold text-gray-700">{stat.value}</p>
+            <div className="min-h-0 bg-gray-50">
+              <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
+                <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto max-h-[calc(88vh-8rem)]">
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
+                      <button
+                        type="button"
+                        onClick={() => setAutoSaveOn((prev) => !prev)}
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        Autosave: {autoSaveOn ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
                   </div>
-                ))}
-              </div>
 
-            </aside>
+                  <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
+                      <select
+                        id="status"
+                        value={formData.status}
+                        onChange={handleInputChange}
+                        className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      >
+                        {['Draft', 'Active', 'Discontinued', 'Under Review'].map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-12">
+                      <label className="block text-[10px] text-gray-500 mb-1">Version</label>
+                      <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
+                    </div>
+                  </div>
 
-            {/* ── RIGHT CONTENT ─────────────────────────────────────────────────── */}
-            <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
-              {/* Content header with Prev/Next */}
-              <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-                <div className="w-full px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-gray-800">{SECTIONS[currentSection]}</h2>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
-                      disabled={currentSection === 0}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                    >
-                      Prev
-                    </button>
-                    <button
-                      onClick={() => setCurrentSection(prev => Math.min(SECTIONS.length - 1, prev + 1))}
-                      disabled={currentSection === SECTIONS.length - 1}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-sm rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              </div>
+                  <nav className="flex-1 px-2 py-2 min-h-0 overflow-y-auto">
+                    {SECTIONS.map((section, idx) => {
+                      const navLocked = isNewPm && idx > 0 && !canAdvancePastPrimary;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            if (navLocked) {
+                              addToast('info', 'Sync with Zoho on the primary section first.');
+                              return;
+                            }
+                            setCurrentSection(idx);
+                          }}
+                          disabled={navLocked}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${
+                            currentSection === idx
+                              ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                          } ${navLocked ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          {section}
+                        </button>
+                      );
+                    })}
+                  </nav>
 
-              {/* Section body */}
-              <div className="px-4 py-6">
-                <div className="w-full">
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
-                    {renderSection()}
+                  <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
+                    Stage {currentSection + 1} of {SECTIONS.length}
                   </div>
-                </div>
+
+                  <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2">
+                    {[
+                      { label: 'Variants', value: formData.variants.length },
+                      { label: 'Vendors', value: formData.vendors.length },
+                      { label: 'Tests Logged', value: formData.tests.length },
+                      { label: 'Last Saved', value: lastSaved },
+                    ].map((stat) => (
+                      <div key={stat.label}>
+                        <p className="text-[9px] uppercase text-gray-400 tracking-wide">{stat.label}</p>
+                        <p className="text-sm font-bold text-gray-700">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </aside>
+
+                <main className="flex-1 min-w-0 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm max-h-[calc(88vh-8rem)]">
+                  <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                    <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+                      <h2 className="text-sm font-bold text-gray-800 truncate">{SECTIONS[currentSection]}</h2>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentSection((prev) => Math.max(0, prev - 1))}
+                          disabled={currentSection === 0}
+                          className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentSection((prev) => Math.min(SECTIONS.length - 1, prev + 1))}
+                          disabled={
+                            currentSection === SECTIONS.length - 1 ||
+                            (isNewPm && currentSection === 0 && !canAdvancePastPrimary)
+                          }
+                          title={isNewPm && currentSection === 0 && !canAdvancePastPrimary ? 'Sync with Zoho first' : undefined}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-6">
+                    <div className="max-w-4xl mx-auto space-y-4">
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
+                        {renderSection()}
+                      </div>
+                    </div>
+                  </div>
+                </main>
               </div>
-            </main>
+            </div>
           </div>
         </div>
       </div>
@@ -1360,27 +1701,42 @@ const PRINT_STATUS_STYLES: Record<string, { bg: string; text: string; border: st
   'N/A': { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200' },
 };
 
-function formatPrice(n: number) {
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 });
-}
-
 function removeNullish<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Partial<T>;
 }
 
-function normalizePmVendors(input: any): Array<{ name: string; location: string; moq: number; price: number; leadTime: number; approved: string; priceType: string; validTill: string; sampleCost: number }> {
+function normalizePmVendors(input: any): PmCommercialVendor[] {
   if (!Array.isArray(input)) return [];
-  return input.map((v: any, idx: number) => ({
-    name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
-    location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
-    moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
-    price: Number(v?.price ?? v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
-    leadTime: Number(v?.leadTime ?? v?.lead_time_days ?? v?.venLT ?? v?.leadTimeDays ?? 0),
-    approved: String(v?.approved ?? v?.venApproved ?? ''),
-    priceType: String(v?.priceType ?? v?.venPriceType ?? ''),
-    validTill: String(v?.validTill ?? v?.venValid ?? ''),
-    sampleCost: Number(v?.sampleCost ?? v?.venSampleCost ?? 0),
-  }));
+  return input.map((v: any) => {
+    const tiersRaw = v?.tiers;
+    const tiers =
+      Array.isArray(tiersRaw) && tiersRaw.length > 0
+        ? tiersRaw.map((t: any) => ({
+            moq: String(t?.moq ?? ''),
+            price: String(t?.price ?? ''),
+            validTill: String(t?.validTill ?? t?.valid_till ?? ''),
+            note: String(t?.note ?? ''),
+          }))
+        : undefined;
+    return {
+      id: v?.id != null ? String(v.id) : undefined,
+      name: String(v?.name ?? v?.venName ?? v?.vendorName ?? ''),
+      location: String(v?.location ?? v?.venLocation ?? v?.vendorLocation ?? ''),
+      moq: Number(v?.moq ?? v?.venMoq ?? v?.vendorMoq ?? 0),
+      price: Number(v?.price ?? v?.unitPrice ?? v?.venPrice ?? v?.venUnitPrice ?? v?.vendorUnitPrice ?? 0),
+      leadTime: Number(v?.leadTime ?? v?.lead_time_days ?? v?.venLT ?? v?.leadTimeDays ?? 0),
+      approved: String(v?.approved ?? v?.venApproved ?? ''),
+      priceType: String(v?.priceType ?? v?.venPriceType ?? ''),
+      validTill: String(v?.validTill ?? v?.venValid ?? ''),
+      sampleCost: Number(v?.sampleCost ?? v?.venSampleCost ?? 0),
+      currency: v?.currency != null ? String(v.currency) : 'INR',
+      advancePct: v?.advancePct != null ? String(v.advancePct) : '',
+      preShipmentPct: v?.preShipmentPct != null ? String(v.preShipmentPct) : '',
+      postShipmentPct: v?.postShipmentPct != null ? String(v.postShipmentPct) : '',
+      creditDays: v?.creditDays != null ? String(v.creditDays) : '',
+      tiers,
+    };
+  });
 }
 
 function normalizePmVariants(input: any): Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }> {
@@ -1587,7 +1943,6 @@ const BprDashboard: React.FC<{
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Material</th>
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Size / Spec</th>
-                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Price/PC</th>
                       <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">MOQ</th>
                       <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
@@ -1599,7 +1954,7 @@ const BprDashboard: React.FC<{
                   <tbody className="divide-y divide-gray-50">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={14} className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
                           <div className="flex flex-col items-center gap-2">
                             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1638,8 +1993,6 @@ const BprDashboard: React.FC<{
                           <td className="px-4 py-3 text-gray-600">{pm.material}</td>
                           {/* size/spec */}
                           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{pm.sizeSpec}</td>
-                          {/* price */}
-                          <td className="px-4 py-3 text-right font-semibold text-amber-600">{formatPrice(pm.pricePerPc)}</td>
                           {/* moq */}
                           <td className="px-4 py-3 text-right text-gray-600">{pm.moq.toLocaleString('en-IN')}</td>
                           {/* lead time */}
@@ -1789,7 +2142,8 @@ const InputField: React.FC<{
   type?: string; placeholder?: string;
   error?: string;
   requiredMark?: boolean;
-}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark }) => (
+  readOnly?: boolean;
+}> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark, readOnly }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">
       {label}
@@ -1800,11 +2154,12 @@ const InputField: React.FC<{
       id={id}
       value={value ?? ''}
       onChange={onChange}
+      readOnly={readOnly}
       placeholder={placeholder}
       aria-invalid={error ? true : undefined}
       className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
         error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-      }`}
+      } ${readOnly ? 'bg-gray-50 cursor-not-allowed' : ''}`}
     />
     {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
   </div>

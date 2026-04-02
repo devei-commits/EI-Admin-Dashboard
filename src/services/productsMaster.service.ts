@@ -61,6 +61,8 @@ export interface OpenSalesOrder {
 }
 
 export interface PRProductDetail extends PRProductListItem {
+  /** Zoho Books item id when linked */
+  zoho_item_id?: string | null;
   product_description?: string;
   license_cml?: string;
   theoretical_yield_pct?: number;
@@ -150,6 +152,26 @@ export async function createPRRegistration(
 ): Promise<ServiceResult<PRRegistrationResponse>> {
   try {
     const data = await api.post<PRRegistrationResponse>('/api/v1/products/pr-registration', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    return { data: null, error: messageFromApiError(e), success: false };
+  }
+}
+
+export interface PrZohoSyncResponse {
+  product_id: number;
+  zoho_item_id: string | null;
+  zoho_sync:
+    | { synced: true }
+    | { synced: false; skipped?: boolean; resolvedWithoutZoho?: boolean; reason?: string; error?: string };
+}
+
+/** Draft product + Zoho item create (PR wizard step 0). Backend: POST /api/v1/products/pr-zoho-sync */
+export async function syncPrProductZoho(
+  payload: Record<string, unknown>
+): Promise<ServiceResult<PrZohoSyncResponse>> {
+  try {
+    const data = await api.post<PrZohoSyncResponse>('/api/v1/products/pr-zoho-sync', payload);
     return { data: data ?? null, error: null, success: true };
   } catch (e) {
     return { data: null, error: messageFromApiError(e), success: false };
