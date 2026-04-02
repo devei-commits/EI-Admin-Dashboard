@@ -510,6 +510,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }, 0);
   }, [formData.formulaIngredients]);
 
+  useEffect(() => {
+    if (Math.abs(formulaPercentTotal - 100) > 0.001) return;
+    setErrors((prev) => {
+      if (!prev.formulaPercentTotal) return prev;
+      const next = { ...prev };
+      delete next.formulaPercentTotal;
+      return next;
+    });
+  }, [formulaPercentTotal]);
+
   const runOnDraftLeave = useCallback(
     (containerRef: React.RefObject<HTMLDivElement | null>, flush: () => boolean) => {
       window.setTimeout(() => {
@@ -1118,7 +1128,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
                 <p className="text-xs text-slate-600 mb-3">
-                  Add ingredients in phase order. Rows are saved when you leave the fields below or press Enter (total should equal 100%).
+                  Add ingredients in phase order. Rows are added only when you click the Add button (total should equal 100%).
                 </p>
 
                 <div className="space-y-2 mb-4">
@@ -1148,18 +1158,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <div
                   ref={ingredientDraftRef}
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
-                    e.preventDefault();
-                    addIngredient();
-                  }}
                 >
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={selectedRmId}
                       onChange={(e) => setSelectedRmId(e.target.value)}
-                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       disabled={masterLoading}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
@@ -1175,7 +1179,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Or type INCI Name (manual)"
                       value={tempIngredient.inciName}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, inciName: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
@@ -1185,7 +1188,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Phase"
                       value={tempIngredient.phase}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, phase: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <input
@@ -1193,13 +1195,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="% W/W"
                       value={tempIngredient.percentWW}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, percentWW: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <select
                       value={tempIngredient.uom}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, uom: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(ingredientDraftRef, flushIngredientDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
                       <option>GM</option>
@@ -1230,7 +1230,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
                 <p className="text-xs text-slate-600 mb-3">
-                  List primary, secondary, and label components. Rows save when you leave the fields below or press Enter.
+                  List primary, secondary, and label components. Rows are added only when you click the Add button.
                 </p>
 
                 <div className="space-y-2 mb-4">
@@ -1258,18 +1258,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <div
                   ref={packDraftRef}
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    addComponent();
-                  }}
                 >
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={selectedPmId}
                       onChange={(e) => setSelectedPmId(e.target.value)}
-                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       disabled={masterLoading}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
@@ -1285,7 +1279,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Or type PM Description (manual)"
                       value={tempComponent.pmDescription}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, pmDescription: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
@@ -1295,7 +1288,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Type"
                       value={tempComponent.type}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, type: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <input
@@ -1303,7 +1295,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Qty / Unit"
                       value={tempComponent.qtyUnit}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, qtyUnit: e.target.value }))}
-                      onBlur={() => runOnDraftLeave(packDraftRef, flushComponentDraft)}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>

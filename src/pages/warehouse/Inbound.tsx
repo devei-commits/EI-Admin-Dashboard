@@ -110,6 +110,8 @@ interface LineItem {
   raw_material_id?: number;
   pack_material_id?: number;
   product_id?: number;
+  labelGenerated?: boolean;
+  generatedLabels?: GeneratedLabel[] | null;
 }
 
 interface GRNRecord {
@@ -203,6 +205,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     (grn.lineItems || []).map(li => ({
       ...li,
       rcvdQty: (li.rcvdQty != null && li.rcvdQty !== 0) ? li.rcvdQty : li.poQty,
+      labelGenerated: Boolean((li as { labelGenerated?: boolean; label_generated?: boolean }).labelGenerated ?? (li as { labelGenerated?: boolean; label_generated?: boolean }).label_generated),
+      generatedLabels: Array.isArray((li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generatedLabels)
+        ? (li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generatedLabels ?? null
+        : Array.isArray((li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generated_labels)
+          ? (li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generated_labels ?? null
+          : null,
     }))
   );
   const [labelsGenerated, setLabelsGenerated] = useState(!!(grn.generatedLabels && grn.generatedLabels.length > 0));
@@ -231,16 +239,24 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
 
-  const labelItemCodeOnFile = useMemo(() => parseItemCodeFromGeneratedLabels(labels), [labels]);
-  const labelsAreForSelectedLine = Boolean(
-    selectedLineItem &&
-      labelItemCodeOnFile &&
-      labelItemCodeOnFile.toLowerCase() === selectedLineItem.itemCode.trim().toLowerCase(),
-  );
   /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
   const needsGenerateForSelection = Boolean(
-    selectedLineItemId && (!labelItemCodeOnFile || !labelsAreForSelectedLine),
+    selectedLineItemId && (!labels || labels.length === 0),
   );
+  const labeledLineItemCodes = useMemo(() => {
+    const set = new Set<string>();
+    for (const li of editedLineItems) {
+      const code = String(li?.itemCode || '').trim().toLowerCase();
+      if (!code) continue;
+      if (li.labelGenerated || (Array.isArray(li.generatedLabels) && li.generatedLabels.length > 0)) set.add(code);
+    }
+    const legacyCode = parseItemCodeFromGeneratedLabels(grn.generatedLabels ?? null);
+    if (legacyCode) set.add(legacyCode.trim().toLowerCase());
+    return set;
+  }, [editedLineItems, grn.generatedLabels]);
+  const allLineItemsLabeled =
+    editedLineItems.length > 0 &&
+    editedLineItems.every((li) => labeledLineItemCodes.has(String(li.itemCode || '').trim().toLowerCase()));
 
   useEffect(() => {
     if (!labels || labels.length === 0) {
@@ -253,20 +269,31 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     });
   }, [labels]);
 
-  /** When reopening a GRN that already has saved labels, preselect the line item from QR payload so Regenerate works. */
+  /** Switching line item should restore that line's own generated labels. */
+  useEffect(() => {
+    if (!selectedLineItemId) {
+      setLabels(null);
+      setLabelsGenerated(false);
+      return;
+    }
+    const li = editedLineItems.find((x) => x.id === selectedLineItemId);
+    const next = Array.isArray(li?.generatedLabels) ? li.generatedLabels : null;
+    setLabels(next);
+    setLabelsGenerated(Boolean(next && next.length > 0));
+  }, [selectedLineItemId, editedLineItems]);
+
+  /** When reopening a GRN, preselect first line that already has labels (line-level first, legacy fallback second). */
   useEffect(() => {
     if (selectedLineItemId) return;
-    const gl = grn.generatedLabels;
-    if (!Array.isArray(gl) || gl.length === 0) return;
-    try {
-      const p = JSON.parse(gl[0].qrPayload || '{}') as { item_code?: string };
-      const code = String(p.item_code || '').trim();
-      if (!code) return;
-      const match = editedLineItems.find((li) => li.itemCode === code);
-      if (match) setSelectedLineItemId(match.id);
-    } catch {
-      /* ignore */
+    const withLineLabels = editedLineItems.find((li) => Array.isArray(li.generatedLabels) && li.generatedLabels.length > 0);
+    if (withLineLabels) {
+      setSelectedLineItemId(withLineLabels.id);
+      return;
     }
+    const legacyCode = parseItemCodeFromGeneratedLabels(grn.generatedLabels ?? null);
+    if (!legacyCode) return;
+    const match = editedLineItems.find((li) => String(li.itemCode).trim().toLowerCase() === legacyCode.trim().toLowerCase());
+    if (match) setSelectedLineItemId(match.id);
   }, [grn.id, grn.generatedLabels, editedLineItems, selectedLineItemId]);
 
   useEffect(() => {
@@ -398,7 +425,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         return;
       }
     }
-    const wasRegenerating = Boolean(labelItemCodeOnFile && labelsAreForSelectedLine);
+    const wasRegenerating = Boolean(labels && labels.length > 0);
     setLabelError(null);
     setGeneratingLabels(true);
     try {
@@ -420,6 +447,18 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       });
       setLabels(res.labels);
       setLabelsGenerated(true);
+      const selectedCodeNorm = String(selectedLineItem?.itemCode || '').trim().toLowerCase();
+      const nextLineItems = editedLineItems.map((li) =>
+        String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
+          ? { ...li, labelGenerated: true, generatedLabels: res.labels }
+          : li
+      );
+      setEditedLineItems(nextLineItems);
+      try {
+        await updateGRN(grn.id, { lineItems: nextLineItems });
+      } catch {
+        // Non-fatal; keep this session state even if persistence fails.
+      }
       if (res.workflowSteps) {
         setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
       }
@@ -459,8 +498,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
   if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
-  if (!(labelsGenerated || currentWorkflowSteps.includes('Label Generation'))) {
-    completionBlockers.push('QR labels must be generated.');
+  if (!allLineItemsLabeled) {
+    completionBlockers.push('QR labels must be generated for all GRN materials.');
   }
   const canMarkComplete = completionBlockers.length === 0;
 
@@ -913,26 +952,19 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                     {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
                   </button>
                 )}
-                {labelsAreForSelectedLine && labelsGenerated && labels && labels.length > 0 && (
+                {labelsGenerated && labels && labels.length > 0 && (
                   <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 max-w-xl">
                     Labels on file match this line. Change boxes, rack/location, or batch above, then use{' '}
                     <strong>Regenerate all QR labels</strong> in the preview section to update every box QR.
                   </p>
                 )}
               </div>
-              {labelItemCodeOnFile && selectedLineItem && !labelsAreForSelectedLine && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-xl">
-                  Saved QR labels are for item <span className="font-mono font-semibold">{labelItemCodeOnFile}</span>.
-                  Select another line or use <strong>Generate Labels</strong> to create QR codes for{' '}
-                  <span className="font-semibold">{selectedLineItem.item}</span> (this replaces the previous set for this GRN).
-                </p>
-              )}
             </div>
             {labelError && <p className="text-sm text-red-600">{labelError}</p>}
           </section>
 
           {/* QR Label Preview — dropdown to pick a box; regenerate updates all QRs from form fields */}
-          {labelsGenerated && labels && labels.length > 0 && activeLabel && labelsAreForSelectedLine && (
+          {labelsGenerated && labels && labels.length > 0 && activeLabel && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
               <div className="flex flex-wrap items-end gap-3">

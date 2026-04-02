@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ShoppingCart, Package, Search, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ShoppingCart, Package, Search, Loader2, LayoutDashboard } from 'lucide-react';
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
 import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
@@ -154,11 +155,18 @@ export const OrderFulfillment: React.FC = () => {
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
       <div className="max-w-screen-2xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200">
         <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">Order Fulfillment</h1>
               <p className="text-sm text-gray-500 mt-1">Manage sale orders from creation to delivery.</p>
             </div>
+            <Link
+              to="/planning"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 hover:text-orange-700 underline-offset-2 hover:underline shrink-0"
+            >
+              <LayoutDashboard size={16} className="shrink-0" aria-hidden />
+              Planning dashboard
+            </Link>
           </div>
 
           <div className="flex justify-between items-center mb-6">
