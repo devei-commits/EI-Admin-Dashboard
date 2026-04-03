@@ -40,12 +40,12 @@ const PM_REQUIRED_FIELDS: Array<{
   section: number;
   toastMessage: string;
 }> = [
-  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 1 — PM Category is required' },
-  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 1 — Generate or enter SKU before submitting' },
-  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item Name is required' },
-  { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 1 — Level is required' },
-  { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
-  { id: 'specNominal', label: 'Nominal Volume', section: 1, toastMessage: 'Step 2 — Nominal Volume is required' },
+  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 0 — PM Category is required' },
+  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 0 — Generate or enter SKU before submitting' },
+  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 0 — Item Name is required' },
+  { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 0 — Level is required' },
+  { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 0 — Category is required' },
+  { id: 'specNominal', label: 'Nominal Volume', section: 1, toastMessage: 'Step 1 — Nominal Volume is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -357,8 +357,8 @@ const PackagingRefactored: React.FC = () => {
   // Variant ops
   const handleAddVariant = () => {
     if (!tempVariant.volume || Number(tempVariant.volume) <= 0) {
-      setErrors(prev => ({ ...prev, varVolume: 'Step 4 — Fill volume is required' }));
-      addToast('error', 'Step 4 — Fill volume is required');
+      setErrors(prev => ({ ...prev, varVolume: 'Step 3 — Fill volume is required' }));
+      addToast('error', 'Step 3 — Fill volume is required');
       return;
     }
     setFormData(prev => ({
@@ -379,7 +379,7 @@ const PackagingRefactored: React.FC = () => {
   // Vendor ops
   const handleAddVendor = () => {
     if (!tempVendor.name.trim()) {
-      addToast('error', 'Step 7 — Vendor name is required');
+      addToast('error', 'Step 6 — Vendor name is required');
       return;
     }
     const adv = Number(tempVendor.advancePct);
@@ -629,7 +629,7 @@ const PackagingRefactored: React.FC = () => {
       addToast(
         'error',
         firstTax ||
-          'When Tax Preference is Taxable, enter a valid HSN code (Step 1). Exempt / NonGST can leave HSN blank.'
+          'When Tax Preference is Taxable, enter a valid HSN code (Step 0). Exempt / NonGST can leave HSN blank.'
       );
       setCurrentSection(0);
       return;
@@ -1619,7 +1619,7 @@ const PackagingRefactored: React.FC = () => {
                   </nav>
 
                   <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
-                    Stage {currentSection + 1} of {SECTIONS.length}
+                    {currentSection}) · {SECTIONS.length} sections
                   </div>
 
                   <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2">

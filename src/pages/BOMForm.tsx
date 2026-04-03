@@ -690,9 +690,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'Generate or enter PR / BOM code before syncing with Zoho');
       return;
     }
+    const skuForZohoResolved = (formData.skuForZoho?.trim() || formData.skuCode).trim();
+    const formForSync: BOMFormState = { ...formData, skuForZoho: skuForZohoResolved };
+    setFormData(formForSync);
     setZohoSyncing(true);
     try {
-      const res = await syncPrProductZoho(buildPrZohoSyncPayload(formData));
+      const res = await syncPrProductZoho(buildPrZohoSyncPayload(formForSync));
       if (!res.success || !res.data) {
         addToast('error', typeof res.error === 'string' ? res.error : 'Zoho sync failed');
         return;
@@ -840,22 +843,22 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const handleSubmit = async () => {
     setErrors({});
     if (!formData.prCategoryKey.trim()) {
-      setErrors({ prCategoryKey: 'Step 1 — PR Category is required' });
-      addToast('error', 'Step 1 — Select a PR Category');
+      setErrors({ prCategoryKey: 'Step 0 — PR Category is required' });
+      addToast('error', 'Step 0 — Select a PR Category');
       setCurrentStage(0);
       focusPrField('prCategoryKey');
       return;
     }
     if (!formData.productName.trim()) {
-      setErrors({ productName: 'Step 1 — Product Name is required' });
-      addToast('error', 'Step 1 — Product Name is required');
+      setErrors({ productName: 'Step 0 — Product Name is required' });
+      addToast('error', 'Step 0 — Product Name is required');
       setCurrentStage(0);
       focusPrField('productName');
       return;
     }
     if (!formData.category.trim()) {
-      setErrors({ category: 'Step 1 — Category is required' });
-      addToast('error', 'Step 1 — Category is required');
+      setErrors({ category: 'Step 0 — Category is required' });
+      addToast('error', 'Step 0 — Category is required');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('category');
@@ -864,8 +867,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return;
     }
     if (!formData.productForm.trim()) {
-      setErrors({ productForm: 'Step 1 — Product Form is required' });
-      addToast('error', 'Step 1 — Product Form is required');
+      setErrors({ productForm: 'Step 0 — Product Form is required' });
+      addToast('error', 'Step 0 — Product Form is required');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('productForm');
@@ -874,8 +877,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return;
     }
     if (!formData.fillSize.trim()) {
-      setErrors({ fillSize: 'Step 1 — Fill Size is required' });
-      addToast('error', 'Step 1 — Fill Size is required');
+      setErrors({ fillSize: 'Step 0 — Fill Size is required' });
+      addToast('error', 'Step 0 — Fill Size is required');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('fillSize');
@@ -885,8 +888,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
     if (!productIdFromRoute) {
       if (!formData.skuCode.trim()) {
-        setErrors({ skuCode: 'Step 1 — Generate or enter PR / BOM code' });
-        addToast('error', 'Step 1 — Generate or enter PR code before submitting');
+        setErrors({ skuCode: 'Step 0 — Generate or enter PR / BOM code' });
+        addToast('error', 'Step 0 — Generate or enter PR code before submitting');
         setCurrentStage(0);
         focusPrField('skuCode');
         return;
@@ -904,8 +907,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
 
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
-      setErrors({ fillSize: 'Step 1 — Fill Size must be in g or ml format' });
-      addToast('error', 'Step 1 — Fill Size must be in g or ml format (example: 50g or 50ml)');
+      setErrors({ fillSize: 'Step 0 — Fill Size must be in g or ml format' });
+      addToast('error', 'Step 0 — Fill Size must be in g or ml format (example: 50g or 50ml)');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('fillSize');
@@ -915,22 +918,22 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
 
     if (!hasMeaningfulFormulaLine(formData)) {
-      setErrors({ formula: 'Step 2 — Add at least one formula ingredient' });
-      addToast('error', 'Step 2 — Add at least one formula ingredient (INCI name or % w/w) in Formula BOM.');
+      setErrors({ formula: 'Step 1 — Add at least one formula ingredient' });
+      addToast('error', 'Step 1 — Add at least one formula ingredient (INCI name or % w/w) in Formula BOM.');
       setCurrentStage(1);
       focusPrField('formula');
       return;
     }
     if (!isFormulaTotalValid(formData)) {
-      setErrors({ formulaPercentTotal: 'Step 2 — Formula BOM total must be exactly 100%' });
-      addToast('error', 'Step 2 — Formula BOM % w/w total must be exactly 100%');
+      setErrors({ formulaPercentTotal: 'Step 1 — Formula BOM total must be exactly 100%' });
+      addToast('error', 'Step 1 — Formula BOM % w/w total must be exactly 100%');
       setCurrentStage(1);
       focusPrField('formula');
       return;
     }
     if (!hasMeaningfulPackLine(formData)) {
-      setErrors({ pack: 'Step 3 — Add at least one packaging component' });
-      addToast('error', 'Step 3 — Add at least one packaging component (description) in Pack BOM.');
+      setErrors({ pack: 'Step 2 — Add at least one packaging component' });
+      addToast('error', 'Step 2 — Add at least one packaging component (description) in Pack BOM.');
       setCurrentStage(2);
       focusPrField('pack');
       return;

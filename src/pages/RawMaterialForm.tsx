@@ -352,8 +352,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Vendor operations
  const handleAddVendor = () => {
   if (!tempVendor.name.trim()) {
-   setErrors(prev => ({ ...prev, venName: 'Step 6 — Vendor name is required' }));
-   addToast('error', 'Step 6 — Vendor name is required');
+   setErrors(prev => ({ ...prev, venName: 'Step 5 — Vendor name is required' }));
+   addToast('error', 'Step 5 — Vendor name is required');
    return;
   }
   const adv = Number(tempVendor.advancePct);
@@ -462,8 +462,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Document operations
  const handleAddDocument = () => {
   if (!tempDocument.type || !tempDocument.link.trim()) {
-   setErrors(prev => ({ ...prev, documentType: 'Step 7 — Document type and link are required' }));
-   addToast('error', 'Step 7 — Document type and link are required');
+   setErrors(prev => ({ ...prev, documentType: 'Step 6 — Document type and link are required' }));
+   addToast('error', 'Step 6 — Document type and link are required');
    return;
   }
   setFormData(prev => ({
@@ -489,8 +489,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Test operations
  const handleAddTest = () => {
   if (!tempTest.name || !tempTest.result) {
-   setErrors(prev => ({ ...prev, testName: 'Step 7 — Test name and result are required' }));
-   addToast('error', 'Step 7 — Test name and result are required');
+   setErrors(prev => ({ ...prev, testName: 'Step 6 — Test name and result are required' }));
+   addToast('error', 'Step 6 — Test name and result are required');
    return;
   }
   setFormData(prev => ({
@@ -566,7 +566,7 @@ const RawMaterialRefactored: React.FC = () => {
      'error',
      firstTax
       ? taxValidation.errors[firstTax]
-      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 2). Exempt / NonGST can leave them blank.'
+      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 1). Exempt / NonGST can leave them blank.'
     );
     setCurrentStage(1);
    } else {

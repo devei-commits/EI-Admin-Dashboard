@@ -253,6 +253,13 @@ function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
   return REQUEST_STATUSES_FOR_ISSUED_PO_LIST.includes(status);
 }
 
+/** PRs still in the RFQ / request queue (before Release to Draft PO). Hidden from the Requests "Active" tab once status is PO Draft or later. */
+const REQUEST_STATUSES_PRE_DRAFT_PIPELINE: readonly RequestStatus[] = ['New', 'Quoted'];
+
+function requestStatusIsPreDraftPipeline(status: RequestStatus): boolean {
+  return REQUEST_STATUSES_PRE_DRAFT_PIPELINE.includes(status);
+}
+
 /** True when payment terms include an advance % (cannot issue PO until advance is recorded in PO tracking). */
 function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null): boolean {
   const { type } = parsePaymentTermsString(paymentTerms);
@@ -492,7 +499,7 @@ const Procurement: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
-  /** Requests tab: All = no status filter; Active = exclude PO Released; else match exact status */
+  /** Requests tab: All = no filter; Active = New + Quoted only (excludes PO Draft+ once moved to Draft POs) */
   const [requestTab, setRequestTab] = useState<'All' | 'Active' | RequestStatus>('All');
   const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
   const [draftPOSearch, setDraftPOSearch] = useState('');
@@ -713,7 +720,8 @@ const Procurement: React.FC = () => {
   const { data: grnListFromApi, isLoading: grnListLoading } = useQuery({
     queryKey: ['grn-list'],
     queryFn: fetchGRNList,
-    enabled: sideSection === 'GRN Monitor' || sideSection === 'Issued POs',
+    /** Always fetch so sidebar GRN badge matches `grnListFromApi.length` on every visit. */
+    enabled: true,
   });
 
   const grnCompletePoNormSet = useMemo(() => {
@@ -1103,6 +1111,47 @@ const Procurement: React.FC = () => {
 
   const backendPrs: ApiProcurementRequest[] = backendPrArray;
 
+  /** Planning-sourced PR table: same Category + search as main Procurement Requests card. */
+  const backendPrsFilteredForRequestsTable = useMemo(() => {
+    let rows =
+      categoryFilter === 'All'
+        ? backendPrs
+        : backendPrs.filter((pr) => {
+            const headerType = (pr as { type?: RequestType }).type;
+            if (headerType === categoryFilter) return true;
+            const items = Array.isArray(pr.items) ? pr.items : [];
+            return items.some((ln: BackendPRItem) => {
+              const isPm = ln?.type === 'PM' || (ln?.pack_material_id != null && Number(ln.pack_material_id) > 0);
+              return categoryFilter === 'PM' ? isPm : !isPm;
+            });
+          });
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((pr) => {
+      const idStr = String(pr.id ?? '');
+      const so = String(pr.planningSoNumber ?? '');
+      const cust = String(pr.planningCustomerName ?? '');
+      const prod = String(pr.planningProductName ?? '');
+      const code = String(pr.planningProductCode ?? '');
+      const vend = String(pr.preferredVendor ?? '');
+      const lines = Array.isArray(pr.items) ? pr.items : [];
+      const lineHit = lines.some((ln: BackendPRItem) => {
+        const name = String(ln?.name ?? '').toLowerCase();
+        const c = String(ln?.code ?? '').toLowerCase();
+        return name.includes(q) || c.includes(q);
+      });
+      return (
+        idStr.includes(q) ||
+        so.toLowerCase().includes(q) ||
+        cust.toLowerCase().includes(q) ||
+        prod.toLowerCase().includes(q) ||
+        code.toLowerCase().includes(q) ||
+        vend.toLowerCase().includes(q) ||
+        lineHit
+      );
+    });
+  }, [backendPrs, categoryFilter, searchQuery]);
+
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
     const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
     setMainTab(tab);
@@ -1230,25 +1279,6 @@ const Procurement: React.FC = () => {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-
-  const sideCounts = useMemo(() => {
-    const requestCount = requests.length;
-    const quotationsCount = quotes.length;
-    const draftPosCount = draftPOs.length;
-    const issuedPos = requests.filter((request) => requestStatusShowsIssuedPOs(request.status)).length;
-    const grnCount = Math.max(issuedPos, 1);
-    const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
-
-    return {
-      Overview: requestCount,
-      Requests: requestCount,
-      Quotations: quotationsCount,
-      'Draft POs': draftPosCount,
-      'Issued POs': issuedPos,
-      'GRN Monitor': grnCount,
-      'Item Tracker': itemTracker,
-    };
-  }, [draftPOs, quotes, requests]);
 
   const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
     const quotesByRequestId = new Map<string, VendorQuote[]>();
@@ -1459,7 +1489,7 @@ const Procurement: React.FC = () => {
         }
       } else if (sideSection === 'Requests') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || linkedRequest.status !== 'New') {
+        if (!linkedRequest || !requestStatusIsPreDraftPipeline(linkedRequest.status)) {
           return false;
         }
       }
@@ -1716,16 +1746,19 @@ const Procurement: React.FC = () => {
   const requestsPODraftNoDraftPO = useMemo(() => {
     const linkedRequestIds = new Set(draftPOs.map((d) => d.requestId));
     return requests.filter(
-      (r) => r.status === 'PO Draft' && !linkedRequestIds.has(r.id)
+      (r) =>
+        r.status === 'PO Draft' &&
+        !linkedRequestIds.has(r.id) &&
+        (categoryFilter === 'All' || r.type === categoryFilter),
     );
-  }, [requests, draftPOs]);
+  }, [requests, draftPOs, categoryFilter]);
 
-  /** Requests sidebar tabs: counts must match list filters (Active = hide PO Released only). */
+  /** Requests sidebar tabs: counts must match list filters (Active = New + Quoted only). */
   const procurementRequestTabCounts = useMemo(() => {
     const rows = requests;
     return {
       all: rows.length,
-      active: rows.filter((r) => r.status !== 'PO Released').length,
+      active: rows.filter((r) => requestStatusIsPreDraftPipeline(r.status)).length,
       new: rows.filter((r) => r.status === 'New').length,
       quoted: rows.filter((r) => r.status === 'Quoted').length,
       poDraft: rows.filter((r) => r.status === 'PO Draft').length,
@@ -2035,8 +2068,25 @@ const Procurement: React.FC = () => {
     );
   }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
+  /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
+  const sideCounts = useMemo(
+    () => ({
+      Overview: requests.length,
+      Requests: procurementRequestTabCounts.active,
+      Quotations: quotes.length,
+      'Draft POs': draftPOs.length,
+      'Issued POs': issuedPORecords.length,
+      'GRN Monitor': (grnListFromApi ?? []).length,
+      'Item Tracker': itemTrackerRows.length,
+    }),
+    [draftPOs, grnListFromApi, issuedPORecords, itemTrackerRows, procurementRequestTabCounts, quotes, requests],
+  );
+
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
+      if (categoryFilter !== 'All' && record.request.type !== categoryFilter) {
+        return false;
+      }
       if (issuedVendorFilter !== 'All Vendors' && record.vendor !== issuedVendorFilter) {
         return false;
       }
@@ -2062,7 +2112,7 @@ const Procurement: React.FC = () => {
         )
       );
     });
-  }, [issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
+  }, [categoryFilter, issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
     const recBackend = (record as { backendPoId?: string }).backendPoId;
@@ -2624,7 +2674,9 @@ const Procurement: React.FC = () => {
     }));
     void invalidatePurchaseOrdersQueries();
     await updateProcurementRequestApi(requestId, { status: 'PO Draft' });
-    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
       requests: current.requests.map((r) => (r.id === requestId ? { ...r, status: 'PO Draft' as RequestStatus } : r)),
     }));
@@ -3297,7 +3349,9 @@ const Procurement: React.FC = () => {
       addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
       return false;
     }
-    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
       requests: current.requests.map((req) => (req.id === requestId ? { ...req, status } : req)),
     }));
@@ -3570,8 +3624,8 @@ const Procurement: React.FC = () => {
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
                 const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
-                // Once PR → PO is issued and released to vendor, exclude from Overview (Actions Required)
-                const activeRequests = requests.filter(r => r.status !== 'PO Released' && r.status !== 'Delivery Pending');
+                // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
+                const activeRequests = requests.filter((r) => requestStatusIsPreDraftPipeline(r.status));
                 const rmRequests = requests.filter(r => r.type === 'RM');
                 const pmRequests = requests.filter(r => r.type === 'PM');
                 const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
@@ -3763,12 +3817,19 @@ const Procurement: React.FC = () => {
                     <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
                       <h3 className="text-base font-bold text-slate-900">Requests from Planning (backend)</h3>
                       <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning &gt; Raise Procurement Request. Data from API.</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Uses the same <span className="font-medium text-slate-500">Category</span> and <span className="font-medium text-slate-500">search</span> as the Procurement Requests card below.
+                      </p>
                     </div>
                     <div className="p-4 overflow-x-auto">
                       {isProcurementDataLoading ? (
                         <p className="text-sm text-slate-500 py-4">Loading procurement data…</p>
                       ) : backendPrs.length === 0 ? (
                         <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning &gt; PRs Extracted to see them here.</p>
+                      ) : backendPrsFilteredForRequestsTable.length === 0 ? (
+                        <p className="text-sm text-slate-500 py-4">
+                          No Planning PRs match the current category or search. Try Category: All or clear the search box below.
+                        </p>
                       ) : (
                         <table className="w-full text-sm border-collapse min-w-[960px]">
                           <thead>
@@ -3787,7 +3848,7 @@ const Procurement: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {backendPrs.map((pr) => {
+                            {backendPrsFilteredForRequestsTable.map((pr) => {
                               const lines = Array.isArray(pr.items) ? pr.items : [];
                               const lineSummary = lines
                                 .map((ln: BackendPRItem) => {
@@ -3922,12 +3983,26 @@ const Procurement: React.FC = () => {
                           <h2 className="text-lg font-bold text-slate-900 mb-1">Procurement Requests</h2>
                           <p className="text-xs text-slate-500">Manage and track all procurement requests</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-slate-500">Category:</span>
+                          {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
+                            <button
+                              key={category}
+                              type="button"
+                              onClick={() => setCategoryFilter(category)}
+                              className={`px-2 py-1 rounded border text-xs ${categoryFilter === category
+                                ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                : 'bg-white text-slate-700 border-slate-300'
+                                }`}
+                            >
+                              {category}
+                            </button>
+                          ))}
                           <input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search request #, SO, product, vendor, RM/PM"
-                            className="w-64 px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            className="w-64 min-w-[12rem] px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                           <button
                             onClick={openNewRequestModal}
@@ -3989,7 +4064,7 @@ const Procurement: React.FC = () => {
                         const filteredRequests = requests.filter(req => {
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
                           if (requestTab === 'Active') {
-                            if (req.status === 'PO Released') return false;
+                            if (!requestStatusIsPreDraftPipeline(req.status)) return false;
                           } else if (requestTab !== 'All') {
                             if (req.status !== requestTab) return false;
                           }

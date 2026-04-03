@@ -214,7 +214,7 @@ export function validateMasterTaxDetails(
 ): { valid: boolean; errors: Record<string, string> } {
  const errors: Record<string, string> = {};
 
- /** RM: Units, Tax & Procurement is stage index 1 → Step 2. PM: primary section → Step 1. */
+ /** RM: Units, Tax & Procurement is stage index 1 (sidebar `1)`). PM: primary section index 0. */
  const taxStepRm = 1;
  const taxStepPm = 0;
 
@@ -262,7 +262,7 @@ export function validateMasterTaxDetails(
  return { valid: true, errors: {} };
 }
 
-/** 0-based stage index on the master form → shown to users as Step (index + 1). */
+/** 0-based stage index on the master form → same number as sidebar labels (`0) …`, `1) …`). */
 const PRIMARY_FIELD_STEP: Record<'packaging' | 'rawMaterial' | 'bom', Record<string, number>> = {
  rawMaterial: {
   rmSku: 0,
@@ -311,9 +311,9 @@ const PRIMARY_FIELD_LABEL: Record<'packaging' | 'rawMaterial' | 'bom', Record<st
  },
 };
 
-/** Shown in inline errors and toasts: `Step 2 — HSN code is required` */
+/** Shown in inline errors and toasts: `Step 1 — HSN code is required` (matches sidebar index `1)`). */
 export function formatStepFieldMessage(stepIndex0: number, label: string, suffix = 'is required'): string {
- return `Step ${stepIndex0 + 1} — ${label} ${suffix}`;
+ return `Step ${stepIndex0} — ${label} ${suffix}`;
 }
 
 /**

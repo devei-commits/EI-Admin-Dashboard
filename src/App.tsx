@@ -210,11 +210,7 @@ const AppLayout = () => {
                                                         <Planning />
                                                  </ProtectedModuleRoute>
                                           } />
-                                          <Route path="/planning/availability-summary" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
+                                          <Route path="/planning/availability-summary" element={<Navigate to="/planning/pis-extracted" replace />} />
                                           <Route path="/planning/batches" element={
                                                  <ProtectedModuleRoute moduleId="order-management">
                                                         <Planning />

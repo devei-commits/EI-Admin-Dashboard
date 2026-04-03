@@ -159,7 +159,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        })}
       </nav>
       <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
-       Stage {currentStage + 1} of {stages.length}
+       {currentStage}) · {stages.length} sections
       </div>
      </aside>
 
