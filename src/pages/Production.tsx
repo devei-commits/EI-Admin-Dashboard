@@ -2878,6 +2878,44 @@ function findOpenPmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNReco
   return found ?? null;
 }
 
+/** Any outbound PM MTR for this BMR (open or closed). */
+function findAnyPmMtrForBatch(bmrNo: string, list: MRNRecordFromApi[]): MRNRecordFromApi | null {
+  const rows = list.filter(
+    (m) =>
+      m.bmrNo === bmrNo &&
+      m.source === 'MTR' &&
+      !m.isInboundFromMu &&
+      mrnLineItemsLookLikePm(m),
+  );
+  if (rows.length === 0) return null;
+  return rows
+    .slice()
+    .sort((a, b) => {
+      const ta = Date.parse(String((a as { createdAt?: string }).createdAt || '')) || 0;
+      const tb = Date.parse(String((b as { createdAt?: string }).createdAt || '')) || 0;
+      return tb - ta;
+    })[0] ?? rows[0];
+}
+
+/**
+ * WH→MU transfer is done for RM when the batch flag is set OR every outbound RM MTR is closed
+ * (Succeeded/Completed) — avoids a stuck UI when inventory/backend advanced but batch row lags.
+ */
+function effectiveRmConnected(batch: Batch, outboundMrns: MRNRecordFromApi[]): boolean {
+  if (batch.rmConnected) return true;
+  const open = findOpenRmMtrForBatch(batch.bmrNo, outboundMrns);
+  const any = findAnyRmMtrForBatch(batch.bmrNo, outboundMrns);
+  return !open && any != null;
+}
+
+/** Same for PM MTR vs pm_connected. */
+function effectivePmConnected(batch: Batch, outboundMrns: MRNRecordFromApi[]): boolean {
+  if (batch.pmConnected) return true;
+  const open = findOpenPmMtrForBatch(batch.bmrNo, outboundMrns);
+  const any = findAnyPmMtrForBatch(batch.bmrNo, outboundMrns);
+  return !open && any != null;
+}
+
 /** Short label for BMR/BPR chip — reflects warehouse pipeline (not editable). */
 function outboundMtrStageTitle(m: MRNRecordFromApi): string {
   const s = String(m.status || '').trim();
@@ -4101,8 +4139,11 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
               setSelectedMRN(updated);
               setDetailMRN(updated);
               onMrnListChanged?.();
-              if ((updated.status === 'Succeeded' || updated.status === 'Completed') && updated.source === 'MTR' && !updated.isInboundFromMu) {
-                onOutboundMtrCompleted?.();
+              {
+                const st = String(updated.status || '').trim().toLowerCase();
+                if ((st === 'succeeded' || st === 'completed') && updated.source === 'MTR' && !updated.isInboundFromMu) {
+                  onOutboundMtrCompleted?.();
+                }
               }
             }}
           />
@@ -4126,8 +4167,6 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const [tab, setTab] = useState('overview');
   const [type, setType] = useState<'bmr' | 'bpr'>(initialTab);
   const pipeline = type === 'bmr' ? BMR_PIPELINE : BPR_PIPELINE;
-  const curStatus = type === 'bmr' ? bmrStatusForPipelineDisplay(batch) : (batch.bprStatus === 'qc_failed' ? (batch.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : batch.bprStatus);
-  const pIdx = pipelineIndex(curStatus, pipeline);
 
   const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
   const [bomPmItems, setBomPmItems] = useState<DispensingItem[]>([]);
@@ -4136,8 +4175,25 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const anyRmMtrForBatch = useMemo(() => findAnyRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const openPmMtrForBatch = useMemo(() => findOpenPmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
+  const anyPmMtrForBatch = useMemo(() => findAnyPmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
+  const effectiveRmConnectedUi = useMemo(() => effectiveRmConnected(batch, outboundMrns), [batch.bmrNo, batch.rmConnected, outboundMrns]);
+  const effectivePmConnectedUi = useMemo(() => effectivePmConnected(batch, outboundMrns), [batch.bmrNo, batch.pmConnected, outboundMrns]);
   const openRmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openRmMtrForBatch), [openRmMtrForBatch]);
   const openPmMtrWarehouseMeta = useMemo(() => outboundMtrWarehouseMeta(openPmMtrForBatch), [openPmMtrForBatch]);
+
+  const bmrDisplayForStripAndBadge = useMemo(() => {
+    const pastRmConnectUi = ['dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
+    if (pastRmConnectUi.includes(batch.bmrStatus)) return batch.bmrStatus;
+    if (effectiveRmConnected(batch, outboundMrns) && (batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled')) return 'rm_connected';
+    return batch.bmrStatus;
+  }, [batch.bmrNo, batch.bmrStatus, batch.rmConnected, outboundMrns]);
+  const bprDisplayForStripAndBadge = useMemo(() => {
+    if (batch.bprStatus === 'qc_failed') return batch.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc';
+    if (effectivePmConnected(batch, outboundMrns) && batch.bprStatus === 'pm_reserved') return 'pm_dispensing';
+    return batch.bprStatus;
+  }, [batch.bmrNo, batch.bprStatus, batch.pmConnected, outboundMrns]);
+  const curStatus = type === 'bmr' ? bmrDisplayForStripAndBadge : bprDisplayForStripAndBadge;
+  const pIdx = pipelineIndex(curStatus, pipeline);
 
   useEffect(() => {
     if (!batch.sku && !batch.productName) return;
@@ -4258,9 +4314,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             <div id="bdm-status-badges" className="flex gap-1.5 flex-wrap shrink-0 items-center">
               <button type="button" onClick={() => setType('bmr')} className={`text-[10px] px-2 py-0.5 rounded font-semibold border transition-colors ${type === 'bmr' ? 'bg-orange-500 text-white border-orange-500' : 'text-gray-500 border-gray-200 hover:bg-gray-50'}`}>BMR</button>
               <button type="button" onClick={() => setType('bpr')} className={`text-[10px] px-2 py-0.5 rounded font-semibold border transition-colors ${type === 'bpr' ? 'bg-purple-500 text-white border-purple-500' : 'text-gray-500 border-gray-200 hover:bg-gray-50'}`}>BPR</button>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">{bmrStatusLabel[bmrStatusForPipelineDisplay(batch)]}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">{bmrStatusLabel[bmrDisplayForStripAndBadge]}</span>
               {batch.bmrStatus === 'batch_confirmed' && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Confirmed</span>}
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[batch.bprStatus]}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[bprDisplayForStripAndBadge]}</span>
             </div>
           </div>
           <div className="flex gap-1.5 items-center shrink-0">
@@ -4517,8 +4573,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {canShowRescheduleFooterButton(batch) && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Reschedule dates</Btn>
           )}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && openRmMtrForBatch && (
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && openRmMtrForBatch && (
             <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
@@ -4539,23 +4595,18 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               )}
             </span>
           )}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmConnected && !openRmMtrForBatch && anyRmMtrForBatch && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg" title="An RM transfer already exists for this batch. Continue from Transfer orders or move to RM dispensing if material is already at MU.">
-              <Info size={14} /> RM MTR already exists for this batch
-            </span>
-          )}
-          {batch.rmConnected && batch.bmrStatus === 'rm_connected' && (!openRmMtrForBatch || mtrAllRmLinesReceivedAtMu(openRmMtrForBatch)) && (
+          {effectiveRmConnectedUi && (batch.bmrStatus === 'rm_connected' || batch.bmrStatus === 'dispensing' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && (!openRmMtrForBatch || mtrAllRmLinesReceivedAtMu(openRmMtrForBatch)) && (
             <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>
           )}
-          {batch.rmConnected && batch.bmrStatus === 'rm_connected' && openRmMtrForBatch && !mtrAllRmLinesReceivedAtMu(openRmMtrForBatch) && (
+          {effectiveRmConnectedUi && (batch.bmrStatus === 'rm_connected' || batch.bmrStatus === 'dispensing' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && openRmMtrForBatch && !mtrAllRmLinesReceivedAtMu(openRmMtrForBatch) && (
             <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Verify every RM line at MU in Transfer orders before dispensing.">
               <Info size={14} /> Receive all RM lines at MU first
             </span>
           )}
           {/* {canOfferRmDispensingUi(batch) && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>} */}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && !openPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !batch.pmConnected && openPmMtrForBatch && (
+          {batch.bprStatus === 'pm_reserved' && !effectivePmConnectedUi && !anyPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && !effectivePmConnectedUi && openPmMtrForBatch && (
             <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
@@ -4576,10 +4627,10 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               )}
             </span>
           )}
-          {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && (!openPmMtrForBatch || mtrAllPmLinesReceivedAtMu(openPmMtrForBatch)) && (
+          {effectivePmConnectedUi && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved' || batch.bprStatus === 'pm_dispensing') && (!openPmMtrForBatch || mtrAllPmLinesReceivedAtMu(openPmMtrForBatch)) && (
             <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>
           )}
-          {batch.pmConnected && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved') && openPmMtrForBatch && !mtrAllPmLinesReceivedAtMu(openPmMtrForBatch) && (
+          {effectivePmConnectedUi && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved' || batch.bprStatus === 'pm_dispensing') && openPmMtrForBatch && !mtrAllPmLinesReceivedAtMu(openPmMtrForBatch) && (
             <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Verify every PM line at MU in Transfer orders before PM dispensing.">
               <Info size={14} /> Receive all PM lines at MU first
             </span>
@@ -4839,11 +4890,18 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
               const colors = batchColorMap[b.color] || batchColorMap.teal;
               const openRmMtr = findOpenRmMtrForBatch(b.bmrNo, outboundMrns);
               const anyRmMtr = findAnyRmMtrForBatch(b.bmrNo, outboundMrns);
+              const effectiveRm = effectiveRmConnected(b, outboundMrns);
+              const bmrDisplayForStrip = b.bmrStatus === 'qc_failed' ? 'bulk_qc' : (() => {
+                const pastRmConnectUi = ['dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
+                if (pastRmConnectUi.includes(b.bmrStatus)) return b.bmrStatus;
+                if (effectiveRm && (b.bmrStatus === 'rm_reserved' || b.bmrStatus === 'scheduled')) return 'rm_connected';
+                return b.bmrStatus;
+              })();
               const rmMtrWhMeta = outboundMtrWarehouseMeta(openRmMtr);
               return (
                 <div key={b.bmrNo} className={`rounded-xl border p-4 ${b.bmrStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
-                  <div className="mb-3"><PipelineStrip pipeline={BMR_PIPELINE} currentStatus={b.bmrStatus === 'qc_failed' ? 'bulk_qc' : b.bmrStatus} failed={b.bmrStatus === 'qc_failed'} /></div>
+                  <div className="mb-3"><PipelineStrip pipeline={BMR_PIPELINE} currentStatus={bmrDisplayForStrip} failed={b.bmrStatus === 'qc_failed'} /></div>
                   <div className="flex items-start justify-between mb-2.5">
                     <div>
                       <div className="text-sm font-bold text-gray-800">{b.bmrNo}</div>
@@ -4851,7 +4909,7 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     </div>
                     {b.bmrStatus === 'qc_failed'
                       ? <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed</Badge>
-                      : <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{bmrStatusLabel[b.bmrStatus]}</Badge>}
+                      : <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{bmrStatusLabel[bmrDisplayForStrip]}</Badge>}
                   </div>
                   {b.bmrStatus === 'qc_failed' && b.remarks && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 mb-2.5 rounded-lg bg-red-100/60 border border-red-200 text-[10px] text-red-700">
@@ -4880,8 +4938,8 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {canAdjustBatchSize(b) && (
                       <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
                     )}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !anyRmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && openRmMtr && (
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !effectiveRm && !anyRmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !effectiveRm && openRmMtr && (
                       <span
                         className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
                         title={outboundMtrStageHint(openRmMtr)}
@@ -4905,15 +4963,10 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                         )}
                       </span>
                     )}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !b.rmConnected && !openRmMtr && anyRmMtr && (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg" title="An RM transfer already exists for this batch. Continue from Transfer orders.">
-                        <Info size={10} /> RM MTR already exists
-                      </span>
-                    )}
-                    {b.bmrStatus === 'rm_connected' && (!openRmMtr || mtrAllRmLinesReceivedAtMu(openRmMtr)) && (
+                    {effectiveRm && (b.bmrStatus === 'rm_connected' || b.bmrStatus === 'dispensing' || b.bmrStatus === 'rm_reserved' || b.bmrStatus === 'scheduled') && (!openRmMtr || mtrAllRmLinesReceivedAtMu(openRmMtr)) && (
                       <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>Dispense</Btn>
                     )}
-                    {b.bmrStatus === 'rm_connected' && openRmMtr && !mtrAllRmLinesReceivedAtMu(openRmMtr) && (
+                    {effectiveRm && (b.bmrStatus === 'rm_connected' || b.bmrStatus === 'dispensing' || b.bmrStatus === 'rm_reserved' || b.bmrStatus === 'scheduled') && openRmMtr && !mtrAllRmLinesReceivedAtMu(openRmMtr) && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Receive all RM lines at MU in Transfer orders first.">
                         <Info size={10} /> Receive RM at MU
                       </span>
@@ -4999,11 +5052,14 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
             {filtered.map(b => {
               const colors = batchColorMap[b.color] || batchColorMap.purple;
               const openPmMtr = findOpenPmMtrForBatch(b.bmrNo, outboundMrns);
+              const anyPmMtr = findAnyPmMtrForBatch(b.bmrNo, outboundMrns);
+              const effectivePm = effectivePmConnected(b, outboundMrns);
+              const bprDisplayForStrip = b.bprStatus === 'qc_failed' ? (b.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : (effectivePm && b.bprStatus === 'pm_reserved' ? 'pm_dispensing' : b.bprStatus);
               const pmMtrWhMeta = outboundMtrWarehouseMeta(openPmMtr);
               return (
                 <div key={b.bprNo} className={`rounded-xl border p-4 ${b.bprStatus === 'qc_failed' ? 'bg-red-50/60 border-red-200' : `${colors.bg} ${colors.border}`} hover:shadow-md transition-all cursor-pointer`}
                   onClick={() => onAction('detail', b)}>
-                  <div className="mb-3"><PipelineStrip pipeline={BPR_PIPELINE} currentStatus={b.bprStatus === 'qc_failed' ? (b.fillBatchAccepted === false ? 'fill_qc' : 'pack_qc') : b.bprStatus} failed={b.bprStatus === 'qc_failed'} /></div>
+                  <div className="mb-3"><PipelineStrip pipeline={BPR_PIPELINE} currentStatus={bprDisplayForStrip} failed={b.bprStatus === 'qc_failed'} /></div>
                   <div className="flex items-start justify-between mb-2.5">
                     <div>
                       <div className="text-sm font-bold text-gray-800">{b.bprNo}</div>
@@ -5011,7 +5067,7 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     </div>
                     {b.bprStatus === 'qc_failed'
                       ? <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed{b.fillBatchAccepted === false ? ' (Fill)' : ' (Pack)'}</Badge>
-                      : <Badge className="bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[b.bprStatus]}</Badge>}
+                      : <Badge className="bg-purple-100 text-purple-700 border border-purple-200">{bprStatusLabel[bprDisplayForStrip]}</Badge>}
                   </div>
                   {b.bprStatus === 'qc_failed' && b.remarks && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 mb-2.5 rounded-lg bg-red-100/60 border border-red-200 text-[10px] text-red-700">
@@ -5044,8 +5100,8 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     {canAdjustBatchSize(b) && (
                       <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
                     )}
-                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && !openPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
-                    {b.bprStatus === 'pm_reserved' && !b.pmConnected && openPmMtr && (
+                    {b.bprStatus === 'pm_reserved' && !effectivePm && !anyPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && !effectivePm && openPmMtr && (
                       <span className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]" title={outboundMtrStageHint(openPmMtr)}>
                         <span className="inline-flex items-center gap-1">
                           <Info size={10} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtr)}</span>
@@ -5066,10 +5122,10 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                         )}
                       </span>
                     )}
-                    {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && (!openPmMtr || mtrAllPmLinesReceivedAtMu(openPmMtr)) && (
+                    {effectivePm && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved' || b.bprStatus === 'pm_dispensing') && (!openPmMtr || mtrAllPmLinesReceivedAtMu(openPmMtr)) && (
                       <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispensePM', b)}>PM Dispense</Btn>
                     )}
-                    {b.pmConnected && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved') && openPmMtr && !mtrAllPmLinesReceivedAtMu(openPmMtr) && (
+                    {effectivePm && (b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_reserved' || b.bprStatus === 'pm_dispensing') && openPmMtr && !mtrAllPmLinesReceivedAtMu(openPmMtr) && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Receive all PM lines at MU in Transfer orders first.">
                         <Info size={10} /> Receive PM at MU
                       </span>
