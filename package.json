@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "preview": "vite preview",
+    "preview:host": "vite preview --host 0.0.0.0 --port 5174",
+    "build:preview": "vite build && vite preview --host 0.0.0.0 --port 5174",
     "prepare": "husky",
     "test": "vitest",
     "test:run": "vitest run",

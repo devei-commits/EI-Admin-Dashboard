@@ -16,11 +16,21 @@ export interface AuthUser {
  loginTime: string;
 }
 
+export interface LoginOutcome {
+ success: boolean;
+ message: string;
+ /** From login response when status is OTP_SENT (may be empty if backend stops echoing). */
+ devOtp?: string;
+ /** User id for POST /otp/verifyotp */
+ otpUserid?: number;
+}
+
 interface AuthContextType {
  user: AuthUser | null;
  isAuthenticated: boolean;
  isLoading: boolean;
- login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+ login: (email: string, password: string) => Promise<LoginOutcome>;
+ verifyOtpLogin: (userid: number, otp: string) => Promise<LoginOutcome>;
  logout: () => Promise<void>;
 }
 
@@ -78,13 +88,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   loadUserFromToken();
  }, [loadUserFromToken]);
 
- const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
+ const login = async (email: string, password: string): Promise<LoginOutcome> => {
   try {
    const result = await authService.login({
     username: email,
     password,
    });
-   if (result.success && result.data?.user) {
+   if (result.success && result.data && 'needsOtp' in result.data && result.data.needsOtp) {
+    return {
+     success: false,
+     message: 'OTP sent.',
+     devOtp: result.data.otp,
+     otpUserid: result.data.userid,
+    };
+   }
+   if (result.success && result.data && 'user' in result.data && result.data.user) {
     const authUser = userToAuthUser(result.data.user);
     setUser(authUser);
     try {
@@ -106,6 +124,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
  };
 
+ const verifyOtpLogin = async (userid: number, otp: string): Promise<LoginOutcome> => {
+  try {
+   const result = await authService.verifyOtpLogin(userid, otp);
+   if (result.success && result.data?.user) {
+    const authUser = userToAuthUser(result.data.user);
+    setUser(authUser);
+    try {
+     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authUser));
+    } catch {
+     // ignore
+    }
+    return { success: true, message: 'Login successful!' };
+   }
+   return {
+    success: false,
+    message: (result.error as any)?.message ?? (typeof result.error === 'string' ? result.error : 'Invalid OTP. Please try again.'),
+   };
+  } catch (err) {
+   return {
+    success: false,
+    message: err instanceof Error ? err.message : 'OTP verification failed.',
+   };
+  }
+ };
+
  const logout = async () => {
   await authService.logout();
   setUser(null);
@@ -121,6 +164,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   isAuthenticated: !!user,
   isLoading,
   login,
+  verifyOtpLogin,
   logout,
  };
 

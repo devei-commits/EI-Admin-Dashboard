@@ -5,13 +5,18 @@ import Logo from '../assets/logo/eilogofull.svg';
 
 const Login: React.FC = () => {
  const navigate = useNavigate();
- const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+ const { login, verifyOtpLogin, isAuthenticated, isLoading: authLoading } = useAuth();
  
  const [email, setEmail] = useState('');
  const [password, setPassword] = useState('');
  const [showPassword, setShowPassword] = useState(false);
  const [isLoading, setIsLoading] = useState(false);
  const [error, setError] = useState('');
+ /** Set only after password login returns OTP_SENT from the API. */
+ const [pendingOtpUserId, setPendingOtpUserId] = useState<number | null>(null);
+ /** Echoed by backend in login JSON (may be empty if API stops sending it). */
+ const [displayedOtpFromApi, setDisplayedOtpFromApi] = useState('');
+ const [otpEntry, setOtpEntry] = useState('');
  const [rememberMe, setRememberMe] = useState(false);
 
  // Redirect if already authenticated
@@ -30,30 +35,71 @@ const Login: React.FC = () => {
   }
  }, []);
 
+ const clearOtpStep = () => {
+  setPendingOtpUserId(null);
+  setDisplayedOtpFromApi('');
+  setOtpEntry('');
+ };
+
  const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setError('');
   const form = e.currentTarget as HTMLFormElement;
+
+  if (pendingOtpUserId != null) {
+   const code = otpEntry.trim();
+   if (!code) {
+    setError('Enter the OTP.');
+    return;
+   }
+   setIsLoading(true);
+   try {
+    const result = await verifyOtpLogin(pendingOtpUserId, code);
+    if (result.success) {
+     if (rememberMe) {
+      localStorage.setItem('eisthetic_remembered_email', email);
+     } else {
+      localStorage.removeItem('eisthetic_remembered_email');
+     }
+     clearOtpStep();
+     navigate('/', { replace: true });
+    } else {
+     setError(result.message);
+    }
+   } catch (_err) {
+    setError('An unexpected error occurred. Please try again.');
+   } finally {
+    setIsLoading(false);
+   }
+   return;
+  }
+
+  clearOtpStep();
   if (!form.reportValidity()) {
    const firstInvalid = form.querySelector(':invalid');
    if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
    return;
   }
-  
+
   setIsLoading(true);
 
   try {
    const result = await login(email, password);
-   
+
    if (result.success) {
-    // Handle remember me
     if (rememberMe) {
      localStorage.setItem('eisthetic_remembered_email', email);
     } else {
      localStorage.removeItem('eisthetic_remembered_email');
     }
     navigate('/', { replace: true });
+   } else if (result.otpUserid != null) {
+    setPendingOtpUserId(result.otpUserid);
+    setDisplayedOtpFromApi(result.devOtp ?? '');
+    setOtpEntry('');
+    setError('');
    } else {
+    clearOtpStep();
     setError(result.message);
    }
   } catch (_err) {
@@ -131,11 +177,11 @@ const Login: React.FC = () => {
          type="email"
          value={email}
          onChange={(e) => setEmail(e.target.value)}
-         className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400"
+         className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 disabled:opacity-60"
          placeholder="Enter your email"
          autoComplete="email"
          required
-         disabled={isLoading}
+         disabled={isLoading || pendingOtpUserId != null}
         />
        </div>
       </div>
@@ -156,17 +202,18 @@ const Login: React.FC = () => {
          type={showPassword ? 'text' : 'password'}
          value={password}
          onChange={(e) => setPassword(e.target.value)}
-         className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400"
+         className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 disabled:opacity-60"
          placeholder="Enter your password"
          autoComplete="current-password"
          required
-         disabled={isLoading}
+         disabled={isLoading || pendingOtpUserId != null}
         />
         <button
          type="button"
          onClick={() => setShowPassword(!showPassword)}
-         className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+         className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors disabled:pointer-events-none"
          tabIndex={-1}
+         disabled={isLoading || pendingOtpUserId != null}
         >
          {showPassword ? (
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,6 +229,49 @@ const Login: React.FC = () => {
        </div>
       </div>
 
+      {pendingOtpUserId != null && displayedOtpFromApi && (
+       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <p className="text-sm font-medium text-amber-900">One-time password (from server response)</p>
+        <p className="text-2xl font-mono font-semibold tracking-[0.2em] text-amber-950 text-center py-1">{displayedOtpFromApi}</p>
+        <p className="text-xs text-amber-800">Also check your email. Enter the same code below to continue.</p>
+       </div>
+      )}
+
+      {pendingOtpUserId != null && (
+       <div>
+        <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
+         Enter OTP <span className="text-red-500">*</span>
+        </label>
+        <input
+         id="otp"
+         type="text"
+         inputMode="numeric"
+         autoComplete="one-time-code"
+         pattern="[0-9]*"
+         maxLength={12}
+         value={otpEntry}
+         onChange={(e) => setOtpEntry(e.target.value.replace(/\D/g, ''))}
+         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 text-center text-xl font-mono tracking-widest"
+         placeholder="6-digit code"
+         required
+         disabled={isLoading}
+        />
+       </div>
+      )}
+
+      {pendingOtpUserId != null && (
+       <button
+        type="button"
+        onClick={() => {
+         clearOtpStep();
+         setError('');
+        }}
+        className="w-full py-2 text-sm font-medium text-slate-700 hover:text-slate-900 underline-offset-2 hover:underline"
+       >
+        Use a different account
+       </button>
+      )}
+
       {/* Remember Me & Forgot Password */}
       <div className="flex items-center justify-between">
        <label className="flex items-center gap-2 cursor-pointer group">
@@ -191,7 +281,7 @@ const Login: React.FC = () => {
           checked={rememberMe}
           onChange={(e) => setRememberMe(e.target.checked)}
           className="sr-only peer"
-          disabled={isLoading}
+          disabled={isLoading || pendingOtpUserId != null}
          />
          <div className="w-5 h-5 border-2 border-gray-300 rounded-md peer-checked:border-slate-800 peer-checked:bg-slate-800 transition-all duration-200 flex items-center justify-center">
           <svg className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
@@ -218,7 +308,7 @@ const Login: React.FC = () => {
         setPassword('SuperAdmin@123');
         setError('');
        }}
-       disabled={isLoading}
+       disabled={isLoading || pendingOtpUserId != null}
        className="w-full py-2.5 text-sm font-medium text-slate-900 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 hover:border-amber-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
        Fill demo credentials (Super Admin)
@@ -228,16 +318,16 @@ const Login: React.FC = () => {
       <button
        type="submit"
        disabled={isLoading}
-       className="w-full py-3.5 bg-slate-800 hover:bg-slate-800 hover: text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+       className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
        {isLoading ? (
         <>
          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-         <span>Signing in...</span>
+         <span>{pendingOtpUserId != null ? 'Verifying…' : 'Signing in...'}</span>
         </>
        ) : (
         <>
-         <span>Sign In</span>
+         <span>{pendingOtpUserId != null ? 'Verify OTP' : 'Sign In'}</span>
          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
          </svg>

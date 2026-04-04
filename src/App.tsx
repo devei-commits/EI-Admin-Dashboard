@@ -111,9 +111,11 @@ const AppLayout = () => {
        // Handle login route
        if (location.pathname === '/login') {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <Login />
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <Login />
+                            </Suspense>
+                     </main>
               );
        }
 
@@ -139,134 +141,150 @@ const AppLayout = () => {
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/pis/*" element={<PIS />} />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/pis/*" element={<PIS />} />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        // If it's a Treasury route, render Treasury standalone without admin sidebar
        if (isTreasuryRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/treasury/*" element={<TreasuryApp />} />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/treasury/*" element={<TreasuryApp />} />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isProcurementRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/procurement" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Procurement />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/procurement" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Procurement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isWarehouseRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/warehouse/*" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <WarehousePage />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/warehouse/*" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <WarehousePage />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isPlanningRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
-                                          <Route path="/planning/pis-extracted" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                          <Route path="/planning/items-involved" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                          <Route path="/planning/availability-summary" element={<Navigate to="/planning/pis-extracted" replace />} />
-                                          <Route path="/planning/batches" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
+                                                 <Route path="/planning/pis-extracted" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Planning />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/planning/items-involved" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Planning />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/planning/availability-summary" element={<Navigate to="/planning/pis-extracted" replace />} />
+                                                 <Route path="/planning/batches" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Planning />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isProductionRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/production" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Production />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/production" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Production />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isFulfillmentRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/fulfillment" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Fulfillment />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/fulfillment" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <Fulfillment />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
        if (isClientHubRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/client-hub" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <ClientHub />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <ErrorBoundary>
+                                          <Routes>
+                                                 <Route path="/client-hub" element={
+                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                               <ClientHub />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                          </Routes>
+                                   </ErrorBoundary>
+                            </Suspense>
+                     </main>
               );
        }
 
@@ -274,7 +292,7 @@ const AppLayout = () => {
        return (
               <div className="flex flex-row min-h-screen bg-background">
                      <Sidebar />
-                     <div className="flex-1 pt-14 md:pt-0 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
+                     <main id="main-content" className="flex-1 pt-14 md:pt-0 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
                             <Suspense fallback={<PageLoader />}>
                                    <ErrorBoundary>
                                           <Routes>
@@ -399,7 +417,7 @@ const AppLayout = () => {
                                           </Routes>
                                    </ErrorBoundary>
                             </Suspense>
-                     </div>
+                     </main>
               </div>
        );
 };
