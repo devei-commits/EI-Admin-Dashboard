@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import {
   fetchPriceListPage,
@@ -14,7 +14,6 @@ import {
   type ItemListTierRow,
 } from '../services/itemsList.service';
 import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
-import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import {
   formatStagedPaymentTermsSummary,
@@ -47,7 +46,8 @@ const ItemsList: React.FC = () => {
 
   const [tierTarget, setTierTarget] = useState<PriceListItemPage | null>(null);
   const [resolvedItemsListId, setResolvedItemsListId] = useState<string | null>(null);
-  const [selectedVendor, setSelectedVendor] = useState<VendorClientRecord | null>(null);
+  /** Vendor (RM/PM) or client (PR) master row from vendor_clients */
+  const [selectedParty, setSelectedParty] = useState<VendorClientRecord | null>(null);
   const [currency, setCurrency] = useState('INR');
   const [priceTiers, setPriceTiers] = useState<PriceTierRow[]>(EMPTY_TIERS);
   const [submittingTiers, setSubmittingTiers] = useState(false);
@@ -56,6 +56,7 @@ const ItemsList: React.FC = () => {
   const [loadingCombined, setLoadingCombined] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
+  const [clientFilterId, setClientFilterId] = useState<string>('');
   const [advancePctStr, setAdvancePctStr] = useState('');
   const [preShipmentPctStr, setPreShipmentPctStr] = useState('');
   const [postShipmentPctStr, setPostShipmentPctStr] = useState('');
@@ -81,27 +82,22 @@ const ItemsList: React.FC = () => {
   const [editTierNote, setEditTierNote] = useState('');
   const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
-  const itemsPageQuery = useQuery({
-    queryKey: ['items-list-pageitems', activeTab],
-    enabled: activeTab === 'rm' || activeTab === 'pm',
-    queryFn: async (): Promise<PriceListItemPage[]> => {
-      const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
-      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load items list');
-      return res.data;
-    },
-    staleTime: 2 * 60 * 1000,
+  const priceListQueries = useQueries({
+    queries: (['rm', 'pm', 'pr'] as const).map((tab) => ({
+      queryKey: ['items-list-pageitems', tab],
+      queryFn: async (): Promise<PriceListItemPage[]> => {
+        const res = await fetchPriceListPage(tab.toUpperCase() as 'RM' | 'PM' | 'PR');
+        if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load items list');
+        return res.data;
+      },
+      staleTime: 2 * 60 * 1000,
+    })),
   });
-
-  const prProductsQuery = useQuery({
-    queryKey: ['items-list-pr-products'],
-    enabled: activeTab === 'pr',
-    queryFn: async (): Promise<PRProductListItem[]> => {
-      const res = await fetchPRProducts();
-      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load PR products');
-      return res.data;
-    },
-    staleTime: 2 * 60 * 1000,
-  });
+  const rmPageItems: PriceListItemPage[] = priceListQueries[0].data ?? [];
+  const pmPageItems: PriceListItemPage[] = priceListQueries[1].data ?? [];
+  const prPageItems: PriceListItemPage[] = priceListQueries[2].data ?? [];
+  const pageItems: PriceListItemPage[] =
+    activeTab === 'rm' ? rmPageItems : activeTab === 'pm' ? pmPageItems : prPageItems;
 
   const vendorsQuery = useQuery({
     queryKey: ['items-list-vendors', 'vendor'],
@@ -113,35 +109,53 @@ const ItemsList: React.FC = () => {
     staleTime: 2 * 60 * 1000,
   });
 
-  const pageItems: PriceListItemPage[] =
-    activeTab === 'rm' || activeTab === 'pm' ? (itemsPageQuery.data ?? []) : [];
-  const products: PRProductListItem[] = activeTab === 'pr' ? (prProductsQuery.data ?? []) : [];
+  const clientsQuery = useQuery({
+    queryKey: ['items-list-vendors', 'client'],
+    queryFn: async (): Promise<VendorClientRecord[]> => {
+      const res = await fetchVendorClients('client');
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load clients');
+      return res.data as VendorClientRecord[];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
   const vendors: VendorClientRecord[] = vendorsQuery.data ?? [];
-  const loading = vendorsQuery.isLoading || (activeTab === 'pr' ? prProductsQuery.isLoading : itemsPageQuery.isLoading);
+  const clients: VendorClientRecord[] = clientsQuery.data ?? [];
+  const loading =
+    vendorsQuery.isLoading ||
+    clientsQuery.isLoading ||
+    priceListQueries.some((q) => q.isLoading);
 
   const filteredPageItems = useMemo(() => {
-    if (activeTab !== 'rm' && activeTab !== 'pm') return pageItems;
-    if (!vendorFilterId) return pageItems;
-    const vid = vendorFilterId;
-    return pageItems.filter((item) =>
-      item.vendorRates?.some((r) => String(r.vendor_id) === vid)
-    );
-  }, [activeTab, pageItems, vendorFilterId]);
+    if (activeTab === 'rm' || activeTab === 'pm') {
+      if (!vendorFilterId) return pageItems;
+      const vid = vendorFilterId;
+      return pageItems.filter((item) => item.vendorRates?.some((r) => String(r.vendor_id) === vid));
+    }
+    if (activeTab === 'pr') {
+      if (!clientFilterId) return pageItems;
+      const cid = clientFilterId;
+      return pageItems.filter((item) => item.vendorRates?.some((r) => String(r.vendor_id) === cid));
+    }
+    return pageItems;
+  }, [activeTab, pageItems, vendorFilterId, clientFilterId]);
 
   const stats = useMemo(() => {
-    const withTiers = pageItems.filter((i) => i.vendorRates && i.vendorRates.length > 0).length;
-    const totalRates = pageItems.reduce((s, i) => s + (i.vendorRates?.length ?? 0), 0);
-    const totalTiers = pageItems.reduce(
-      (s, i) => s + (i.vendorRates?.reduce((ss, v) => ss + (v.tiers?.length ?? 0), 0) ?? 0),
-      0
-    );
+    const totalTiersAll = (rows: PriceListItemPage[]) =>
+      rows.reduce(
+        (s, i) => s + (i.vendorRates?.reduce((ss, v) => ss + (v.tiers?.length ?? 0), 0) ?? 0),
+        0
+      );
+    const totalRatesAll = (rows: PriceListItemPage[]) =>
+      rows.reduce((s, i) => s + (i.vendorRates?.length ?? 0), 0);
     return {
-      rmWithTiers: pageItems.filter((i) => i.type === 'RM' && (i.vendorRates?.length ?? 0) > 0).length,
-      pmWithTiers: pageItems.filter((i) => i.type === 'PM' && (i.vendorRates?.length ?? 0) > 0).length,
-      totalVendorRates: totalRates,
-      totalTiers,
+      rmWithTiers: rmPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
+      pmWithTiers: pmPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
+      prWithTiers: prPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
+      totalRateRows: totalRatesAll(rmPageItems) + totalRatesAll(pmPageItems) + totalRatesAll(prPageItems),
+      totalTiers: totalTiersAll(rmPageItems) + totalTiersAll(pmPageItems) + totalTiersAll(prPageItems),
     };
-  }, [pageItems]);
+  }, [rmPageItems, pmPageItems, prPageItems]);
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
@@ -180,7 +194,7 @@ const ItemsList: React.FC = () => {
   const openAddTier = (item: PriceListItemPage) => {
     setTierTarget(item);
     setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
-    setSelectedVendor(null);
+    setSelectedParty(null);
     setCurrency('INR');
     setAdvancePctStr('');
     setPreShipmentPctStr('');
@@ -196,7 +210,7 @@ const ItemsList: React.FC = () => {
   const openAddPriceList = () => {
     setTierTarget(null);
     setResolvedItemsListId(null);
-    setSelectedVendor(null);
+    setSelectedParty(null);
     setCurrency('INR');
     setAdvancePctStr('');
     setPreShipmentPctStr('');
@@ -225,8 +239,8 @@ const ItemsList: React.FC = () => {
   }, [addPriceListMode, addPriceListCombinedItems, itemSearchQuery]);
 
   const handleSaveTiers = async () => {
-    if (!tierTarget || !selectedVendor) {
-      addToast('error', 'Select a vendor');
+    if (!tierTarget || !selectedParty) {
+      addToast('error', tierTarget?.type === 'PR' ? 'Select a client' : 'Select a vendor');
       return;
     }
     const valid = priceTiers.filter((t) => t.moq && t.price);
@@ -303,13 +317,17 @@ const ItemsList: React.FC = () => {
         credit_days: creditDaysStr ? Math.max(0, parseInt(creditDaysStr, 10) || 0) : 0,
       });
       const rateRes = await createItemListRate(String(itemsListId), {
-        vendor_id: parseInt(selectedVendor.id, 10),
+        vendor_id: parseInt(selectedParty.id, 10),
         currency,
         payment_terms: staged,
         lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
       });
       if (!rateRes.success || !rateRes.data) {
-        addToast('error', rateRes.error?.message ?? 'Failed to create vendor rate');
+        addToast(
+          'error',
+          rateRes.error?.message ??
+            (tierTarget.type === 'PR' ? 'Failed to create client rate' : 'Failed to create vendor rate')
+        );
         setSubmittingTiers(false);
         return;
       }
@@ -398,7 +416,7 @@ const ItemsList: React.FC = () => {
     });
     setSubmittingEditRate(false);
     if (res.success) {
-      addToast('success', 'Vendor rate updated');
+      addToast('success', editingRate.item.type === 'PR' ? 'Client rate updated' : 'Vendor rate updated');
       setEditingRate(null);
       refetchPage();
     } else {
@@ -408,12 +426,19 @@ const ItemsList: React.FC = () => {
 
   const handleDeleteRate = async () => {
     if (!editingRate || editingRate.item.itemsListId == null) return;
-    if (!window.confirm(`Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`)) return;
+    if (
+      !window.confirm(
+        editingRate.item.type === 'PR'
+          ? `Remove this client's rate and all its tiers for ${editingRate.item.name}?`
+          : `Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`
+      )
+    )
+      return;
     setSubmittingEditRate(true);
     const res = await deleteItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id);
     setSubmittingEditRate(false);
     if (res.success) {
-      addToast('success', 'Vendor rate removed');
+      addToast('success', editingRate.item.type === 'PR' ? 'Client rate removed' : 'Vendor rate removed');
       setEditingRate(null);
       refetchPage();
     } else {
@@ -483,21 +508,23 @@ const ItemsList: React.FC = () => {
     }
   };
 
-  const vendorIdsUsed = useMemo(() => {
+  const partyIdsUsed = useMemo(() => {
     if (!tierTarget) return new Set<number>();
     return new Set(tierTarget.vendorRates?.map((r) => r.vendor_id) ?? []);
   }, [tierTarget]);
-  const availableVendors = useMemo(
-    () => vendors.filter((v) => !vendorIdsUsed.has(parseInt(v.id, 10))),
-    [vendors, vendorIdsUsed]
-  );
+  const availableParties = useMemo(() => {
+    const pool = tierTarget?.type === 'PR' ? clients : vendors;
+    return pool.filter((p) => !partyIdsUsed.has(parseInt(p.id, 10)));
+  }, [tierTarget?.type, clients, vendors, partyIdsUsed]);
 
   return (
     <div className="min-h-screen bg-[#f9fafb] font-['Plus_Jakarta_Sans',sans-serif]">
       <div className="px-6 md:px-10 py-8 max-w-6xl mx-auto space-y-6">
         <div>
           <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
-          <p className="text-sm text-gray-500">Vendor-wise MOQ-tiered pricing for raw materials and packaging materials.</p>
+          <p className="text-sm text-gray-500">
+            Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
+          </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -512,20 +539,20 @@ const ItemsList: React.FC = () => {
             <div className="text-[11px] text-gray-400 mt-1">Items with MOQ tiers</div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-amber-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">Vendor Rates</div>
-            <div className="text-2xl font-extrabold text-amber-600">{stats.totalVendorRates}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Vendor-item combos</div>
+            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">PR client price lists</div>
+            <div className="text-2xl font-extrabold text-amber-600">{stats.prWithTiers}</div>
+            <div className="text-[11px] text-gray-400 mt-1">Products with client tiers</div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-blue-500">
             <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">MOQ Tiers</div>
             <div className="text-2xl font-extrabold text-blue-600">{stats.totalTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Total price breaks</div>
+            <div className="text-[11px] text-gray-400 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-bold text-gray-900">Price Lists — Vendor & MOQ-wise</span>
+            <span className="text-sm font-bold text-gray-900">Price Lists — Vendor / client & MOQ-wise</span>
             <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
                 <button
@@ -564,6 +591,31 @@ const ItemsList: React.FC = () => {
                 ) : null}
               </div>
             )}
+            {activeTab === 'pr' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="items-list-client-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                  Filter by client
+                </label>
+                <select
+                  id="items-list-client-filter"
+                  value={clientFilterId}
+                  onChange={(e) => setClientFilterId(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">All clients</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.id}
+                    </option>
+                  ))}
+                </select>
+                {clientFilterId ? (
+                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
+                    Only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
           <button
             onClick={openAddPriceList}
@@ -575,56 +627,30 @@ const ItemsList: React.FC = () => {
 
         {loading ? (
           <div className="py-12 text-center text-gray-500">Loading…</div>
-        ) : activeTab === 'pr' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {products.map((p) => (
-              <div key={p.product_id} className="bg-white border border-amber-200 rounded-lg p-4">
-                <div className="text-sm font-bold text-gray-900 mb-3">{p.product_name}</div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="rounded-lg p-2.5 text-center bg-green-50 border border-green-200">
-                    <div className="text-[10px] text-gray-500 uppercase">Batch Size</div>
-                    <div className="text-sm font-extrabold text-teal-600">{p.batch_size_kg ?? '—'} KG</div>
-                  </div>
-                  <div className="rounded-lg p-2.5 text-center bg-amber-50 border border-amber-200">
-                    <div className="text-[10px] text-gray-500 uppercase">MRP</div>
-                    <div className="text-sm font-extrabold text-amber-600">₹{p.mrp_price ?? '—'}</div>
-                  </div>
-                </div>
-                <div className="border-t border-gray-100 pt-2.5 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Sale OH price</span>
-                    <span className="font-bold text-amber-600">—</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Fill Size</span>
-                    <span className="font-semibold">{p.fill_size ?? '—'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">License</span>
-                    <span className="font-mono text-[10.5px]">{p.product_code ?? '—'}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {products.length === 0 && <p className="text-gray-500 col-span-2">No products</p>}
-          </div>
         ) : (
           <div id="pl-list-body" className="space-y-2.5">
             {filteredPageItems.map((item) => {
               const hasTiers = item.vendorRates && item.vendorRates.length > 0;
               const isRm = item.type === 'RM';
+              const isPm = item.type === 'PM';
+              const isPr = item.type === 'PR';
+              const listOnlyLabel = isPr ? 'no client pricing tiers' : 'no vendor tiers';
               if (!hasTiers) {
                 return (
                   <div key={item.code} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                        <span
+                          className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                        >
+                          {item.code}
+                        </span>
                         <span className="text-sm font-bold text-gray-900">{item.name}</span>
                         <span className="font-mono text-xs font-bold text-amber-600">
                           {item.pricePerUnit < 1 ? formatPrice(item.pricePerUnit) : formatPrice(item.pricePerUnit)}
-                          {isRm ? '/KG' : '/pc'}
+                          {isRm ? '/KG' : isPm ? '/pc' : ' MRP'}
                         </span>
-                        <span className="text-[11px] text-gray-400">— List price only, no vendor tiers</span>
+                        <span className="text-[11px] text-gray-400">— List price only, {listOnlyLabel}</span>
                       </div>
                       <button
                         onClick={() => openAddTier(item)}
@@ -637,13 +663,34 @@ const ItemsList: React.FC = () => {
                 );
               }
               return (
-                <div key={item.code} className={`bg-white border rounded-lg overflow-hidden ${isRm ? 'border-teal-100' : 'border-violet-100'}`}>
-                  <div className={`px-4 py-3 border-b flex items-center justify-between ${isRm ? 'bg-green-50 border-green-200' : 'bg-violet-50 border-violet-200'}`}>
+                <div
+                  key={item.code}
+                  className={`bg-white border rounded-lg overflow-hidden ${
+                    isRm ? 'border-teal-100' : isPm ? 'border-violet-100' : 'border-amber-100'
+                  }`}
+                >
+                  <div
+                    className={`px-4 py-3 border-b flex items-center justify-between ${
+                      isRm
+                        ? 'bg-green-50 border-green-200'
+                        : isPm
+                          ? 'bg-violet-50 border-violet-200'
+                          : 'bg-amber-50 border-amber-200'
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
-                      <span className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                      <span
+                        className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                      >
+                        {item.code}
+                      </span>
                       <span className="text-sm font-bold text-gray-900">{item.name}</span>
                       <span className="font-mono text-[11px] text-gray-400">
-                        {isRm ? `${item.uom ?? 'KG'} · GST ${item.gst ?? 0}%` : `${item.pack_type ?? ''} · ${item.level ?? ''}`}
+                        {isRm
+                          ? `${item.uom ?? 'KG'} · GST ${item.gst ?? 0}%`
+                          : isPm
+                            ? `${item.pack_type ?? ''} · ${item.level ?? ''}`
+                            : `${item.uom ?? 'UNIT'} · GST ${item.gst ?? 0}%`}
                       </span>
                     </div>
                     <button
@@ -653,80 +700,113 @@ const ItemsList: React.FC = () => {
                       + Tier
                     </button>
                   </div>
-                  {item.vendorRates?.map((rate) => (
-                    <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
-                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                        <div>
-                          <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
-                          {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
-                          {(rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms)) ? (
-                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatStagedPaymentTermsSummary(rate.payment_terms)}</span>
-                          ) : null}
+                  {item.vendorRates?.map((rate) => {
+                    const isClientRate = rate.party_type === 'client';
+                    return (
+                      <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
+                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                          <div>
+                            <span className={`text-[10px] font-bold uppercase text-gray-400 mr-1.5`}>
+                              {isClientRate ? 'Client' : 'Vendor'}
+                            </span>
+                            <span className={`text-xs font-bold ${isClientRate ? 'text-amber-700' : 'text-blue-600'}`}>
+                              {rate.vendor_name ?? (isClientRate ? 'Client' : 'Vendor')}
+                            </span>
+                            {rate.vendor_code && (
+                              <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>
+                            )}
+                            {rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms) ? (
+                              <span className="text-[10.5px] text-gray-500 ml-1.5">
+                                · {formatStagedPaymentTermsSummary(rate.payment_terms)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400">{rate.currency}</span>
+                            {item.itemsListId != null && (
+                              <button
+                                type="button"
+                                onClick={() => openEditRate(item, rate)}
+                                className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
+                              >
+                                Edit rate
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-400">{rate.currency}</span>
-                          {item.itemsListId != null && (
-                            <button
-                              type="button"
-                              onClick={() => openEditRate(item, rate)}
-                              className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
-                            >
-                              Edit rate
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <table className="w-full text-sm border-collapse mt-2">
-                        <thead>
-                          <tr className="border-b border-gray-100">
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">MOQ {isRm ? '(KG)' : '(pcs)'}</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price {isRm ? '/ KG' : '/ pc'}</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
-                            {item.itemsListId != null && <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rate.tiers?.map((t, ti) => (
-                            <tr key={t.id} className={`border-b border-gray-50 ${ti === 0 ? 'bg-green-50/50' : ''}`}>
-                              <td className="py-1.5 px-2">
-                                <span className={`font-mono text-xs font-bold ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>
-                                  {t.moq_min === 1 && t.moq_max == null ? 'List price' : `${t.moq_min}+`}
-                                </span>
-                              </td>
-                              <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">{formatPrice(t.price_per_unit)}</td>
-                              <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
-                              <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                        <table className="w-full text-sm border-collapse mt-2">
+                          <thead>
+                            <tr className="border-b border-gray-100">
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                                MOQ {isRm ? '(KG)' : isPm ? '(pcs)' : '(units)'}
+                              </th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                                Price {isRm ? '/ KG' : isPm ? '/ pc' : '/ unit'}
+                              </th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
                               {item.itemsListId != null && (
-                                <td className="py-1.5 px-2 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditTier(item, rate.id, t)}
-                                    className="text-[10.5px] text-teal-600 hover:underline mr-2"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteTierFromRow(item, rate.id, t)}
-                                    className="text-[10.5px] text-red-600 hover:underline"
-                                  >
-                                    Delete
-                                  </button>
-                                </td>
+                                <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>
                               )}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
+                          </thead>
+                          <tbody>
+                            {rate.tiers?.map((t, ti) => (
+                              <tr
+                                key={t.id}
+                                className={`border-b border-gray-50 ${ti === 0 ? (isPr ? 'bg-amber-50/50' : 'bg-green-50/50') : ''}`}
+                              >
+                                <td className="py-1.5 px-2">
+                                  <span
+                                    className={`font-mono text-xs font-bold ${
+                                      isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'
+                                    }`}
+                                  >
+                                    {t.moq_min === 1 && t.moq_max == null ? 'List price' : `${t.moq_min}+`}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">
+                                  {formatPrice(t.price_per_unit)}
+                                </td>
+                                <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
+                                <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                                {item.itemsListId != null && (
+                                  <td className="py-1.5 px-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditTier(item, rate.id, t)}
+                                      className="text-[10.5px] text-teal-600 hover:underline mr-2"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteTierFromRow(item, rate.id, t)}
+                                      className="text-[10.5px] text-red-600 hover:underline"
+                                    >
+                                      Delete
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
             {filteredPageItems.length === 0 && (
               <p className="text-gray-500 py-8 text-center">
-                {pageItems.length === 0 ? 'No items' : 'No items with rates for the selected vendor.'}
+                {pageItems.length === 0
+                  ? 'No items'
+                  : activeTab === 'pr'
+                    ? clientFilterId
+                      ? 'No products with client pricing for the selected client.'
+                      : 'No products in catalogue.'
+                    : 'No items with rates for the selected vendor.'}
               </p>
             )}
           </div>
@@ -808,17 +888,20 @@ const ItemsList: React.FC = () => {
                 </div>
               )}
 
-              {/* Vendor & tier form — shown when item is selected */}
+              {/* Vendor or client & tier form — shown when item is selected */}
               {tierTarget && (<>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Vendor *</label>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                    {tierTarget.type === 'PR' ? 'Client *' : 'Vendor *'}
+                  </label>
                   <select
-                    value={selectedVendor?.id ?? ''}
+                    value={selectedParty?.id ?? ''}
                     onChange={(e) => {
                       const id = e.target.value;
-                      const v = vendors.find((x) => x.id === id) ?? null;
-                      setSelectedVendor(v);
+                      const pool = tierTarget.type === 'PR' ? clients : vendors;
+                      const v = pool.find((x) => x.id === id) ?? null;
+                      setSelectedParty(v);
                       if (!v) {
                         setAdvancePctStr('');
                         setPreShipmentPctStr('');
@@ -852,13 +935,17 @@ const ItemsList: React.FC = () => {
                     className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
                   >
                     <option value="">Select…</option>
-                    {availableVendors.map((v) => (
+                    {availableParties.map((v) => (
                       <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
                     ))}
                   </select>
-                  {availableVendors.length === 0 && tierTarget.vendorRates?.length && (
-                    <p className="text-xs text-amber-600 mt-1">All vendors have rates for this item</p>
-                  )}
+                  {availableParties.length === 0 && tierTarget.vendorRates?.length ? (
+                    <p className="text-xs text-amber-600 mt-1">
+                      {tierTarget.type === 'PR'
+                        ? 'All clients already have pricing for this product'
+                        : 'All vendors have rates for this item'}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Currency</label>
@@ -904,7 +991,9 @@ const ItemsList: React.FC = () => {
                     className="w-full max-w-xs px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
                     placeholder="0"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">Applies to this vendor rate (all tiers added below).</p>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Applies to this {tierTarget.type === 'PR' ? 'client' : 'vendor'} rate (all tiers added below).
+                  </p>
                 </div>
               </div>
               <div>
@@ -970,7 +1059,7 @@ const ItemsList: React.FC = () => {
               {tierTarget && (
                 <button
                   onClick={handleSaveTiers}
-                  disabled={submittingTiers || !selectedVendor}
+                  disabled={submittingTiers || !selectedParty}
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
                 >
                   {submittingTiers ? 'Saving…' : 'Save Tiers'}
@@ -987,7 +1076,9 @@ const ItemsList: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
             <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
               <span className="text-sm font-bold text-gray-900">
-                Edit rate — {editingRate.rate.vendor_name ?? 'Vendor'} · {editingRate.item.name}
+                Edit rate —{' '}
+                {editingRate.rate.party_type === 'client' ? 'Client' : 'Vendor'}:{' '}
+                {editingRate.rate.vendor_name ?? '—'} · {editingRate.item.name}
               </span>
               <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
             </div>

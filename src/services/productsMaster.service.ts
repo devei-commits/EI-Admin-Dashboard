@@ -84,13 +84,20 @@ export interface PRProductDetail extends PRProductListItem {
   openSalesOrders: OpenSalesOrder[];
 }
 
-export async function fetchPRProducts(): Promise<ServiceResult<PRProductListItem[]>> {
+export async function fetchPRProducts(opts?: {
+  /** Masters → Clients row id; filters products whose brand or BOM client matches that client name */
+  vendor_client_id?: string;
+}): Promise<ServiceResult<PRProductListItem[]>> {
   try {
-    const list = await api.get<PRProductListItem[]>('/api/v1/products');
+    const qs =
+      opts?.vendor_client_id != null && String(opts.vendor_client_id).trim() !== ''
+        ? `?vendor_client_id=${encodeURIComponent(String(opts.vendor_client_id).trim())}`
+        : '';
+    const list = await api.get<PRProductListItem[]>(`/api/v1/products${qs}`);
     return { data: list ?? [], error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load products';
-    return { data: [], error: message, success: false };
+    return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
   }
 }
 

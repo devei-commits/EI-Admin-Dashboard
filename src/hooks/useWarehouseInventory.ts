@@ -27,7 +27,12 @@ async function queryFn(): Promise<WarehouseInventoryData> {
 export function useWarehouseInventory() {
   return useQuery({
     queryKey: queryKeys.warehouseInventory,
-    queryFn,
+    queryFn: async () => {
+      if (import.meta.env.DEV) {
+        console.log('[EI po-qty debug] TanStack Query running fetch: warehouse-inventory');
+      }
+      return queryFn();
+    },
     staleTime: 2 * 60 * 1000,
   });
 }

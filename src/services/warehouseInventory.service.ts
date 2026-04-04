@@ -55,6 +55,33 @@ function log(message: string, data?: unknown) {
   }
 }
 
+/** Set VITE_DEBUG_WAREHOUSE_PO_QTY=1 in .env or run Vite dev — traces PO Qty column data source */
+function debugPoQtyEnabled() {
+  try {
+    return (
+      typeof import.meta !== 'undefined' &&
+      import.meta.env &&
+      (import.meta.env.DEV === true || import.meta.env.VITE_DEBUG_WAREHOUSE_PO_QTY === '1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logPoQtyFromApi(rows: WarehouseInventoryRow[], label: string) {
+  if (!debugPoQtyEnabled() || typeof console === 'undefined' || !console.log) return;
+  const withPo = rows.filter((r) => (Number(r.poQuantity) || 0) > 0);
+  console.log(`[EI po-qty debug] ${label}`, {
+    totalRows: rows.length,
+    rowsWithPoQuantityGt0: withPo.length,
+    sampleNonZero: withPo.slice(0, 8).map((r) => ({
+      id: r.id,
+      code: r.code,
+      poQuantity: r.poQuantity,
+    })),
+  });
+}
+
 /** Backend API response row shape */
 interface ApiWarehouseRow {
   id: string;
@@ -123,6 +150,7 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
     }));
     const itemGroups = Array.isArray(data?.itemGroups) ? data.itemGroups : [];
     log('Loaded from backend', { rowCount: rows.length, itemGroupCount: itemGroups.length });
+    logPoQtyFromApi(rows, 'GET /warehouse-inventory (mapped rows)');
     return { data: { rows, itemGroups }, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load warehouse inventory';

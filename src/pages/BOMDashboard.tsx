@@ -36,7 +36,8 @@ const BOMDashboard: React.FC = () => {
     if (res.success && res.data) {
       setList(res.data);
     } else {
-      setError(res.error ?? 'Failed to load products');
+      const err = res.error;
+      setError(typeof err === 'string' ? err : err?.message ?? 'Failed to load products');
       setList([]);
     }
     setLoading(false);

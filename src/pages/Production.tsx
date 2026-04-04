@@ -4,7 +4,7 @@
  * BPR: draft > pm_reserved > pm_connected > pm_dispensing > scheduled > filling > fill_qc > packaging > pack_qc > fg_ready
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import eiLogo from '../assets/logo/eilogofull.svg';
 import { useSearchParams } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
@@ -35,7 +35,7 @@ import {
   type QcSpecsStored,
   type QcSpecsByScope,
 } from '../services/production.service';
-import { fetchFacilityAreas, type FacilityAreaDTO } from '../services/facilityAreas.service';
+import { fetchFacilityAreas, type FacilityAreaDTO, type ZoneDTO } from '../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
@@ -327,10 +327,15 @@ const DEFAULT_EQUIPMENT: EquipmentData = {
 
 const DEFAULT_TEAM: TeamMember[] = [];
 
+/** Sum by trimmed material code — multiple warehouse_inventory rows can exist per RM/PM (e.g. batches). */
 function buildStockMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
-    if (r.type === type) map[r.code] = r.stockInHand;
+    if (r.type !== type) continue;
+    const c = String(r.code ?? '').trim();
+    if (!c) continue;
+    const add = Number(r.stockInHand) || 0;
+    map[c] = (map[c] ?? 0) + add;
   }
   return map;
 }
@@ -338,7 +343,10 @@ function buildStockMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<
 function buildReservedMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
-    if (r.type === type) map[r.code] = r.reserved ?? 0;
+    if (r.type !== type) continue;
+    const c = String(r.code ?? '').trim();
+    if (!c) continue;
+    map[c] = (map[c] ?? 0) + (Number(r.reserved) || 0);
   }
   return map;
 }
@@ -347,7 +355,11 @@ function buildReservedMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Reco
 function buildAtFacilityMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
-    if (r.type === type) map[r.code] = (r.ml1Stock ?? 0) + (r.ml2Stock ?? 0);
+    if (r.type !== type) continue;
+    const c = String(r.code ?? '').trim();
+    if (!c) continue;
+    const add = (Number(r.ml1Stock) || 0) + (Number(r.ml2Stock) || 0);
+    map[c] = (map[c] ?? 0) + add;
   }
   return map;
 }
@@ -356,9 +368,30 @@ function buildAtFacilityMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Re
 function buildWhStockOnlyMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
-    if (r.type === type) map[r.code] = r.whStock ?? 0;
+    if (r.type !== type) continue;
+    const c = String(r.code ?? '').trim();
+    if (!c) continue;
+    map[c] = (map[c] ?? 0) + (Number(r.whStock) || 0);
   }
   return map;
+}
+
+/** Set `VITE_DEBUG_PRODUCTION_RESERVE=1` in admin-dashboard `.env` or use dev server — traces Reserve RM/PM vs warehouse-inventory. */
+function debugProductionReserveEnabled(): boolean {
+  try {
+    return (
+      typeof import.meta !== 'undefined' &&
+      import.meta.env &&
+      (import.meta.env.DEV === true || import.meta.env.VITE_DEBUG_PRODUCTION_RESERVE === '1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logProductionReserve(message: string, data?: unknown): void {
+  if (!debugProductionReserveEnabled() || typeof console === 'undefined' || !console.log) return;
+  console.log(`[EI production-reserve debug] ${message}`, data !== undefined ? data : '');
 }
 
 function makeDefaultBatches(): Batch[] {
@@ -1247,6 +1280,65 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
     : (batchItems.length > 0 ? batchItems : derivedPm);
   const usedDerived = type === 'rm' && batchItems.length === 0 && derivedRm.length > 0;
 
+  const reserveItemsFingerprint = useMemo(() => {
+    const src =
+      type === 'rm'
+        ? (batch.dispensingRM.length > 0 ? batch.dispensingRM : derivedRm)
+        : (batch.dispensingPM.length > 0 ? batch.dispensingPM : derivedPm);
+    return src.map((it) => `${String(it.code ?? '').trim()}:${Number(it.required) || 0}`).join('|');
+  }, [type, batch.dispensingRM, batch.dispensingPM, derivedRm, derivedPm]);
+
+  useEffect(() => {
+    if (!debugProductionReserveEnabled() || items.length === 0) return;
+    const stockKeys = Object.keys(stockMap);
+    const bomCodes = items.map((it) => String(it.code ?? '').trim()).filter(Boolean);
+    const bomSet = new Set(bomCodes);
+    const missingFromWarehouse = bomCodes.filter((c) => !Object.prototype.hasOwnProperty.call(stockMap, c));
+    const perLine = items.map((it, i) => {
+      const code = String(it.code ?? '').trim();
+      const hasKey = Object.prototype.hasOwnProperty.call(stockMap, code);
+      const sih = stockMap[code] ?? 0;
+      const reserved = reservedMap?.[code] ?? 0;
+      const available = Math.max(0, sih - reserved);
+      const ciKey =
+        !hasKey && code
+          ? stockKeys.find((k) => k.toLowerCase() === code.toLowerCase()) ?? null
+          : null;
+      return {
+        row: i,
+        bomCodeRaw: it.code,
+        bomCodeTrimmed: code,
+        hasKeyInStockMap: hasKey,
+        caseInsensitiveMatchInWarehouse: ciKey,
+        SIH: sih,
+        reserved_R: reserved,
+        available_Y: available,
+        required: it.required,
+        short: available < it.required,
+      };
+    });
+    logProductionReserve('Reserve modal: BOM vs warehouse stockMap', {
+      type,
+      bmrNo: batch.bmrNo,
+      bprNo: batch.bprNo,
+      formula: 'available_Y = SIH - reserved_R; Short when available_Y < required',
+      stockMapSource: 'GET /api/v1/warehouse-inventory → buildStockMap (sums SIH per trimmed code)',
+      bomLineCount: items.length,
+      distinctBomCodes: [...new Set(bomCodes)],
+      warehouseDistinctKeys: stockKeys.length,
+      sampleWarehouseRMOrPMKeys: stockKeys.slice(0, 50),
+      missingFromWarehouse,
+      warehouseKeysNotOnThisBOM: stockKeys.filter((k) => !bomSet.has(k)).slice(0, 30),
+      perLine,
+      hint:
+        missingFromWarehouse.length > 0
+          ? 'Fix: align planning/BOM rm_code (or pm_code) with raw_materials.code / pack_materials.code. Check trim and case — lookup is case-sensitive.'
+          : perLine.some((p) => p.short)
+            ? 'Keys match but quantity short: increase SIH or reduce reserved elsewhere.'
+            : undefined,
+    });
+  }, [reserveItemsFingerprint, stockMap, reservedMap, type, batch.bmrNo, batch.bprNo]);
+
   useEffect(() => {
     const next: Record<number, boolean> = {};
     items.forEach((_, i) => { next[i] = selected[i] !== false; });
@@ -1270,23 +1362,13 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
     : <>Reserve Packaging Materials for BPR <b>{batch.bprNo}</b>. Available = SIH − Reserved.</>;
 
   const rmHasShort = type === 'rm' && items.some((r) => {
-    const sih = stockMap[r.code] ?? 0;
-    const reserved = reservedMap?.[r.code] ?? 0;
+    const code = String(r.code ?? '').trim();
+    const sih = stockMap[code] ?? 0;
+    const reserved = reservedMap?.[code] ?? 0;
     const available = Math.max(0, sih - reserved);
     return available < r.required;
   });
   const reserveDisabled = items.length === 0 || (type === 'rm' && rmHasShort);
-
-  // [RESERVE-DEBUG] Log inventory math: available Y = SIH - R; after reserving X, reserved_new = R + X, available_new = Y - X
-  if (items.length > 0 && (type === 'rm' || type === 'pm')) {
-    const summary = items.slice(0, 5).map((r, i) => {
-      const sih = stockMap[r.code] ?? 0;
-      const reserved = reservedMap?.[r.code] ?? 0;
-      const available = Math.max(0, sih - reserved);
-      return { code: r.code, required_X: r.required, SIH: sih, reserved_R: reserved, available_Y: available, ok: available >= r.required };
-    });
-    console.log('[RESERVE-DEBUG] Reserve modal inventory (first 5 items):', { type, formula: 'available_Y = SIH - reserved_R; after reserve X: reserved_new = R+X, available_new = Y-X', summary });
-  }
 
   return (
     <Modal onClose={onClose} title={title} size="lg">
@@ -1316,8 +1398,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {items.map((r, i) => {
-                const sih = stockMap[r.code] ?? 0;
-                const reserved = reservedMap?.[r.code] ?? 0;
+                const code = String(r.code ?? '').trim();
+                const sih = stockMap[code] ?? 0;
+                const reserved = reservedMap?.[code] ?? 0;
                 const available = Math.max(0, sih - reserved);
                 const ok = available >= r.required;
                 const checked = selected[i] !== false;
@@ -3469,6 +3552,52 @@ function MRNScanSimulator({ mrnNo }: { mrnNo: string }) {
   );
 }
 
+function muFacilityZoneDisplayLabel(zone: ZoneDTO): string {
+  const zl = zone.zoneLabel?.trim();
+  if (zl) return zl;
+  return `${zone.code} — ${zone.name}`.trim();
+}
+
+/** Match saved MRN MU zone/rack strings to production facility hierarchy (area_type=production). */
+function matchMrnMuLocationToFacility(
+  muReceiveZone: string | null | undefined,
+  muReceiveRack: string | null | undefined,
+  areas: FacilityAreaDTO[]
+): { areaId: number; zoneId: number; rackId: number } | null {
+  const zt = (muReceiveZone || '').trim();
+  const rt = (muReceiveRack || '').trim();
+  if (!rt) return null;
+
+  type Item = { areaId: number; zoneId: number; rackId: number; zone: ZoneDTO };
+  const matches: Item[] = [];
+  for (const area of areas) {
+    for (const zone of area.zones || []) {
+      for (const rack of zone.racks || []) {
+        const code = String(rack.code || '').trim();
+        const name = String(rack.name || '').trim();
+        if (code !== rt && name !== rt) continue;
+        matches.push({ areaId: area.id, zoneId: zone.id, rackId: rack.id, zone });
+      }
+    }
+  }
+  if (matches.length === 0) return null;
+  if (matches.length === 1) {
+    const m = matches[0]!;
+    return { areaId: m.areaId, zoneId: m.zoneId, rackId: m.rackId };
+  }
+  if (zt) {
+    const byZoneCode = matches.find((m) => m.zone.code === zt);
+    if (byZoneCode) return { areaId: byZoneCode.areaId, zoneId: byZoneCode.zoneId, rackId: byZoneCode.rackId };
+    const byLabel = matches.find(
+      (m) => muFacilityZoneDisplayLabel(m.zone) === zt || m.zone.name?.trim() === zt
+    );
+    if (byLabel) return { areaId: byLabel.areaId, zoneId: byLabel.zoneId, rackId: byLabel.rackId };
+  }
+  const sorted = [...matches].sort((a, b) => a.areaId - b.areaId || a.zoneId - b.zoneId || a.rackId - b.rackId);
+  const m = sorted[0]!;
+  return { areaId: m.areaId, zoneId: m.zoneId, rackId: m.rackId };
+}
+
 function MRNDetailModal({
   mrn,
   assignablePickers = [],
@@ -3481,11 +3610,24 @@ function MRNDetailModal({
   onSave: (updated: MRNRecordFromApi) => void;
 }) {
   const { addToast } = useToast();
+  const { data: productionFacilityRaw = [], isLoading: productionFacilityLoading } = useQuery({
+    queryKey: ['facility-areas', 'production', 'mrn-modal'],
+    queryFn: async () => {
+      const res = await fetchFacilityAreas('production');
+      return res.success ? res.data : [];
+    },
+  });
+  const productionFacilityData = useMemo(() => productionFacilityRaw as FacilityAreaDTO[], [productionFacilityRaw]);
+
   const [status, setStatus] = useState(mrn.status);
   const [assignedPicker, setAssignedPicker] = useState(mrn.assignedPicker || '');
   const [receivedAtMu, setReceivedAtMu] = useState(mrn.receivedAtMu ? (mrn.receivedAtMu as string).slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [muReceiveZone, setMuReceiveZone] = useState(mrn.muReceiveZone ?? '');
   const [muReceiveRack, setMuReceiveRack] = useState(mrn.muReceiveRack ?? '');
+  const [muLocationSource, setMuLocationSource] = useState<'facility' | 'custom'>('facility');
+  const [selectedMuAreaId, setSelectedMuAreaId] = useState<number | ''>('');
+  const [selectedMuZoneId, setSelectedMuZoneId] = useState<number | ''>('');
+  const [selectedMuRackId, setSelectedMuRackId] = useState<number | ''>('');
   const [noOfBoxes, setNoOfBoxes] = useState(String(mrn.noOfBoxes ?? 1));
   const [unitsPerBox, setUnitsPerBox] = useState(String(mrn.unitsPerBox ?? ''));
   const [locationPrefix, setLocationPrefix] = useState(mrn.locationPrefix ?? '');
@@ -3542,14 +3684,65 @@ function MRNDetailModal({
     setStatus(mrn.status);
     setAssignedPicker(mrn.assignedPicker || '');
     setReceivedAtMu(mrn.receivedAtMu ? (mrn.receivedAtMu as string).slice(0, 10) : new Date().toISOString().slice(0, 10));
-    setMuReceiveZone(mrn.muReceiveZone ?? '');
-    setMuReceiveRack(mrn.muReceiveRack ?? '');
     setNoOfBoxes(String(mrn.noOfBoxes ?? 1));
     setUnitsPerBox(String(mrn.unitsPerBox ?? ''));
-    setLocationPrefix(mrn.locationPrefix ?? '');
     setLabels(mrn.generatedLabels ?? null);
     setLabelsGenerated(!!(mrn.generatedLabels && mrn.generatedLabels.length > 0));
-  }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.muReceiveZone, mrn.muReceiveRack, mrn.noOfBoxes, mrn.unitsPerBox, mrn.locationPrefix, mrn.generatedLabels, mrn.lineTransferStatus]);
+  }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.noOfBoxes, mrn.unitsPerBox, mrn.generatedLabels, mrn.lineTransferStatus]);
+
+  useEffect(() => {
+    if (productionFacilityLoading) return;
+    const areas = productionFacilityData;
+    if (areas.length === 0) {
+      setMuLocationSource('custom');
+      setSelectedMuAreaId('');
+      setSelectedMuZoneId('');
+      setSelectedMuRackId('');
+      setMuReceiveZone(mrn.muReceiveZone ?? '');
+      setMuReceiveRack(mrn.muReceiveRack ?? '');
+      setLocationPrefix(mrn.locationPrefix ?? '');
+      return;
+    }
+    const m = matchMrnMuLocationToFacility(mrn.muReceiveZone, mrn.muReceiveRack, areas);
+    if (m) {
+      setMuLocationSource('facility');
+      setSelectedMuAreaId(m.areaId);
+      setSelectedMuZoneId(m.zoneId);
+      setSelectedMuRackId(m.rackId);
+      const area = areas.find((a) => a.id === m.areaId);
+      const zone = area?.zones?.find((z) => z.id === m.zoneId);
+      const rack = zone?.racks?.find((r) => r.id === m.rackId);
+      if (zone) setMuReceiveZone(zone.code);
+      if (rack) {
+        setMuReceiveRack(rack.code);
+        setLocationPrefix(rack.code);
+      }
+    } else {
+      setMuLocationSource('custom');
+      setSelectedMuAreaId('');
+      setSelectedMuZoneId('');
+      setSelectedMuRackId('');
+      setMuReceiveZone(mrn.muReceiveZone ?? '');
+      setMuReceiveRack(mrn.muReceiveRack ?? '');
+      setLocationPrefix(mrn.locationPrefix ?? '');
+    }
+  }, [mrn.id, mrn.muReceiveZone, mrn.muReceiveRack, mrn.locationPrefix, productionFacilityData, productionFacilityLoading]);
+
+  useEffect(() => {
+    if (muLocationSource !== 'facility') return;
+    const area = productionFacilityData.find((a) => a.id === selectedMuAreaId);
+    const zone = area?.zones?.find((z) => z.id === selectedMuZoneId);
+    const rack = zone?.racks?.find((r) => r.id === selectedMuRackId);
+    if (zone) setMuReceiveZone(zone.code);
+    else setMuReceiveZone('');
+    if (rack) {
+      setMuReceiveRack(rack.code);
+      setLocationPrefix(rack.code);
+    } else {
+      setMuReceiveRack('');
+      setLocationPrefix('');
+    }
+  }, [muLocationSource, selectedMuAreaId, selectedMuZoneId, selectedMuRackId, productionFacilityData]);
 
   useEffect(() => {
     setHistoryLoading(true);
@@ -3558,6 +3751,20 @@ function MRNDetailModal({
       .catch(() => setLocationHistory([]))
       .finally(() => setHistoryLoading(false));
   }, [mrn.id]);
+
+  const selectedMuArea = useMemo(
+    () => productionFacilityData.find((a) => a.id === selectedMuAreaId),
+    [productionFacilityData, selectedMuAreaId]
+  );
+  const muZoneOptions = selectedMuArea?.zones ?? [];
+  const selectedMuZone = useMemo(
+    () => muZoneOptions.find((z) => z.id === selectedMuZoneId),
+    [muZoneOptions, selectedMuZoneId]
+  );
+  const muRackOptionsSorted = useMemo(() => {
+    const racks = selectedMuZone?.racks ?? [];
+    return [...racks].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  }, [selectedMuZone]);
 
   const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
   const muStorageFilled = Boolean(muReceiveZone.trim() && muReceiveRack.trim());
@@ -3633,7 +3840,10 @@ function MRNDetailModal({
       const z = String((payload.muReceiveZone !== undefined ? payload.muReceiveZone : muReceiveZone) || '').trim();
       const r = String((payload.muReceiveRack !== undefined ? payload.muReceiveRack : muReceiveRack) || '').trim();
       if (!z || !r) {
-        const msg = 'Enter MU zone and MU rack before completing the transfer.';
+        const msg =
+          muLocationSource === 'facility'
+            ? 'Select production area, zone, and rack from Facility Management before completing the transfer.'
+            : 'Enter MU zone and MU rack before completing the transfer.';
         setSaveError(msg);
         addToast('error', msg);
         return;
@@ -3773,15 +3983,152 @@ function MRNDetailModal({
                 <input type="date" value={receivedAtMu} onChange={(e) => setReceivedAtMu(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">MU zone</label>
-                <input type="text" value={muReceiveZone} onChange={(e) => setMuReceiveZone(e.target.value)} placeholder="e.g. MU1-A" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="text-xs font-semibold text-slate-700">
+                  MU put-away <span className="text-red-500">*</span>
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mrn-mu-location-source"
+                    className="rounded-full border-slate-300"
+                    checked={muLocationSource === 'facility'}
+                    onChange={() => {
+                      setMuLocationSource('facility');
+                      const m = matchMrnMuLocationToFacility(muReceiveZone, muReceiveRack, productionFacilityData);
+                      if (m) {
+                        setSelectedMuAreaId(m.areaId);
+                        setSelectedMuZoneId(m.zoneId);
+                        setSelectedMuRackId(m.rackId);
+                      }
+                    }}
+                  />
+                  Facility Management (production)
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mrn-mu-location-source"
+                    className="rounded-full border-slate-300"
+                    checked={muLocationSource === 'custom'}
+                    onChange={() => setMuLocationSource('custom')}
+                  />
+                  Custom (type zone / rack)
+                </label>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">MU rack</label>
-                <input type="text" value={muReceiveRack} onChange={(e) => setMuReceiveRack(e.target.value)} placeholder="e.g. Rack-1" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
+              <p className="text-[10px] text-slate-500">
+                Production areas, zones, and racks are maintained under <strong>Facility Management</strong> (type Production). Zone <span className="font-mono">code</span> is stored for stock routing (e.g. include <span className="font-mono">MU02</span> or <span className="font-mono">LOC-MU02</span> for ML2).
+              </p>
+
+              {muLocationSource === 'facility' && productionFacilityLoading && (
+                <p className="text-xs text-slate-500">Loading production locations…</p>
+              )}
+              {muLocationSource === 'facility' && !productionFacilityLoading && productionFacilityData.length === 0 && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                  No production areas found. Add a production area, zones, and racks in Facility Management, or use Custom.
+                </p>
+              )}
+
+              {muLocationSource === 'facility' && !productionFacilityLoading && productionFacilityData.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Production area</label>
+                    <select
+                      value={selectedMuAreaId === '' ? '' : String(selectedMuAreaId)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSelectedMuAreaId(v ? parseInt(v, 10) : '');
+                        setSelectedMuZoneId('');
+                        setSelectedMuRackId('');
+                      }}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                    >
+                      <option value="">— Select area —</option>
+                      {productionFacilityData.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.code} — {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Zone</label>
+                    <select
+                      value={selectedMuZoneId === '' ? '' : String(selectedMuZoneId)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSelectedMuZoneId(v ? parseInt(v, 10) : '');
+                        setSelectedMuRackId('');
+                      }}
+                      disabled={selectedMuAreaId === ''}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="">— Select zone —</option>
+                      {muZoneOptions.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.code} — {z.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Rack (code)</label>
+                    <select
+                      value={selectedMuRackId === '' ? '' : String(selectedMuRackId)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSelectedMuRackId(v ? parseInt(v, 10) : '');
+                      }}
+                      disabled={selectedMuZoneId === ''}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="">— Select rack —</option>
+                      {muRackOptionsSorted.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.code}
+                          {r.name ? ` — ${r.name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedMuZoneId !== '' && muRackOptionsSorted.length === 0 && (
+                      <p className="text-[10px] text-amber-700 mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {muLocationSource === 'custom' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">MU zone</label>
+                    <input
+                      type="text"
+                      value={muReceiveZone}
+                      onChange={(e) => setMuReceiveZone(e.target.value)}
+                      placeholder="e.g. LOC-MU01"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">MU rack</label>
+                    <input
+                      type="text"
+                      value={muReceiveRack}
+                      onChange={(e) => setMuReceiveRack(e.target.value)}
+                      placeholder="e.g. R1"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {muLocationSource === 'facility' && !productionFacilityLoading && muReceiveZone && muReceiveRack && (
+                <p className="text-[10px] text-slate-600">
+                  Saved on MRN / movement log: <span className="font-mono font-medium">zone</span> = {muReceiveZone} ·{' '}
+                  <span className="font-mono font-medium">rack</span> = {muReceiveRack}
+                </p>
+              )}
             </div>
           </section>
 
@@ -4009,7 +4356,9 @@ function MRNDetailModal({
                     ? !hasReceivedLinesToComplete
                       ? 'No lines are at received_at_mu yet.'
                       : !muStorageFilled
-                        ? 'Enter MU zone and MU rack before completing.'
+                        ? muLocationSource === 'facility'
+                          ? 'Select production area, zone, and rack from Facility Management.'
+                          : 'Enter MU zone and MU rack before completing.'
                         : undefined
                     : undefined
                 }
@@ -6037,6 +6386,35 @@ const Production = () => {
   const atFacilityPM = useMemo(() => buildAtFacilityMap(whInventory, 'PM'), [whInventory]);
   const whStockOnlyRM = useMemo(() => buildWhStockOnlyMap(whInventory, 'RM'), [whInventory]);
   const whStockOnlyPM = useMemo(() => buildWhStockOnlyMap(whInventory, 'PM'), [whInventory]);
+
+  useEffect(() => {
+    if (!debugProductionReserveEnabled()) return;
+    const rmRows = whInventory.filter((r) => r.type === 'RM');
+    const byCode = new Map<string, { rowIds: string[]; perRowSih: number[]; summedSih: number }>();
+    for (const r of rmRows) {
+      const c = String(r.code ?? '').trim();
+      if (!c) continue;
+      const sih = Number(r.stockInHand) || 0;
+      const prev = byCode.get(c);
+      if (!prev) byCode.set(c, { rowIds: [r.id], perRowSih: [sih], summedSih: sih });
+      else {
+        prev.rowIds.push(r.id);
+        prev.perRowSih.push(sih);
+        prev.summedSih += sih;
+      }
+    }
+    const duplicateCodes = [...byCode.entries()].filter(([, v]) => v.rowIds.length > 1);
+    logProductionReserve('Page load / whInventory: RM rows from API', {
+      totalInventoryRows: whInventory.length,
+      rmRowCount: rmRows.length,
+      distinctTrimmedRMCodes: byCode.size,
+      duplicateWarehouseRowsSameCode: duplicateCodes.slice(0, 20),
+      note:
+        duplicateCodes.length > 0
+          ? 'Multiple warehouse_inventory rows share one RM code; stock maps now SUM SIH/reserved/wh/ml per code.'
+          : 'One row per code (or no duplicates) — map sum matches single-row SIH.',
+    });
+  }, [whInventory]);
 
   useEffect(() => {
     if (loadedFromApi.current) return;

@@ -4,7 +4,6 @@ import { fetchRawMaterialsPage } from '../services/rawMaterials.service';
 import { fetchItemGroupsPage } from '../services/itemGroups.service';
 import { fetchVendorClientsPage, fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPriceListPage } from '../services/itemsList.service';
-import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchProcurementRequests } from '../services/procurement.service';
 import { fetchProcurementQuotations } from '../services/procurementQuotations.service';
 import { fetchPurchaseOrders } from '../services/salesPurchase.service';
@@ -109,12 +108,38 @@ export function prefetchCriticalRouteData(path: string, queryClient: QueryClient
         },
       });
 
-      // Default ItemsList activeTab is "rm"
+      void queryClient.prefetchQuery({
+        queryKey: ['items-list-vendors', 'client'],
+        queryFn: async () => {
+          const res = await fetchVendorClients('client');
+          if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load clients');
+          return res.data;
+        },
+      });
+
       void queryClient.prefetchQuery({
         queryKey: ['items-list-pageitems', 'rm'],
         queryFn: async () => {
           const res = await fetchPriceListPage('RM');
           if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load RM price list');
+          return res.data;
+        },
+      });
+
+      void queryClient.prefetchQuery({
+        queryKey: ['items-list-pageitems', 'pm'],
+        queryFn: async () => {
+          const res = await fetchPriceListPage('PM');
+          if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load PM price list');
+          return res.data;
+        },
+      });
+
+      void queryClient.prefetchQuery({
+        queryKey: ['items-list-pageitems', 'pr'],
+        queryFn: async () => {
+          const res = await fetchPriceListPage('PR');
+          if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load PR price list');
           return res.data;
         },
       });

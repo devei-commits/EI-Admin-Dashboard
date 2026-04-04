@@ -489,7 +489,7 @@ const Planning = () => {
   const [planBatchesModalOpen, setPlanBatchesModalOpen] = useState(false);
   const [swapSourceIndex, setSwapSourceIndex] = useState<number | null>(null);
   const [selectedSOForBatch, setSelectedSOForBatch] = useState<SalesOrder | null>(null);
-  const [activeBatchTab, setActiveBatchTab] = useState<'batch-plan' | 'bom-editor' | 'swap-add'>('batch-plan');
+  const [activeBatchTab, setActiveBatchTab] = useState<'batch-plan' | 'bom-editor' | 'swap-add'>('bom-editor');
   const [numBatches, setNumBatches] = useState('15');
   const [batchSizeKg, setBatchSizeKg] = useState('500');
   const [plannedStartDate, setPlannedStartDate] = useState('2026-03-04');
@@ -863,8 +863,12 @@ const Planning = () => {
     if (customBatches.length === 0) return;
 
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
-    let targetIdx = expandedBatchIndex;
-    if (targetIdx == null) {
+    const selIdx =
+      selectedBatchId != null && planningBatches.length > 0
+        ? (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId))
+        : -1;
+    let targetIdx = selIdx >= 0 && selIdx < customBatches.length ? selIdx : -1;
+    if (targetIdx < 0) {
       const firstUnsent = customBatches.findIndex((_, i) => !sent.includes(i));
       targetIdx = firstUnsent >= 0 ? firstUnsent : 0;
     }
@@ -876,16 +880,21 @@ const Planning = () => {
     const currentUnits = Math.round((customBatches[targetIdx]?.sizeKg || 0) / kgPerUnitForPlanBatches);
     if (nextUnits === currentUnits) return;
 
-    setCustomBatches((prev) =>
-      prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: nextUnits * kgPerUnitForPlanBatches } : b))
-    );
-    setExpandedBatchIndex(targetIdx);
+    try {
+      setCustomBatches((prev) =>
+        prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: nextUnits * kgPerUnitForPlanBatches } : b))
+      );
+      setExpandedBatchIndex(targetIdx);
+    } catch (e) {
+      console.error('[Planning] preview qty → batch units sync failed', e);
+    }
   }, [
     feasibilityPreviewQty,
     activeBatchTab,
     planBatchesModalOpen,
     selectedSOForBatch,
-    expandedBatchIndex,
+    selectedBatchId,
+    planningBatches,
     kgPerUnitForPlanBatches,
     customBatches,
   ]);
@@ -1273,8 +1282,8 @@ const Planning = () => {
       const free = Math.max(0, sih - reserved);
       const inTransit = whRow?.inTransit ?? 0;
       const reqThisOrder = qtyPerUnit * feasibilityPreviewQty;
-        const maxUnits = qtyPerUnit > 0 ? Math.floor(free / qtyPerUnit) : 999;
-        const maxBatches = perBatchPcs > 0 ? Math.floor(free / perBatchPcs) : 999;
+      const maxUnits = qtyPerUnit > 0 ? Math.floor(free / qtyPerUnit) : 999;
+      const maxBatches = perBatchPcs > 0 ? Math.floor(free / perBatchPcs) : 999;
       const totalReq = qtyPerUnit * orderQtyNum;
       const gap = Math.max(0, reqThisOrder - free);
       return { name: item.name, code: (item as PackagingMaterial).code ?? item.id, qtyPerUnit, perBatchPcs, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= feasibilityPreviewQty };
@@ -1986,7 +1995,7 @@ const Planning = () => {
     setBomFormula((order.rawMaterials ?? []).map((rm) => ({ ...rm, specificGravity: (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1 })));
     setBomPackaging(order.packagingMaterials);
     setIsReadyForProduction(false);
-    setActiveBatchTab('batch-plan');
+    setActiveBatchTab('bom-editor');
     setSwapSourceIndex(null);
     setNumBatches(String(order.batchesRequired || 1));
     setBatchSizeKg(order.batchSize?.replace(/\D/g, '') || '500');
@@ -2351,7 +2360,10 @@ const Planning = () => {
       }
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
-      addToast('success', `BOM confirmed for ${selectedSOForBatch.productName}. Go to Batch Plan to set batches and schedule.`);
+      addToast(
+        'success',
+        `BOM confirmed for B-${String(selectedBatchPlanSequence).padStart(2, '0')} — ${selectedSOForBatch.productName}. Open Batch Plan to allocate units and send this batch.`
+      );
       setIsReadyForProduction(true);
       setActiveBatchTab('batch-plan');
     } catch (error) {
@@ -2369,7 +2381,7 @@ const Planning = () => {
       : -1;
     const toSend = selectedIndex >= 0 && selectedIndex < customBatches.length ? [selectedIndex] : [];
     if (toSend.length === 0) {
-      addToast('info', 'Select a batch in the dropdown above (e.g. B-01) to send that batch to Production.');
+      addToast('info', 'Choose a working batch in the bar at the top of the modal, then send from Batch Plan.');
       return;
     }
     const alreadySent = (selectedSOForBatch.sentBatchIndices ?? []).includes(toSend[0]);
@@ -2397,13 +2409,14 @@ const Planning = () => {
       queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
       addToast('success', `${toSend.length} batch${toSend.length !== 1 ? 'es' : ''} sent to Production`);
     } catch (e) {
+      console.error('[Planning] send to production (bulk)', e);
       addToast('error', e instanceof Error ? e.message : 'Failed to save');
     }
     setPlanBatchesModalOpen(false);
     setSelectedSOForBatch(null);
     setBomFormula([]);
     setBomPackaging([]);
-    setActiveBatchTab('batch-plan');
+    setActiveBatchTab('bom-editor');
     setNumBatches('1');
     setBatchSizeKg('500');
     setPlannedStartDate(new Date().toISOString().split('T')[0]);
@@ -2416,18 +2429,31 @@ const Planning = () => {
 
   /** Send selected batch to Production (toolbar on Batch Plan tab or legacy callers). */
   const handleSendBatchToProductionIndividually = async (batchIndex: number) => {
-    if (!selectedSOForBatch || !canSendToProduction) return;
-    if (!Number.isFinite(batchIndex) || batchIndex < 0) return;
-    if (!customBatches || batchIndex >= customBatches.length) return;
-
-    const alreadySent = (selectedSOForBatch.sentBatchIndices ?? []).includes(batchIndex);
-    if (alreadySent) {
-      addToast('info', `B-${String(batchIndex + 1).padStart(2, '0')} is already sent to Production.`);
-      return;
-    }
-
-    const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
     try {
+      if (!selectedSOForBatch) {
+        addToast('error', 'No sales order selected');
+        return;
+      }
+      if (!canSendToProduction) {
+        addToast('error', 'Confirm BOM in BOM Editor before sending to Production');
+        return;
+      }
+      if (!Number.isFinite(batchIndex) || batchIndex < 0) {
+        addToast('error', 'Invalid batch');
+        return;
+      }
+      if (!customBatches?.length || batchIndex >= customBatches.length) {
+        addToast('error', 'Batch plan is not ready. Save or refresh batches and try again.');
+        return;
+      }
+
+      const alreadySent = (selectedSOForBatch.sentBatchIndices ?? []).includes(batchIndex);
+      if (alreadySent) {
+        addToast('info', `B-${String(batchIndex + 1).padStart(2, '0')} is already sent to Production.`);
+        return;
+      }
+
+      const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
       await updatePlanningExtracted(selectedSOForBatch.id, {
         batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
         batchSizeKg: customBatches.length > 0 ? customBatches[0].sizeKg : (parseFloat(batchSizeKg) || 500),
@@ -2450,6 +2476,7 @@ const Planning = () => {
       addToast('success', `B-${String(batchIndex + 1).padStart(2, '0')} sent to Production`);
       setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
     } catch (e) {
+      console.error('[Planning] send batch to production', e);
       addToast('error', e instanceof Error ? e.message : 'Failed to send to Production');
     }
   };
@@ -3888,6 +3915,7 @@ const Planning = () => {
                   setSwapSourceIndex(null);
                   setCustomBatches([]);
                   setExpandedBatchIndex(null);
+                  setActiveBatchTab('bom-editor');
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -3897,76 +3925,19 @@ const Planning = () => {
 
             {/* Modal Body */}
             <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-              {/* Batch selector on BOM Editor / Swap; Batch Plan tab has its own row next to Preview qty */}
-              {activeBatchTab !== 'batch-plan' && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</span>
-                  <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
-                    <select
-                      value={selectedBatchId != null ? String(selectedBatchId) : ''}
-                      onChange={(e) => {
-                        const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
-                        setSelectedBatchId(Number.isNaN(v) ? null : v);
-                      }}
-                      className="min-w-[120px] px-3 py-2 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
-                    >
-                      {planningBatches.length === 0 && (
-                        <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
-                      )}
-                      {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
-                        <option key={b.id} value={String(b.id)}>
-                          {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
-                        </option>
-                      ))}
-                      {selectedBatchId != null &&
-                        !(planningBatches as PlanningBatchRow[]).some(
-                          (b) => Number(b.id) === Number(selectedBatchId)
-                        ) && (
-                        <option value={String(selectedBatchId)}>Loading...</option>
-                      )}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                      onClick={async () => {
-                        if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
-                          addToast('error', 'Send the latest batch to production before adding another.');
-                          return;
-                        }
-                        try {
-                          const newBatch = await addOneBatchFromMaster(planningIdForBatch);
-                          if (newBatch) {
-                            mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
-                            queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                            setSelectedBatchId(Number(newBatch.id));
-                            addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
-                          } else {
-                            addToast('error', 'Failed to add batch');
-                          }
-                        } catch (e) {
-                          addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
-                        }
-                      }}
-                      className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                      title={
-                        planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                          ? 'Send the latest batch to production before adding another'
-                          : 'Add new batch (BOM from product master)'
-                      }
-                    >
-                      + Add
-                    </button>
-                  </div>
-                  {selectedBatchId != null && (
-                    <span className="text-xs text-gray-500">
-                      Editing BOM for this batch only. Confirm BOM saves to this batch.
-                    </span>
-                  )}
-                </div>
-              )}
-
               {/* Tabs */}
               <div className="flex gap-4 border-b border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveBatchTab('bom-editor')}
+                  className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'bom-editor'
+                    ? 'text-emerald-700 border-b-2 border-emerald-700'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                  BOM Editor
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveBatchTab('batch-plan')}
@@ -3979,16 +3950,6 @@ const Planning = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveBatchTab('bom-editor')}
-                  className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'bom-editor'
-                    ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                >
-                  BOM Editor
-                </button>
-                <button
-                  type="button"
                   onClick={() => setActiveBatchTab('swap-add')}
                   className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'swap-add'
                     ? 'text-emerald-700 border-b-2 border-emerald-700'
@@ -3997,6 +3958,76 @@ const Planning = () => {
                 >
                   Swap / Add
                 </button>
+              </div>
+
+              {/* Working batch — single context for BOM Editor, Batch Plan, and Swap / Add */}
+              <div className="flex items-center gap-2 flex-wrap py-3 -mx-6 px-6 border-b border-gray-100 bg-gray-50/50">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Working batch</span>
+                <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
+                  <select
+                    value={selectedBatchId != null ? String(selectedBatchId) : ''}
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                      setSelectedBatchId(Number.isNaN(v) ? null : v);
+                    }}
+                    className="min-w-[140px] px-3 py-2 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
+                  >
+                    {planningBatches.length === 0 && (
+                      <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
+                    )}
+                    {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
+                      <option key={b.id} value={String(b.id)}>
+                        {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
+                      </option>
+                    ))}
+                    {selectedBatchId != null &&
+                      !(planningBatches as PlanningBatchRow[]).some(
+                        (b) => Number(b.id) === Number(selectedBatchId)
+                      ) && (
+                        <option value={String(selectedBatchId)}>Loading...</option>
+                      )}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                    onClick={async () => {
+                      if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                        addToast('error', 'Send the latest batch to production before adding another.');
+                        return;
+                      }
+                      try {
+                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                        if (newBatch) {
+                          mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                          setSelectedBatchId(Number(newBatch.id));
+                          addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
+                        } else {
+                          addToast('error', 'Failed to add batch');
+                        }
+                      } catch (e) {
+                        console.error('[Planning] add planning batch', e);
+                        addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
+                      }
+                    }}
+                    className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title={
+                      planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                        ? 'Send the latest batch to production before adding another'
+                        : 'Add new batch (BOM from product master)'
+                    }
+                  >
+                    + Add
+                  </button>
+                </div>
+                {selectedBatchId != null && (
+                  <span className="text-xs text-gray-600">
+                    <span className="font-mono font-semibold text-emerald-700">
+                      B-{String(selectedBatchPlanSequence).padStart(2, '0')}
+                    </span>
+                    {' '}— Confirm BOM and Batch Plan apply to this batch only. Switch batch here to work on another.
+                  </span>
+                )}
               </div>
 
               {/* Tab Content */}
@@ -4055,9 +4086,9 @@ const Planning = () => {
                     </div>
                   </div>
 
-                  {/* Preview qty + planning batch selector (same stock math context) */}
+                  {/* Preview qty + send — working batch is chosen in the bar above */}
                   <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
                         <input
@@ -4072,91 +4103,38 @@ const Planning = () => {
                         />
                         <span className="text-[11px] font-semibold text-gray-500">units</span>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap border-l border-gray-200 pl-4">
-                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Planning batch</span>
-                        <select
-                          value={selectedBatchId != null ? String(selectedBatchId) : ''}
-                          onChange={(e) => {
-                            const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
-                            setSelectedBatchId(Number.isNaN(v) ? null : v);
-                          }}
-                          className="min-w-[120px] px-3 py-1.5 text-sm font-medium text-gray-900 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        >
-                          {planningBatches.length === 0 && (
-                            <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
-                          )}
-                          {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
-                            <option key={b.id} value={String(b.id)}>
-                              {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
-                            </option>
-                          ))}
-                          {selectedBatchId != null &&
-                            !(planningBatches as PlanningBatchRow[]).some(
-                              (b) => Number(b.id) === Number(selectedBatchId)
-                            ) && (
-                            <option value={String(selectedBatchId)}>Loading...</option>
-                          )}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                          onClick={async () => {
-                            if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
-                              addToast('error', 'Send the latest batch to production before adding another.');
-                              return;
-                            }
-                            try {
-                              const newBatch = await addOneBatchFromMaster(planningIdForBatch);
-                              if (newBatch) {
-                                mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
-                                queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                                setSelectedBatchId(Number(newBatch.id));
-                                addToast('success', `Added ${newBatch.batchCode ?? 'new batch'} (BOM from product master).`);
-                              } else {
-                                addToast('error', 'Failed to add batch');
-                              }
-                            } catch (e) {
-                              addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={
-                            planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                              ? 'Send the latest batch to production before adding another'
-                              : 'Create planning batch (BOM from product master)'
-                          }
-                        >
-                          Create batch
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            !canSendToProduction ||
-                            selectedBatchPlanIndex < 0 ||
-                            selectedBatchPlanIndex >= customBatches.length ||
-                            (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex)
-                          }
-                          onClick={() => {
-                            if (selectedBatchPlanIndex >= 0) void handleSendBatchToProductionIndividually(selectedBatchPlanIndex);
-                          }}
-                          className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={
-                            !canSendToProduction
-                              ? 'Confirm BOM in BOM Editor first'
-                              : selectedBatchPlanIndex < 0
-                                ? 'Select a planning batch'
-                                : (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex)
-                                  ? 'This batch was already sent'
-                                  : 'Send this batch to Production'
-                          }
-                        >
-                          Send B-{String(selectedBatchPlanSequence).padStart(2, '0')}
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        disabled={
+                          !canSendToProduction ||
+                          selectedBatchPlanIndex < 0 ||
+                          selectedBatchPlanIndex >= customBatches.length ||
+                          (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex)
+                        }
+                        onClick={() => {
+                          if (selectedBatchPlanIndex >= 0) void handleSendBatchToProductionIndividually(selectedBatchPlanIndex);
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={
+                          !canSendToProduction
+                            ? 'Confirm BOM in BOM Editor first'
+                            : selectedBatchPlanIndex < 0
+                              ? 'Choose a working batch in the bar above'
+                              : (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex)
+                                ? 'This batch was already sent'
+                                : 'Send this working batch to Production'
+                        }
+                      >
+                        Send batch
+                      </button>
                     </div>
                     {selectedBatchId != null && (
-                      <span className="text-[11px] text-gray-500 max-w-[220px]">
-                        BOM Editor / Swap use this batch. Batch Plan allocates units across batches below.
+                      <span className="text-[11px] text-gray-500">
+                        Applies to working batch{' '}
+                        <span className="font-mono font-semibold text-emerald-700">
+                          B-{String(selectedBatchPlanSequence).padStart(2, '0')}
+                        </span>
+                        ; preview qty updates that row in BATCH BREAKDOWN.
                       </span>
                     )}
                   </div>
@@ -4252,295 +4230,293 @@ const Planning = () => {
                   </div>
 
                   {(() => {
-                const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-                const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
-                const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : (orderTotalKg || 1);
-                const batchTotal = customBatches.reduce((sum, b) => sum + (b.sizeKg || 0), 0);
-                const batchTotalUnits = kgPerUnit > 0 ? batchTotal / kgPerUnit : 0;
-                const remaining = orderTotalKg - batchTotal;
-                const remainingUnits = kgPerUnit > 0 ? remaining / kgPerUnit : 0;
-                const addBatch = async () => {
-                  if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
-                    addToast('error', 'Send the latest batch to production before adding another.');
-                    return;
-                  }
-                  try {
-                    const newBatch = await addOneBatchFromMaster(planningIdForBatch);
-                    if (newBatch) {
-                      mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
-                      queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                      setSelectedBatchId(Number(newBatch.id));
-                      addToast('success', `Added ${newBatch.batchCode ?? 'batch'} (BOM from master).`);
-                    } else {
-                      addToast('error', 'Failed to add batch');
-                    }
-                  } catch (e) {
-                    addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
-                  }
-                };
-                const removeBatch = (idx: number) => {
-                  setCustomBatches(customBatches.filter((_, i) => i !== idx));
-                  if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
-                  else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
-                };
-                /** Update batch units locally; persist with Save Batch Plan or Send to Production (same as Feasibility preview math). */
-                const updateBatchUnits = (idx: number, units: number) => {
-                  const sizeKg = units * kgPerUnit;
-                  setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
-                };
+                    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+                    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+                    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : (orderTotalKg || 1);
+                    const batchTotal = customBatches.reduce((sum, b) => sum + (b.sizeKg || 0), 0);
+                    const batchTotalUnits = kgPerUnit > 0 ? batchTotal / kgPerUnit : 0;
+                    const remaining = orderTotalKg - batchTotal;
+                    const remainingUnits = kgPerUnit > 0 ? remaining / kgPerUnit : 0;
+                    const addBatch = async () => {
+                      if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                        addToast('error', 'Send the latest batch to production before adding another.');
+                        return;
+                      }
+                      try {
+                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                        if (newBatch) {
+                          mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                          setSelectedBatchId(Number(newBatch.id));
+                          addToast('success', `Added ${newBatch.batchCode ?? 'batch'} (BOM from master).`);
+                        } else {
+                          addToast('error', 'Failed to add batch');
+                        }
+                      } catch (e) {
+                        console.error('[Planning] add batch from breakdown', e);
+                        addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
+                      }
+                    };
+                    const removeBatch = (idx: number) => {
+                      setCustomBatches(customBatches.filter((_, i) => i !== idx));
+                      if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
+                      else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
+                    };
+                    /** Update batch units locally; persist with Save Batch Plan or Send to Production (same as Feasibility preview math). */
+                    const updateBatchUnits = (idx: number, units: number) => {
+                      const sizeKg = units * kgPerUnit;
+                      setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
+                    };
 
-                const normalizeMassUom = (raw?: string): 'KG' | 'GM' | 'MG' => {
-                  const u = String(raw || '').trim().toUpperCase();
-                  if (u === 'G' || u === 'GM' || u === 'GRAM' || u === 'GRAMS') return 'GM';
-                  if (u === 'MG' || u === 'MILLIGRAM' || u === 'MILLIGRAMS') return 'MG';
-                  return 'KG';
-                };
-                const convertKgToMassUom = (kg: number, uom: 'KG' | 'GM' | 'MG') => {
-                  if (uom === 'GM') return kg * 1000;
-                  if (uom === 'MG') return kg * 1000 * 1000;
-                  return kg;
-                };
+                    const normalizeMassUom = (raw?: string): 'KG' | 'GM' | 'MG' => {
+                      const u = String(raw || '').trim().toUpperCase();
+                      if (u === 'G' || u === 'GM' || u === 'GRAM' || u === 'GRAMS') return 'GM';
+                      if (u === 'MG' || u === 'MILLIGRAM' || u === 'MILLIGRAMS') return 'MG';
+                      return 'KG';
+                    };
+                    const convertKgToMassUom = (kg: number, uom: 'KG' | 'GM' | 'MG') => {
+                      if (uom === 'GM') return kg * 1000;
+                      if (uom === 'MG') return kg * 1000 * 1000;
+                      return kg;
+                    };
 
-                /** Per-batch requirements in BATCH BREAKDOWN: use that batch row's own BOM copy. */
-                const getBatchRmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
-                  const rmLines = Array.isArray(batchRow?.rmLines) ? batchRow.rmLines : [];
-                  if (rmLines.length === 0) return [];
-                  return rmLines.map((line: { inci_name?: string; rm_code?: string; pct_w_w?: number; pct?: number; uom?: string }) => {
-                    const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
-                    const requiredKg = (batchSizeForCalc * pct) / 100;
-                    const uom = normalizeMassUom(line.uom);
-                    const required = convertKgToMassUom(requiredKg, uom);
-                    return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, requiredKg, uom };
-                  });
-                };
-                const getBatchPmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
-                  const pmLines = Array.isArray(batchRow?.pmLines) ? batchRow.pmLines : [];
-                  if (pmLines.length === 0) return [];
-                  const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
-                  const unitsFraction = orderTotalKg > 0 ? batchSizeForCalc / orderTotalKg : 0;
-                  const unitsForBatch = Math.ceil(orderQtyNum * unitsFraction);
-                  return pmLines.map((line: { description?: string; pm_code?: string; qty_per_unit?: number }) => {
-                    const qtyPerUnit = line.qty_per_unit ?? 1;
-                    const required = unitsForBatch * qtyPerUnit;
-                    return { name: line.description ?? line.pm_code ?? '—', code: line.pm_code ?? '', qtyPerUnit, required, uom: 'PCS' };
-                  });
-                };
-                const batchPlanRows = customBatches
-                  .map((batch, originalIndex) => {
-                    const row = (planningBatches as PlanningBatchRow[])[originalIndex];
-                    const sequence = Number(row?.sequence ?? (originalIndex + 1)) || (originalIndex + 1);
-                    return { batch, originalIndex, row, sequence };
-                  })
-                  .sort((a, b) => b.sequence - a.sequence || b.originalIndex - a.originalIndex);
+                    /** Per-batch requirements in BATCH BREAKDOWN: use that batch row's own BOM copy. */
+                    const getBatchRmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
+                      const rmLines = Array.isArray(batchRow?.rmLines) ? batchRow.rmLines : [];
+                      if (rmLines.length === 0) return [];
+                      return rmLines.map((line: { inci_name?: string; rm_code?: string; pct_w_w?: number; pct?: number; uom?: string }) => {
+                        const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
+                        const requiredKg = (batchSizeForCalc * pct) / 100;
+                        const uom = normalizeMassUom(line.uom);
+                        const required = convertKgToMassUom(requiredKg, uom);
+                        return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, requiredKg, uom };
+                      });
+                    };
+                    const getBatchPmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
+                      const pmLines = Array.isArray(batchRow?.pmLines) ? batchRow.pmLines : [];
+                      if (pmLines.length === 0) return [];
+                      const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+                      const unitsFraction = orderTotalKg > 0 ? batchSizeForCalc / orderTotalKg : 0;
+                      const unitsForBatch = Math.ceil(orderQtyNum * unitsFraction);
+                      return pmLines.map((line: { description?: string; pm_code?: string; qty_per_unit?: number }) => {
+                        const qtyPerUnit = line.qty_per_unit ?? 1;
+                        const required = unitsForBatch * qtyPerUnit;
+                        return { name: line.description ?? line.pm_code ?? '—', code: line.pm_code ?? '', qtyPerUnit, required, uom: 'PCS' };
+                      });
+                    };
+                    const batchPlanRows = customBatches
+                      .map((batch, originalIndex) => {
+                        const row = (planningBatches as PlanningBatchRow[])[originalIndex];
+                        const sequence = Number(row?.sequence ?? (originalIndex + 1)) || (originalIndex + 1);
+                        return { batch, originalIndex, row, sequence };
+                      })
+                      .sort((a, b) => b.sequence - a.sequence || b.originalIndex - a.originalIndex);
 
-                return (
-                  <div className="space-y-6">
-                    {canSendToProduction && (
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
-                        <span className="font-semibold">BOM confirmed.</span> Select which batches to send to Production (checkboxes). Already-sent batches are grayed out. Click a batch to view its required materials.
-                      </div>
-                    )}
+                    return (
+                      <div className="space-y-6">
+                        {canSendToProduction && (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
+                            <span className="font-semibold">BOM confirmed.</span> Use <strong>Send batch</strong> next to Preview qty for the current working batch. Allocate units in the rows below; expand a row to see required materials. Batches already sent are marked Sent.
+                          </div>
+                        )}
 
-                    {/* Schedule & production line */}
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2">PLANNED START DATE</label>
-                        <input type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-2">PRODUCTION LINE</label>
-                        <select value={productionLine} onChange={(e) => setProductionLine(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                          <option>Line 1 — Primary Mixer</option>
-                          <option>Line 2 — Secondary Mixer</option>
-                          <option>Multi-line split</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Summary banner — quantity (units) to be made */}
-                    <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                      <p className="text-sm font-semibold flex items-center gap-2">
-                        <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-red-900'}>
-                          {customBatches.length} batch{customBatches.length !== 1 ? 'es' : ''} — {Math.round(batchTotalUnits).toLocaleString()} units to be made
-                          {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units total</>}
-                        </span>
-                      </p>
-                      {Math.abs(remaining) >= 0.01 && (
-                        <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
-                          {remaining > 0 ? `${Math.round(remainingUnits).toLocaleString()} units remaining to allocate` : `${Math.round(-remainingUnits).toLocaleString()} units over-allocated`}
-                        </p>
-                      )}
-                      {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated.</p>}
-                    </div>
-
-                    {/* Custom batch list — create batches from the toolbar (Preview qty row) or the batch bar on other tabs */}
-                    <div>
-                      <div className="mb-4">
-                        <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
-                        <p className="text-[11px] text-gray-500 mt-1">
-                          Use <strong>Create batch</strong> next to Planning batch (above), or <strong>+ Add</strong> in the batch bar when you are on BOM Editor / Swap.
-                        </p>
-                      </div>
-
-                      {customBatches.length === 0 && (
-                        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                          <p className="text-sm text-gray-600">No unit split yet. Add a planning batch first, then allocate units per row below.</p>
-                          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                            {orderQtyNum > 0 && (
-                              <button
-                                type="button"
-                                disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
-                                onClick={() => addBatch()}
-                                className="px-4 py-2 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                                title={
-                                  planningBatches.length > 0 && !canAddAnotherPlanningBatch
-                                    ? 'Send the latest batch to production first'
-                                    : undefined
-                                }
-                              >
-                                Create single batch ({orderQtyNum.toLocaleString()} units)
-                              </button>
-                            )}
+                        {/* Schedule & production line */}
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-2">PLANNED START DATE</label>
+                            <input type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-2">PRODUCTION LINE</label>
+                            <select value={productionLine} onChange={(e) => setProductionLine(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                              <option>Line 1 — Primary Mixer</option>
+                              <option>Line 2 — Secondary Mixer</option>
+                              <option>Multi-line split</option>
+                            </select>
                           </div>
                         </div>
-                      )}
 
-                      <div className="space-y-3">
-                        {batchPlanRows.map(({ batch, originalIndex, row, sequence }) => {
-                          const isExpanded = expandedBatchIndex === originalIndex;
-                          const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
-                          const isSent = sentBatchIndices.includes(originalIndex);
-                          const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
-                          const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
-                          const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
-                          return (
-                            <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
-                              <div className="flex items-center gap-3 p-4">
-                                {isSent && (
-                                  <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
+                        {/* Summary banner — quantity (units) to be made */}
+                        <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                          <p className="text-sm font-semibold flex items-center gap-2">
+                            <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-red-900'}>
+                              {customBatches.length} batch{customBatches.length !== 1 ? 'es' : ''} — {Math.round(batchTotalUnits).toLocaleString()} units to be made
+                              {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units total</>}
+                            </span>
+                          </p>
+                          {Math.abs(remaining) >= 0.01 && (
+                            <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                              {remaining > 0 ? `${Math.round(remainingUnits).toLocaleString()} units remaining to allocate` : `${Math.round(-remainingUnits).toLocaleString()} units over-allocated`}
+                            </p>
+                          )}
+                          {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated.</p>}
+                        </div>
+
+                        {/* Custom batch list — add batches from Working batch bar; preview qty updates the selected working batch row */}
+                        <div>
+                          <div className="mb-4">
+                            <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                              Use <strong>+ Add</strong> next to <strong>Working batch</strong> to create planning batches. Set units per row; changing <strong>Preview qty</strong> updates the row that matches the working batch.
+                            </p>
+                          </div>
+
+                          {customBatches.length === 0 && (
+                            <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
+                              <p className="text-sm text-gray-600">No unit split yet. Use <strong>+ Add</strong> next to Working batch, then allocate units per row below.</p>
+                              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                                {orderQtyNum > 0 && (
+                                  <button
+                                    type="button"
+                                    disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                                    onClick={() => addBatch()}
+                                    className="px-4 py-2 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title={
+                                      planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                                        ? 'Send the latest batch to production first'
+                                        : undefined
+                                    }
+                                  >
+                                    Create single batch ({orderQtyNum.toLocaleString()} units)
+                                  </button>
                                 )}
-                                <div
-                                  className="flex-1 flex items-center gap-4 cursor-pointer"
-                                  onClick={() => setExpandedBatchIndex(isExpanded ? null : originalIndex)}
-                                >
-                                  <span className={`text-sm font-bold px-3 py-1 rounded-md ${isSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
-                                    B-{String(sequence).padStart(2, '0')}
-                                  </span>
-                                  {row?.batchCode && (
-                                    <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded" title="Batch ID (BOM copy saved for this batch)">
-                                      {row.batchCode}
-                                    </span>
-                                  )}
-                                  <span className="text-xs text-gray-500">
-                                    {isExpanded ? '▼' : '▶'} {isExpanded ? 'Hide materials' : 'View required materials'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    value={kgPerUnit > 0 ? Math.round(batch.sizeKg / kgPerUnit) : batch.sizeKg}
-                                    onChange={(e) => {
-                                      const units = parseFloat(e.target.value) || 0;
-                                      const sizeKg = units * kgPerUnit;
-                                      console.log('e.target.value', e.target.value);
-                                      console.log('sizeKg', kgPerUnit, units, sizeKg);
-                                      updateBatchUnits(originalIndex, units);
-                                    }}
-                                    disabled={isSent}
-                                    className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
-                                    min={0}
-
-                                  />
-                                  <span className="text-xs font-semibold text-gray-600">units</span>
-                                  {!isSent && (
-                                    <button
-                                      type="button"
-                                      onClick={() => removeBatch(originalIndex)}
-                                      className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  )}
-                                </div>
                               </div>
+                            </div>
+                          )}
 
-                              {/* Per-batch material requirements */}
-                              {isExpanded && (
-                                <div className="border-t border-gray-200 p-4 bg-white space-y-4">
-                                  {rmReqs.length > 0 && (
-                                    <div>
-                                      <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
-                                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                        <table className="w-full text-xs">
-                                          <thead><tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="px-3 py-1.5 text-left font-semibold text-gray-600">RM ITEM</th>
-                                            <th className="px-3 py-1.5 text-right font-semibold text-gray-600">% W/W</th>
-                                            <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
-                                          </tr></thead>
-                                          <tbody>
-                                            {rmReqs.map((r, ri) => (
-                                              <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                <td className="px-3 py-1.5 text-gray-900 font-medium">{r.name} <span className="text-gray-400 text-xs">({r.code})</span></td>
-                                                <td className="px-3 py-1.5 text-right text-gray-600">{r.pct.toFixed(2)}%</td>
-                                                <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{r.required.toFixed(2)} {r.uom}</td>
-                                              </tr>
-                                            ))}
-                                            <tr className="bg-teal-50 border-t border-teal-200">
-                                              <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
-                                              <td className="px-3 py-1.5 text-right font-bold text-teal-800">
-                                                {(() => {
-                                                  const uoms = [...new Set(rmReqs.map((r) => r.uom))];
-                                                  if (uoms.length === 1) {
-                                                    const u = uoms[0] as 'KG' | 'GM' | 'MG';
-                                                    const total = convertKgToMassUom(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), u);
-                                                    return `${total.toFixed(2)} ${u}`;
-                                                  }
-                                                  const totalKg = rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0);
-                                                  return `${totalKg.toFixed(2)} KG`;
-                                                })()}
-                                              </td>
-                                            </tr>
-                                          </tbody>
-                                        </table>
-                                      </div>
+                          <div className="space-y-3">
+                            {batchPlanRows.map(({ batch, originalIndex, row, sequence }) => {
+                              const isExpanded = expandedBatchIndex === originalIndex;
+                              const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
+                              const isSent = sentBatchIndices.includes(originalIndex);
+                              const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
+                              const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
+                              const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
+                              return (
+                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                                  <div className="flex items-center gap-3 p-4">
+                                    {isSent && (
+                                      <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
+                                    )}
+                                    <div
+                                      className="flex-1 flex items-center gap-4 cursor-pointer"
+                                      onClick={() => setExpandedBatchIndex(isExpanded ? null : originalIndex)}
+                                    >
+                                      <span className={`text-sm font-bold px-3 py-1 rounded-md ${isSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
+                                        B-{String(sequence).padStart(2, '0')}
+                                      </span>
+                                      {row?.batchCode && (
+                                        <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded" title="Batch ID (BOM copy saved for this batch)">
+                                          {row.batchCode}
+                                        </span>
+                                      )}
+                                      <span className="text-xs text-gray-500">
+                                        {isExpanded ? '▼' : '▶'} {isExpanded ? 'Hide materials' : 'View required materials'}
+                                      </span>
                                     </div>
-                                  )}
-                                  {pmReqs.length > 0 && (
-                                    <div>
-                                      <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
-                                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                        <table className="w-full text-xs">
-                                          <thead><tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="px-3 py-1.5 text-left font-semibold text-gray-600">PM ITEM</th>
-                                            <th className="px-3 py-1.5 text-right font-semibold text-gray-600">QTY/UNIT</th>
-                                            <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
-                                          </tr></thead>
-                                          <tbody>
-                                            {pmReqs.map((p, pi) => (
-                                              <tr key={pi} className={pi % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                <td className="px-3 py-1.5 text-gray-900 font-medium">{p.name} <span className="text-gray-400 text-xs">({p.code})</span></td>
-                                                <td className="px-3 py-1.5 text-right text-gray-600">{p.qtyPerUnit}</td>
-                                                <td className="px-3 py-1.5 text-right text-orange-700 font-bold">{p.required.toLocaleString()} {p.uom}</td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        value={kgPerUnit > 0 ? Math.round(batch.sizeKg / kgPerUnit) : batch.sizeKg}
+                                        onChange={(e) => {
+                                          const units = parseFloat(e.target.value) || 0;
+                                          updateBatchUnits(originalIndex, units);
+                                        }}
+                                        disabled={isSent}
+                                        className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                        min={0}
+
+                                      />
+                                      <span className="text-xs font-semibold text-gray-600">units</span>
+                                      {!isSent && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeBatch(originalIndex)}
+                                          className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      )}
                                     </div>
-                                  )}
-                                  {rmReqs.length === 0 && pmReqs.length === 0 && (
-                                    <p className="text-xs text-gray-500 text-center py-2">No BOM data available to calculate materials.</p>
+                                  </div>
+
+                                  {/* Per-batch material requirements */}
+                                  {isExpanded && (
+                                    <div className="border-t border-gray-200 p-4 bg-white space-y-4">
+                                      {rmReqs.length > 0 && (
+                                        <div>
+                                          <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
+                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                            <table className="w-full text-xs">
+                                              <thead><tr className="bg-gray-50 border-b border-gray-200">
+                                                <th className="px-3 py-1.5 text-left font-semibold text-gray-600">RM ITEM</th>
+                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">% W/W</th>
+                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                              </tr></thead>
+                                              <tbody>
+                                                {rmReqs.map((r, ri) => (
+                                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                    <td className="px-3 py-1.5 text-gray-900 font-medium">{r.name} <span className="text-gray-400 text-xs">({r.code})</span></td>
+                                                    <td className="px-3 py-1.5 text-right text-gray-600">{r.pct.toFixed(2)}%</td>
+                                                    <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{r.required.toFixed(2)} {r.uom}</td>
+                                                  </tr>
+                                                ))}
+                                                <tr className="bg-teal-50 border-t border-teal-200">
+                                                  <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
+                                                  <td className="px-3 py-1.5 text-right font-bold text-teal-800">
+                                                    {(() => {
+                                                      const uoms = [...new Set(rmReqs.map((r) => r.uom))];
+                                                      if (uoms.length === 1) {
+                                                        const u = uoms[0] as 'KG' | 'GM' | 'MG';
+                                                        const total = convertKgToMassUom(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), u);
+                                                        return `${total.toFixed(2)} ${u}`;
+                                                      }
+                                                      const totalKg = rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0);
+                                                      return `${totalKg.toFixed(2)} KG`;
+                                                    })()}
+                                                  </td>
+                                                </tr>
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {pmReqs.length > 0 && (
+                                        <div>
+                                          <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
+                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                            <table className="w-full text-xs">
+                                              <thead><tr className="bg-gray-50 border-b border-gray-200">
+                                                <th className="px-3 py-1.5 text-left font-semibold text-gray-600">PM ITEM</th>
+                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">QTY/UNIT</th>
+                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                              </tr></thead>
+                                              <tbody>
+                                                {pmReqs.map((p, pi) => (
+                                                  <tr key={pi} className={pi % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                    <td className="px-3 py-1.5 text-gray-900 font-medium">{p.name} <span className="text-gray-400 text-xs">({p.code})</span></td>
+                                                    <td className="px-3 py-1.5 text-right text-gray-600">{p.qtyPerUnit}</td>
+                                                    <td className="px-3 py-1.5 text-right text-orange-700 font-bold">{p.required.toLocaleString()} {p.uom}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {rmReqs.length === 0 && pmReqs.length === 0 && (
+                                        <p className="text-xs text-gray-500 text-center py-2">No BOM data available to calculate materials.</p>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })()}
+                    );
+                  })()}
                 </div>
               )}
 
@@ -4611,9 +4587,8 @@ const Planning = () => {
                             ? 'Confirm BOM: available stock is reserved; raise POs for any gaps'
                             : 'Add RM/PM lines in the BOM editor first'
                         }
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${
-                          canConfirmBomPerBatch ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'
-                        }`}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${canConfirmBomPerBatch ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'
+                          }`}
                       >
                         Confirm BOM
                       </button>

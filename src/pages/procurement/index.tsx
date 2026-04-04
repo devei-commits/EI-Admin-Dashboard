@@ -37,6 +37,7 @@ import {
   mapOrderToPurchaseOrder,
   mapPurchaseOrderToDraftPO,
   draftLineItemsToPurchaseOrderItems,
+  itemDetailsToProcurementRequestItems,
   assignPrItemToDraftLines,
   matchBackendPrItemForDraftLine,
   mergeBackendPrItemsAfterPartialRelease,
@@ -85,6 +86,7 @@ import {
   validateStagedPercents,
   parseVendorThreeWayFromPlainText,
 } from '../../lib/stagedPaymentTerms';
+import { queryKeys } from '../../lib/queryClient';
 
 /** Populate tier editor fields from Items List payment_terms (JSON or legacy vendor text). */
 function paymentTermsToStagedFields(raw: string): {
@@ -131,6 +133,31 @@ function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
     if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
+}
+
+/**
+ * PR lines for PO release/split: prefer API `procurement_requests.items`; if missing/empty (cache/sync gap),
+ * fall back to mapped UI `itemDetails` so PO rows keep raw_material_id / pack_material_id for warehouse PO Qty.
+ */
+function resolvePrItemsForPurchaseOrderLines(
+  backendPrArray: ApiProcurementRequest[],
+  requestsMapped: ProcurementRequest[],
+  opts: { backendRequestId: string; draftRequestId: string; requestCode: string }
+): BackendPRItem[] {
+  const { backendRequestId, draftRequestId, requestCode } = opts;
+  const key = String(backendRequestId || draftRequestId || '').trim();
+  const prRow = backendPrArray.find((p) => String(p.id) === key) as { items?: BackendPRItem[] } | undefined;
+  let lines: BackendPRItem[] = Array.isArray(prRow?.items) ? [...prRow.items] : [];
+  if (lines.length === 0) {
+    const codeNorm = String(requestCode ?? '').trim().toUpperCase();
+    const liveReq =
+      requestsMapped.find((r) => String(r.id) === key) ||
+      (codeNorm ? requestsMapped.find((r) => String(r.code).toUpperCase() === codeNorm) : undefined);
+    if (liveReq?.itemDetails?.length) {
+      lines = itemDetailsToProcurementRequestItems(liveReq.itemDetails) as BackendPRItem[];
+    }
+  }
+  return lines;
 }
 
 /** Avoid setDraftPOs on every purchase-orders refetch when mapped drafts are logically unchanged (prevents update-depth loops + flickering ids). */
@@ -2193,6 +2220,7 @@ const Procurement: React.FC = () => {
         }
         queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
         queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
         if (isUnlinkedPlanning) {
           setUnlinkedPoTimelineOverrides((prev) => ({
             ...prev,
@@ -2921,12 +2949,18 @@ const Procurement: React.FC = () => {
     }
 
     // Update PO table: set status to Released and ensure request link is stored
+    if (import.meta.env.DEV && !draft.backendPoId) {
+      console.warn(
+        '[EI po-qty debug] No draft.backendPoId — skipping PUT purchase-orders (items never hit DB; warehouse PO Qty will not change from this release).',
+      );
+    }
     if (draft.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(draft);
-      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || draft.requestId)) as
-        | { items?: BackendPRItem[] }
-        | undefined;
-      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+        backendRequestId,
+        draftRequestId: draft.requestId,
+        requestCode: draft.requestCode,
+      });
       const poItemsPayload = draftLineItemsToPurchaseOrderItems(draft.lineItems, prItemsForLines);
       if (DEBUG_PROC_RELEASE) {
         console.log('[PROC-RELEASE] updatePurchaseOrder formData request linkage', {
@@ -2936,6 +2970,25 @@ const Procurement: React.FC = () => {
           draft_requestCode: draft.requestCode,
           resolved_backendRequestId: backendRequestId,
         });
+      }
+      if (import.meta.env.DEV) {
+        const pl = poItemsPayload as Record<string, unknown>[];
+        console.log('[EI po-qty debug] release → PUT purchase-orders payload', {
+          backendPoId: draft.backendPoId,
+          prItemsForLinesCount: prItemsForLines.length,
+          payloadLineCount: pl.length,
+          lines: pl.map((l) => ({
+            quantity: l.quantity,
+            raw_material_id: l.raw_material_id,
+            pack_material_id: l.pack_material_id,
+            itemCode: l.itemCode,
+          })),
+        });
+        if (pl.length > 0 && pl.every((l) => l.raw_material_id == null && l.pack_material_id == null)) {
+          console.warn(
+            '[EI po-qty debug] WARNING: no raw_material_id / pack_material_id on any line — warehouse PO Qty sums only lines with these FKs. Check PR link / assignPrItemToDraftLines.',
+          );
+        }
       }
       const updateResult = await updatePurchaseOrder(draft.backendPoId, {
         status: 'Released',
@@ -2954,6 +3007,14 @@ const Procurement: React.FC = () => {
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update purchase order'));
         return;
       }
+      if (import.meta.env.DEV && updateResult.data?.items) {
+        console.log('[EI po-qty debug] release ← PUT purchase-orders response items', updateResult.data.items);
+      }
+      // PO lines + Released status are persisted — warehouse inventory PO Qty column reads from purchase_orders
+      if (import.meta.env.DEV) {
+        console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (after PO Released + items saved)');
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     }
 
     // If payment terms are set, route to Treasury for advance approval
@@ -2993,6 +3054,10 @@ const Procurement: React.FC = () => {
     }));
 
     void invalidatePurchaseOrdersQueries();
+    if (import.meta.env.DEV) {
+      console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (end of submitReleasePO)');
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     if (draft.paymentTerms?.trim()) {
       addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
     } else {
@@ -3083,10 +3148,11 @@ const Procurement: React.FC = () => {
 
     if (splitPOTarget.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(splitPOTarget);
-      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || splitPOTarget.requestId)) as
-        | { items?: BackendPRItem[] }
-        | undefined;
-      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+        backendRequestId,
+        draftRequestId: splitPOTarget.requestId,
+        requestCode: splitPOTarget.requestCode,
+      });
       const fullAssigned = assignPrItemToDraftLines(splitPOTarget.lineItems, prItemsForLines);
       const assignedOne = uniqueIndexes.map((idx) => fullAssigned[idx]);
       const remainingLineIndices = splitPOTarget.lineItems.map((_, i) => i).filter((i) => !uniqueIndexes.includes(i));
@@ -3351,6 +3417,9 @@ const Procurement: React.FC = () => {
     }
     void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
     void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    if (status === 'PO Released' || status === 'Delivery Pending') {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+    }
     lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
       requests: current.requests.map((req) => (req.id === requestId ? { ...req, status } : req)),

@@ -704,6 +704,28 @@ export function assignPrItemToDraftLines(
   });
 }
 
+/** Map UI itemDetails → API-shaped PR lines so release/split can attach raw_material_id / pack_material_id to PO rows. */
+export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): ProcurementRequestItem[] {
+  return details.map((d) => {
+    const pmId = d.pack_material_id != null ? Number(d.pack_material_id) : NaN;
+    const lineType: 'RM' | 'PM' =
+      d.type === 'PM' || (Number.isFinite(pmId) && pmId > 0) ? 'PM' : 'RM';
+    const req = Number(d.reqQty) || 0;
+    return {
+      type: lineType,
+      code: d.itemCode ?? '',
+      name: d.itemName ?? '',
+      required: req,
+      sih: 0,
+      shortage: 0,
+      quantity_requested: req,
+      unit: d.unit ?? '',
+      raw_material_id: d.raw_material_id != null ? Number(d.raw_material_id) : undefined,
+      pack_material_id: d.pack_material_id != null ? Number(d.pack_material_id) : undefined,
+    };
+  });
+}
+
 /** Build purchase_orders.items payload from draft lines (optionally enrich ids from PR). */
 export function draftLineItemsToPurchaseOrderItems(
   lines: DraftPOLineItem[],
@@ -719,6 +741,8 @@ export function draftLineItemsToPurchaseOrderItems(
   return lines.map((l, idx) => {
     const src = assigned[idx];
     const ld = normalizeLeadTimeDays(l.leadTimeDays);
+    const rmId = src?.raw_material_id ?? l.raw_material_id;
+    const pmId = src?.pack_material_id ?? l.pack_material_id;
     return {
       itemName: l.item,
       itemCode: l.itemCode,
@@ -726,8 +750,8 @@ export function draftLineItemsToPurchaseOrderItems(
       rate: String(l.pricePerUnit),
       tax: String(l.gstPercent || 18),
       ...(ld !== undefined ? { lead_time_days: ld } : {}),
-      ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
-      ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
+      ...(rmId != null && Number(rmId) > 0 ? { raw_material_id: Number(rmId) } : {}),
+      ...(pmId != null && Number(pmId) > 0 ? { pack_material_id: Number(pmId) } : {}),
     };
   });
 }

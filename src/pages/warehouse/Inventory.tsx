@@ -1,12 +1,14 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
 import {
-  fetchWarehouseInventory,
   fetchAllWarehouseLocationHistory,
   fetchRackLocations,
   fetchUsageStats,
 } from '../../services/warehouseInventory.service';
+import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
+import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
 import type {
   WarehouseLocationHistoryEntry,
@@ -917,6 +919,14 @@ function rowToInventoryItem(row: {
 
 const WarehouseInventory = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const {
+    data: whQueryData,
+    isLoading: whLoading,
+    isError: whIsError,
+    error: whQueryError,
+    refetch: refetchWarehouseInventory,
+  } = useWarehouseInventory();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
   const [viewMode, setViewMode] = useState<'current' | 'history' | 'usage'>('current');
@@ -925,10 +935,26 @@ const WarehouseInventory = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
-  const [itemGroups, setItemGroups] = useState<{ id: string; code: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const inventoryData = useMemo(
+    () => (whQueryData?.rows ?? []).map(rowToInventoryItem),
+    [whQueryData?.rows]
+  );
+  const itemGroups = useMemo(
+    () =>
+      (whQueryData?.itemGroups ?? []).map((g) => ({
+        id: g.id,
+        code: g.code,
+        name: g.name || g.code,
+      })),
+    [whQueryData?.itemGroups]
+  );
+  const loading = whLoading;
+  const error =
+    whIsError && whQueryError instanceof Error
+      ? whQueryError.message
+      : whIsError
+        ? 'Failed to load inventory'
+        : null;
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [racks, setRacks] = useState<Rack[]>([]);
@@ -971,48 +997,22 @@ const WarehouseInventory = () => {
     };
   }, [locationPopover?.item?.id, locationPopover?.item?.warehouseInventoryId]);
 
-  const loadWarehouseInventory = useCallback((silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
-    return fetchWarehouseInventory()
-      .then((res) => {
-        if (res.success && res.data) {
-          const items = res.data.rows.map(rowToInventoryItem);
-          setInventoryData(items);
-          setItemGroups(
-            (res.data.itemGroups || []).map((g) => ({ id: g.id, code: g.code, name: g.name || g.code }))
-          );
-          if (typeof console !== 'undefined' && console.log) {
-            console.log('[Warehouse Inventory] Loaded', { count: items.length, sample: items[0], silent });
-          }
-        } else if (!silent) {
-          setError(res.error || 'Failed to load inventory');
-        }
-      })
-      .catch((err) => {
-        if (!silent) setError(err?.message || 'Failed to load inventory');
-      })
-      .finally(() => {
-        if (!silent) setLoading(false);
-      });
-  }, []);
-
   useEffect(() => {
-    loadWarehouseInventory(false);
-  }, [loadWarehouseInventory]);
+    if (typeof console !== 'undefined' && console.log && inventoryData.length > 0) {
+      console.log('[Warehouse Inventory] Loaded', { count: inventoryData.length, sample: inventoryData[0] });
+    }
+  }, [inventoryData]);
 
-  // After BMR dispensing / MTR / GRN on another page or tab, refresh MU (ML1/ML2) without a full reload.
+  // After BMR dispensing / MTR / GRN / procurement PO release on another tab, refresh when user returns.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        loadWarehouseInventory(true);
+        void refetchWarehouseInventory();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [loadWarehouseInventory]);
+  }, [refetchWarehouseInventory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1095,10 +1095,8 @@ const WarehouseInventory = () => {
   }, [viewMode]);
 
   const handleItemUpdatedFromSidebar = (updated: InventoryItem) => {
-    setInventoryData(prev =>
-      prev.map(item => (item.id === updated.id ? { ...item, ...updated } : item))
-    );
     setSelectedItem(updated);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
   };
 
   const addLocation = (locationData: Omit<Location, 'id' | 'createdAt'>) => {

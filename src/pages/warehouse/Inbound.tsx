@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import {
+  fetchFacilityAreas,
+  type FacilityAreaDTO,
+  type ZoneDTO,
+} from '../../services/facilityAreas.service';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
@@ -195,10 +200,43 @@ const ScanSimulator = ({ grnNo }: { grnNo: string }) => {
   );
 };
 
+function zoneDisplayLabel(zone: ZoneDTO): string {
+  const zl = zone.zoneLabel?.trim();
+  if (zl) return zl;
+  return `${zone.code} — ${zone.name}`.trim();
+}
+
+/** Match saved GRN rack code to a rack under Facility Management (warehouse areas). */
+function matchGrnLocationToFacility(
+  locationPrefix: string | null | undefined,
+  areas: FacilityAreaDTO[]
+): { areaId: number; zoneId: number; rackId: number } | null {
+  const prefix = (locationPrefix || '').trim();
+  if (!prefix) return null;
+  for (const area of areas) {
+    for (const zone of area.zones || []) {
+      for (const rack of zone.racks || []) {
+        if (String(rack.code).trim() === prefix) {
+          return { areaId: area.id, zoneId: zone.id, rackId: rack.id };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // GRN Detail Modal Component
 const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const { data: facilityAreasRaw = [], isLoading: facilityAreasLoading } = useQuery({
+    queryKey: ['facility-areas', 'warehouse', 'grn-modal'],
+    queryFn: async () => {
+      const res = await fetchFacilityAreas('warehouse');
+      return res.success ? res.data : [];
+    },
+  });
+  const facilityAreasData = useMemo(() => facilityAreasRaw as FacilityAreaDTO[], [facilityAreasRaw]);
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
@@ -227,6 +265,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   );
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
   const [locationZone, setLocationZone] = useState(grn.locationZone ?? '');
+  /** Use Facility Management hierarchy vs free-text (legacy / edge cases). */
+  const [locationSource, setLocationSource] = useState<'facility' | 'custom'>('facility');
+  const [selectedAreaId, setSelectedAreaId] = useState<number | ''>('');
+  const [selectedZoneId, setSelectedZoneId] = useState<number | ''>('');
+  const [selectedRackId, setSelectedRackId] = useState<number | ''>('');
   const [grnBatchMfg, setGrnBatchMfg] = useState(grn.grnBatchMfg ?? '');
   const [expiry, setExpiry] = useState(grn.expiry ?? '');
   const [mfgBatch, setMfgBatch] = useState(grn.mfgBatch ?? '');
@@ -304,9 +347,57 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   }, [grn.id, grn.qcStatus, grn.qcBy]);
 
   useEffect(() => {
-    setLocationPrefix(grn.locationPrefix ?? '');
-    setLocationZone(grn.locationZone ?? '');
-  }, [grn.id, grn.locationPrefix, grn.locationZone]);
+    if (facilityAreasLoading) return;
+    const areas = facilityAreasData;
+    if (areas.length === 0) {
+      setLocationSource('custom');
+      setSelectedAreaId('');
+      setSelectedZoneId('');
+      setSelectedRackId('');
+      setLocationPrefix(grn.locationPrefix ?? '');
+      setLocationZone(grn.locationZone ?? '');
+      return;
+    }
+    const m = matchGrnLocationToFacility(grn.locationPrefix, areas);
+    if (m) {
+      setLocationSource('facility');
+      setSelectedAreaId(m.areaId);
+      setSelectedZoneId(m.zoneId);
+      setSelectedRackId(m.rackId);
+    } else {
+      setLocationSource('custom');
+      setSelectedAreaId('');
+      setSelectedZoneId('');
+      setSelectedRackId('');
+      setLocationPrefix(grn.locationPrefix ?? '');
+      setLocationZone(grn.locationZone ?? '');
+    }
+  }, [grn.id, grn.locationPrefix, grn.locationZone, facilityAreasData, facilityAreasLoading]);
+
+  useEffect(() => {
+    if (locationSource !== 'facility') return;
+    const area = facilityAreasData.find((a) => a.id === selectedAreaId);
+    const zone = area?.zones?.find((z) => z.id === selectedZoneId);
+    const rack = zone?.racks?.find((r) => r.id === selectedRackId);
+    if (zone) setLocationZone(zoneDisplayLabel(zone));
+    else setLocationZone('');
+    if (rack) setLocationPrefix(rack.code);
+    else setLocationPrefix('');
+  }, [locationSource, selectedAreaId, selectedZoneId, selectedRackId, facilityAreasData]);
+
+  const selectedArea = useMemo(
+    () => facilityAreasData.find((a) => a.id === selectedAreaId),
+    [facilityAreasData, selectedAreaId]
+  );
+  const zoneOptions = selectedArea?.zones ?? [];
+  const selectedZone = useMemo(
+    () => zoneOptions.find((z) => z.id === selectedZoneId),
+    [zoneOptions, selectedZoneId]
+  );
+  const rackOptionsSorted = useMemo(() => {
+    const racks = selectedZone?.racks ?? [];
+    return [...racks].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  }, [selectedZone]);
 
   const filteredQcByUsers = assignableUsers.filter(
     u => (u.displayName || '').toLowerCase().includes((qcByInput || '').toLowerCase().trim())
@@ -419,11 +510,19 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       return;
     }
     if (!locationPrefix.trim()) {
-      setLabelError('Enter location prefix (rack code) before generating labels.');
+      setLabelError(
+        locationSource === 'facility'
+          ? 'Select warehouse area, zone, and rack before generating labels.'
+          : 'Enter location prefix (rack code) before generating labels.',
+      );
       return;
     }
     if (!locationZone.trim()) {
-      setLabelError('Enter storage zone before generating labels.');
+      setLabelError(
+        locationSource === 'facility'
+          ? 'Complete zone and rack selection from Facility Management before generating labels.'
+          : 'Enter storage zone before generating labels.',
+      );
       return;
     }
     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
@@ -518,10 +617,18 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     completionBlockers.push('QR labels must be generated for all GRN materials.');
   }
   if (!locationPrefix.trim()) {
-    completionBlockers.push('Location prefix (rack code) is required.');
+    completionBlockers.push(
+      locationSource === 'facility'
+        ? 'Select area, zone, and rack from Facility Management (or use Custom).'
+        : 'Location prefix (rack code) is required.',
+    );
   }
   if (!locationZone.trim()) {
-    completionBlockers.push('Storage zone is required.');
+    completionBlockers.push(
+      locationSource === 'facility'
+        ? 'Zone label is required (choose zone + rack from Facility Management).'
+        : 'Storage zone is required.',
+    );
   }
   const canMarkComplete = completionBlockers.length === 0;
 
@@ -935,26 +1042,153 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                 />
                 <p className="text-[10px] text-slate-500 mt-0.5">Optional. Leave empty when every box has the same count. Must be ≤ full carton size.</p>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Storage zone <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={locationZone}
-                  onChange={(e) => setLocationZone(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                  placeholder="e.g. Zone A / RM bulk"
-                />
+
+              <div className="col-span-2 md:col-span-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-xs font-semibold text-slate-700">Put-away location <span className="text-red-500">*</span></span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="grn-location-source"
+                      className="rounded-full border-slate-300"
+                      checked={locationSource === 'facility'}
+                      onChange={() => {
+                        setLocationSource('facility');
+                        const m = matchGrnLocationToFacility(locationPrefix, facilityAreasData);
+                        if (m) {
+                          setSelectedAreaId(m.areaId);
+                          setSelectedZoneId(m.zoneId);
+                          setSelectedRackId(m.rackId);
+                        }
+                      }}
+                    />
+                    Facility Management
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="grn-location-source"
+                      className="rounded-full border-slate-300"
+                      checked={locationSource === 'custom'}
+                      onChange={() => setLocationSource('custom')}
+                    />
+                    Custom (type zone / rack)
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Warehouse areas, zones, and racks are maintained under <strong>Facility Management</strong>. Choosing them here sets the same zone label and rack code used on QR labels and stock put-away.
+                </p>
+
+                {locationSource === 'facility' && facilityAreasLoading && (
+                  <p className="text-xs text-slate-500">Loading warehouse locations…</p>
+                )}
+                {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length === 0 && (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    No warehouse areas found. Create a warehouse area, zones, and racks in Facility Management, or use Custom.
+                  </p>
+                )}
+
+                {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Warehouse area</label>
+                      <select
+                        value={selectedAreaId === '' ? '' : String(selectedAreaId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedAreaId(v ? parseInt(v, 10) : '');
+                          setSelectedZoneId('');
+                          setSelectedRackId('');
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                      >
+                        <option value="">— Select area —</option>
+                        {facilityAreasData.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} — {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Zone</label>
+                      <select
+                        value={selectedZoneId === '' ? '' : String(selectedZoneId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedZoneId(v ? parseInt(v, 10) : '');
+                          setSelectedRackId('');
+                        }}
+                        disabled={selectedAreaId === ''}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <option value="">— Select zone —</option>
+                        {zoneOptions.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.code} — {z.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Rack (put-away code)</label>
+                      <select
+                        value={selectedRackId === '' ? '' : String(selectedRackId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedRackId(v ? parseInt(v, 10) : '');
+                        }}
+                        disabled={selectedZoneId === ''}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <option value="">— Select rack —</option>
+                        {rackOptionsSorted.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.code}
+                            {r.name ? ` — ${r.name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedZoneId !== '' && rackOptionsSorted.length === 0 && (
+                        <p className="text-[10px] text-amber-700 mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {locationSource === 'custom' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Storage zone <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={locationZone}
+                        onChange={(e) => setLocationZone(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        placeholder="e.g. Zone A / RM bulk"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code) <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={locationPrefix}
+                        onChange={(e) => setLocationPrefix(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        placeholder="e.g. A1-L2-S3"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {locationSource === 'facility' && !facilityAreasLoading && locationZone && locationPrefix && (
+                  <p className="text-[10px] text-slate-600">
+                    Saved on GRN / QR: <span className="font-mono font-medium">zone</span> = {locationZone} ·{' '}
+                    <span className="font-mono font-medium">rack</span> = {locationPrefix}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code) <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={locationPrefix}
-                  onChange={(e) => setLocationPrefix(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                  placeholder="e.g. A1-L2-S3"
-                />
-              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
                 <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />

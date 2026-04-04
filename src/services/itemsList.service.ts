@@ -34,6 +34,8 @@ export interface ItemListTierRow {
 
 export interface ItemListVendorRateRow {
   id: number;
+  /** vendor = procurement (RM/PM); client = customer product pricing (PR) */
+  party_type?: 'vendor' | 'client';
   vendor_id: number;
   vendor_name: string | null;
   vendor_code: string | null;
@@ -91,6 +93,7 @@ export interface PriceListItemPage {
   itemsListId: number | null;
   vendorRates: Array<{
     id: number;
+    party_type?: 'vendor' | 'client';
     vendor_id: number;
     vendor_name: string | null;
     vendor_code: string | null;
