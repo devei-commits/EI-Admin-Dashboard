@@ -13,7 +13,7 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchRawMaterialsPage, createRawMaterial, syncRmZoho, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -146,9 +146,6 @@ const RawMaterialRefactored: React.FC = () => {
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
  const [editRmLoading, setEditRmLoading] = useState(false);
  const [generatedRmCode, setGeneratedRmCode] = useState('');
- const [draftRmId, setDraftRmId] = useState<number | null>(null);
- const [zohoSkippedSync, setZohoSkippedSync] = useState(false);
- const [zohoSyncing, setZohoSyncing] = useState(false);
  const [formData, setFormData] = useState(createEmptyRmFormData);
 
  // Temp fields separated
@@ -201,8 +198,6 @@ const RawMaterialRefactored: React.FC = () => {
   setTempDocument({ type: '', link: '', date: '' });
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
   setGeneratedRmCode('');
-  setDraftRmId(null);
-  setZohoSkippedSync(false);
   setErrors({});
   setCurrentStage(0);
  }, []);
@@ -218,7 +213,7 @@ const RawMaterialRefactored: React.FC = () => {
  const vendorClientList = vendorClientData ?? [];
 
  const stages = [
-  'Primary info (details, code & Zoho)',
+  'Primary info (details, code & Books)',
   'Units, Tax & Procurement',
   'Technical & Regulatory',
   'Quality Specifications',
@@ -230,15 +225,14 @@ const RawMaterialRefactored: React.FC = () => {
 
  const isNewRm = !existingRmId;
  const canAdvancePastPrimary =
-  !isNewRm || Boolean(formData.zohoId?.trim()) || zohoSkippedSync;
- const lockPrimaryAfterZohoDraft = draftRmId != null && !existingRmId;
-
- useEffect(() => {
-  if (existingRmId) {
-   setDraftRmId(null);
-   setZohoSkippedSync(false);
-  }
- }, [existingRmId]);
+  !isNewRm ||
+  Boolean(
+   formData.rmCategoryKey?.trim() &&
+    formData.rmSku?.trim() &&
+    formData.inciName?.trim() &&
+    formData.tradeCommercialName?.trim()
+  );
+ const lockPrimaryFields = !!existingRmId;
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
@@ -278,8 +272,8 @@ const RawMaterialRefactored: React.FC = () => {
  };
 
  const generateRmCode = async (confirm = false) => {
-  if (lockPrimaryAfterZohoDraft) {
-   addToast('error', 'RM code cannot be changed after Zoho sync.');
+  if (lockPrimaryFields) {
+   addToast('error', 'RM code cannot be changed while editing an existing record.');
    return;
   }
   if (!formData.rmCategoryKey) {
@@ -299,53 +293,6 @@ const RawMaterialRefactored: React.FC = () => {
   } catch (err) {
    console.error(err);
    addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
-  }
- };
-
- const handleRmZohoSync = async () => {
-  if (!formData.rmCategoryKey?.trim()) {
-   addToast('error', 'Select an RM Category first');
-   return;
-  }
-  if (!formData.rmSku?.trim()) {
-   addToast('error', 'Generate or enter SKU / RM code before syncing with Zoho');
-   return;
-  }
-  if (!formData.inciName?.trim() || !formData.tradeCommercialName?.trim()) {
-   addToast('error', 'INCI Name and Trade/Commercial Name are required before Zoho sync');
-   return;
-  }
-  setZohoSyncing(true);
-  try {
-   const res = await syncRmZoho(formData as Record<string, unknown>);
-   if (!res.success || !res.data) {
-    addToast('error', res.error || 'Zoho sync failed');
-    return;
-   }
-   const d = res.data;
-   setDraftRmId(d.raw_material_id);
-   const zs = d.zoho_sync;
-   if (zs && 'resolvedWithoutZoho' in zs && zs.resolvedWithoutZoho) {
-    setZohoSkippedSync(true);
-    addToast(
-     'success',
-     'Draft RM saved. Zoho Books sync is off in this environment — you can continue to the next steps.'
-    );
-    return;
-   }
-   if (d.zoho_id) {
-    setFormData((prev) => ({ ...prev, zohoId: String(d.zoho_id) }));
-    setZohoSkippedSync(false);
-    addToast('success', 'Zoho item created and ID saved.');
-    return;
-   }
-   const errMsg =
-    zs && typeof zs === 'object' && zs !== null && 'error' in zs && (zs as { error?: string }).error
-     ? String((zs as { error?: string }).error)
-     : 'Zoho sync did not return an item id';
-   addToast('error', errMsg);
-  } finally {
-   setZohoSyncing(false);
   }
  };
 
@@ -529,16 +476,6 @@ const RawMaterialRefactored: React.FC = () => {
     focusFieldById('rmSku');
     return;
    }
-   if (!draftRmId) {
-    addToast('error', 'Run “Sync with Zoho” on the Primary info step before submitting.');
-    setCurrentStage(0);
-    return;
-   }
-   if (!formData.zohoId?.trim() && !zohoSkippedSync) {
-    addToast('error', 'Complete Zoho sync — a Zoho item ID is required before saving.');
-    setCurrentStage(0);
-    return;
-   }
   }
   const validation = validatePrimaryFields(formData, 'rawMaterial');
   const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'rawMaterial');
@@ -594,7 +531,6 @@ const RawMaterialRefactored: React.FC = () => {
    } else {
     const { record, zohoSync } = await createRawMaterial({
      ...(formData as Record<string, unknown>),
-     ...(draftRmId != null ? { raw_material_id: draftRmId } : {}),
     });
     const newRmId = parseInt(String(record.id), 10);
     const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
@@ -704,7 +640,7 @@ const RawMaterialRefactored: React.FC = () => {
         <button
          type="button"
          onClick={() => generateRmCode()}
-         disabled={lockPrimaryAfterZohoDraft}
+         disabled={lockPrimaryFields}
          className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
          Generate Code Now
@@ -713,7 +649,7 @@ const RawMaterialRefactored: React.FC = () => {
          <button
           type="button"
           onClick={() => generateRmCode(true)}
-          disabled={lockPrimaryAfterZohoDraft}
+          disabled={lockPrimaryFields}
           className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
          >
           Regenerate (change category)
@@ -731,7 +667,7 @@ const RawMaterialRefactored: React.FC = () => {
       onChange={handleInputChange}
       placeholder="Internal raw material code (e.g. RM-000123)"
       requiredMark
-      readOnly={lockPrimaryAfterZohoDraft}
+      readOnly={lockPrimaryFields}
      />
 
      <div className="space-y-4">
@@ -741,7 +677,7 @@ const RawMaterialRefactored: React.FC = () => {
        value={formData.rmCategory}
        onChange={handleInputChange}
        placeholder="Updates when you pick RM Category above"
-       readOnly={lockPrimaryAfterZohoDraft}
+       readOnly={lockPrimaryFields}
       />
       <InputField
        label="Hazard Handling Class"
@@ -768,7 +704,7 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="Official INCI name as per supplier / standard"
      requiredMark
-     readOnly={lockPrimaryAfterZohoDraft}
+     readOnly={lockPrimaryFields}
     />
     <InputField
      label="Trade/Commercial Name"
@@ -777,7 +713,7 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="What vendor calls this raw material"
      requiredMark
-     readOnly={lockPrimaryAfterZohoDraft}
+     readOnly={lockPrimaryFields}
     />
     <InputField
      label="Function/Role"
@@ -839,20 +775,18 @@ const RawMaterialRefactored: React.FC = () => {
 
      <div className="border border-gray-200 rounded-lg p-4 space-y-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
-      {isNewRm ? (
-       <p className="text-xs text-gray-500">
-        Set SKU and tax for Zoho, then <strong>Sync with Zoho</strong>. Later steps stay disabled until sync succeeds (or Zoho is disabled in this environment).
-       </p>
-      ) : (
-       <p className="text-xs text-gray-500">Zoho item ID is read-only.</p>
-      )}
+      <p className="text-xs text-gray-500">
+       {isNewRm
+        ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
+        : 'Zoho item ID is read-only.'}
+      </p>
       <InputField
        label="SKU (for Zoho)"
        id="sku"
        value={formData.sku}
        onChange={handleInputChange}
        placeholder="Optional; defaults to RM SKU"
-       disabled={lockPrimaryAfterZohoDraft}
+       disabled={lockPrimaryFields}
       />
       <SelectField
        label="Tax Preference"
@@ -860,7 +794,7 @@ const RawMaterialRefactored: React.FC = () => {
        value={formData.rmTaxPreference}
        onChange={handleInputChange}
        options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-       disabled={lockPrimaryAfterZohoDraft}
+       disabled={lockPrimaryFields}
       />
       <p className="text-xs text-gray-500 -mt-2">
        Taxable: HSN and GST % are required in the next step. Exempted / NonGST: optional.
@@ -878,33 +812,15 @@ const RawMaterialRefactored: React.FC = () => {
        onChange={handleInputChange}
        placeholder="Link related RM / PM / packaging codes if any"
       />
-      {isNewRm && (
-       <div className="flex flex-wrap items-center gap-3">
-        <button
-         type="button"
-         onClick={() => void handleRmZohoSync()}
-         disabled={zohoSyncing || zohoSkippedSync || Boolean(formData.zohoId?.trim())}
-         className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-         {zohoSyncing ? 'Syncing…' : 'Sync with Zoho'}
-        </button>
-        {draftRmId != null && (
-         <span className="text-xs text-gray-500">
-          Draft RM #{draftRmId}
-          {formData.zohoId ? ' · Linked in Zoho Books' : zohoSkippedSync ? ' · Zoho Books sync off — you can continue' : ''}
-         </span>
-        )}
-       </div>
-      )}
       <InputField
        label="Zoho Item ID"
        id="zohoId"
        value={formData.zohoId}
        onChange={() => {}}
-       placeholder="Set automatically after Zoho Books sync"
+       placeholder="Populated from the server after save (when Books sync is on)"
        readOnly
       />
-      <p className="text-xs text-gray-500 -mt-1">Read-only — populated from the server after sync.</p>
+      <p className="text-xs text-gray-500 -mt-1">Read-only — returned by the API after a successful save.</p>
      </div>
     </div>
    );
@@ -1529,7 +1445,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Sync with Zoho and obtain a Zoho item ID before continuing (unless Zoho is disabled in this environment)."
+                  nextDisabledTitle="Fill RM category, generated code, INCI name, and trade/commercial name on this step before continuing."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}

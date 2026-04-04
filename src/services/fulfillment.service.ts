@@ -117,9 +117,22 @@ export async function fetchNextInvoiceNo(): Promise<string> {
   return data?.invoiceNo ?? '';
 }
 
-export async function createInvoice(payload: Record<string, unknown>) {
-  const res = await api.post(`${BASE}/invoices`, payload);
-  return (res as any)?.data ?? res;
+/** POST /fulfillment/invoices — matches backend `createInvoice` JSON body. */
+export interface FulfillmentInvoiceCreateResult {
+  id: number;
+  invoiceNo: string;
+  fulfillmentOrderId?: number;
+  invoiceDate?: string;
+  dueDate?: string | null;
+  zoho_invoice_id?: string | null;
+  zoho_sync?: { synced: boolean; error?: string };
+}
+
+export async function createInvoice(
+  payload: Record<string, unknown>
+): Promise<FulfillmentInvoiceCreateResult> {
+  const res = await api.post<FulfillmentInvoiceCreateResult>(`${BASE}/invoices`, payload);
+  return (res as { data?: FulfillmentInvoiceCreateResult })?.data ?? (res as FulfillmentInvoiceCreateResult);
 }
 
 export async function fetchInvoices(fulfillmentOrderId?: number) {

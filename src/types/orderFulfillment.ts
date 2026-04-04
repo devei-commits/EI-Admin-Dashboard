@@ -174,7 +174,8 @@ export interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   saleOrder: SaleOrder | null;
-  onGenerateInvoice: (invoiceData: InvoiceData) => void;
+  /** Called after the server creates the invoice (and Zoho when enabled). Used to refresh lists. */
+  onGenerateInvoice: (invoiceData: InvoiceData) => void | Promise<void>;
   /** When set, only these BPR splits are invoiced (single-batch invoice). */
   selectedBprNos?: string[];
 }

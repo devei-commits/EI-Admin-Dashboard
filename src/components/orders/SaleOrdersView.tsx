@@ -28,7 +28,7 @@ interface SaleOrdersViewProps {
   onAddSO: (data: AddSOData) => void;
   /** Returns updated order on success so we can open Invoice modal with fresh data. */
   onPickConfirm: (soNo: string, data: PickData) => void | Promise<SaleOrder | void>;
-  onGenerateInvoice: (soNo: string, data: InvoiceData) => void;
+  onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
   onDispatch: (soNo: string, data: ShipData) => void;
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
 }
@@ -266,9 +266,9 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
     }
   };
 
-  const handleInvoiceGenerate = (data: InvoiceData) => {
+  const handleInvoiceGenerate = async (data: InvoiceData) => {
     if (invoiceModalSO) {
-      onGenerateInvoice(invoiceModalSO.soNo, data);
+      await Promise.resolve(onGenerateInvoice(invoiceModalSO.soNo, data));
     }
   };
 

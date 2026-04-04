@@ -11,7 +11,7 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, syncPmZoho, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
+import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
@@ -205,9 +205,6 @@ const PackagingRefactored: React.FC = () => {
   const queryClient = useQueryClient();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
   const [existingPmId, setExistingPmId] = useState<string | null>(null);
-  const [draftPmId, setDraftPmId] = useState<number | null>(null);
-  const [zohoSkippedSync, setZohoSkippedSync] = useState(false);
-  const [zohoSyncing, setZohoSyncing] = useState(false);
   const [editPmLoading, setEditPmLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentSection, setCurrentSection] = useState(0);
@@ -225,8 +222,15 @@ const PackagingRefactored: React.FC = () => {
 
   const isNewPm = !existingPmId;
   const canAdvancePastPrimary =
-    !isNewPm || Boolean(formData.zohoId?.trim()) || zohoSkippedSync;
-  const lockPrimaryAfterZohoDraft = draftPmId != null && !existingPmId;
+    !isNewPm ||
+    Boolean(
+      formData.pmCategory?.trim() &&
+        (formData.itemCode || generatedCode)?.trim() &&
+        formData.name?.trim() &&
+        formData.level?.trim() &&
+        formData.itemCategory?.trim()
+    );
+  const lockPrimaryFields = !!existingPmId;
 
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
   const [tempVendor, setTempVendor] = useState({
@@ -283,17 +287,7 @@ const PackagingRefactored: React.FC = () => {
     setErrors({});
     setCurrentSection(0);
     setExistingPmId(null);
-    setDraftPmId(null);
-    setZohoSkippedSync(false);
-    setZohoSyncing(false);
   }, []);
-
-  useEffect(() => {
-    if (existingPmId) {
-      setDraftPmId(null);
-      setZohoSkippedSync(false);
-    }
-  }, [existingPmId]);
 
   const doSave = (silent = false) => {
     const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -330,8 +324,8 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const generateCode = async (confirm = false) => {
-    if (lockPrimaryAfterZohoDraft) {
-      addToast('error', 'Code is locked after Zoho sync. Open a new item to change PM code.');
+    if (lockPrimaryFields) {
+      addToast('error', 'Code cannot be changed while editing an existing pack material.');
       return;
     }
     if (!formData.pmCategory) {
@@ -527,60 +521,6 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
-  const handlePmZohoSync = async () => {
-    if (!formData.pmCategory?.trim()) {
-      addToast('error', 'Select a PM Category first');
-      return;
-    }
-    const code = formData.itemCode || generatedCode;
-    if (!code?.trim()) {
-      addToast('error', 'Generate or enter SKU before syncing with Zoho');
-      return;
-    }
-    if (!formData.name?.trim() || !formData.level?.trim() || !formData.itemCategory?.trim()) {
-      addToast('error', 'Item Name, Level, and Category are required before Zoho sync');
-      return;
-    }
-    const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
-    if (!taxValidation.valid) {
-      setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
-      addToast('error', 'When Tax Preference is Taxable, enter a valid HSN code. Exempt / NonGST can leave HSN blank.');
-      return;
-    }
-    setZohoSyncing(true);
-    try {
-      const res = await syncPmZoho(buildPayload() as CreatePackMaterialPayload);
-      if (!res.success || !res.data) {
-        addToast('error', res.error || 'Zoho sync failed');
-        return;
-      }
-      const d = res.data;
-      setDraftPmId(d.pack_material_id);
-      const zs = d.zoho_sync;
-      if (zs && 'resolvedWithoutZoho' in zs && zs.resolvedWithoutZoho) {
-        setZohoSkippedSync(true);
-        addToast(
-          'success',
-          'Draft PM saved. Zoho Books sync is off in this environment — you can continue to the next steps.'
-        );
-        return;
-      }
-      if (d.zoho_id) {
-        setFormData((prev) => ({ ...prev, zohoId: String(d.zoho_id) }));
-        setZohoSkippedSync(false);
-        addToast('success', 'Zoho item created and ID saved.');
-        return;
-      }
-      const errMsg =
-        zs && typeof zs === 'object' && zs !== null && 'error' in zs && (zs as { error?: string }).error
-          ? String((zs as { error?: string }).error)
-          : 'Zoho sync did not return an item id';
-      addToast('error', errMsg);
-    } finally {
-      setZohoSyncing(false);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!existingPmId) {
       if (!formData.pmCategory?.trim()) {
@@ -594,16 +534,6 @@ const PackagingRefactored: React.FC = () => {
         addToast('error', 'Generate or enter SKU before submitting');
         setCurrentSection(0);
         focusPmField('itemCode');
-        return;
-      }
-      if (draftPmId == null) {
-        addToast('error', 'Run “Sync with Zoho” on the primary section before submitting.');
-        setCurrentSection(0);
-        return;
-      }
-      if (!formData.zohoId?.trim() && !zohoSkippedSync) {
-        addToast('error', 'Complete Zoho sync — a Zoho item ID is required before saving.');
-        setCurrentSection(0);
         return;
       }
     }
@@ -650,7 +580,6 @@ const PackagingRefactored: React.FC = () => {
       } else {
         const saved = await createPackMaterial({
           ...payload,
-          ...(draftPmId != null ? { pack_material_id: draftPmId } : {}),
         });
         const newPmId = parseInt(String(saved.id), 10);
         const syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
@@ -690,10 +619,10 @@ const PackagingRefactored: React.FC = () => {
                     id="pmCategory"
                     value={formData.pmCategory}
                     onChange={handleInputChange}
-                    disabled={lockPrimaryAfterZohoDraft}
+                    disabled={lockPrimaryFields}
                     className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       errors.pmCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    } ${lockPrimaryAfterZohoDraft ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    } ${lockPrimaryFields ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   >
                     <option value="">Select</option>
                     {Object.entries(PM_CATEGORIES).map(([k, v]) => (
@@ -758,7 +687,7 @@ const PackagingRefactored: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => generateCode()}
-                    disabled={lockPrimaryAfterZohoDraft}
+                    disabled={lockPrimaryFields}
                     className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Generate Code Now
@@ -767,7 +696,7 @@ const PackagingRefactored: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => generateCode(true)}
-                      disabled={lockPrimaryAfterZohoDraft}
+                      disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Regenerate (change category)
@@ -867,7 +796,7 @@ const PackagingRefactored: React.FC = () => {
                   placeholder="Internal code used in ERP (e.g. EI-PM-PRI-000123)"
                   requiredMark
                   error={errors.itemCode}
-                  readOnly={lockPrimaryAfterZohoDraft}
+                  readOnly={lockPrimaryFields}
                 />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Zoho Item ID</label>
@@ -878,11 +807,11 @@ const PackagingRefactored: React.FC = () => {
                     readOnly
                     autoComplete="off"
                     aria-readonly="true"
-                    placeholder="Set automatically after Zoho Books sync"
+                    placeholder="Populated from the server after save (when Books sync is on)"
                     onChange={() => {}}
                     className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Read-only — populated from the server after sync.</p>
+                  <p className="text-xs text-gray-500 mt-1">Read-only — returned by the API after a successful save.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
@@ -939,25 +868,9 @@ const PackagingRefactored: React.FC = () => {
               </div>
               <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
                 <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-800 mb-2">Zoho Books</h4>
-                <p className="text-xs text-gray-600 mb-3">
-                  Sync creates or updates the draft PM row and links a Zoho item. Complete identity and tax fields above first.
+                <p className="text-xs text-gray-600">
+                  When you submit this form, the server saves the pack material and creates the Zoho item in one step (or rolls back both if Books fails). No separate sync button.
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handlePmZohoSync()}
-                    disabled={zohoSyncing || zohoSkippedSync || Boolean(formData.zohoId?.trim())}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {zohoSyncing ? 'Syncing…' : 'Sync with Zoho'}
-                  </button>
-                  {draftPmId != null && (
-                    <span className="text-xs text-gray-600">
-                      Draft PM #{draftPmId}
-                      {formData.zohoId ? ' · Linked in Zoho Books' : zohoSkippedSync ? ' · Zoho Books sync off — you can continue' : ''}
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -1657,7 +1570,11 @@ const PackagingRefactored: React.FC = () => {
                             currentSection === SECTIONS.length - 1 ||
                             (isNewPm && currentSection === 0 && !canAdvancePastPrimary)
                           }
-                          title={isNewPm && currentSection === 0 && !canAdvancePastPrimary ? 'Sync with Zoho first' : undefined}
+                          title={
+                            isNewPm && currentSection === 0 && !canAdvancePastPrimary
+                              ? 'Complete category, code, name, level, and item category on this section first'
+                              : undefined
+                          }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                         >
                           Next

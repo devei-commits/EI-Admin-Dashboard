@@ -9,7 +9,6 @@ import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/pac
 import {
   createPRRegistration,
   fetchPRProductDetail,
-  syncPrProductZoho,
   updatePRProduct,
   type PRProductDetail,
 } from '../services/productsMaster.service';
@@ -291,36 +290,9 @@ function isValidFillSizeInput(raw: string): boolean {
   return /^(\d+(?:\.\d+)?)\s*(g|ml)$/i.test(String(raw || '').trim());
 }
 
-/** Minimal payload for POST /products/pr-zoho-sync (draft product + Zoho item). */
-function buildPrZohoSyncPayload(fd: BOMFormState): Record<string, unknown> {
-  return {
-    product_name: fd.productName.trim(),
-    name: fd.productName.trim(),
-    product_code: fd.skuCode.trim(),
-    bomCode: fd.skuCode.trim(),
-    category: fd.category || null,
-    form: fd.productForm || null,
-    type: fd.productForm || null,
-    client: fd.brandClient || null,
-    fill_size: fd.fillSize || null,
-    packSize: fd.fillSize || null,
-    product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
-    bomSku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
-    status: 'Draft',
-    pr_qc_group: fd.prQcGroup || null,
-    pr_sub_category: fd.prSubCategory || null,
-    storage_conditions: fd.prDefaultStorageType || null,
-    mrp: fd.mrp || null,
-    bom_tax_preference: fd.bomTaxPreference || null,
-    bom_returnable: fd.bomReturnable,
-    bom_associate_items: fd.bomAssociateItems?.trim() || null,
-  };
-}
-
-function buildPrRegistrationBody(fd: BOMFormState, draftProductId: number | null): Record<string, unknown> {
+function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
   return {
-    ...(draftProductId != null ? { product_id: draftProductId } : {}),
     product_name: fd.productName.trim(),
     name: fd.productName.trim(),
     product_code: fd.skuCode.trim(),
@@ -333,7 +305,6 @@ function buildPrRegistrationBody(fd: BOMFormState, draftProductId: number | null
     packSize: fd.fillSize || null,
     product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
     bomSku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
-    zoho_id: fd.zohoId?.trim() || null,
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
@@ -456,11 +427,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generatedPrCode, setGeneratedPrCode] = useState('');
-  /** Draft row from POST /products/pr-zoho-sync; required for final pr-registration. */
-  const [draftProductId, setDraftProductId] = useState<number | null>(null);
-  /** When Zoho is disabled server-side, backend allows continuing without an item id. */
-  const [zohoSkippedSync, setZohoSkippedSync] = useState(false);
-  const [zohoSyncing, setZohoSyncing] = useState(false);
   const focusPrField = useCallback((target: 'prCategoryKey' | 'skuCode' | 'productName' | 'formula' | 'pack') => {
     window.setTimeout(() => {
       if (target === 'formula') {
@@ -487,7 +453,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [selectedPmId, setSelectedPmId] = useState<string>('');
 
   const stages = [
-    'Primary info (details, code & Zoho)',
+    'Primary info (details, code & Books)',
     'Formula BOM',
     'Pack BOM',
     'Process Steps',
@@ -496,16 +462,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const isNewProduct = !productIdFromRoute;
   const canAdvancePastPrimary =
-    !isNewProduct || Boolean(formData.zohoId?.trim()) || zohoSkippedSync;
-  /** After first successful Zoho sync on a new PR, lock code and Zoho primary fields. */
-  const lockPrimaryAfterZohoDraft = draftProductId != null && !productIdFromRoute;
-
-  useEffect(() => {
-    if (productIdFromRoute) {
-      setDraftProductId(null);
-      setZohoSkippedSync(false);
-    }
-  }, [productIdFromRoute]);
+    !isNewProduct ||
+    Boolean(
+      formData.prCategoryKey.trim() &&
+        formData.productName.trim() &&
+        formData.category.trim() &&
+        formData.productForm.trim() &&
+        formData.fillSize.trim() &&
+        formData.skuCode.trim()
+    );
+  const lockPrimaryFields = !!productIdFromRoute;
 
   // Load RM/PM masters once so the BOM lines can reference actual items (ids/codes/prices).
   useEffect(() => {
@@ -637,8 +603,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const generatePrCode = async (confirm = false) => {
-    if (lockPrimaryAfterZohoDraft) {
-      addToast('error', 'PR code cannot be changed after Zoho sync. Use a new registration if the code was wrong.');
+    if (lockPrimaryFields) {
+      addToast('error', 'PR code cannot be changed while editing an existing product.');
       return;
     }
     if (!formData.prCategoryKey) {
@@ -661,78 +627,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
   };
 
-  const handleZohoSync = async () => {
-    if (!formData.prCategoryKey.trim()) {
-      addToast('error', 'Select a PR Category first');
-      return;
-    }
-    if (!formData.productName.trim()) {
-      addToast('error', 'Product Name is required');
-      return;
-    }
-    if (!formData.category.trim()) {
-      addToast('error', 'Category is required');
-      return;
-    }
-    if (!formData.productForm.trim()) {
-      addToast('error', 'Product Form is required');
-      return;
-    }
-    if (!formData.fillSize.trim()) {
-      addToast('error', 'Fill Size is required');
-      return;
-    }
-    if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
-      addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml)');
-      return;
-    }
-    if (!formData.skuCode.trim()) {
-      addToast('error', 'Generate or enter PR / BOM code before syncing with Zoho');
-      return;
-    }
-    const skuForZohoResolved = (formData.skuForZoho?.trim() || formData.skuCode).trim();
-    const formForSync: BOMFormState = { ...formData, skuForZoho: skuForZohoResolved };
-    setFormData(formForSync);
-    setZohoSyncing(true);
-    try {
-      const res = await syncPrProductZoho(buildPrZohoSyncPayload(formForSync));
-      if (!res.success || !res.data) {
-        addToast('error', typeof res.error === 'string' ? res.error : 'Zoho sync failed');
-        return;
-      }
-      const d = res.data;
-      setDraftProductId(d.product_id);
-      const zs = d.zoho_sync;
-      if (zs && 'resolvedWithoutZoho' in zs && zs.resolvedWithoutZoho) {
-        setZohoSkippedSync(true);
-        addToast(
-          'success',
-          'Draft product saved. Zoho Books sync is off in this environment — you can continue to the next steps.'
-        );
-        return;
-      }
-      if (d.zoho_item_id) {
-        setFormData((prev) => ({ ...prev, zohoId: String(d.zoho_item_id) }));
-        setZohoSkippedSync(false);
-        addToast('success', 'Zoho item created and ID saved.');
-        return;
-      }
-      const errMsg =
-        zs && typeof zs === 'object' && zs !== null && 'error' in zs && (zs as { error?: string }).error
-          ? String((zs as { error?: string }).error)
-          : 'Zoho sync did not return an item id';
-      addToast('error', errMsg);
-    } finally {
-      setZohoSyncing(false);
-    }
-  };
-
   const fillMockData = () => {
     const mock = mockBomForm();
     setFormData(mock);
     setGeneratedPrCode(mock.skuCode);
-    setDraftProductId(null);
-    setZohoSkippedSync(false);
     addToast('success', 'Form filled with mock data for testing!');
   };
 
@@ -894,16 +792,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         focusPrField('skuCode');
         return;
       }
-      if (!draftProductId) {
-        addToast('error', 'Run “Sync with Zoho” after generating the PR code before submitting.');
-        setCurrentStage(0);
-        return;
-      }
-      if (!formData.zohoId.trim() && !zohoSkippedSync) {
-        addToast('error', 'Complete Zoho sync — a Zoho item ID is required before registration.');
-        setCurrentStage(0);
-        return;
-      }
     }
 
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
@@ -953,7 +841,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         return;
       }
 
-      const res = await createPRRegistration(buildPrRegistrationBody(formData, draftProductId));
+      const res = await createPRRegistration(buildPrRegistrationBody(formData));
       if (res.success) {
         addToast('success', 'Product registered — saved to Products (PR) master.');
         onSaved?.();
@@ -1160,7 +1048,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   <button
                     type="button"
                     onClick={() => generatePrCode()}
-                    disabled={lockPrimaryAfterZohoDraft}
+                    disabled={lockPrimaryFields}
                     className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Generate Code Now
@@ -1169,7 +1057,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <button
                       type="button"
                       onClick={() => generatePrCode(true)}
-                      disabled={lockPrimaryAfterZohoDraft}
+                      disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Regenerate (change category)
@@ -1177,18 +1065,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   )}
                 </div>
                 <p className="text-xs text-gray-500 mt-3 mb-4">
-                  Generate the local database code after filling identity fields. The code is locked after a successful Zoho sync.
+                  Generate the local database code after filling identity fields. The code is locked when editing an existing product.
                 </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code <span className="text-red-600">*</span></label>
                   <input
                     id="skuCode"
                     type="text"
-                    readOnly={lockPrimaryAfterZohoDraft}
+                    readOnly={lockPrimaryFields}
                     placeholder="Generate or type PR / BOM code"
                     value={formData.skuCode}
                     onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryAfterZohoDraft ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''}`}
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''}`}
                   />
                 </div>
               </div>
@@ -1196,16 +1084,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Zoho Books</h3>
-              {isNewProduct ? (
               <p className="text-xs text-slate-500 mb-3">
-                Set tax and SKU for Zoho, then run <strong>Sync with Zoho</strong>. The Zoho item ID is filled automatically and cannot be edited.
-                Formula BOM and later sections stay disabled until sync succeeds (or Zoho is disabled in this environment).
+                {isNewProduct
+                  ? 'Tax and SKU preferences are sent on final Submit. The server creates the product, Zoho Books item, and BOM together (or rolls back all if Books fails).'
+                  : 'Zoho item ID is read-only. Change other fields as needed; use Submit to save.'}
               </p>
-              ) : (
-              <p className="text-xs text-slate-500 mb-3">
-                Zoho item ID is read-only. Change other fields as needed; use Submit to save.
-              </p>
-              )}
               <div className="space-y-4 border border-slate-200 rounded-lg p-4 bg-white">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1215,8 +1098,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Optional — defaults to PR code"
                       value={formData.skuForZoho}
                       onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                      disabled={lockPrimaryAfterZohoDraft}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryAfterZohoDraft ? 'bg-slate-100' : ''}`}
+                      disabled={lockPrimaryFields}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                   <div>
@@ -1224,8 +1107,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <select
                       value={formData.bomTaxPreference}
                       onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
-                      disabled={lockPrimaryAfterZohoDraft}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryAfterZohoDraft ? 'bg-slate-100' : ''}`}
+                      disabled={lockPrimaryFields}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
                     >
                       <option value="">Select tax preference</option>
                       {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
@@ -1238,12 +1121,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
-                    <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryAfterZohoDraft ? 'bg-slate-100' : ''}`}>
+                    <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryFields ? 'bg-slate-100' : ''}`}>
                       <input
                         type="checkbox"
                         checked={formData.bomReturnable}
                         onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
-                        disabled={lockPrimaryAfterZohoDraft}
+                        disabled={lockPrimaryFields}
                       />
                       <span className="text-sm font-medium text-slate-700">Returnable Item</span>
                     </div>
@@ -1254,31 +1137,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       value={formData.bomAssociateItems}
                       onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
                       rows={2}
-                      disabled={lockPrimaryAfterZohoDraft}
+                      disabled={lockPrimaryFields}
                       placeholder="Link related BOM / RM / packaging if any"
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryAfterZohoDraft ? 'bg-slate-100' : ''}`}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                 </div>
-
-                {isNewProduct && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void handleZohoSync()}
-                    disabled={zohoSyncing || zohoSkippedSync || Boolean(formData.zohoId?.trim())}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {zohoSyncing ? 'Syncing…' : 'Sync with Zoho'}
-                  </button>
-                  {draftProductId != null && (
-                    <span className="text-xs text-slate-500">
-                      Draft product #{draftProductId}
-                      {formData.zohoId ? ' · Linked in Zoho Books' : zohoSkippedSync ? ' · Zoho Books sync off — you can continue' : ''}
-                    </span>
-                  )}
-                </div>
-                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Zoho Item ID</label>
@@ -1287,12 +1151,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     readOnly
                     autoComplete="off"
                     aria-readonly="true"
-                    placeholder="Set automatically after Zoho Books sync"
+                    placeholder="Populated from the server after successful registration (when Books sync is on)"
                     value={formData.zohoId}
                     onChange={() => {}}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-800 cursor-not-allowed"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Read-only — populated from the server after sync.</p>
+                  <p className="text-xs text-slate-500 mt-1">Read-only — returned after a successful save.</p>
                 </div>
               </div>
             </div>
@@ -1655,7 +1519,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Sync with Zoho and obtain a Zoho item ID before continuing (unless Zoho is disabled in this environment)."
+      nextDisabledTitle="Complete PR category, product name, category, form, fill size, and generated PR code on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}

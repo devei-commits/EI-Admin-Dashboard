@@ -15,6 +15,7 @@ import {
   type TransporterOption,
 } from '../../services/fulfillment.service';
 import { creditDaysFromPaymentTermsStored } from '../../lib/stagedPaymentTerms';
+import { useToast } from '../../context/ToastContext';
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   isOpen,
@@ -33,6 +34,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [remarks, setRemarks] = useState('');
   const [transporters, setTransporters] = useState<TransporterOption[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const allPicked =
     saleOrder?.items.flatMap((item) =>
@@ -44,6 +48,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     selectedBprNos?.length
       ? allPicked.filter(({ split }) => selectedBprNos.includes(split.bprNo))
       : allPicked;
+
+  useEffect(() => {
+    if (isOpen) setSubmitError(null);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !saleOrder) return;
@@ -79,6 +87,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
     if (pickedSplits.length === 0 || !preparedBy || !invoiceNo) return;
 
+    const fulfillmentOrderId = saleOrder.id;
+    if (fulfillmentOrderId == null) {
+      const msg = 'This order has no fulfillment id — refresh the page and try again.';
+      setSubmitError(msg);
+      addToast('error', msg);
+      return;
+    }
+
     const subtotal = pickedSplits.reduce(
       (acc, { item, split }) => acc + (split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0), 0
     );
@@ -97,9 +113,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       amount: (split.pickedQty ?? 0) * rate(item),
     }));
 
+    setSubmitting(true);
+    setSubmitError(null);
     try {
-      await createInvoice({
-        fulfillmentOrderId: (saleOrder as any)?.id,
+      const created = await createInvoice({
+        fulfillmentOrderId,
         invoiceNo,
         invoiceDate,
         dueDate,
@@ -114,22 +132,57 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         lineItems,
         ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
       });
+
+      const no = created.invoiceNo || invoiceNo;
+      const zohoId = created.zoho_invoice_id != null && String(created.zoho_invoice_id).trim()
+        ? String(created.zoho_invoice_id).trim()
+        : '';
+
+      if (zohoId) {
+        addToast(
+          'success',
+          `Invoice ${no} was generated and synced to Zoho Books (invoice id ${zohoId}).`
+        );
+      } else {
+        addToast(
+          'success',
+          `Invoice ${no} was generated successfully. Zoho Books sync is off or not required — saved in the app only.`
+        );
+      }
+
+      await Promise.resolve(
+        onGenerateInvoice({
+          invoiceNo,
+          invoiceDate,
+          courier: transporter,
+          paymentRef: lrNo,
+          gstPercent,
+          invoiceValue: totalValue,
+          remarks,
+          ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
+        })
+      );
+
+      handleCloseAfterSuccess();
     } catch (err) {
       console.error('Failed to create invoice record:', err);
+      const msg =
+        err instanceof Error ? err.message : 'Invoice could not be created. Please try again.';
+      setSubmitError(msg);
+      addToast('error', msg);
+    } finally {
+      setSubmitting(false);
     }
+  };
 
-    onGenerateInvoice({
-      invoiceNo,
-      invoiceDate,
-      courier: transporter,
-      paymentRef: lrNo,
-      gstPercent,
-      invoiceValue: totalValue,
-      remarks,
-      ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
-    });
-
-    handleClose();
+  /** Reset fields and close after a successful API call (keeps modal open on failure). */
+  const handleCloseAfterSuccess = () => {
+    setPreparedBy('');
+    setTransporter('');
+    setLrNo('');
+    setRemarks('');
+    setSubmitError(null);
+    onClose();
   };
 
   const handleClose = () => {
@@ -137,6 +190,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     setTransporter('');
     setLrNo('');
     setRemarks('');
+    setSubmitError(null);
     onClose();
   };
 
@@ -160,8 +214,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="flex gap-3">
                 <DollarSign className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-700">
-                  Generate an invoice for the picked items. This will create a formal
-                  invoice document and prepare the order for shipment.
+                  Generate an invoice for the picked items. When Zoho Books is enabled, the server saves the invoice
+                  and syncs it to Zoho in one step — if Zoho fails, nothing is committed.
                 </p>
               </div>
             </div>
@@ -239,12 +293,28 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </>
         )}
       </div>
-      <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
-        <Button variant="ghost" onClick={handleClose}>Cancel</Button>
-        <Button onClick={handleConfirm} disabled={loadingData || pickedSplits.length === 0 || !preparedBy || !invoiceNo}>
-          <Check className="mr-2 h-4 w-4" />
-          Confirm & Generate Invoice
-        </Button>
+      <div className="p-4 bg-gray-50 border-t space-y-3">
+        {submitError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+            {submitError}
+          </div>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={handleClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={loadingData || submitting || pickedSplits.length === 0 || !preparedBy || !invoiceNo}
+          >
+            {submitting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}
+            {submitting ? 'Creating…' : 'Confirm & Generate Invoice'}
+          </Button>
+        </div>
       </div>
     </Modal>
   );

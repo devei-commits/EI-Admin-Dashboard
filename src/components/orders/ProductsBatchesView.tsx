@@ -34,7 +34,7 @@ import { UnifiedButton as Button } from '../ui/UnifiedComponents';
 interface ProductsBatchesViewProps {
   saleOrders: SaleOrder[];
   onPickConfirm: (soNo: string, data: PickData) => void;
-  onGenerateInvoice: (soNo: string, data: InvoiceData) => void;
+  onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
   onDispatch: (soNo: string, data: ShipData) => void;
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
 }
@@ -101,7 +101,9 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   };
 
   const handlePickConfirm = (data: PickData) => pickModalSO && onPickConfirm(pickModalSO.soNo, data);
-  const handleInvoiceGenerate = (data: InvoiceData) => invoiceModalSO && onGenerateInvoice(invoiceModalSO.soNo, data);
+  const handleInvoiceGenerate = async (data: InvoiceData) => {
+    if (invoiceModalSO) await Promise.resolve(onGenerateInvoice(invoiceModalSO.soNo, data));
+  };
   const handleDispatchConfirm = (data: ShipData) => shipModalSO && onDispatch(shipModalSO.soNo, data);
   const handleDeliveryConfirm = (data: DeliveryData) => trackModalSO && onConfirmDelivery(trackModalSO.soNo, data);
 
