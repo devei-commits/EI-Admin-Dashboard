@@ -290,9 +290,9 @@ const AppLayout = () => {
 
        // Otherwise render with admin sidebar
        return (
-              <div className="flex flex-row min-h-screen bg-background">
+              <div className="flex flex-row min-h-screen min-w-0 bg-background">
                      <Sidebar />
-                     <main id="main-content" className="flex-1 pt-14 md:pt-0 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
+                     <main id="main-content" className="min-w-0 flex-1 pt-14 md:pt-0 overflow-x-auto overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
                             <Suspense fallback={<PageLoader />}>
                                    <ErrorBoundary>
                                           <Routes>

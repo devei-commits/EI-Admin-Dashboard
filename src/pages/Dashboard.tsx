@@ -412,7 +412,7 @@ const Dashboard = () => {
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen min-w-0 max-w-full bg-background p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="bg-gray-900 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -606,28 +606,29 @@ const Dashboard = () => {
       </div>
 
       {/* All Modules Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <LayoutDashboard className="w-5 h-5 text-slate-700" /> All Modules
+      <div className="min-w-0 max-w-full overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
+        <div className="mb-6 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-gray-800">
+            <LayoutDashboard className="h-5 w-5 shrink-0 text-slate-700" /> All Modules
           </h2>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="flex min-w-0 w-full flex-col gap-3 lg:max-w-2xl xl:max-w-none xl:flex-1">
+            <div className="relative min-w-0 w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search modules..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+                className="w-full min-w-0 rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
               {categories.map((cat) => (
                 <button
                   key={cat.id}
+                  type="button"
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${selectedCategory === cat.id
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${selectedCategory === cat.id
                     ? 'bg-slate-800 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}

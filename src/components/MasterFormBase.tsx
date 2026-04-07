@@ -126,10 +126,10 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
    </div>
 
    {/* Body: Sidebar + Content, similar to Packaging layout */}
-   <div className="flex-1">
-    <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
+   <div className="flex-1 min-w-0">
+    <div className="flex w-full min-w-0 flex-col gap-4 px-4 py-4 md:px-6 lg:flex-row lg:items-stretch lg:px-8">
      {/* Left sidebar with stages */}
-     <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto">
+     <aside className="flex w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm lg:w-60">
       <div className="px-4 pt-4 pb-3 border-b border-gray-100">
        <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
         Sections
@@ -164,10 +164,10 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
      </aside>
 
      {/* Right content card */}
-     <main className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+     <main className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
       {/* Section header with stage title */}
       <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-       <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
+       <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
         <h2 className="text-sm font-bold text-gray-800 truncate">
          {stages[currentStage]}
         </h2>
@@ -180,8 +180,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       </div>
 
       {/* Body */}
-      <div className="px-4 py-6">
-       <div className="max-w-4xl mx-auto space-y-4">
+      <div className="px-3 py-4 sm:px-4 sm:py-6">
+       <div className="mx-auto max-w-4xl min-w-0 space-y-4">
         {/* Primary Fields Notice */}
         {primaryFields.length > 0 && currentStage === 0 && (
          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

@@ -198,6 +198,20 @@ const SECTIONS = [
   '10) Catalogue / Website',
 ];
 
+function parsePmVendorTierPrice(raw: string): number {
+  const n = parseFloat(String(raw ?? '').replace(/[^\d.]/g, ''));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** New PM registrations require at least one vendor rate (parallel to PR MRP). */
+function pmVendorsHavePositivePrice(vendors: PmCommercialVendor[]): boolean {
+  return vendors.some((v) => {
+    const primary = Number(v.price ?? v.unitPrice ?? 0);
+    if (primary > 0) return true;
+    return (v.tiers ?? []).some((t) => parsePmVendorTierPrice(t.price) > 0);
+  });
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 const PackagingRefactored: React.FC = () => {
   const { addItem: _addItem } = useItems(); // BPR submit posts to API; addItem unused here
@@ -564,6 +578,15 @@ const PackagingRefactored: React.FC = () => {
       setCurrentSection(0);
       return;
     }
+    if (!existingPmId && !pmVendorsHavePositivePrice(formData.vendors)) {
+      setErrors((prev) => ({
+        ...prev,
+        vendorCommercial: 'Vendors & Commercial — At least one vendor with a positive per-piece price is required',
+      }));
+      addToast('error', 'Add at least one vendor with a positive unit price (Vendors & Commercial section).');
+      setCurrentSection(6);
+      return;
+    }
     const payload = buildPayload();
     try {
       if (existingPmId) {
@@ -606,11 +629,11 @@ const PackagingRefactored: React.FC = () => {
     switch (currentSection) {
       case 0:
         return (
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-5 sm:space-y-6">
             {/* PM Category — Industry Buckets */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PM Category (Industry Buckets)</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     PM Category <span className="text-red-600">*</span>
@@ -672,8 +695,8 @@ const PackagingRefactored: React.FC = () => {
             {/* Code Series Preview */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
-              <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-                <div className="flex items-center gap-6 mb-4">
+              <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
                     <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
@@ -716,7 +739,7 @@ const PackagingRefactored: React.FC = () => {
             {/* Identity (merged from former section 1) */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Item Name"
                   id="name"
@@ -787,7 +810,7 @@ const PackagingRefactored: React.FC = () => {
             {/* Basic Details */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Basic Details</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="SKU"
                   id="itemCode"
@@ -881,7 +904,7 @@ const PackagingRefactored: React.FC = () => {
           <div className="space-y-6">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Body Material"
                   id="matBody"
@@ -918,7 +941,7 @@ const PackagingRefactored: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Nominal Volume"
                   id="specNominal"
@@ -982,7 +1005,7 @@ const PackagingRefactored: React.FC = () => {
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Bulk quality specifications</h3>
               <p className="text-[11px] text-gray-500 mb-3">Same fields as raw materials; used as reference during BMR Bulk QC for this PM.</p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField label="Assay / Purity %" id="assayPurity" value={formData.assayPurity} onChange={handleInputChange} placeholder="e.g. NLT 98%" />
                 <InputField label="Appearance spec" id="appearanceSpec" value={formData.appearanceSpec} onChange={handleInputChange} placeholder="e.g. Clear, no defects" />
                 <InputField label="pH range" id="phSpec" value={formData.phSpec} onChange={handleInputChange} placeholder="e.g. 5.0 – 7.0" />
@@ -999,7 +1022,7 @@ const PackagingRefactored: React.FC = () => {
       case 2: // Aesthetics
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField
                 label="Color Type"
                 id="colorType"
@@ -1066,7 +1089,7 @@ const PackagingRefactored: React.FC = () => {
           <div className="space-y-4">
             <CheckboxField label="Customizable" id="cusCustomizable" checked={formData.cusCustomizable} onChange={handleInputChange} />
             <TextareaField label="Customization Parameters" id="cusParams" value={formData.cusParams} onChange={handleInputChange} />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField label="Standard MOQ" id="cusStdMoq" value={formData.cusStdMoq} onChange={handleInputChange} />
               <InputField label="Custom MOQ" id="cusCustomMoq" value={formData.cusCustomMoq} onChange={handleInputChange} />
               <InputField label="Tooling Required" id="cusToolingReq" value={formData.cusToolingReq} onChange={handleInputChange} />
@@ -1082,7 +1105,7 @@ const PackagingRefactored: React.FC = () => {
       case 5: // Compatibility (R&D / QA)
         return (
           <div className="space-y-6">
-            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
                 Viscosity Compatibility
               </p>
@@ -1093,7 +1116,7 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
                 Chemical Compatibility
               </p>
@@ -1104,7 +1127,7 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
                 Functional Compatibility
               </p>
@@ -1113,14 +1136,14 @@ const PackagingRefactored: React.FC = () => {
                   <PillCheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump} onChange={handleInputChange} />
                   <PillCheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak} onChange={handleInputChange} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InputField label="Actives Compatible" id="compActives" value={formData.compActives} onChange={handleInputChange} />
                   <InputField label="Risk Level" id="compRisk" value={formData.compRisk} onChange={handleInputChange} />
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-[220px,1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-2">
                 Compatibility Remarks
               </p>
@@ -1149,7 +1172,7 @@ const PackagingRefactored: React.FC = () => {
       case 7: // Secondary Packaging
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField label="Label Type" id="secLabelType" value={formData.secLabelType} onChange={handleInputChange} />
               <InputField label="Label Size" id="secLabelSize" value={formData.secLabelSize} onChange={handleInputChange} />
               <InputField label="Adhesive Type" id="secAdhesive" value={formData.secAdhesive} onChange={handleInputChange} />
@@ -1166,7 +1189,7 @@ const PackagingRefactored: React.FC = () => {
       case 8: // Tertiary Packaging
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField label="Shipper Type" id="terShipType" value={formData.terShipType} onChange={handleInputChange} />
               <InputField label="Units per Shipper" id="terUnits" value={formData.terUnits} onChange={handleInputChange} />
               <InputField label="Drop Test (m)" id="terDrop" value={formData.terDrop} onChange={handleInputChange} />
@@ -1181,7 +1204,7 @@ const PackagingRefactored: React.FC = () => {
           <>
             <div className="mb-6">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Approvals</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <CheckboxField label="Approved by Packaging" id="apprPack" checked={formData.apprPack} onChange={handleInputChange} />
                 <CheckboxField label="Approved by R&D" id="apprRd" checked={formData.apprRd} onChange={handleInputChange} />
                 <CheckboxField label="Approved by Finance" id="apprFin" checked={formData.apprFin} onChange={handleInputChange} />
@@ -1216,7 +1239,7 @@ const PackagingRefactored: React.FC = () => {
               <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible} onChange={handleInputChange} />
               <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare} onChange={handleInputChange} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField label="Web Display Name" id="catWebName" value={formData.catWebName} onChange={handleInputChange} />
               <InputField label="Tags (comma-separated)" id="catTags" value={formData.catTags} onChange={handleInputChange} />
               <InputField label="Recommended Product Types" id="catRecoTypes" value={formData.catRecoTypes} onChange={handleInputChange} />
@@ -1467,8 +1490,8 @@ const PackagingRefactored: React.FC = () => {
             </div>
 
             <div className="min-h-0 bg-gray-50">
-              <div className="flex gap-4 items-stretch w-full px-4 md:px-6 lg:px-8 py-4">
-                <aside className="w-60 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col shrink-0 overflow-y-auto max-h-[calc(88vh-8rem)]">
+              <div className="flex w-full min-w-0 flex-col gap-4 px-4 py-4 md:px-6 lg:flex-row lg:items-stretch lg:px-8">
+                <aside className="flex w-full max-h-[min(40vh,320px)] shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm lg:max-h-[calc(88vh-8rem)] lg:w-60">
                   <div className="px-4 pt-4 pb-3 border-b border-gray-100">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Sections</span>
@@ -1552,7 +1575,7 @@ const PackagingRefactored: React.FC = () => {
 
                 <main className="flex-1 min-w-0 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 shadow-sm max-h-[calc(88vh-8rem)]">
                   <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-                    <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+                    <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
                       <h2 className="text-sm font-bold text-gray-800 truncate">{SECTIONS[currentSection]}</h2>
                       <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -1572,7 +1595,7 @@ const PackagingRefactored: React.FC = () => {
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete category, code, name, level, and item category on this section first'
+                              ? 'Complete category, code, name, level, and item category on this section first. On submit, at least one vendor with a positive unit price is required.'
                               : undefined
                           }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -1583,9 +1606,9 @@ const PackagingRefactored: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="px-4 py-6">
-                    <div className="max-w-4xl mx-auto space-y-4">
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-6">
+                  <div className="px-3 py-4 sm:px-4 sm:py-6">
+                    <div className="mx-auto max-w-4xl min-w-0 space-y-4">
+                      <div className="rounded-xl border border-gray-100 bg-white px-4 py-5 shadow-sm sm:px-6 sm:py-6">
                         {renderSection()}
                       </div>
                     </div>

@@ -136,6 +136,19 @@ function createEmptyRmFormData() {
   };
 }
 
+function parseVendorTierPrice(raw: string): number {
+  const n = parseFloat(String(raw ?? '').replace(/[^\d.]/g, ''));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** New RM registrations require at least one vendor rate (parallel to PR MRP). */
+function rmVendorsHavePositiveUnitPrice(vendors: RmCommercialVendor[]): boolean {
+  return vendors.some((v) => {
+    if (Number(v.unitPrice) > 0) return true;
+    return (v.tiers ?? []).some((t) => parseVendorTierPrice(t.price) > 0);
+  });
+}
+
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
  const queryClient = useQueryClient();
@@ -516,6 +529,12 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return;
   }
+  if (!existingRmId && !rmVendorsHavePositiveUnitPrice(formData.vendors)) {
+   setErrors({ vendorCommercial: 'Vendors & Commercial — At least one vendor with a positive unit price is required' });
+   addToast('error', 'Add at least one vendor with a positive unit price (MOQ + price tiers or unit price).');
+   setCurrentStage(5);
+   return;
+  }
   try {
    if (existingRmId) {
     const rmIdForSync = parseInt(String(existingRmId), 10);
@@ -563,10 +582,10 @@ const RawMaterialRefactored: React.FC = () => {
   {
    const { prefix, next } = getRmCodePreview();
    return (
-    <div className="space-y-6">
-     <div>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+     <div className="min-w-0">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Category (Industry Buckets)</h3>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
        <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
         <select
@@ -625,8 +644,8 @@ const RawMaterialRefactored: React.FC = () => {
 
      <div>
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
-      <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-       <div className="flex items-center gap-6 mb-4 flex-wrap">
+      <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
+       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
         <div>
          <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
          <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
@@ -773,7 +792,7 @@ const RawMaterialRefactored: React.FC = () => {
     />
      </div>
 
-     <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+     <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
       <p className="text-xs text-gray-500">
        {isNewRm
@@ -1445,7 +1464,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill RM category, generated code, INCI name, and trade/commercial name on this step before continuing."
+                  nextDisabledTitle="Fill RM category, generated code, INCI name, and trade/commercial name on this step before continuing. On submit, at least one vendor with a positive unit price is required."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}

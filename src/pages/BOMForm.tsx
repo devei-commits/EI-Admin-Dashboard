@@ -272,6 +272,12 @@ function parseMrpNumber(mrp: string): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
+/** PR registration requires a positive MRP (same check as advance + submit). */
+function isValidMrpForPr(mrp: string): boolean {
+  const n = parseMrpNumber(mrp);
+  return n !== undefined && n > 0;
+}
+
 /**
  * Accept fill sizes only in `g` or `ml` to keep backend unit parsing unambiguous.
  * Examples: 50g, 500 g, 30ml, 100 ml
@@ -312,7 +318,8 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
     storage_conditions: fd.prDefaultStorageType || null,
-    mrp: fd.mrp || null,
+    mrp: fd.mrp?.trim() || null,
+    ...(isValidMrpForPr(fd.mrp) ? { mrp_price: parseMrpNumber(fd.mrp) } : {}),
     rm_lines: bomFormToRmLines(fd),
     pm_lines: bomFormToPmLines(fd),
     process_steps: bomFormToProcessSteps(fd),
@@ -469,6 +476,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData.category.trim() &&
         formData.productForm.trim() &&
         formData.fillSize.trim() &&
+        isValidMrpForPr(formData.mrp) &&
         formData.skuCode.trim()
     );
   const lockPrimaryFields = !!productIdFromRoute;
@@ -590,6 +598,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return;
     }
     setFormData((prev) => ({ ...prev, [field]: value }));
+    if (field === 'mrp') {
+      setErrors((prev) => {
+        if (!prev.mrp) return prev;
+        const next = { ...prev };
+        delete next.mrp;
+        return next;
+      });
+    }
   };
 
   const getPrCodePreview = () => {
@@ -784,6 +800,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return;
     }
+    if (!isValidMrpForPr(formData.mrp)) {
+      setErrors({ mrp: 'Step 0 — MRP Price is required (enter a positive amount, e.g. 499 or ₹499)' });
+      addToast('error', 'Step 0 — MRP Price is required');
+      setCurrentStage(0);
+      window.setTimeout(() => {
+        const el = document.getElementById('mrp');
+        if (el instanceof HTMLElement) el.focus();
+      }, 0);
+      return;
+    }
     if (!productIdFromRoute) {
       if (!formData.skuCode.trim()) {
         setErrors({ skuCode: 'Step 0 — Generate or enter PR / BOM code' });
@@ -862,8 +888,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     switch (currentStage) {
       case 0:
         return (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <button
                 type="button"
                 onClick={() => { if (onClose) onClose(); else navigate('/bom'); }}
@@ -876,9 +902,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </p>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category (Industry Buckets)</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">PR Category <span className="text-red-600">*</span></label>
                   <select
@@ -932,7 +958,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </div>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
               <div className="space-y-4 border-t border-slate-200 pt-4">
                 <div>
@@ -947,7 +973,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Category (Formulation) <span className="text-red-600">*</span></label>
                     <select
@@ -994,7 +1020,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size (in g or ml) <span className="text-red-600">*</span></label>
                     <input
@@ -1019,22 +1045,32 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">MRP Price</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
+                    MRP Price <span className="text-red-600">*</span>
+                  </label>
                   <input
+                    id="mrp"
                     type="text"
                     placeholder="e.g. Rs.499"
                     value={formData.mrp}
                     onChange={(e) => handleInputChange('mrp', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    aria-invalid={Boolean(errors.mrp)}
+                    aria-describedby={errors.mrp ? 'mrp-error' : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
                   />
+                  {errors.mrp ? (
+                    <p id="mrp-error" className="mt-1 text-xs text-red-600">
+                      {errors.mrp}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
 
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Local PR / BOM code</h3>
-              <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-                <div className="flex items-center gap-6 mb-4 flex-wrap">
+              <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
                     <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
@@ -1089,8 +1125,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   ? 'Tax and SKU preferences are sent on final Submit. The server creates the product, Zoho Books item, and BOM together (or rolls back all if Books fails).'
                   : 'Zoho item ID is read-only. Change other fields as needed; use Submit to save.'}
               </p>
-              <div className="space-y-4 border border-slate-200 rounded-lg p-4 bg-white">
-                <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
                     <input
@@ -1118,7 +1154,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
                     <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryFields ? 'bg-slate-100' : ''}`}>
@@ -1171,8 +1207,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   Add ingredients in phase order. Rows are added only when you click the Add button (total should equal 100%).
                 </p>
 
-                <div className="space-y-2 mb-4">
-                  <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase">
+                <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                  <div className="grid min-w-[520px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                     <div>INCI Name / Raw Material</div>
                     <div>Phase</div>
                     <div>% W/W</div>
@@ -1180,7 +1216,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                   <div className="space-y-2">
                     {formData.formulaIngredients.map(ing => (
-                      <div key={ing.id} className="grid grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded">
+                      <div key={ing.id} className="grid min-w-[520px] grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded sm:min-w-0">
                         <div className="text-slate-900">{ing.inciName}</div>
                         <div className="text-slate-600">{ing.phase}</div>
                         <div className="text-slate-600">{ing.percentWW}</div>
@@ -1200,7 +1236,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                 >
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <select
                       value={selectedRmId}
                       onChange={(e) => setSelectedRmId(e.target.value)}
@@ -1222,7 +1258,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <input
                       type="text"
                       placeholder="Phase"
@@ -1273,15 +1309,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   List primary, secondary, and label components. Rows are added only when you click the Add button.
                 </p>
 
-                <div className="space-y-2 mb-4">
-                  <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase">
+                <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                  <div className="grid min-w-[480px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                     <div className="col-span-2">PM Description</div>
                     <div>Type</div>
                     <div>Qty / Unit</div>
                   </div>
                   <div className="space-y-2">
                     {formData.packingComponents.map(comp => (
-                      <div key={comp.id} className="grid grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded">
+                      <div key={comp.id} className="grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded sm:min-w-0">
                         <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
                         <div className="text-slate-600">{comp.type}</div>
                         <div className="flex justify-between items-center">
@@ -1300,7 +1336,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                 >
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <select
                       value={selectedPmId}
                       onChange={(e) => setSelectedPmId(e.target.value)}
@@ -1322,7 +1358,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <input
                       type="text"
                       placeholder="Type"
@@ -1445,7 +1481,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FINISHED PRODUCT SPECIFICATIONS</label>
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <input type="text" placeholder="e.g. 6.0-7.0" value={formData.phRange} onChange={(e) => handleInputChange('phRange', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
                     <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
                     <input type="text" placeholder="e.g. 0.98-1.02" value={formData.specificGravity} onChange={(e) => handleInputChange('specificGravity', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
@@ -1519,7 +1555,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, product name, category, form, fill size, and generated PR code on this step before continuing."
+      nextDisabledTitle="Complete PR category, product name, category, form, fill size, MRP price, and generated PR code on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}
