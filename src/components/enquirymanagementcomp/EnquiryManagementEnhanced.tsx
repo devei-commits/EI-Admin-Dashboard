@@ -15,12 +15,61 @@ import {
  EmptyTicketState,
 } from './TicketComponents';
 import { fetchAvailableStaff } from '../../services/ticket.service';
-import api from '../../lib/apiClient';
+import api, { getApiBaseUrl } from '../../lib/apiClient';
 import { ApiResponse } from '../../types/api.types';
 
 
 // ==================== Main Component ====================
-type ViewTab = 'dashboard' | 'tickets';
+type ViewTab = 'dashboard' | 'tickets' | 'customizations';
+
+type ProductCustomizationRow = {
+ customization_id: number;
+ user_id?: number;
+ product_id?: number | null;
+ formulation?: Record<string, unknown> | null;
+ care?: string | null;
+ category?: string | null;
+ formulationSummary?: string | null;
+ packagingType?: string | null;
+ packaging_image?: string | null;
+ packaging?: string | null;
+ userNotes?: string | null;
+ internal_notes?: string | null;
+ status?: string | null;
+ assigned_bd_user_id?: number | null;
+ assigned_bd_name?: string | null;
+ assigned_bd_email?: string | null;
+ assigned_at?: string | null;
+ created_at?: string | null;
+ updated_at?: string | null;
+ product?: {
+  product_name?: string | null;
+  product_sku?: string | null;
+ } | null;
+ user?: {
+  userid?: number;
+  fname?: string | null;
+  lname?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  usertype?: string | null;
+ } | null;
+};
+
+type BDAssignee = {
+ userid: number;
+ display_name?: string | null;
+ email?: string | null;
+ role_name?: string | null;
+};
+
+const resolveImageUrl = (value?: string | null): string => {
+ if (!value) return '';
+ if (/^https?:\/\//i.test(value) || value.startsWith('data:')) return value;
+ const base = getApiBaseUrl();
+ const normalized = value.startsWith('/') ? value : `/${value}`;
+ return base ? `${base}${normalized}` : normalized;
+};
 
 const EnquiryManagementEnhanced: React.FC = () => {
  // View state
@@ -32,6 +81,11 @@ const EnquiryManagementEnhanced: React.FC = () => {
  const [filters, setFilters] = useState<TicketFilters>({});
  const [availableStaff, setAvailableStaff] = useState<StaffMember[]>([]);
  const [loading, setLoading] = useState(false);
+ const [customizationsLoading, setCustomizationsLoading] = useState(false);
+ const [customizations, setCustomizations] = useState<ProductCustomizationRow[]>([]);
+ const [bdAssignees, setBdAssignees] = useState<BDAssignee[]>([]);
+ const [selectedCustomization, setSelectedCustomization] = useState<ProductCustomizationRow | null>(null);
+ const [savingCustomization, setSavingCustomization] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
  const recordsPerPage = 10;
 
@@ -45,6 +99,66 @@ const EnquiryManagementEnhanced: React.FC = () => {
   };
   loadStaff();
  }, []);
+
+ const loadBDAssignees = useCallback(async () => {
+  try {
+   const users = await api.get<Array<{ userid: number; display_name?: string; email?: string; role_name?: string }>>('/api/v1/users/search');
+   const list = (Array.isArray(users) ? users : []).filter((u) =>
+    String(u.role_name || '').toLowerCase().includes('bd')
+    || String(u.role_name || '').toLowerCase().includes('business')
+    || String(u.role_name || '').toLowerCase().includes('admin'),
+   );
+   setBdAssignees(list);
+  } catch (error) {
+   console.error('BD assignees fetch error:', error);
+   setBdAssignees([]);
+  }
+ }, []);
+
+ const loadCustomizations = useCallback(async () => {
+  setCustomizationsLoading(true);
+  try {
+   const res = await api.get<{ success?: boolean; data?: ProductCustomizationRow[] } | ProductCustomizationRow[]>(
+    '/api/v1/productCustomizations/admin/all',
+   );
+   const list = Array.isArray(res)
+    ? res
+    : (res && typeof res === 'object' && Array.isArray((res as { data?: ProductCustomizationRow[] }).data))
+     ? (res as { data: ProductCustomizationRow[] }).data
+     : [];
+   setCustomizations(list);
+  } catch (error) {
+   setCustomizations([]);
+   console.error('Product customizations fetch error:', error);
+  } finally {
+   setCustomizationsLoading(false);
+  }
+ }, []);
+
+ useEffect(() => {
+  if (activeView !== 'customizations') return;
+  void loadCustomizations();
+  void loadBDAssignees();
+ }, [activeView, loadCustomizations, loadBDAssignees]);
+
+ const handleCustomizationSave = useCallback(async () => {
+  if (!selectedCustomization) return;
+  setSavingCustomization(true);
+  try {
+   await api.put(`/api/v1/productCustomizations/admin/${selectedCustomization.customization_id}`, {
+    status: selectedCustomization.status ?? 'Pending',
+    internal_notes: selectedCustomization.internal_notes ?? null,
+    assigned_bd_user_id: selectedCustomization.assigned_bd_user_id ?? null,
+    assigned_bd_name: selectedCustomization.assigned_bd_name ?? null,
+    assigned_bd_email: selectedCustomization.assigned_bd_email ?? null,
+   });
+   await loadCustomizations();
+  } catch (error) {
+   console.error('Customization save error:', error);
+  } finally {
+   setSavingCustomization(false);
+  }
+ }, [selectedCustomization, loadCustomizations]);
 
  
 useEffect(() => {
@@ -234,10 +348,10 @@ useEffect(() => {
  return (
   <div className="w-full space-y-6">
    {/* View Toggle */}
-   <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+   <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-100 rounded-xl w-full sm:w-fit">
     <button
      onClick={() => setActiveView('dashboard')}
-     className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+     className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'dashboard'
        ? 'bg-white text-gray-900 shadow-sm'
        : 'text-gray-600 hover:text-gray-900'
@@ -252,7 +366,7 @@ useEffect(() => {
     </button>
     <button
      onClick={() => setActiveView('tickets')}
-     className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+     className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'tickets'
        ? 'bg-white text-gray-900 shadow-sm'
        : 'text-gray-600 hover:text-gray-900'
@@ -265,6 +379,24 @@ useEffect(() => {
       All Tickets
       <span className="px-2 py-0.5 bg-gray-100 text-slate-900 text-xs rounded-full">
        {filteredTickets.length}
+      </span>
+     </span>
+    </button>
+    <button
+     onClick={() => setActiveView('customizations')}
+     className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
+      activeView === 'customizations'
+       ? 'bg-white text-gray-900 shadow-sm'
+       : 'text-gray-600 hover:text-gray-900'
+     }`}
+    >
+     <span className="flex items-center gap-2">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+      </svg>
+      Product Customizations
+      <span className="px-2 py-0.5 bg-gray-100 text-slate-900 text-xs rounded-full">
+       {customizations.length}
       </span>
      </span>
     </button>
@@ -367,6 +499,250 @@ useEffect(() => {
      )}
     </div>
    )}
+
+  {activeView === 'customizations' && (
+   <div className="space-y-4">
+    <div className="flex items-center justify-between">
+     <p className="text-sm text-gray-600">
+      Showing {customizations.length} submitted product customizations
+     </p>
+     <button
+      type="button"
+      onClick={() => void loadCustomizations()}
+      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+     >
+      Refresh
+     </button>
+    </div>
+    {customizationsLoading ? (
+     <div className="flex items-center justify-center py-20">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-800" />
+     </div>
+    ) : customizations.length > 0 ? (
+     <div className="overflow-x-auto bg-white rounded-xl border border-gray-100">
+      <table className="w-full text-sm">
+       <thead>
+        <tr className="bg-gray-50 border-b border-gray-200 text-left">
+         <th className="px-4 py-3">ID</th>
+         <th className="px-4 py-3">Customer</th>
+         <th className="px-4 py-3">Product</th>
+         <th className="px-4 py-3">Care / Category</th>
+         <th className="px-4 py-3">Summary</th>
+         <th className="px-4 py-3">Packaging</th>
+         <th className="px-4 py-3">Status</th>
+         <th className="px-4 py-3">Submitted</th>
+         <th className="px-4 py-3">Action</th>
+        </tr>
+       </thead>
+       <tbody>
+        {customizations.map((row) => {
+         const customerName = [row.user?.fname, row.user?.lname].filter(Boolean).join(' ').trim() || row.user?.email || '-';
+         const productName = row.product?.product_name || (row.product_id ? `Product #${row.product_id}` : '-');
+         return (
+          <tr key={row.customization_id} className="border-b border-gray-100 align-top">
+           <td className="px-4 py-3 font-medium">#{row.customization_id}</td>
+           <td className="px-4 py-3">
+            <div className="font-medium text-gray-900">{customerName}</div>
+            <div className="text-xs text-gray-500">{row.user?.mobile || row.user?.email || '-'}</div>
+           </td>
+           <td className="px-4 py-3">
+            <div className="font-medium text-gray-900">{productName}</div>
+            <div className="text-xs text-gray-500">{row.product?.product_sku || '-'}</div>
+           </td>
+           <td className="px-4 py-3">
+            <div className="text-gray-900">{row.care || '-'}</div>
+            <div className="text-xs text-gray-500">{row.category || '-'}</div>
+           </td>
+           <td className="px-4 py-3 max-w-80">
+            <div className="line-clamp-2 text-gray-700">{row.formulationSummary || row.userNotes || '-'}</div>
+           </td>
+           <td className="px-4 py-3">{row.packagingType || '-'}</td>
+           <td className="px-4 py-3">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+             {row.status || 'Pending'}
+            </span>
+           </td>
+           <td className="px-4 py-3 text-gray-600">
+            {row.created_at ? new Date(row.created_at).toLocaleDateString('en-GB') : '-'}
+           </td>
+           <td className="px-4 py-3">
+            <button
+             type="button"
+             onClick={() => setSelectedCustomization(row)}
+             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-white hover:bg-slate-900"
+            >
+             View
+            </button>
+           </td>
+          </tr>
+         );
+        })}
+       </tbody>
+      </table>
+     </div>
+    ) : (
+     <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+      No product customizations found.
+     </div>
+    )}
+   </div>
+  )}
+
+  {selectedCustomization && (
+   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedCustomization(null)} />
+    <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
+     <div className="flex items-start justify-between mb-4">
+      <h3 className="text-lg font-semibold text-gray-900">
+       Product Customization #{selectedCustomization.customization_id}
+      </h3>
+      <button type="button" onClick={() => setSelectedCustomization(null)} className="text-gray-500 hover:text-gray-800">
+       Close
+      </button>
+     </div>
+
+     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="rounded-lg border border-gray-200 p-3">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Customer</p>
+       <p className="text-sm text-gray-900">
+        {[selectedCustomization.user?.fname, selectedCustomization.user?.lname].filter(Boolean).join(' ').trim()
+         || selectedCustomization.user?.email || '-'}
+       </p>
+       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.user?.mobile || '-'}</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 p-3">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Product</p>
+       <p className="text-sm text-gray-900">
+        {selectedCustomization.product?.product_name || (selectedCustomization.product_id ? `Product #${selectedCustomization.product_id}` : '-')}
+       </p>
+       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.product?.product_sku || '-'}</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 p-3">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Care / Category</p>
+       <p className="text-sm text-gray-900">{selectedCustomization.care || '-'} / {selectedCustomization.category || '-'}</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 p-3">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Packaging Type</p>
+       <p className="text-sm text-gray-900">{selectedCustomization.packagingType || '-'}</p>
+      </div>
+     </div>
+
+     <div className="mt-4 rounded-lg border border-gray-200 p-3">
+      <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Formulation Summary</p>
+      <p className="text-sm text-gray-800 whitespace-pre-wrap">
+       {selectedCustomization.formulationSummary || '-'}
+      </p>
+      {selectedCustomization.formulation && (
+       <pre className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700 overflow-x-auto">
+        {JSON.stringify(selectedCustomization.formulation, null, 2)}
+       </pre>
+      )}
+     </div>
+
+     <div className="mt-4 rounded-lg border border-gray-200 p-3">
+      <p className="text-xs font-semibold uppercase text-gray-500 mb-2">Client Uploaded Photo</p>
+      {selectedCustomization.packaging_image ? (
+       <div>
+        <img
+         src={resolveImageUrl(selectedCustomization.packaging_image)}
+         alt="Client packaging upload"
+         className="max-h-56 rounded border border-gray-200 object-contain bg-gray-50"
+         onError={(e) => {
+          const target = e.currentTarget as HTMLImageElement;
+          target.style.display = 'none';
+         }}
+        />
+        <a
+         href={resolveImageUrl(selectedCustomization.packaging_image)}
+         target="_blank"
+         rel="noreferrer"
+         className="mt-2 inline-block text-xs text-blue-600 hover:underline"
+        >
+         Open original image
+        </a>
+      </div>
+      ) : (
+       <p className="text-sm text-gray-500">No uploaded image found.</p>
+      )}
+     </div>
+
+     <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="rounded-lg border border-gray-200 p-3">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Status</p>
+       <select
+        value={selectedCustomization.status || 'Pending'}
+        onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, status: e.target.value } : prev)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+       >
+        <option value="Pending">Pending</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Assigned">Assigned</option>
+        <option value="Closed">Closed</option>
+       </select>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-3 md:col-span-2">
+       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Allot BD Team Member</p>
+       <select
+        value={selectedCustomization.assigned_bd_user_id ?? ''}
+        onChange={(e) => {
+         const selectedId = e.target.value ? Number(e.target.value) : null;
+         const selectedUser = bdAssignees.find((u) => Number(u.userid) === Number(selectedId));
+         setSelectedCustomization((prev) => prev ? {
+          ...prev,
+          assigned_bd_user_id: selectedId,
+          assigned_bd_name: selectedUser?.display_name ?? null,
+          assigned_bd_email: selectedUser?.email ?? null,
+         } : prev);
+        }}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+       >
+        <option value="">Unassigned</option>
+        {bdAssignees.map((u) => (
+         <option key={u.userid} value={u.userid}>
+          {(u.display_name || u.email || `User ${u.userid}`)} {u.role_name ? `(${u.role_name})` : ''}
+         </option>
+        ))}
+       </select>
+       {selectedCustomization.assigned_bd_name && (
+        <p className="mt-2 text-xs text-gray-600">
+         Assigned: {selectedCustomization.assigned_bd_name} ({selectedCustomization.assigned_bd_email || 'no email'})
+        </p>
+       )}
+      </div>
+     </div>
+
+     <div className="mt-4 rounded-lg border border-gray-200 p-3">
+      <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Internal Notes</p>
+      <textarea
+       rows={3}
+       value={selectedCustomization.internal_notes || ''}
+       onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, internal_notes: e.target.value } : prev)}
+       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+       placeholder="Add internal notes for BD/operations follow-up"
+      />
+     </div>
+
+     <div className="mt-5 flex justify-end gap-2">
+      <button
+       type="button"
+       onClick={() => setSelectedCustomization(null)}
+       className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700"
+      >
+       Cancel
+      </button>
+      <button
+       type="button"
+       disabled={savingCustomization}
+       onClick={() => void handleCustomizationSave()}
+       className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm disabled:opacity-60"
+      >
+       {savingCustomization ? 'Saving...' : 'Save Allotment'}
+      </button>
+     </div>
+    </div>
+   </div>
+  )}
 
    {/* Ticket Detail Popup */}
    {selectedTicket && (

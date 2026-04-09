@@ -20,6 +20,7 @@ const UserManagement = lazy(() => import('./pages/UserManagement'))
 
 const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
 const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
+const CustomizationCatalog = lazy(() => import('./pages/CustomizationCatalog'))
 const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'))
 const DoctorAppointments = lazy(() => import('./pages/DoctorAppointments'))
 const ContactEnquiry = lazy(() => import('./pages/ContactEnquiry'))
@@ -315,6 +316,11 @@ const AppLayout = () => {
                                                  <Route path="/active-ingredients" element={
                                                         <ProtectedModuleRoute moduleId="active-ingredients">
                                                                <ActiveIngredients />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/customization-catalog" element={
+                                                        <ProtectedModuleRoute moduleId="active-ingredients">
+                                                               <CustomizationCatalog />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/enquiry-management" element={
