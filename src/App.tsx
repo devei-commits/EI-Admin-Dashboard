@@ -29,6 +29,7 @@ const ProductSamples = lazy(() => import('./pages/ProductSamples'))
 const TreasuryApp = lazy(() => import('./pages/TreasuryApp'))
 const PackagingRefactored = lazy(() => import('./pages/PackagingForm'))
 const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
+const CustomizationPackagingCatalog = lazy(() => import('./pages/CustomizationPackagingCatalog'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialForm'))
 const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
 const BOMRefactored = lazy(() => import('./pages/BOMForm'))
@@ -356,6 +357,11 @@ const AppLayout = () => {
                                                  <Route path="/packaging-management" element={
                                                         <ProtectedModuleRoute moduleId="packaging-management">
                                                                <PackagingManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/customization-packaging-catalog" element={
+                                                        <ProtectedModuleRoute moduleId="packaging-management">
+                                                               <CustomizationPackagingCatalog />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/packaging" element={

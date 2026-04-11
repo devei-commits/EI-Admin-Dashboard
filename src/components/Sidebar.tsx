@@ -106,6 +106,7 @@ const Sidebar = () => {
   const isProductActive = [
     '/catalogue-management',
     '/packaging-management',
+    '/customization-packaging-catalog',
     '/active-ingredients',
     '/customization-catalog',
   ].includes(location.pathname);
@@ -510,6 +511,23 @@ const Sidebar = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
                           <span>Packaging Management</span>
+                        </PreloadNavLink>
+                      </li>
+                    )}
+                    {showPackagingManagement && (
+                      <li>
+                        <PreloadNavLink
+                          to="/customization-packaging-catalog"
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
+                            ? "text-slate-900 font-medium bg-slate-100/50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            }`}
+                          onClick={handleLinkClick}
+                        >
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                          </svg>
+                          <span>Customize packaging (website)</span>
                         </PreloadNavLink>
                       </li>
                     )}
