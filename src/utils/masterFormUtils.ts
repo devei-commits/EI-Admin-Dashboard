@@ -214,8 +214,8 @@ export function validateMasterTaxDetails(
 ): { valid: boolean; errors: Record<string, string> } {
  const errors: Record<string, string> = {};
 
- /** RM: Units, Tax & Procurement is stage index 1 (sidebar `1)`). PM: primary section index 0. */
- const taxStepRm = 1;
+ /** RM and PM tax validation both point users to stage index 0. */
+ const taxStepRm = 0;
  const taxStepPm = 0;
 
  if (masterType === 'rawMaterial') {
@@ -268,8 +268,8 @@ const PRIMARY_FIELD_STEP: Record<'packaging' | 'rawMaterial' | 'bom', Record<str
   rmSku: 0,
   inciName: 0,
   tradeCommercialName: 0,
-  grade: 2,
-  compliance: 2,
+  grade: 0,
+  compliance: 0,
  },
  packaging: {
   pkgSku: 0,

@@ -533,7 +533,6 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="font-semibold text-gray-900 text-[13px]">{item.productName}</div>
-                        <div className="text-[10px] text-gray-500 font-medium">{item.pack}</div>
                       </td>
                       <td className="px-4 py-3 text-right align-top">
                         <div className="font-mono text-[12px] text-gray-900 font-bold">

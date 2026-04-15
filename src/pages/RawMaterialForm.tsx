@@ -141,14 +141,6 @@ function parseVendorTierPrice(raw: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
-/** New RM registrations require at least one vendor rate (parallel to PR MRP). */
-function rmVendorsHavePositiveUnitPrice(vendors: RmCommercialVendor[]): boolean {
-  return vendors.some((v) => {
-    if (Number(v.unitPrice) > 0) return true;
-    return (v.tiers ?? []).some((t) => parseVendorTierPrice(t.price) > 0);
-  });
-}
-
 const RawMaterialRefactored: React.FC = () => {
  useItems(); // items list now loaded from API on dashboard
  const queryClient = useQueryClient();
@@ -237,13 +229,17 @@ const RawMaterialRefactored: React.FC = () => {
  ];
 
  const isNewRm = !existingRmId;
+ const taxIsTaxable = formData.rmTaxPreference === 'Taxable';
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
    formData.rmCategoryKey?.trim() &&
     formData.rmSku?.trim() &&
     formData.inciName?.trim() &&
-    formData.tradeCommercialName?.trim()
+    formData.tradeCommercialName?.trim() &&
+    formData.grade?.trim() &&
+    formData.compliance?.trim() &&
+    (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
  const lockPrimaryFields = !!existingRmId;
 
@@ -498,10 +494,10 @@ const RawMaterialRefactored: React.FC = () => {
       rmSku: 0,
       inciName: 0,
       tradeCommercialName: 0,
-      grade: 2,
-      compliance: 2,
-      hsnCode: 1,
-      gst: 1,
+      grade: 0,
+      compliance: 0,
+      hsnCode: 0,
+      gst: 0,
     };
     const firstPrimaryMissing = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
     const firstTaxMissing = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
@@ -516,9 +512,9 @@ const RawMaterialRefactored: React.FC = () => {
      'error',
      firstTax
       ? taxValidation.errors[firstTax]
-      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 1). Exempt / NonGST can leave them blank.'
+      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 0). Exempt / NonGST can leave them blank.'
     );
-    setCurrentStage(1);
+    setCurrentStage(0);
    } else {
     const firstPrimary = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
     const firstMsg =
@@ -527,12 +523,6 @@ const RawMaterialRefactored: React.FC = () => {
      Object.values(taxValidation.errors)[0];
     addToast('error', firstMsg || 'Please fill all required fields');
    }
-   return;
-  }
-  if (!existingRmId && !rmVendorsHavePositiveUnitPrice(formData.vendors)) {
-   setErrors({ vendorCommercial: 'Vendors & Commercial — At least one vendor with a positive unit price is required' });
-   addToast('error', 'Add at least one vendor with a positive unit price (MOQ + price tiers or unit price).');
-   setCurrentStage(5);
    return;
   }
   try {
@@ -689,31 +679,6 @@ const RawMaterialRefactored: React.FC = () => {
       readOnly={lockPrimaryFields}
      />
 
-     <div className="space-y-4">
-      <InputField
-       label="Category label (derived)"
-       id="rmCategory"
-       value={formData.rmCategory}
-       onChange={handleInputChange}
-       placeholder="Updates when you pick RM Category above"
-       readOnly={lockPrimaryFields}
-      />
-      <InputField
-       label="Hazard Handling Class"
-       id="hazardHandlingClass"
-       value={formData.hazardHandlingClass}
-       onChange={handleInputChange}
-       placeholder="e.g. Flammable, Corrosive, General"
-      />
-      <InputField
-       label="Series Prefix (derived)"
-       id="seriesPrefix"
-       value={formData.seriesPrefix}
-       onChange={handleInputChange}
-       placeholder="From RM Category; editable if needed"
-      />
-     </div>
-
      <div className="space-y-4 border-t border-gray-200 pt-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Identity</h3>
     <InputField
@@ -735,78 +700,25 @@ const RawMaterialRefactored: React.FC = () => {
      readOnly={lockPrimaryFields}
     />
     <InputField
-     label="Function/Role"
-     id="functionRole"
-     value={formData.functionRole}
+     label="Grade"
+     id="grade"
+     value={formData.grade}
      onChange={handleInputChange}
-     placeholder="e.g. Emulsifier, Preservative, Fragrance"
+     placeholder="e.g. Cosmetic Grade, Pharma Grade"
+     requiredMark
     />
     <InputField
-     label="Type"
-     id="rmType"
-     value={formData.rmType}
+     label="Compliance/Certificate"
+     id="compliance"
+     value={formData.compliance}
      onChange={handleInputChange}
-     placeholder="e.g. Liquid, Powder, Paste"
-    />
-    <InputField
-     label="CAS Number"
-     id="casNo"
-     value={formData.casNo}
-     onChange={handleInputChange}
-     placeholder="e.g. 9004-99-3"
-    />
-    <InputField
-     label="EINECS Number"
-     id="einecs"
-     value={formData.einecs}
-     onChange={handleInputChange}
-     placeholder="If applicable"
-    />
-    <InputField
-     label="Country of Origin"
-     id="countryOfOrigin"
-     value={formData.countryOfOrigin}
-     onChange={handleInputChange}
-     placeholder="e.g. India, France"
-    />
-    <InputField
-     label="Manufacturer"
-     id="manufacturer"
-     value={formData.manufacturer}
-     onChange={handleInputChange}
-     placeholder="Manufacturer / principal supplier"
-    />
-    <TextareaField
-     label="Synonyms"
-     id="synonyms"
-     value={formData.synonyms}
-     onChange={handleInputChange}
-     placeholder="Other names used internally or by vendors"
-    />
-    <TextareaField
-     label="Internal Notes"
-     id="internalNotes"
-     value={formData.internalNotes}
-     onChange={handleInputChange}
-     placeholder="Any internal-only remarks for R&D, QC, or Purchase"
+     placeholder="e.g. COSMOS, ECOCERT, RSPO"
+     requiredMark
     />
      </div>
 
      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
-      <p className="text-xs text-gray-500">
-       {isNewRm
-        ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
-        : 'Zoho item ID is read-only.'}
-      </p>
-      <InputField
-       label="SKU (for Zoho)"
-       id="sku"
-       value={formData.sku}
-       onChange={handleInputChange}
-       placeholder="Optional; defaults to RM SKU"
-       disabled={lockPrimaryFields}
-      />
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Tax Classification</h3>
       <SelectField
        label="Tax Preference"
        id="rmTaxPreference"
@@ -816,38 +728,95 @@ const RawMaterialRefactored: React.FC = () => {
        disabled={lockPrimaryFields}
       />
       <p className="text-xs text-gray-500 -mt-2">
-       Taxable: HSN and GST % are required in the next step. Exempted / NonGST: optional.
+       Taxable: HSN and GST % are required on this step. Exempted / NonGST: optional.
       </p>
-      <CheckboxField
-       label="Returnable Item"
-       id="rmReturnable"
-       checked={formData.rmReturnable}
+      <InputField
+       label="HSN Code"
+       id="hsnCode"
+       value={formData.hsnCode}
        onChange={handleInputChange}
-      />
-      <TextareaField
-       label="Associate Items"
-       id="rmAssociateItems"
-       value={formData.rmAssociateItems}
-       onChange={handleInputChange}
-       placeholder="Link related RM / PM / packaging codes if any"
+       placeholder="Tax classification code"
+       error={errors.hsnCode}
+       requiredMark={taxIsTaxable}
       />
       <InputField
-       label="Zoho Item ID"
-       id="zohoId"
-       value={formData.zohoId}
-       onChange={() => {}}
-       placeholder="Populated from the server after save (when Books sync is on)"
-       readOnly
+       label="GST %"
+       id="gst"
+       value={formData.gst}
+       onChange={handleInputChange}
+       placeholder="e.g. 18"
+       error={errors.gst}
+       requiredMark={taxIsTaxable}
       />
-      <p className="text-xs text-gray-500 -mt-1">Read-only — returned by the API after a successful save.</p>
      </div>
+
     </div>
    );
   }
 
-   case 1: // Units, Tax & Procurement
+   case 1: // Units & Procurement
     return (
      <div className="space-y-4">
+    <InputField
+     label="Category label (derived)"
+     id="rmCategory"
+     value={formData.rmCategory}
+     onChange={handleInputChange}
+     placeholder="Updates when you pick RM Category above"
+     readOnly={lockPrimaryFields}
+    />
+    <InputField
+     label="Hazard Handling Class"
+     id="hazardHandlingClass"
+     value={formData.hazardHandlingClass}
+     onChange={handleInputChange}
+     placeholder="e.g. Flammable, Corrosive, General"
+    />
+    <InputField
+     label="Series Prefix (derived)"
+     id="seriesPrefix"
+     value={formData.seriesPrefix}
+     onChange={handleInputChange}
+     placeholder="From RM Category; editable if needed"
+    />
+    <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
+     <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
+     <p className="text-xs text-gray-500">
+      {isNewRm
+       ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
+       : 'Zoho item ID is read-only.'}
+     </p>
+     <InputField
+      label="SKU (for Zoho)"
+      id="sku"
+      value={formData.sku}
+      onChange={handleInputChange}
+      placeholder="Optional; defaults to RM SKU"
+      disabled={lockPrimaryFields}
+     />
+     <CheckboxField
+      label="Returnable Item"
+      id="rmReturnable"
+      checked={formData.rmReturnable}
+      onChange={handleInputChange}
+     />
+     <TextareaField
+      label="Associate Items"
+      id="rmAssociateItems"
+      value={formData.rmAssociateItems}
+      onChange={handleInputChange}
+      placeholder="Link related RM / PM / packaging codes if any"
+     />
+     <InputField
+      label="Zoho Item ID"
+      id="zohoId"
+      value={formData.zohoId}
+      onChange={() => {}}
+      placeholder="Populated from the server after save (when Books sync is on)"
+      readOnly
+     />
+     <p className="text-xs text-gray-500 -mt-1">Read-only — returned by the API after a successful save.</p>
+    </div>
     <InputField
      label="Primary UoM"
      id="primaryUom"
@@ -877,24 +846,6 @@ const RawMaterialRefactored: React.FC = () => {
      placeholder="e.g. 25 KG bag, 200 KG drum"
     />
     <InputField
-     label="HSN Code"
-     id="hsnCode"
-     value={formData.hsnCode}
-     onChange={handleInputChange}
-     placeholder="Tax classification code"
-     error={errors.hsnCode}
-     requiredMark={formData.rmTaxPreference === 'Taxable'}
-    />
-    <InputField
-     label="GST %"
-     id="gst"
-     value={formData.gst}
-     onChange={handleInputChange}
-     placeholder="e.g. 18"
-     error={errors.gst}
-     requiredMark={formData.rmTaxPreference === 'Taxable'}
-    />
-    <InputField
      label="Accounting Category"
      id="accountingCategory"
      value={formData.accountingCategory}
@@ -909,22 +860,62 @@ const RawMaterialRefactored: React.FC = () => {
    case 2: // Technical & Regulatory
     return (
      <div className="space-y-4">
-    <InputField
-     label="Grade"
-     id="grade"
-     value={formData.grade}
-     onChange={handleInputChange}
-     placeholder="e.g. Cosmetic Grade, Pharma Grade"
-     requiredMark
-    />
-    <InputField
-     label="Compliance/Certificate"
-     id="compliance"
-     value={formData.compliance}
-     onChange={handleInputChange}
-     placeholder="e.g. COSMOS, ECOCERT, RSPO"
-     requiredMark
-    />
+      <InputField
+       label="Function/Role"
+       id="functionRole"
+       value={formData.functionRole}
+       onChange={handleInputChange}
+       placeholder="e.g. Emulsifier, Preservative, Fragrance"
+      />
+      <InputField
+       label="Type"
+       id="rmType"
+       value={formData.rmType}
+       onChange={handleInputChange}
+       placeholder="e.g. Liquid, Powder, Paste"
+      />
+      <InputField
+       label="CAS Number"
+       id="casNo"
+       value={formData.casNo}
+       onChange={handleInputChange}
+       placeholder="e.g. 9004-99-3"
+      />
+      <InputField
+       label="EINECS Number"
+       id="einecs"
+       value={formData.einecs}
+       onChange={handleInputChange}
+       placeholder="If applicable"
+      />
+      <InputField
+       label="Country of Origin"
+       id="countryOfOrigin"
+       value={formData.countryOfOrigin}
+       onChange={handleInputChange}
+       placeholder="e.g. India, France"
+      />
+      <InputField
+       label="Manufacturer"
+       id="manufacturer"
+       value={formData.manufacturer}
+       onChange={handleInputChange}
+       placeholder="Manufacturer / principal supplier"
+      />
+      <TextareaField
+       label="Synonyms"
+       id="synonyms"
+       value={formData.synonyms}
+       onChange={handleInputChange}
+       placeholder="Other names used internally or by vendors"
+      />
+      <TextareaField
+       label="Internal Notes"
+       id="internalNotes"
+       value={formData.internalNotes}
+       onChange={handleInputChange}
+       placeholder="Any internal-only remarks for R&D, QC, or Purchase"
+      />
       <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
       <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
       <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable} onChange={handleInputChange} />
@@ -1464,7 +1455,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill RM category, generated code, INCI name, and trade/commercial name on this step before continuing. On submit, at least one vendor with a positive unit price is required."
+                  nextDisabledTitle="Fill all required step-0 fields (category, code, INCI, trade/commercial name, grade, compliance, and taxable HSN/GST when applicable) before continuing."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}

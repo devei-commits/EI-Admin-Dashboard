@@ -212,7 +212,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [labelError, setLabelError] = useState<string | null>(null);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
   const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
-  const [unitsPerBox, setUnitsPerBox] = useState(String(grn.unitsPerBox ?? ''));
   const [unitsPerBoxListStr, setUnitsPerBoxListStr] = useState<string[]>([]);
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
   const [locationZone, setLocationZone] = useState(grn.locationZone ?? '');
@@ -239,10 +238,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const remainingUnitsForSelectedLine = selectedLineItem ? Math.max(0, selectedLineItem.rcvdQty - totalUnitsAllocated) : 0;
   const overAllocatedUnits = selectedLineItem ? Math.max(0, totalUnitsAllocated - selectedLineItem.rcvdQty) : 0;
 
-  /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
-  const needsGenerateForSelection = Boolean(
-    selectedLineItemId && (!labels || labels.length === 0),
-  );
+  /** Show primary Generate when there are no labels yet. */
+  const needsGenerateForSelection = Boolean(!labels || labels.length === 0);
   const labeledLineItemCodes = useMemo(() => {
     const set = new Set<string>();
     for (const li of editedLineItems) {
@@ -272,10 +269,10 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   useEffect(() => {
     setUnitsPerBoxListStr((prev) => {
       const n = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-      const next = Array.from({ length: n }, (_, i) => prev[i] ?? unitsPerBox ?? '0');
+      const next = Array.from({ length: n }, (_, i) => prev[i] ?? '0');
       return next;
     });
-  }, [noOfBoxes, unitsPerBox]);
+  }, [noOfBoxes]);
 
   useEffect(() => {
     if (!labels || labels.length === 0) return;
@@ -317,9 +314,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       return;
     }
     const legacyCode = parseItemCodeFromGeneratedLabels(grn.generatedLabels ?? null);
-    if (!legacyCode) return;
-    const match = editedLineItems.find((li) => String(li.itemCode).trim().toLowerCase() === legacyCode.trim().toLowerCase());
-    if (match) setSelectedLineItemId(match.id);
+    if (legacyCode) {
+      const match = editedLineItems.find((li) => String(li.itemCode).trim().toLowerCase() === legacyCode.trim().toLowerCase());
+      if (match) {
+        setSelectedLineItemId(match.id);
+        return;
+      }
+    }
+    if (editedLineItems.length > 0) setSelectedLineItemId(editedLineItems[0].id);
   }, [grn.id, grn.generatedLabels, editedLineItems, selectedLineItemId]);
 
   useEffect(() => {
@@ -413,7 +415,6 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnDate: grnDate || undefined,
         lineItems: editedLineItems,
         noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
-        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
         locationPrefix: locationPrefix || undefined,
         locationZone: locationZone || undefined,
         grnBatchMfg: grnBatchMfg || undefined,
@@ -485,10 +486,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       setLabelError('Assign this GRN (Assigned To) before generating labels.');
       return;
     }
-    if (!selectedLineItemId || !selectedLineItem) {
-      setLabelError('Please select a product / line item before generating labels.');
-      return;
-    }
+    const targetLineItem = selectedLineItem ?? editedLineItems[0] ?? null;
     if (!locationPrefix.trim()) {
       setLabelError(
         locationSource === 'facility'
@@ -507,9 +505,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     }
     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
     const boxUnitsList = Array.from({ length: numBoxes }, (_, i) => Math.max(0, parseInt(unitsPerBoxListStr[i] || '0', 10) || 0));
-    if (selectedLineItem != null) {
+    if (targetLineItem != null) {
       const pack = validateUnitsPerBoxList(
-        selectedLineItem.rcvdQty,
+        targetLineItem.rcvdQty,
         boxUnitsList
       );
       if (!pack.ok) {
@@ -528,24 +526,25 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       }
       const res = await generateGRNLabels(grn.id, {
         noOfBoxes: numBoxes,
-        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
         unitsPerBoxList: boxUnitsList,
         locationPrefix: locationPrefix || undefined,
         locationZone: locationZone || undefined,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
-        productName: selectedLineItem?.item || undefined,
-        itemCode: selectedLineItem?.itemCode || undefined,
+        productName: targetLineItem?.item || undefined,
+        itemCode: targetLineItem?.itemCode || undefined,
       });
       setLabels(res.labels);
       setLabelsGenerated(true);
-      const selectedCodeNorm = String(selectedLineItem?.itemCode || '').trim().toLowerCase();
-      const nextLineItems = editedLineItems.map((li) =>
-        String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
-          ? { ...li, labelGenerated: true, generatedLabels: res.labels }
-          : li
-      );
+      const selectedCodeNorm = String(targetLineItem?.itemCode || '').trim().toLowerCase();
+      const nextLineItems = selectedCodeNorm
+        ? editedLineItems.map((li) =>
+            String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
+              ? { ...li, labelGenerated: true, generatedLabels: res.labels }
+              : li
+          )
+        : editedLineItems;
       setEditedLineItems(nextLineItems);
       try {
         await updateGRN(grn.id, { lineItems: nextLineItems });
@@ -983,38 +982,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               </div>
             )}
 
-            {/* Product / Line Item Selection */}
-            {editedLineItems.length > 0 && (
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Select product / line item <span className="text-red-500">*</span></label>
-                <select
-                  value={selectedLineItemId}
-                  onChange={(e) => {
-                    setSelectedLineItemId(e.target.value);
-                    setLabelError(null);
-                  }}
-                  className={`w-full px-2 py-1.5 border rounded text-sm ${!selectedLineItemId ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`}
-                >
-                  <option value="">— Select a product —</option>
-                  {editedLineItems.map((li) => (
-                    <option key={li.id} value={li.id}>{li.item} ({li.itemCode}) — PO Qty: {li.poQty}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   No of boxes <span className="text-red-500">*</span>
                 </label>
                 <input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Units/box (full carton) <span className="text-red-500">*</span>
-                </label>
-                <input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
               <div className="col-span-2 md:col-span-3">
                 <label className="block text-xs font-medium text-slate-600 mb-1">
@@ -1041,6 +1014,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   <p className={`text-xs mt-2 ${overAllocatedUnits > 0 ? 'text-red-600' : remainingUnitsForSelectedLine > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     Received: <strong>{selectedLineItem.rcvdQty}</strong> units · Assigned in boxes: <strong>{totalUnitsAllocated}</strong> · Remaining: <strong>{remainingUnitsForSelectedLine}</strong>
                     {overAllocatedUnits > 0 ? ` · Over by ${overAllocatedUnits}` : ''}
+                    {overAllocatedUnits === 0 && remainingUnitsForSelectedLine > 0 ? ' · Warning: fill remaining units before generating labels.' : ''}
                   </p>
                 )}
               </div>
@@ -1216,7 +1190,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   <button
                     type="button"
                     onClick={() => void runGenerateLabels()}
-                    disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
+                    disabled={generatingLabels || saving || qcStatus !== 'Passed'}
                     className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                   >
                     {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}

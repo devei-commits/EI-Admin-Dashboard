@@ -192,6 +192,38 @@ function normalizeMaterialCode(code: string): string {
     .replace(/^pm[-_]?/i, '');
 }
 
+function parseUnitCount(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return Math.max(0, Math.round(value));
+  const n = parseInt(String(value ?? '').replace(/[^\d.-]/g, ''), 10);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function parseKgCount(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return Math.max(0, value);
+  const n = parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+/** For PIs Extracted table: planned units created from saved custom batch kg, else fallback from batch count × batch size. */
+function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number; remainingUnits: number } {
+  const orderUnits = parseUnitCount(order.orderQty);
+  if (orderUnits <= 0) return { createdUnits: 0, remainingUnits: 0 };
+
+  const totalKg = parseKgCount(order.totalKg);
+  const kgPerUnit = totalKg > 0 ? totalKg / orderUnits : 0;
+
+  const customBatchKg = Array.isArray(order.customBatches)
+    ? order.customBatches.reduce((sum, b) => sum + (Number(b?.sizeKg) || 0), 0)
+    : 0;
+  const fallbackBatchKg = (Number(order.batchCount) || 0) * (parseKgCount(order.batchSize) || 0);
+  const plannedKg = customBatchKg > 0 ? customBatchKg : fallbackBatchKg;
+
+  const createdUnitsRaw = kgPerUnit > 0 ? Math.round(plannedKg / kgPerUnit) : 0;
+  const createdUnits = Math.min(orderUnits, Math.max(0, createdUnitsRaw));
+  const remainingUnits = Math.max(0, orderUnits - createdUnits);
+  return { createdUnits, remainingUnits };
+}
+
 function toKg(quantity: number, unit?: string): number {
   const qty = Number(quantity) || 0;
   const normalizedUnit = String(unit ?? '').trim().toUpperCase();
@@ -1361,7 +1393,7 @@ const Planning = () => {
   // Items Involved — from confirmed BOMs only (API); also used for tab stats
   const { data: itemsInvolvedRows = [], isLoading: itemsInvolvedLoading } = useQuery({
     queryKey: ['planning', 'items-involved'],
-    queryFn: fetchItemsInvolved,
+    queryFn: () => fetchItemsInvolved({ includeZeroRequired: true }),
     enabled: activeMainTab === 'items-involved',
   });
   const { data: allPlanningBatches = [] } = useQuery({
@@ -2352,6 +2384,7 @@ const Planning = () => {
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
       addToast('success', 'Batch plan saved. Each batch has its own BOM copy for reuse.');
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save batch plan');
@@ -2407,6 +2440,7 @@ const Planning = () => {
       }
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
       addToast(
         'success',
         `BOM confirmed for B-${String(selectedBatchPlanSequence).padStart(2, '0')} — ${selectedSOForBatch.productName}. Open Batch Plan to allocate units and send this batch.`
@@ -2453,6 +2487,7 @@ const Planning = () => {
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
       addToast('success', `${toSend.length} batch${toSend.length !== 1 ? 'es' : ''} sent to Production`);
     } catch (e) {
@@ -2511,6 +2546,7 @@ const Planning = () => {
     queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
     queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
     queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+    queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
     queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
 
     setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
@@ -2525,6 +2561,9 @@ const Planning = () => {
       if (sendToProductionConfirm.source === 'plan-modal') {
         const batchIndex = sendToProductionConfirm.batchIndex;
         const { batchLabel } = await performSendBatchFromPlanModal(batchIndex);
+        // After confirming send from Plan Batches flow, close related planning/batch popups.
+        setPlanBatchesModalOpen(false);
+        setBatchForDetailModal(null);
         setSendToProductionConfirm(null);
         setSendToProductionSuccess({
           title: 'Batch created & confirmed',
@@ -2937,6 +2976,7 @@ const Planning = () => {
                         availItems.find((it) => String(it.productName || '').trim() === String(order.productName || '').trim()) ??
                         (availItems.length === 1 ? availItems[0] : null);
                       const availabilityTier = getPisAvailabilityTier(availabilityItem, planningAvailabilityLoading);
+                      const { createdUnits, remainingUnits } = getCreatedAndRemainingUnits(order);
 
                       return (
                         <tr
@@ -2955,6 +2995,10 @@ const Planning = () => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{order.orderQty}</div>
+                            <div className="text-xs text-gray-600">
+                              Created: <span className="font-semibold text-emerald-700">{createdUnits.toLocaleString()}</span>
+                              {' '}· Remaining: <span className="font-semibold text-amber-700">{remainingUnits.toLocaleString()}</span>
+                            </div>
                             <div className="text-xs text-gray-500">{order.totalKg} total</div>
                           </td>
                           <td className="px-4 py-3">

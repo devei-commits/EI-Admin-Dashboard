@@ -45,7 +45,9 @@ const PM_REQUIRED_FIELDS: Array<{
   { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 0 — Item Name is required' },
   { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 0 — Level is required' },
   { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 0 — Category is required' },
-  { id: 'specNominal', label: 'Nominal Volume', section: 1, toastMessage: 'Step 1 — Nominal Volume is required' },
+  { id: 'matBody', label: 'Body Material', section: 0, toastMessage: 'Step 0 — Body Material is required' },
+  { id: 'matClosure', label: 'Closure Material', section: 0, toastMessage: 'Step 0 — Closure Material is required' },
+  { id: 'specNominal', label: 'Nominal Volume', section: 0, toastMessage: 'Step 0 — Nominal Volume is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -203,15 +205,6 @@ function parsePmVendorTierPrice(raw: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
-/** New PM registrations require at least one vendor rate (parallel to PR MRP). */
-function pmVendorsHavePositivePrice(vendors: PmCommercialVendor[]): boolean {
-  return vendors.some((v) => {
-    const primary = Number(v.price ?? v.unitPrice ?? 0);
-    if (primary > 0) return true;
-    return (v.tiers ?? []).some((t) => parsePmVendorTierPrice(t.price) > 0);
-  });
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 const PackagingRefactored: React.FC = () => {
   const { addItem: _addItem } = useItems(); // BPR submit posts to API; addItem unused here
@@ -235,6 +228,7 @@ const PackagingRefactored: React.FC = () => {
   const [formData, setFormData] = useState(createEmptyPackagingFormData);
 
   const isNewPm = !existingPmId;
+  const taxIsTaxable = formData.pkgTaxPreference === 'Taxable';
   const canAdvancePastPrimary =
     !isNewPm ||
     Boolean(
@@ -242,7 +236,11 @@ const PackagingRefactored: React.FC = () => {
         (formData.itemCode || generatedCode)?.trim() &&
         formData.name?.trim() &&
         formData.level?.trim() &&
-        formData.itemCategory?.trim()
+        formData.itemCategory?.trim() &&
+        formData.matBody?.trim() &&
+        formData.matClosure?.trim() &&
+        formData.specNominal?.trim() &&
+        (!taxIsTaxable || formData.pkgHsn?.trim())
     );
   const lockPrimaryFields = !!existingPmId;
 
@@ -555,7 +553,7 @@ const PackagingRefactored: React.FC = () => {
       const rawValue = formData[field.id as keyof typeof formData];
       const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
       if (!value) {
-        const stepNo = field.section + 1;
+        const stepNo = field.section;
         setErrors((prev) => ({
           ...prev,
           [field.id]: `Step ${stepNo} — ${field.label} is required`,
@@ -576,15 +574,6 @@ const PackagingRefactored: React.FC = () => {
           'When Tax Preference is Taxable, enter a valid HSN code (Step 0). Exempt / NonGST can leave HSN blank.'
       );
       setCurrentSection(0);
-      return;
-    }
-    if (!existingPmId && !pmVendorsHavePositivePrice(formData.vendors)) {
-      setErrors((prev) => ({
-        ...prev,
-        vendorCommercial: 'Vendors & Commercial — At least one vendor with a positive per-piece price is required',
-      }));
-      addToast('error', 'Add at least one vendor with a positive unit price (Vendors & Commercial section).');
-      setCurrentSection(6);
       return;
     }
     const payload = buildPayload();
@@ -896,6 +885,40 @@ const PackagingRefactored: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {/* Required material and fill spec for new PM */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Required Material & Fill</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Body Material"
+                  id="matBody"
+                  value={formData.matBody}
+                  onChange={handleInputChange}
+                  placeholder="e.g. PET, Glass, HDPE"
+                  requiredMark
+                  error={errors.matBody}
+                />
+                <InputField
+                  label="Closure Material"
+                  id="matClosure"
+                  value={formData.matClosure}
+                  onChange={handleInputChange}
+                  placeholder="e.g. PP cap, Pump, Dropper"
+                  requiredMark
+                  error={errors.matClosure}
+                />
+                <InputField
+                  label="Nominal Volume"
+                  id="specNominal"
+                  value={formData.specNominal}
+                  onChange={handleInputChange}
+                  placeholder="Declared fill volume (e.g. 50 ml)"
+                  requiredMark
+                  error={errors.specNominal}
+                />
+              </div>
+            </div>
           </div>
         );
 
@@ -905,20 +928,6 @@ const PackagingRefactored: React.FC = () => {
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Body Material"
-                  id="matBody"
-                  value={formData.matBody}
-                  onChange={handleInputChange}
-                  placeholder="e.g. PET, Glass, HDPE"
-                />
-                <InputField
-                  label="Closure Material"
-                  id="matClosure"
-                  value={formData.matClosure}
-                  onChange={handleInputChange}
-                  placeholder="e.g. PP cap, Pump, Dropper"
-                />
                 <InputField
                   label="Inner Material"
                   id="matInner"
@@ -942,15 +951,6 @@ const PackagingRefactored: React.FC = () => {
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Nominal Volume"
-                  id="specNominal"
-                  value={formData.specNominal}
-                  onChange={handleInputChange}
-                  placeholder="Declared fill volume (e.g. 50 ml)"
-                  requiredMark
-                  error={errors.specNominal}
-                />
                 <InputField
                   label="Brimful Volume"
                   id="specBrimful"
@@ -1595,7 +1595,7 @@ const PackagingRefactored: React.FC = () => {
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete category, code, name, level, and item category on this section first. On submit, at least one vendor with a positive unit price is required.'
+                              ? 'Complete all required step-0 fields first (category, code, item name, level, category, body material, closure material, nominal volume, and taxable HSN when applicable).'
                               : undefined
                           }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"

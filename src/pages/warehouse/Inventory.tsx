@@ -971,7 +971,7 @@ const WarehouseInventory = () => {
   const [rackLocations, setRackLocations] = useState<RackLocationEntry[]>([]);
   const [rackLocationsLoading, setRackLocationsLoading] = useState(false);
   /** Planning Items Involved totals keyed as RM-{id} / PM-{id} (matches warehouse sourceId). */
-  const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { totalRequired: number; unit: string }>>(
+  const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { plannedQty: number; totalRequired: number; unit: string }>>(
     () => new Map()
   );
   // Fetch rack locations when user opens WH/ML1/ML2 location popover (click)
@@ -1016,19 +1016,21 @@ const WarehouseInventory = () => {
 
   useEffect(() => {
     let cancelled = false;
-    fetchItemsInvolved()
+    fetchItemsInvolved({ includeZeroRequired: true })
       .then((rows) => {
         if (cancelled) return;
-        const m = new Map<string, { totalRequired: number; unit: string }>();
+        const m = new Map<string, { plannedQty: number; totalRequired: number; unit: string }>();
         for (const r of rows) {
           if (r.type === 'RM' && r.raw_material_id != null) {
             m.set(`RM-${Number(r.raw_material_id)}`, {
+              plannedQty: Number(r.plannedQty) || 0,
               totalRequired: Number(r.totalRequired) || 0,
               unit: String(r.unit || 'KG'),
             });
           }
           if (r.type === 'PM' && r.pack_material_id != null) {
             m.set(`PM-${Number(r.pack_material_id)}`, {
+              plannedQty: Number(r.plannedQty) || 0,
               totalRequired: Number(r.totalRequired) || 0,
               unit: String(r.unit || 'PCS'),
             });
@@ -1702,16 +1704,16 @@ const WarehouseInventory = () => {
                             {plan ? (
                               item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Number(plan.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
+                                  {Number(plan.plannedQty).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
                                 </div>
                               ) : (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Math.round(plan.totalRequired).toLocaleString()}{' '}
+                                  {Math.round(plan.plannedQty).toLocaleString()}{' '}
                                   <span className="text-xs font-normal text-gray-500">pcs (planning)</span>
                                 </div>
                               )
                             ) : (
-                              <span className="text-sm text-gray-400">—</span>
+                              <span className="text-sm text-gray-400">0</span>
                             )}
                           </td>
                           <td className="px-4 py-3">

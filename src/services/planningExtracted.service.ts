@@ -314,9 +314,10 @@ export interface ItemsInvolvedRow {
   status?: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
 }
 
-export async function fetchItemsInvolved(): Promise<ItemsInvolvedRow[]> {
+export async function fetchItemsInvolved(opts?: { includeZeroRequired?: boolean }): Promise<ItemsInvolvedRow[]> {
   try {
-    const res = await api.get<ItemsInvolvedRow[]>('/api/v1/planning-extracted/items-involved');
+    const includeZero = opts?.includeZeroRequired ? '?includeZeroRequired=1' : '';
+    const res = await api.get<ItemsInvolvedRow[]>(`/api/v1/planning-extracted/items-involved${includeZero}`);
     const data = res?.data ?? res;
     return Array.isArray(data) ? data : [];
   } catch {

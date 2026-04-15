@@ -400,13 +400,86 @@ const getInitialMainTab = (searchParams: URLSearchParams): MainTab => (isMainTab
 const getInitialSideSection = (searchParams: URLSearchParams): SideSection => (isSideSection(searchParams.get('section')) ? (searchParams.get('section') as SideSection) : 'Overview');
 
 const deriveStockCheckStatusForRequest = (request: ProcurementRequest): StockCheckStatus => {
-  if (request.status === 'New' || request.status === 'Quoted') {
+  const sc = String(request.stockCheckStatus ?? '').trim();
+  if (sc) {
+    if (sc.toLowerCase() === 'completed') return 'Completed';
+    if (sc.toLowerCase() === 'in progress') return 'In Progress';
     return 'Assigned';
   }
-  if (request.status === 'PO Draft') {
-    return 'In Progress';
+  // Do not infer stock-check completion from procurement request lifecycle.
+  // Warehouse status is the source of truth for stock-check progress.
+  return 'Assigned';
+};
+
+const isStockCheckPendingForRequest = (request: ProcurementRequest): boolean => {
+  const sc = String(request.stockCheckStatus ?? '').trim().toLowerCase();
+  return sc === 'pending' || sc === 'requested' || sc === 'in progress';
+};
+
+const parseStockCheckOutcome = (notes: string | null | undefined): 'all_ok' | 'not_ok' | null => {
+  if (!notes || !notes.trim()) return null;
+  try {
+    const parsed = JSON.parse(notes) as { outcome?: string };
+    if (parsed?.outcome === 'all_ok' || parsed?.outcome === 'not_ok') return parsed.outcome;
+    return null;
+  } catch {
+    return null;
   }
-  return 'Completed';
+};
+
+const parseStockCheckNotesLines = (
+  notes: string | null | undefined,
+): Array<{
+  itemCode?: string;
+  itemName?: string;
+  physicalQty?: number;
+  updatedStockQty?: number;
+  zone?: string;
+  rack?: string;
+  batchNo?: string;
+}> => {
+  if (!notes || !notes.trim()) return [];
+  try {
+    const parsed = JSON.parse(notes) as { lines?: unknown[] };
+    return Array.isArray(parsed?.lines) ? (parsed.lines as Array<any>) : [];
+  } catch {
+    return [];
+  }
+};
+
+type IlPriceHistoryEntry = {
+  oldPrice: number;
+  newPrice: number;
+  changedAt: string;
+  changedBy?: string | null;
+  reason?: string | null;
+};
+
+const parseIlTierHistory = (tierNote: unknown): IlPriceHistoryEntry[] => {
+  const raw = String(tierNote ?? '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { history?: unknown[] };
+    if (!Array.isArray(parsed?.history)) return [];
+    return parsed.history
+      .map((h) => {
+        if (!h || typeof h !== 'object') return null;
+        const oldPrice = Number((h as { oldPrice?: unknown }).oldPrice);
+        const newPrice = Number((h as { newPrice?: unknown }).newPrice);
+        const changedAt = String((h as { changedAt?: unknown }).changedAt ?? '').trim();
+        if (!Number.isFinite(oldPrice) || !Number.isFinite(newPrice)) return null;
+        return {
+          oldPrice,
+          newPrice,
+          changedAt: changedAt || new Date().toISOString(),
+          changedBy: String((h as { changedBy?: unknown }).changedBy ?? '').trim() || null,
+          reason: String((h as { reason?: unknown }).reason ?? '').trim() || null,
+        };
+      })
+      .filter((x): x is IlPriceHistoryEntry => x != null);
+  } catch {
+    return [];
+  }
 };
 
 const getInitialLiveState = (): LiveProcurementState => {
@@ -618,6 +691,7 @@ const Procurement: React.FC = () => {
     moqMax: number | null;
     pricePerUnit: number;
     paymentTerms: string;
+    tierNote: string;
   } | null>(null);
   const [editItemsListLineSaving, setEditItemsListLineSaving] = useState(false);
   const [editItemsListLineForm, setEditItemsListLineForm] = useState<{
@@ -774,7 +848,8 @@ const Procurement: React.FC = () => {
       const res = await fetchWarehouseInventory();
       return res.success ? res.data : null;
     },
-    enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest,
+    // Needed for Stock Summary in PR View modal as well.
+    enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest || !!selectedRequest,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -1568,6 +1643,7 @@ const Procurement: React.FC = () => {
       __moqMin: number;
       __moqMax: number | null;
       __paymentTerms: string;
+      __tierNote: string;
     };
     const bucket = new Map<string, { vendor: string; vendorId: string; requestType: RequestType; lines: TmpLine[]; terms?: string }>();
     const add = (type: RequestType, item: PriceListItemPage) => {
@@ -1607,6 +1683,8 @@ const Procurement: React.FC = () => {
             __moqMin: moq,
             __moqMax: tier.moq_max ?? null,
             __paymentTerms: String((rate as any).payment_terms ?? ''),
+            __tierNote: String((tier as { note?: unknown }).note ?? ''),
+            priceHistory: parseIlTierHistory((tier as { note?: unknown }).note),
           });
         });
         bucket.set(key, existing);
@@ -1669,6 +1747,7 @@ const Procurement: React.FC = () => {
       __moqMin?: number;
       __moqMax?: number | null;
       __paymentTerms?: string;
+      __tierNote?: string;
     };
     const itemsListId = Number(meta.__itemsListId ?? 0) || 0;
     const rateId = Number(meta.__rateId ?? 0) || 0;
@@ -1693,6 +1772,7 @@ const Procurement: React.FC = () => {
       moqMax,
       pricePerUnit: Number(line.pricePerUnit ?? 0) || 0,
       paymentTerms,
+      tierNote: String(meta.__tierNote ?? ''),
     });
     const staged = paymentTermsToStagedFields(paymentTerms || '');
     setEditItemsListLineForm({
@@ -1730,6 +1810,23 @@ const Procurement: React.FC = () => {
       addToast('warning', 'Enter a valid price.');
       return;
     }
+    const existingHistory = parseIlTierHistory(editItemsListLineTarget.tierNote);
+    const appendedHistory =
+      Math.abs((Number(editItemsListLineTarget.pricePerUnit) || 0) - nextPrice) < 1e-9
+        ? existingHistory
+        : [
+            ...existingHistory,
+            {
+              oldPrice: Number(editItemsListLineTarget.pricePerUnit) || 0,
+              newPrice: nextPrice,
+              changedAt: new Date().toISOString(),
+              reason: 'Edited from Procurement -> Quotations',
+            } satisfies IlPriceHistoryEntry,
+          ];
+    const nextTierNote = JSON.stringify({
+      source: 'procurement-il-edit',
+      history: appendedHistory,
+    });
     setEditItemsListLineSaving(true);
     try {
       // Update payment terms at vendor-rate level (optional).
@@ -1745,12 +1842,47 @@ const Procurement: React.FC = () => {
       const resTier = await updateItemListTier(String(itemsListId), rateId, tierId, {
         moq_max: nextMoqMax,
         price_per_unit: nextPrice,
-        note: 'Edited from Procurement → Quotations',
+        note: nextTierNote,
       });
       if (!resTier.success) {
         addToast('error', 'Failed to update tier.');
         return;
       }
+
+      // Keep default rate aligned with edited tier for downstream consumers.
+      await updateItemListRate(String(itemsListId), rateId, { default_rate: nextPrice });
+
+      // Optimistically update cached items-list page to avoid stale IL card rows.
+      const patchItemsListPage = (pageType: 'RM' | 'PM') => {
+        queryClient.setQueryData<PriceListItemPage[]>(['items-list-page', pageType], (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map((item) => {
+            const currentItemsListId = Number(item.itemsListId ?? 0) || 0;
+            if (currentItemsListId !== itemsListId) return item;
+            return {
+              ...item,
+              vendorRates: (item.vendorRates ?? []).map((rate) => {
+                if (Number(rate.id) !== rateId) return rate;
+                return {
+                  ...rate,
+                  tiers: (rate.tiers ?? []).map((tier) =>
+                    Number(tier.id) === tierId
+                      ? {
+                          ...tier,
+                          price_per_unit: nextPrice,
+                          moq_max: nextMoqMax,
+                          note: nextTierNote,
+                        }
+                      : tier,
+                  ),
+                };
+              }),
+            };
+          });
+        });
+      };
+      patchItemsListPage('RM');
+      patchItemsListPage('PM');
 
       await queryClient.invalidateQueries({
         predicate: (q) =>
@@ -1759,6 +1891,8 @@ const Procurement: React.FC = () => {
           q.queryKey[0].startsWith('items-list'),
         refetchType: 'all',
       });
+      await queryClient.refetchQueries({ queryKey: ['items-list-page', 'RM'], type: 'active' });
+      await queryClient.refetchQueries({ queryKey: ['items-list-page', 'PM'], type: 'active' });
       addToast('success', 'Saved to Items List.');
       setEditItemsListLineTarget(null);
     } finally {
@@ -2560,6 +2694,11 @@ const Procurement: React.FC = () => {
     requestType: RequestType,
     preferredQuotationId?: string
   ): Promise<boolean> => {
+    const reqForAction = requests.find((r) => r.id === requestId);
+    if (reqForAction && isStockCheckPendingForRequest(reqForAction)) {
+      addToast('warning', 'Stock check is pending. Draft PO creation is locked until warehouse sends stock status.');
+      return false;
+    }
     if (!items.length) {
       addToast('warning', 'Add at least one line item to the request to create a draft PO.');
       return false;
@@ -2892,6 +3031,12 @@ const Procurement: React.FC = () => {
       return;
     }
 
+    const linkedReq = requests.find((r) => r.id === target.requestId);
+    if (linkedReq && isStockCheckPendingForRequest(linkedReq)) {
+      addToast('warning', 'Stock check is pending. PO release is locked until warehouse completes it.');
+      return;
+    }
+
     setReleasePOTarget(target);
     setReleaseMethod('Email + Portal');
     setReleaseNotes('');
@@ -3029,6 +3174,25 @@ const Procurement: React.FC = () => {
       if (import.meta.env.DEV && updateResult.data?.items) {
         console.log('[EI po-qty debug] release ← PUT purchase-orders response items', updateResult.data.items);
       }
+      const backendPoIdNormalized = String(draft.backendPoId).replace(/^PO-/, '').trim();
+      const poReleasedAt = new Date().toISOString().slice(0, 10);
+      const releaseNote = [
+        releaseMethod ? `Released via ${releaseMethod}` : '',
+        releaseNotes?.trim() || '',
+      ]
+        .filter(Boolean)
+        .join(' | ') || 'PO released from Procurement';
+      const trackingResult = await updatePoTracking(backendPoIdNormalized, {
+        poReleasedAt,
+        poReleasedNote: releaseNote,
+      });
+      if (!trackingResult.success) {
+        const err = trackingResult.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'PO released, but tracking timeline update failed'));
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoIdNormalized] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       // PO lines + Released status are persisted — warehouse inventory PO Qty column reads from purchase_orders
       if (import.meta.env.DEV) {
         console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (after PO Released + items saved)');
@@ -3544,9 +3708,23 @@ const Procurement: React.FC = () => {
         setEditingQuoteLine(null);
         return;
       }
+      const nowIso = new Date().toISOString();
       const nextItems = quote.lines.map((l, idx) => {
         const qtyNum = parseFloat(String(l.qty ?? '').replace(/[^\d.]/g, '')) || 0;
         const price = idx === lineIndex ? nextPrice : Number(l.pricePerUnit) || 0;
+        const existingHistory = Array.isArray(l.priceHistory) ? l.priceHistory : [];
+        const nextHistory =
+          idx === lineIndex
+            ? [
+                ...existingHistory,
+                {
+                  oldPrice: Number(l.pricePerUnit) || 0,
+                  newPrice: nextPrice,
+                  changedAt: nowIso,
+                  reason: 'Updated from quotation line edit',
+                },
+              ]
+            : existingHistory;
         return {
           itemId: l.itemId ?? '',
           name: l.item ?? '',
@@ -3557,7 +3735,7 @@ const Procurement: React.FC = () => {
           leadTimeDays: l.leadTimeDays ?? null,
           raw_material_id: l.raw_material_id ?? null,
           pack_material_id: l.pack_material_id ?? null,
-          priceHistory: l.priceHistory ?? [],
+          priceHistory: nextHistory,
         };
       });
       setSavingQuoteLine(true);
@@ -4282,6 +4460,19 @@ const Procurement: React.FC = () => {
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusClass[req.status]}`}>
                                       {req.status}
                                     </span>
+                                    {req.stockCheckStatus ? (
+                                      <span
+                                        className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
+                                          isStockCheckPendingForRequest(req)
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : String(req.stockCheckStatus).trim().toLowerCase() === 'completed'
+                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                              : 'bg-sky-50 text-sky-700 border-sky-200'
+                                        }`}
+                                      >
+                                        Stock Check: {req.stockCheckStatus}
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
                                     <span>Req. {dueDateDisplay}</span>
@@ -4450,7 +4641,35 @@ const Procurement: React.FC = () => {
                                     View
                                   </button>
                                   <button
-                                    onClick={() => openStockCheckModal(req)}
+                                    onClick={async () => {
+                                      const alreadyRequested = Boolean(String(req.stockCheckStatus ?? '').trim());
+                                      if (!alreadyRequested) {
+                                        const res = await updateProcurementRequestApi(req.id, {
+                                          stockCheckAssignedTo: req.stockCheckAssignedTo || 'Warehouse Team',
+                                          stockCheckStatus: 'Pending',
+                                          stockCheckNotes:
+                                            req.stockCheckNotes && String(req.stockCheckNotes).trim()
+                                              ? req.stockCheckNotes
+                                              : JSON.stringify({
+                                                  version: 1,
+                                                  requestedAt: new Date().toISOString(),
+                                                  requestedBy: req.requestedBy ?? 'Procurement Team',
+                                                }),
+                                        });
+                                        if (!res.success) {
+                                          addToast(
+                                            'error',
+                                            typeof res.error === 'string'
+                                              ? res.error
+                                              : (res.error as { message?: string } | null)?.message ?? 'Failed to send stock check request',
+                                          );
+                                          return;
+                                        }
+                                        await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                                        addToast('success', 'Stock check request sent to Warehouse.');
+                                      }
+                                      openStockCheckModal(req);
+                                    }}
                                     className="px-3 py-1.5 rounded-lg border border-cyan-400 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition-all"
                                   >
                                     Stock Check
@@ -4465,6 +4684,10 @@ const Procurement: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={() => {
+                                      if (isStockCheckPendingForRequest(req)) {
+                                        addToast('warning', 'Stock check is pending. Wait for warehouse response before release actions.');
+                                        return;
+                                      }
                                       if (req.itemDetails && req.itemDetails.length > 0) {
                                         const item = req.itemDetails[0];
                                         const relItem: ReleaseToPlannedItem = {
@@ -4650,6 +4873,10 @@ const Procurement: React.FC = () => {
                                     return (
                                       <button
                                         onClick={() => {
+                                          if (isStockCheckPendingForRequest(req)) {
+                                            addToast('warning', 'Stock check is pending. PO release is locked until warehouse completes it.');
+                                            return;
+                                          }
                                           if (linkedDraft?.backendPoId) {
                                             openReleasePOModal(linkedDraft.id);
                                           } else {
@@ -4738,6 +4965,19 @@ const Procurement: React.FC = () => {
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                           <span className="font-semibold text-slate-900">{line.item}</span>
+                                          {(() => {
+                                            const hist = Array.isArray(line.priceHistory) ? line.priceHistory : [];
+                                            const latest = hist.length > 0 ? hist[hist.length - 1] : null;
+                                            if (!latest) return null;
+                                            const oldP = Number(latest.oldPrice);
+                                            const newP = Number(latest.newPrice);
+                                            if (!Number.isFinite(oldP) || !Number.isFinite(newP) || Math.abs(oldP - newP) < 1e-9) return null;
+                                            return (
+                                              <p className="text-[10px] text-amber-700 mt-0.5">
+                                                Previous: ₹{oldP.toLocaleString('en-IN')} {'->'} Now: ₹{newP.toLocaleString('en-IN')}
+                                              </p>
+                                            );
+                                          })()}
                                           {!!line.priceHistory?.length && (
                                             <p className="text-[10px] text-slate-500 mt-0.5">
                                               {line.priceHistory.length} price change{line.priceHistory.length !== 1 ? 's' : ''}
@@ -6364,10 +6604,15 @@ const Procurement: React.FC = () => {
             const atVal = s.useRef ? data.orderTrackingRef : data[s.atKey];
             const noteVal = data[s.noteKey];
             const done = !!atVal;
-            return { stage: s.label, done, timestamp: typeof atVal === 'string' ? atVal : null, note: !s.useRef ? (noteVal ?? null) : null };
+            return {
+              stage: s.label,
+              done,
+              timestamp: typeof atVal === 'string' ? atVal : null,
+              note: !s.useRef ? (noteVal ?? null) : null,
+            };
           })
           : null;
-        const timelineSteps = timelineFromApi ?? (po.timeline ?? []);
+        const timelineSteps = timelineFromApi ?? [];
 
         const handleSaveTracking = async () => {
           if (!po.backendPoId) return;
@@ -6508,7 +6753,14 @@ const Procurement: React.FC = () => {
                           </div>
                           <div className="pb-1">
                             <p className={`text-sm font-bold ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>{step.stage}</p>
-                            {step.timestamp && <p className="text-[11px] text-slate-500 mt-0.5">{step.timestamp}</p>}
+                            {step.timestamp && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {(() => {
+                                  const d = new Date(String(step.timestamp));
+                                  return Number.isNaN(d.getTime()) ? String(step.timestamp) : d.toLocaleString('en-IN');
+                                })()}
+                              </p>
+                            )}
                             {step.note && <p className="text-xs text-slate-600 mt-1 leading-relaxed">{step.note}</p>}
                           </div>
                         </div>
@@ -7221,7 +7473,8 @@ const Procurement: React.FC = () => {
         const requestQuotedVendors = Array.from(
           new Set(requestItemQuotes.map((q) => q.vendor).filter((v) => v.trim().length > 0))
         ).sort((a, b) => a.localeCompare(b));
-        const canReleasePO = req.status === 'PO Draft';
+        const stockCheckPending = isStockCheckPendingForRequest(req);
+        const canReleasePO = req.status === 'PO Draft' && !stockCheckPending;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedRequest(null)}>
@@ -7264,6 +7517,28 @@ const Procurement: React.FC = () => {
                     }`}>{req.status}</span>
                   <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-violet-50 text-violet-700 border-violet-200'
                     }`}>{req.type}</span>
+                  {req.stockCheckStatus ? (
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
+                        isStockCheckPendingForRequest(req)
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : String(req.stockCheckStatus).trim().toLowerCase() === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-sky-50 text-sky-700 border-sky-200'
+                      }`}
+                    >
+                      Stock Check: {req.stockCheckStatus}
+                    </span>
+                  ) : null}
+                  {parseStockCheckOutcome(req.stockCheckNotes) === 'not_ok' ? (
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                      Warehouse: Not OK
+                    </span>
+                  ) : parseStockCheckOutcome(req.stockCheckNotes) === 'all_ok' ? (
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      Warehouse: All OK
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -7487,19 +7762,29 @@ const Procurement: React.FC = () => {
                     <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Summary</h3>
                     <div className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
                       {(() => {
+                        const stockCheckCompleted =
+                          String(req.stockCheckStatus ?? '').trim().toLowerCase() === 'completed';
+                        if (!stockCheckCompleted) {
+                          return [
+                            { label: 'Stock In Hand', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'Open PO Qty', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'In Transit', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'Open Orders', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                          ];
+                        }
                         const summary = requestStockSummaryByRequestId.get(req.id)
                           ?? req.stockSummary
                           ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
                         return [
-                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600' },
-                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900' },
-                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900' },
-                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900' },
+                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600', isPending: false },
+                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900', isPending: false },
+                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900', isPending: false },
+                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900', isPending: false },
                         ];
                       })().map((row, idx) => (
                         <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-slate-200' : ''}`}>
                           <span className="text-slate-600 text-sm">{row.label}</span>
-                          <span className={`font-bold text-lg ${row.color}`}>{row.value}</span>
+                          <span className={`font-bold ${row.isPending ? 'text-sm' : 'text-lg'} ${row.color}`}>{row.value}</span>
                         </div>
                       ))}
                     </div>
@@ -7694,6 +7979,10 @@ const Procurement: React.FC = () => {
                   {reqQuotes.length > 0 && selectedQuoteIdInPrView && (
                     <button
                       onClick={async () => {
+                        if (stockCheckPending) {
+                          addToast('warning', 'Stock check is pending. Draft/PO actions are locked until warehouse sends stock status.');
+                          return;
+                        }
                         const selectedQuote = quotes.find((q) => q.id === selectedQuoteIdInPrView);
                         const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as { items?: BackendPRItem[] } | undefined;
                         const items = Array.isArray(backendPr?.items) ? backendPr.items : [];
@@ -8830,7 +9119,7 @@ const Procurement: React.FC = () => {
         </div>
       )}
 
-      {/* ── Stock Check Modal (inventory from warehouse-inventory API) ── */}
+      {/* ── Stock Check Modal (request-id scoped stock-check result) ── */}
       {selectedStockCheckRequest && (() => {
         const req = selectedStockCheckRequest;
         const updatesForRequest = stockCheckUpdates[req.id] ?? {};
@@ -8856,52 +9145,60 @@ const Procurement: React.FC = () => {
               ? 'bg-sky-50 text-sky-700 border-sky-300'
               : 'bg-amber-50 text-amber-700 border-amber-300';
 
-        const whRows = warehouseInventoryData?.rows ?? [];
-        const whByCode = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
-        const whByName = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
-        whRows.forEach((row) => {
-          const code = (row.code ?? '').trim();
-          const name = (row.name ?? '').trim();
-          if (code) whByCode.set(code.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
-          if (name) whByName.set(name.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
-        });
-
-        const resolveWh = (itemCode: string, itemName: string) =>
-          whByCode.get((itemCode ?? '').trim().toLowerCase()) ??
-          whByName.get((itemName ?? '').trim().toLowerCase()) ??
-          null;
+        const notesOutcome = parseStockCheckOutcome(req.stockCheckNotes);
+        const notesLines = parseStockCheckNotesLines(req.stockCheckNotes);
+        const notesByCode = new Map<string, (typeof notesLines)[number]>();
+        const notesByName = new Map<string, (typeof notesLines)[number]>();
+        for (const ln of notesLines) {
+          const c = String(ln?.itemCode ?? '').trim().toLowerCase();
+          const n = String(ln?.itemName ?? '').trim().toLowerCase();
+          if (c) notesByCode.set(c, ln);
+          if (n) notesByName.set(n, ln);
+        }
 
         const stockItems = req.itemDetails && req.itemDetails.length > 0
-          ? req.itemDetails.map((item, _idx) => {
-            const wh = resolveWh(item.itemCode, item.itemName);
+          ? req.itemDetails.map((item) => {
+            const note =
+              notesByCode.get(String(item.itemCode ?? '').trim().toLowerCase()) ??
+              notesByName.get(String(item.itemName ?? '').trim().toLowerCase()) ??
+              null;
             const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
+            const qtyFromNote = note
+              ? Number(note.updatedStockQty ?? note.physicalQty ?? 0)
+              : null;
             return {
               itemName: item.itemName,
               itemCode: item.itemCode,
               requestedQty: item.reqQty,
-              systemQty: wh ? wh.stockInHand : null,
-              whUnit: wh?.whUnit ?? '',
-              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
-              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
-              batchCode: override?.batchNo ?? (wh ? null : '—'),
-              fromWarehouse: !!wh,
+              systemQty: qtyFromNote,
+              whUnit: item.unit ?? '',
+              physicalQty: override?.physicalQty ?? qtyFromNote,
+              zoneRack: override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—',
+              batchCode: override?.batchNo ?? (note?.batchNo ?? '—'),
+              fromWarehouse: qtyFromNote != null,
             };
           })
           : req.items.map((itemName, idx) => {
             const itemCode = `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`;
-            const wh = resolveWh(itemCode, itemName);
+            const note =
+              notesByCode.get(itemCode.trim().toLowerCase()) ??
+              notesByName.get(itemName.trim().toLowerCase()) ??
+              null;
             const override = updatesForRequest[itemCode];
             const reqQty = req.quantities?.[idx] ?? 0;
+            const qtyFromNote = note
+              ? Number(note.updatedStockQty ?? note.physicalQty ?? 0)
+              : null;
             return {
               itemName,
               itemCode,
               requestedQty: reqQty,
-              systemQty: wh ? wh.stockInHand : null,
-              whUnit: wh?.whUnit ?? '',
-              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
-              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
-              batchCode: override?.batchNo ?? (wh ? null : '—'),
-              fromWarehouse: !!wh,
+              systemQty: qtyFromNote,
+              whUnit: req.units?.[idx] ?? '',
+              physicalQty: override?.physicalQty ?? qtyFromNote,
+              zoneRack: override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—',
+              batchCode: override?.batchNo ?? (note?.batchNo ?? '—'),
+              fromWarehouse: qtyFromNote != null,
             };
           });
         const displayStockItems = selectedStockCheckItemName
@@ -8934,12 +9231,6 @@ const Procurement: React.FC = () => {
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => void refetchWarehouseInventory()}
-                      className="px-2.5 py-1 rounded-md border border-cyan-300 text-cyan-700 text-xs font-semibold hover:bg-cyan-50"
-                    >
-                      Refresh stock
-                    </button>
                     <button
                       onClick={() => {
                         setSelectedStockCheckRequest(null);
@@ -8976,13 +9267,8 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
 
-                {warehouseInventoryLoading ? (
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500 text-sm">
-                    Loading warehouse inventory…
-                  </div>
-                ) : (
-                  <>
-                    {renderedItems.map((item, idx) => (
+                <>
+                  {renderedItems.map((item, idx) => (
                       <div
                         key={`${item.itemCode}-${idx}`}
                         className="rounded-lg border border-slate-200 bg-white overflow-hidden"
@@ -9027,11 +9313,11 @@ const Procurement: React.FC = () => {
                       </div>
                     ))}
 
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                      Stock in hand is read from warehouse inventory. Match is by item code or name.
-                    </div>
-                  </>
-                )}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    Request-scoped view: stock/check values are shown for this PR request only.
+                    {notesOutcome == null ? ' Waiting for warehouse completion.' : ` Outcome: ${notesOutcome === 'all_ok' ? 'All OK' : 'Not OK'}.`}
+                  </div>
+                </>
               </div>
 
               <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">

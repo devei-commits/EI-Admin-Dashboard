@@ -519,7 +519,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       location: payload.location,
       country: payload.country,
       category: payload.category,
-      status: 'pending',
+      status: 'active',
       paymentTerms: payload.paymentTerms,
       notes: payload.notes,
       data: payload.data as Record<string, unknown>,
