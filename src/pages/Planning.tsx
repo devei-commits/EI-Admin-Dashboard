@@ -1421,17 +1421,19 @@ const Planning = () => {
   const itemsInvolved = useMemo(() => itemsInvolvedRows.map((row): ItemsInvolvedDisplayRow => {
     const shortage = row.surplusShortage < 0 ? Math.abs(row.surplusShortage) : 0;
     const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
-    const totalReqStr =
-      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${Number(row.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
-        : `${Math.round(row.totalRequired).toLocaleString()} pcs`;
     const sihStr = Math.round(row.sih).toLocaleString();
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
-    // Availability math (per requirement):
-    // Gap = Required - (((SIH + PO) - Reserved))
-    // This API provides `row.sih` as free/available stock (stock_in_hand - reserved), so:
-    // Gap = Required - (free + PO)
-    const netNum = Number(row.sih ?? 0) + orderedQtyNum - Number(row.totalRequired ?? 0);
+    const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
+    const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
+    // TOTAL REQ on this screen means extra qty to be added in WH for planned batches.
+    // SIH here is already free stock (stock_in_hand - reserved); in-transit is added pipeline.
+    const requiredToAddNum = Math.max(0, plannedQtyNum - availableForPlanning);
+    const totalReqStr =
+      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
+        ? `${Number(requiredToAddNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
+        : `${Math.round(requiredToAddNum).toLocaleString()} pcs`;
+    // NET now reflects surplus/shortage against planned requirement.
+    const netNum = availableForPlanning - plannedQtyNum;
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
@@ -1445,7 +1447,7 @@ const Planning = () => {
       usedIn: String(row.batchCount ?? 0),
       usedInProducts: row.usedInProducts ?? [],
       totalReq: totalReqStr,
-      totalRequired: row.totalRequired,
+      totalRequired: requiredToAddNum,
       batchCount: row.batchCount ?? 0,
       sih: sihStr,
       sihNum: row.sih,
@@ -1464,8 +1466,8 @@ const Planning = () => {
       unit: row.unit,
       reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
       reservedNum: Number(row.reserved ?? 0) || 0,
-      plannedQty: (Number(row.plannedQty ?? 0) || 0).toLocaleString() + unitSuffix,
-      plannedQtyNum: Number(row.plannedQty ?? 0) || 0,
+      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
+      plannedQtyNum,
       orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
       orderedQtyNum,
       net: netDisplay,
@@ -1878,7 +1880,7 @@ const Planning = () => {
       // eslint-disable-next-line no-console
       console.groupEnd();
     }
-    const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
+    const shortfall = Math.max(0, item.totalRequired);
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
     const qtyStr =
       surplus > 0 ? String(surplus) : shortfall > 0 ? String(Math.round(shortfall)) : '';
@@ -3268,10 +3270,15 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        // Release opens procurement when NET is negative (free SIH + in-transit < required). Not used for BMR — use Plan Batches → Production after stock is covered.
+                        // Release opens procurement when there is a shortage either against
+                        // remaining requirement (NET < 0) or against already planned qty
+                        // (planned > available free SIH + in-transit).
                         const hasShortfall = item.netNum < 0;
+                        const availableForPlanning = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+                        const hasPlannedShortfall = Number(item.plannedQtyNum || 0) > 0
+                          && availableForPlanning < Number(item.plannedQtyNum || 0);
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const canReleaseToPlanning = hasShortfall;
+                        const canReleaseToPlanning = hasShortfall || hasPlannedShortfall;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2">
@@ -3344,7 +3351,7 @@ const Planning = () => {
                                   title={
                                     canReleaseToPlanning
                                       ? undefined
-                                      : 'No planning shortage: NET (free stock + in transit − required) is ≥ 0. You do not need Release here. For vendor quotes without a shortage, use Procurement / Items List. BMR: confirm batches and send to Production — not gated by this button.'
+                                      : 'No planning shortage: both remaining requirement and planned coverage are satisfied by free stock + in transit. Use Procurement / Items List for optional quotes.'
                                   }
                                   onClick={() => openReleaseToPlanningModal(item)}
                                 >
@@ -3435,7 +3442,7 @@ const Planning = () => {
             return plannedLineMatchesItemsInvolvedRow(l, item);
           })
           .slice(0, 10);
-        const shortfall = Math.max(0, item.totalRequired - (item.sihNum + item.orderedQtyNum));
+        const shortfall = Math.max(0, item.totalRequired);
         const releasePtStages = resolveStagedPaymentTermsForForm(
           releaseToPlanningForm.paymentTermsRaw,
           releaseToPlanningForm.paymentTermsType,
