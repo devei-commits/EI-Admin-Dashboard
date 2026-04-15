@@ -7,6 +7,13 @@ import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
 
 export interface ProcurementQuotationItem {
+  priceHistory?: {
+    oldPrice: number;
+    newPrice: number;
+    changedAt: string;
+    changedBy?: string | null;
+    reason?: string | null;
+  }[];
   raw_material_id?: number;
   pack_material_id?: number;
   itemId: string;

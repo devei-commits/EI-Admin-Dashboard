@@ -11,6 +11,7 @@ import {
   fetchProcurementQuotations,
   fetchQuoteLineDefaults,
   deleteProcurementQuotation,
+  updateProcurementQuotation as updateProcurementQuotationApi,
 } from '../../services/procurementQuotations.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
@@ -637,6 +638,12 @@ const Procurement: React.FC = () => {
     creditDays: '0',
   });
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
+  const [editingQuoteLine, setEditingQuoteLine] = useState<{
+    quoteId: string;
+    lineIndex: number;
+    nextPrice: string;
+  } | null>(null);
+  const [savingQuoteLine, setSavingQuoteLine] = useState(false);
   const [selectedGrn, setSelectedGrn] = useState<{
     request: ProcurementRequest;
     vendor: string;
@@ -761,14 +768,26 @@ const Procurement: React.FC = () => {
     return set;
   }, [grnListFromApi]);
 
-  const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading } = useQuery({
+  const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading, refetch: refetchWarehouseInventory } = useQuery({
     queryKey: ['warehouse-inventory'],
     queryFn: async () => {
       const res = await fetchWarehouseInventory();
       return res.success ? res.data : null;
     },
     enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
+
+  const openStockCheckModal = useCallback(
+    (req: ProcurementRequest) => {
+      setSelectedStockCheckRequest(req);
+      setSelectedStockCheckItemName(req.itemDetails?.[0]?.itemName ?? req.items[0] ?? null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+    },
+    [queryClient]
+  );
 
   const { data: rawMaterialsListForQuote = [] } = useQuery({
     queryKey: ['raw-materials-list'],
@@ -3512,6 +3531,57 @@ const Procurement: React.FC = () => {
     }
   };
 
+  const saveQuotedLinePrice = useCallback(
+    async (quote: VendorQuote, line: QuoteLine, lineIndex: number) => {
+      const draft = editingQuoteLine;
+      if (!draft || draft.quoteId !== quote.id || draft.lineIndex !== lineIndex) return;
+      const nextPrice = Number(draft.nextPrice);
+      if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
+        addToast('warning', 'Enter a valid line price.');
+        return;
+      }
+      if (Math.abs(nextPrice - (Number(line.pricePerUnit) || 0)) < 1e-9) {
+        setEditingQuoteLine(null);
+        return;
+      }
+      const nextItems = quote.lines.map((l, idx) => {
+        const qtyNum = parseFloat(String(l.qty ?? '').replace(/[^\d.]/g, '')) || 0;
+        const price = idx === lineIndex ? nextPrice : Number(l.pricePerUnit) || 0;
+        return {
+          itemId: l.itemId ?? '',
+          name: l.item ?? '',
+          orderQty: qtyNum,
+          uom: l.unit ?? (String(l.qty ?? '').replace(/^[\d.\s]+/, '').trim() || 'KG'),
+          pricePerUnit: price,
+          totalValue: qtyNum * price,
+          leadTimeDays: l.leadTimeDays ?? null,
+          raw_material_id: l.raw_material_id ?? null,
+          pack_material_id: l.pack_material_id ?? null,
+          priceHistory: l.priceHistory ?? [],
+        };
+      });
+      setSavingQuoteLine(true);
+      try {
+        const quoteIdNum = Number(quote.id);
+        if (!Number.isFinite(quoteIdNum) || quoteIdNum <= 0) {
+          addToast('error', 'Only saved quotations can be edited.');
+          return;
+        }
+        const res = await updateProcurementQuotationApi(quoteIdNum, { items: nextItems });
+        if (!res.success) {
+          addToast('error', res.error || 'Failed to update quotation line.');
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+        addToast('success', 'Quotation price updated.');
+        setEditingQuoteLine(null);
+      } finally {
+        setSavingQuoteLine(false);
+      }
+    },
+    [addToast, editingQuoteLine, queryClient]
+  );
+
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-yellow-50 text-slate-900">
       <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
@@ -4380,10 +4450,7 @@ const Procurement: React.FC = () => {
                                     View
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      setSelectedStockCheckRequest(req);
-                                      setSelectedStockCheckItemName(req.itemDetails?.[0]?.itemName ?? req.items[0] ?? null);
-                                    }}
+                                    onClick={() => openStockCheckModal(req)}
                                     className="px-3 py-1.5 rounded-lg border border-cyan-400 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition-all"
                                   >
                                     Stock Check
@@ -4669,16 +4736,40 @@ const Procurement: React.FC = () => {
                                   <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-between gap-3">
-                                        <span className="font-semibold text-slate-900">{line.item}</span>
-                                        {quote.id.startsWith('IL-') && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openEditItemsListTier(quote, line)}
-                                            className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
-                                          >
-                                            Edit
-                                          </button>
-                                        )}
+                                        <div className="min-w-0">
+                                          <span className="font-semibold text-slate-900">{line.item}</span>
+                                          {!!line.priceHistory?.length && (
+                                            <p className="text-[10px] text-slate-500 mt-0.5">
+                                              {line.priceHistory.length} price change{line.priceHistory.length !== 1 ? 's' : ''}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {!quote.id.startsWith('IL-') && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditingQuoteLine({
+                                                  quoteId: quote.id,
+                                                  lineIndex: idx,
+                                                  nextPrice: String(Number(line.pricePerUnit ?? 0) || ''),
+                                                })
+                                              }
+                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                            >
+                                              Edit Price
+                                            </button>
+                                          )}
+                                          {quote.id.startsWith('IL-') && (
+                                            <button
+                                              type="button"
+                                              onClick={() => openEditItemsListTier(quote, line)}
+                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                            >
+                                              Edit
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     </td>
                                     <td className="px-4 py-3">
@@ -4687,7 +4778,31 @@ const Procurement: React.FC = () => {
                                       </span>
                                     </td>
                                     <td className="px-4 py-3 text-right text-slate-700">
-                                      ₹{line.pricePerUnit.toLocaleString('en-IN')}
+                                      {editingQuoteLine?.quoteId === quote.id && editingQuoteLine?.lineIndex === idx ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <input
+                                            value={editingQuoteLine.nextPrice}
+                                            onChange={(e) =>
+                                              setEditingQuoteLine((prev) => (prev ? { ...prev, nextPrice: e.target.value } : prev))
+                                            }
+                                            type="number"
+                                            min={0}
+                                            step="0.01"
+                                            className="w-28 rounded-md border border-slate-300 px-2 py-1 text-xs text-right"
+                                            disabled={savingQuoteLine}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => void saveQuotedLinePrice(quote, line, idx)}
+                                            className="px-2 py-1 rounded-md bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700 disabled:opacity-60"
+                                            disabled={savingQuoteLine}
+                                          >
+                                            Save
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>₹{line.pricePerUnit.toLocaleString('en-IN')}</>
+                                      )}
                                     </td>
                                     <td className={`px-4 py-3 text-right font-bold ${line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
                                       }`}>
@@ -4753,6 +4868,33 @@ const Procurement: React.FC = () => {
                                     Download
                                   </button>
                                 </div>
+                                {quote.lines.some((l) => Array.isArray(l.priceHistory) && l.priceHistory.length > 0) && (
+                                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                                    <div className="text-xs font-semibold text-slate-600 mb-2">Price change history</div>
+                                    <div className="space-y-2">
+                                      {quote.lines.map((line, lineIdx) => {
+                                        const history = Array.isArray(line.priceHistory) ? [...line.priceHistory].reverse() : [];
+                                        if (!history.length) return null;
+                                        return (
+                                          <div key={`${quote.id}-h-${lineIdx}`} className="rounded-md border border-slate-100 p-2">
+                                            <p className="text-xs font-semibold text-slate-700">{line.item}</p>
+                                            <div className="mt-1 space-y-1">
+                                              {history.map((h, hIdx) => (
+                                                <p key={`${quote.id}-${lineIdx}-${hIdx}`} className="text-[11px] text-slate-600">
+                                                  ₹{Number(h.oldPrice || 0).toLocaleString('en-IN')} → ₹
+                                                  {Number(h.newPrice || 0).toLocaleString('en-IN')}
+                                                  {' · '}
+                                                  {h.changedAt ? new Date(h.changedAt).toLocaleString('en-IN') : '—'}
+                                                  {h.changedBy ? ` · ${h.changedBy}` : ''}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
@@ -8791,16 +8933,24 @@ const Procurement: React.FC = () => {
                       Stock Check {selectedStockCheckItemName ? `· ${selectedStockCheckItemName}` : ''}
                     </h2>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSelectedStockCheckRequest(null);
-                      setSelectedStockCheckItemName(null);
-                    }}
-                    className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void refetchWarehouseInventory()}
+                      className="px-2.5 py-1 rounded-md border border-cyan-300 text-cyan-700 text-xs font-semibold hover:bg-cyan-50"
+                    >
+                      Refresh stock
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedStockCheckRequest(null);
+                        setSelectedStockCheckItemName(null);
+                      }}
+                      className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </div>
 

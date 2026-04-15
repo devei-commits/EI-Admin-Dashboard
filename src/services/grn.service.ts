@@ -54,8 +54,8 @@ export interface GeneratedLabel {
 export interface GenerateLabelsPayload {
   noOfBoxes?: number;
   unitsPerBox?: number;
-  /** Items in the last box when it is not a full carton (boxes 1..n-1 use unitsPerBox). */
-  lastBoxUnits?: number | null;
+  /** Per-box units list (length must equal noOfBoxes). */
+  unitsPerBoxList?: number[];
   locationPrefix?: string;
   locationZone?: string;
   grnBatchMfg?: string;
@@ -136,7 +136,6 @@ export interface UpdateGRNPayload {
   invoiceAmount?: number | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
-  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
   locationZone?: string | null;
   grnBatchMfg?: string | null;

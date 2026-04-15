@@ -1613,7 +1613,7 @@ const WarehouseInventory = () => {
                         ML2 Stock
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        <span className="block">Total req</span>
+                        <span className="block">Planned qty</span>
                         <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">Planning · RM kg</span>
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">

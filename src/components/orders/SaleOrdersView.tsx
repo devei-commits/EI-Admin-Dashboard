@@ -96,6 +96,22 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
 
   const visibleSoNos = useMemo(() => Array.from(new Set(filteredSOs.map((so) => so.soNo))), [filteredSOs]);
 
+  const groupedByClient = useMemo(() => {
+    const map = new Map<string, { clientName: string; city: string; orders: SaleOrder[] }>();
+    for (const so of filteredSOs) {
+      const clientName = String(so.customer || 'Unknown Client').trim() || 'Unknown Client';
+      const city = String(so.customerCity || '').trim();
+      const key = `${clientName.toLowerCase()}__${city.toLowerCase()}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.orders.push(so);
+      } else {
+        map.set(key, { clientName, city, orders: [so] });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
+  }, [filteredSOs]);
+
   useEffect(() => {
     console.log('[FULFILLMENT-AVAIL][FRONTEND][LIFECYCLE] visibleSoNos changed', {
       ts: now(),
@@ -407,8 +423,9 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredSOs.flatMap((so) =>
-                so.items.map((item) => {
+              {groupedByClient.flatMap((clientGroup) => {
+                const clientRows = clientGroup.orders.flatMap((so) =>
+                  so.items.map((item) => {
                   const soKey = normalizeSoKey(so.soNo);
                   const planningResp = planningAvailabilityBySoNo[so.soNo] ?? planningAvailabilityBySoNo[soKey];
                   const planningItem =
@@ -506,7 +523,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                     });
                   }
 
-                  return (
+                    return (
                     <tr key={`${so.soNo}__${item.productName}__${item.sku}`}>
                       <td className="px-4 py-3 align-top">
                         <div className="font-mono text-[12px] text-gray-900">
@@ -596,8 +613,27 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                       </td>
                     </tr>
                   );
-                })
-              )}
+                  })
+                );
+                const groupHeader = (
+                  <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
+                    <td colSpan={7} className="px-4 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-blue-900">
+                          {clientGroup.clientName}
+                          {clientGroup.city ? (
+                            <span className="text-xs font-normal text-blue-700 ml-2">({clientGroup.city})</span>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-blue-800">
+                          {clientGroup.orders.length} order{clientGroup.orders.length !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+                return [groupHeader, ...clientRows];
+              })}
             </tbody>
           </table>
         </div>

@@ -216,22 +216,6 @@ function inferPrCategoryKeyFromCode(code: string): string {
   return '';
 }
 
-function hasMeaningfulFormulaLine(fd: BOMFormState): boolean {
-  return fd.formulaIngredients.some((ing) => Boolean(ing.inciName.trim()));
-}
-
-function hasMeaningfulPackLine(fd: BOMFormState): boolean {
-  return fd.packingComponents.some((c) => Boolean(c.pmDescription.trim()));
-}
-
-function isFormulaTotalValid(fd: BOMFormState): boolean {
-  const total = fd.formulaIngredients.reduce((sum, ing) => {
-    const n = parseFloat(String(ing.percentWW).replace(/[^\d.-]/g, ''));
-    return sum + (Number.isNaN(n) ? 0 : n);
-  }, 0);
-  return Math.abs(total - 100) <= 0.001;
-}
-
 function bomFormToRmLines(fd: BOMFormState) {
   return fd.formulaIngredients.map((ing) => ({
     phase: ing.phase,
@@ -828,28 +812,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         const el = document.getElementById('fillSize');
         if (el instanceof HTMLElement) el.focus();
       }, 0);
-      return;
-    }
-
-    if (!hasMeaningfulFormulaLine(formData)) {
-      setErrors({ formula: 'Step 1 — Add at least one formula ingredient' });
-      addToast('error', 'Step 1 — Add at least one formula ingredient (INCI name or % w/w) in Formula BOM.');
-      setCurrentStage(1);
-      focusPrField('formula');
-      return;
-    }
-    if (!isFormulaTotalValid(formData)) {
-      setErrors({ formulaPercentTotal: 'Step 1 — Formula BOM total must be exactly 100%' });
-      addToast('error', 'Step 1 — Formula BOM % w/w total must be exactly 100%');
-      setCurrentStage(1);
-      focusPrField('formula');
-      return;
-    }
-    if (!hasMeaningfulPackLine(formData)) {
-      setErrors({ pack: 'Step 2 — Add at least one packaging component' });
-      addToast('error', 'Step 2 — Add at least one packaging component (description) in Pack BOM.');
-      setCurrentStage(2);
-      focusPrField('pack');
       return;
     }
 

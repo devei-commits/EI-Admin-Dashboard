@@ -437,6 +437,9 @@ export function mapBackendQuotationToQuote(
           : undefined,
       raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
       pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
+      priceHistory: Array.isArray((item as { priceHistory?: unknown[] }).priceHistory)
+        ? ((item as { priceHistory?: unknown[] }).priceHistory as QuoteLine['priceHistory'])
+        : undefined,
     };
   });
   const prId = q.procurementRequestId;

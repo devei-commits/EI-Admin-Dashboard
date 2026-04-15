@@ -75,6 +75,13 @@ export type QuoteLine = {
   vsPlanned: string;
   /** Line-level lead (days) when API provides it */
   leadTimeDays?: number;
+  priceHistory?: {
+    oldPrice: number;
+    newPrice: number;
+    changedAt: string;
+    changedBy?: string | null;
+    reason?: string | null;
+  }[];
   raw_material_id?: number;
   pack_material_id?: number;
 };
