@@ -833,3 +833,65 @@ export function mergeBackendPrItemsAfterPartialRelease(
   }
   return out;
 }
+
+/**
+ * Split a backend PR's items into:
+ * - releasedItems: only the qty included in the draft PO (linesForCreate), with quantity_requested set to released qty
+ * - remainingItems: all untouched items + remaining qty for included lines (backlog).
+ *
+ * This enables creating a new procurement request row for the remainder, instead of mutating the same PR id.
+ */
+export function splitBackendPrItemsAfterPartialRelease(
+  backendItems: ProcurementRequestItem[],
+  lineEdits: ReleaseLineEditRow[],
+  linesForCreate: ReleaseLineEditRow[]
+): { releasedItems: ProcurementRequestItem[]; remainingItems: ProcurementRequestItem[] } {
+  const releasedItems: ProcurementRequestItem[] = [];
+  const remainingItems: ProcurementRequestItem[] = [];
+
+  for (const bi of backendItems) {
+    const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
+    const orig = parseQuantityRequested(bi.quantity_requested);
+
+    if (!edit) {
+      // Lines not part of the modal edits: keep them untouched only in remaining.
+      remainingItems.push({ ...bi });
+      continue;
+    }
+
+    const onThisPo = linesForCreate.some((c) => releaseEditMatchesBackendPrItem(c, bi));
+    if (!onThisPo) {
+      // Edited in UI but not selected for this draft PO: still part of the remaining.
+      remainingItems.push({ ...bi });
+      continue;
+    }
+
+    const releaseQty = Math.min(Math.max(0, edit.qty), orig);
+    const remaining = Math.max(0, orig - releaseQty);
+
+    if (releaseQty > 0) {
+      releasedItems.push({
+        ...bi,
+        quantity_requested: releaseQty,
+        // For released portion we should not tag as backlog remainder.
+        partial_release_remainder: undefined,
+      } as ProcurementRequestItem);
+    }
+
+    if (remaining <= 0) {
+      continue;
+    }
+
+    const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
+    const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
+    const partialFlag = lineMoq > 0 && remaining < lineMoq;
+
+    remainingItems.push({
+      ...bi,
+      quantity_requested: remaining,
+      ...(partialFlag ? { partial_release_remainder: true } : {}),
+    });
+  }
+
+  return { releasedItems, remainingItems };
+}

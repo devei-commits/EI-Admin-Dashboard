@@ -120,7 +120,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
       <div className="bg-gray-50 p-4 rounded-lg space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Vendor name *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Vendor name</label>
             <select
               value={tempFields.name || ''}
               onChange={(e) => {

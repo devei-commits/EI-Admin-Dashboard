@@ -1981,9 +1981,9 @@ const Planning = () => {
 
     const existing = reqRes.data.find((r) => {
       const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
-      // If the earlier request has already reached `PO Draft`, a subsequent planning release should
-      // create a new request rather than consolidate (otherwise it looks like the new release was ignored).
-      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN', 'PO Draft'].includes(String(r.status || ''));
+      // Consolidate vendor lines until PO is actually issued/released.
+      // PO Draft is still a pre-issue planning stage and should stay mergeable.
+      const openStatus = !['PO Released', 'Delivery Pending', 'Under GRN'].includes(String(r.status || ''));
       return sameVendor && openStatus;
     });
 

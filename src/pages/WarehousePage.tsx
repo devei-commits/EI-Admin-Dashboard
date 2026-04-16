@@ -5,9 +5,10 @@ import WarehouseLocations from './warehouse/Locations';
 import WarehouseInventory from './warehouse/Inventory';
 import WarehouseInbound from './warehouse/Inbound';
 import WarehouseOutbound from './warehouse/Outbound';
+import LogisticsSchedule from './warehouse/LogisticsSchedule';
 import StockCheckRequests from './warehouse/StockCheckRequests';
 
-const VALID_SECTIONS = ['overview', 'locations', 'inventory', 'inbound', 'outbound', 'stock-check-requests'] as const;
+const VALID_SECTIONS = ['overview', 'locations', 'inventory', 'inbound', 'outbound', 'logistics-schedule', 'stock-check-requests'] as const;
 
 function sectionFromPathname(pathname: string): string {
   const segment = pathname.replace(/^\/warehouse\/?/, '').toLowerCase().split('/')[0] || '';
@@ -36,6 +37,8 @@ const WarehousePage = () => {
         return <WarehouseInbound />;
       case 'outbound':
         return <WarehouseOutbound />;
+      case 'logistics-schedule':
+        return <LogisticsSchedule />;
       case 'stock-check-requests':
         return <StockCheckRequests />;
       default:

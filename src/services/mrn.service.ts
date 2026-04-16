@@ -50,6 +50,11 @@ export interface MRNRecordFromApi {
   mfgBatch?: string | null;
   muReceiveZone?: string | null;
   muReceiveRack?: string | null;
+  logisticsTrackingNo?: string | null;
+  logisticsTransporter?: string | null;
+  logisticsDispatchDate?: string | null;
+  logisticsEtaDate?: string | null;
+  logisticsVehicleNo?: string | null;
   createdAt?: string | null;
 }
 
@@ -120,6 +125,11 @@ export interface UpdateMRNPayload {
   mfgBatch?: string | null;
   muReceiveZone?: string | null;
   muReceiveRack?: string | null;
+  logisticsTrackingNo?: string | null;
+  logisticsTransporter?: string | null;
+  logisticsDispatchDate?: string | null;
+  logisticsEtaDate?: string | null;
+  logisticsVehicleNo?: string | null;
 }
 
 export interface GenerateMRNLabelsPayload {

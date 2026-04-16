@@ -52,8 +52,9 @@ export interface CreateProcurementPayload {
   planningBatchId?: number | null;
   priority: string;
   requiredByDate: string | null;
-  notes: string;
+  notes: string | null;
   items: ProcurementRequestItem[];
+  preferredVendor?: string | null;
 }
 
 export async function fetchProcurementRequests(planningExtractedId?: number): Promise<ServiceResult<ProcurementRequest[]>> {

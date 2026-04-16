@@ -3031,6 +3031,19 @@ function outboundMtrWarehouseMeta(m: MRNRecordFromApi | null | undefined): strin
   return `Transfer: ${t}`;
 }
 
+function outboundMtrLogisticsMeta(m: MRNRecordFromApi | null | undefined): string | null {
+  if (!m) return null;
+  const tracking = String(m.logisticsTrackingNo || '').trim();
+  const transporter = String(m.logisticsTransporter || '').trim();
+  const vehicle = String(m.logisticsVehicleNo || '').trim();
+  const parts = [
+    tracking ? `Tracking: ${tracking}` : null,
+    transporter ? `Transporter: ${transporter}` : null,
+    vehicle ? `Vehicle: ${vehicle}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 /** Mirrors backend outbound MTR allowed transitions. Returns error message or null. */
 const OUTBOUND_MTR_ALLOWED: readonly [string, string][] = [
   ['Pending', 'Picked'],
@@ -3641,6 +3654,12 @@ function MRNDetailModal({
   const [labelError, setLabelError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [logisticsModalOpen, setLogisticsModalOpen] = useState(false);
+  const [logisticsTrackingNo, setLogisticsTrackingNo] = useState(mrn.logisticsTrackingNo ?? '');
+  const [logisticsTransporter, setLogisticsTransporter] = useState(mrn.logisticsTransporter ?? '');
+  const [logisticsDispatchDate, setLogisticsDispatchDate] = useState((mrn.logisticsDispatchDate as string) ?? new Date().toISOString().slice(0, 10));
+  const [logisticsEtaDate, setLogisticsEtaDate] = useState((mrn.logisticsEtaDate as string) ?? '');
+  const [logisticsVehicleNo, setLogisticsVehicleNo] = useState(mrn.logisticsVehicleNo ?? '');
   const [locationHistory, setLocationHistory] = useState<MRNLocationHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -3688,6 +3707,11 @@ function MRNDetailModal({
     setUnitsPerBox(String(mrn.unitsPerBox ?? ''));
     setLabels(mrn.generatedLabels ?? null);
     setLabelsGenerated(!!(mrn.generatedLabels && mrn.generatedLabels.length > 0));
+    setLogisticsTrackingNo(mrn.logisticsTrackingNo ?? '');
+    setLogisticsTransporter(mrn.logisticsTransporter ?? '');
+    setLogisticsDispatchDate((mrn.logisticsDispatchDate as string) ?? new Date().toISOString().slice(0, 10));
+    setLogisticsEtaDate((mrn.logisticsEtaDate as string) ?? '');
+    setLogisticsVehicleNo(mrn.logisticsVehicleNo ?? '');
   }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.noOfBoxes, mrn.unitsPerBox, mrn.generatedLabels, mrn.lineTransferStatus]);
 
   useEffect(() => {
@@ -3778,6 +3802,7 @@ function MRNDetailModal({
   };
 
   const persistUpdate = async (payload: Partial<MRNRecordFromApi> & {
+    initiateTransferLineIds?: string[];
     receiveAtMuLineIds?: string[];
     completeTransferLineIds?: string[];
   }) => {
@@ -3786,6 +3811,7 @@ function MRNDetailModal({
     if (isOutboundMtr && isClosedStatus(mrn.status)) {
       const touchesWorkflow =
         payload.status !== undefined ||
+        (Array.isArray(payload.initiateTransferLineIds) && payload.initiateTransferLineIds.length > 0) ||
         (Array.isArray(payload.receiveAtMuLineIds) && payload.receiveAtMuLineIds.length > 0) ||
         (Array.isArray(payload.completeTransferLineIds) && payload.completeTransferLineIds.length > 0);
       if (touchesWorkflow) {
@@ -3866,6 +3892,11 @@ function MRNDetailModal({
         receivedAtMu: receivedAtMu || undefined,
         muReceiveZone: muReceiveZone || undefined,
         muReceiveRack: muReceiveRack || undefined,
+        logisticsTrackingNo: logisticsTrackingNo.trim() || undefined,
+        logisticsTransporter: logisticsTransporter.trim() || undefined,
+        logisticsDispatchDate: logisticsDispatchDate || undefined,
+        logisticsEtaDate: logisticsEtaDate || undefined,
+        logisticsVehicleNo: logisticsVehicleNo.trim() || undefined,
         noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
         unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
         locationPrefix: locationPrefix || undefined,
@@ -3923,6 +3954,30 @@ function MRNDetailModal({
   };
 
   const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—');
+  const logisticsSummary = outboundMtrLogisticsMeta(mrn);
+  const initiateSelectedIds = Object.entries(recvLinePick)
+    .filter(([k, v]) => v && mtrLinePhaseRaw(mrn, k) === 'not_initiated')
+    .map(([k]) => k);
+  const handleSubmitLogistics = () => {
+    if (initiateSelectedIds.length === 0) {
+      addToast('error', 'Select at least one line that is pending initiation.');
+      return;
+    }
+    if (!logisticsTrackingNo.trim() || !logisticsTransporter.trim() || !logisticsDispatchDate || !logisticsEtaDate || !logisticsVehicleNo.trim()) {
+      addToast('error', 'Fill all logistics details before initiating transfer.');
+      return;
+    }
+    setLogisticsModalOpen(false);
+    persistUpdate({
+      status: 'In Transit',
+      initiateTransferLineIds: initiateSelectedIds,
+      logisticsTrackingNo: logisticsTrackingNo.trim(),
+      logisticsTransporter: logisticsTransporter.trim(),
+      logisticsDispatchDate,
+      logisticsEtaDate,
+      logisticsVehicleNo: logisticsVehicleNo.trim(),
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -3983,6 +4038,19 @@ function MRNDetailModal({
                 <input type="date" value={receivedAtMu} onChange={(e) => setReceivedAtMu(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
             </div>
+            {isOutboundMtr && (
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-slate-700">Shared logistics</p>
+                    <p className="mt-1 text-sm text-slate-800">{logisticsSummary || 'Capture on Initiate transfer. Production and Warehouse read the same MRN values.'}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Dispatch: {formatDate(mrn.logisticsDispatchDate || logisticsDispatchDate || '')} · ETA: {formatDate(mrn.logisticsEtaDate || logisticsEtaDate || '')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
               <div className="flex flex-wrap items-center gap-4">
                 <span className="text-xs font-semibold text-slate-700">
@@ -4164,7 +4232,19 @@ function MRNDetailModal({
                             <td className="px-3 py-2 text-[10px] text-slate-700 align-top">
                               <div className="font-medium text-slate-800">{formatMtrLinePhaseShort(phase)}</div>
                               {phase === 'not_initiated' && (
-                                <p className="mt-1 text-slate-500 italic">Not released from warehouse — cannot receive here.</p>
+                                <>
+                                  <p className="mt-1 text-slate-500 italic">Pending release from warehouse — add logistics to initiate transfer.</p>
+                                  <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!recvLinePick[item.id]}
+                                      onChange={(e) =>
+                                        setRecvLinePick((p) => ({ ...p, [item.id]: e.target.checked }))
+                                      }
+                                    />
+                                    <span>Include in initiate transfer</span>
+                                  </label>
+                                </>
                               )}
                               {phase === 'in_transit' && (
                                 <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
@@ -4309,10 +4389,31 @@ function MRNDetailModal({
                 Release from Warehouse
               </button>
             )}
-            {(isOutboundMtr ? hasInTransitForReceive : status === 'In Transit') && (
+            {(isOutboundMtr
+              ? (initiateSelectedIds.length > 0 || hasInTransitForReceive)
+              : status === 'In Transit') && (
               <button
                 type="button"
                 onClick={() => {
+                  if (isOutboundMtr) {
+                    if (initiateSelectedIds.length > 0) {
+                      setLogisticsModalOpen(true);
+                      return;
+                    }
+                    const ids = Object.entries(recvLinePick)
+                      .filter(([k, v]) => v && mtrLinePhaseRaw(mrn, k) === 'in_transit')
+                      .map(([k]) => k);
+                    if (ids.length === 0) {
+                      addToast('error', 'Select at least one line to initiate or receive.');
+                      return;
+                    }
+                    persistUpdate({
+                      status: 'Received at MU',
+                      receiveAtMuLineIds: ids,
+                      receivedAtMu: receivedAtMu || new Date().toISOString().slice(0, 10),
+                    });
+                    return;
+                  }
                   const ids = Object.entries(recvLinePick)
                     .filter(([k, v]) => v && mtrLinePhaseRaw(mrn, k) === 'in_transit')
                     .map(([k]) => k);
@@ -4329,7 +4430,7 @@ function MRNDetailModal({
                 disabled={saving}
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50"
               >
-                Verify / Received at MU
+                {isOutboundMtr ? (initiateSelectedIds.length > 0 ? 'Initiate transfer' : 'Verify / Received at MU') : 'Verify / Received at MU'}
               </button>
             )}
             {!isClosedStatus(status) && (
@@ -4370,6 +4471,49 @@ function MRNDetailModal({
           </div>
         </div>
       </div>
+      {logisticsModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Initiate transfer</h3>
+                <p className="text-xs text-slate-500 mt-1">Add logistics before moving selected lines to `In Transit`.</p>
+              </div>
+              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close logistics popup">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-5 py-5">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Tracking / LR no.</label>
+                <input value={logisticsTrackingNo} onChange={(e) => setLogisticsTrackingNo(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Transporter / courier</label>
+                <input value={logisticsTransporter} onChange={(e) => setLogisticsTransporter(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Dispatch date</label>
+                <input type="date" value={logisticsDispatchDate} onChange={(e) => setLogisticsDispatchDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">ETA</label>
+                <input type="date" value={logisticsEtaDate} onChange={(e) => setLogisticsEtaDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Vehicle no.</label>
+                <input value={logisticsVehicleNo} onChange={(e) => setLogisticsVehicleNo(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={handleSubmitLogistics} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+                Save & initiate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

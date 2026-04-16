@@ -49,6 +49,17 @@ export interface BatchSplit {
   bprNo: string;
   plannedQty: number;
   fgQty: number;
+  /** Production statuses (when split is linked to a production batch). */
+  bmrStatus?: string | null;
+  bprStatus?: string | null;
+  /** Production yield numbers from the linked batch. */
+  bulkYield?: number | null;
+  fillYield?: number | null;
+  fgYield?: number | null;
+  /** Fulfillment timeline completion helpers. */
+  fgOutput?: number;
+  remainingQty?: number;
+  completionPercent?: number;
   fgLocation: string | null;
   ffStatus: FFStatus;
   pickedQty: number;
@@ -147,6 +158,12 @@ export type TrackingStep = {
   timestamp?: string;
   details?: string;
 };
+
+export interface BatchTimelineStep {
+  key: 'planned' | 'in_production' | 'fg_ready' | 'picking' | 'invoiced' | 'shipped' | 'delivered';
+  label: string;
+  status: 'done' | 'active' | 'pending';
+}
 
 // ═══════════════════════════════════════════════════════════
 // MODAL PROPS

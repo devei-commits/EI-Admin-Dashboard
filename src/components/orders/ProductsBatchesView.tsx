@@ -30,6 +30,7 @@ import {
 } from '../../utils/orderFulfillmentUtils';
 import { StatusBadge } from './StatusBadge';
 import { UnifiedButton as Button } from '../ui/UnifiedComponents';
+import { buildBatchTimelineSteps } from '../../services/fulfillment.service';
 
 interface ProductsBatchesViewProps {
   saleOrders: SaleOrder[];
@@ -140,6 +141,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
               <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
               <th className="px-4 py-3 text-right font-semibold text-gray-700">Planned Qty</th>
               <th className="px-4 py-3 text-right font-semibold text-gray-700">FG Output</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700">Completion</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700">FG Location</th>
               <th className="px-4 py-3 text-right font-semibold text-gray-700">Picked</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700">Invoice</th>
@@ -151,7 +153,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
           <tbody className="divide-y divide-gray-200">
             {tableRows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={15} className="px-4 py-12 text-center text-gray-500">
                   <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                   <p className="font-medium">No batches found</p>
                   <p className="text-xs mt-1">
@@ -292,6 +294,9 @@ function BatchRow({
           <span className="text-gray-400">—</span>
         )}
       </td>
+      <td className="px-4 py-3 min-w-52">
+        <BatchTimelineCell split={split} />
+      </td>
       <td className="px-4 py-3">
         {split.fgLocation ? (
           <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-100 text-teal-700 border border-teal-200">
@@ -355,5 +360,47 @@ function BatchRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function BatchTimelineCell({ split }: { split: BatchSplit }) {
+  const planned = Number(split.plannedQty || 0) || 0;
+  const fgOutput = Number(split.fgOutput ?? split.fgQty ?? split.fgYield ?? 0) || 0;
+  const remaining = Math.max(0, Number(split.remainingQty ?? (planned - fgOutput)) || 0);
+  const pct = planned > 0
+    ? Math.min(100, Math.max(0, Number(split.completionPercent ?? Math.round((fgOutput / planned) * 100))))
+    : 0;
+  const steps = buildBatchTimelineSteps(split);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] text-gray-600">
+        <span className="font-medium">Planned:</span> {formatNumber(planned)}{' '}
+        <span className="font-medium ml-1.5">FG:</span> {formatNumber(fgOutput)}{' '}
+        <span className="font-medium ml-1.5">Rem:</span> {formatNumber(remaining)}
+      </div>
+      <div className="w-full h-1.5 bg-gray-100 rounded">
+        <div
+          className="h-1.5 rounded bg-indigo-500"
+          style={{ width: `${pct}%` }}
+          title={`Completion ${pct}%`}
+        />
+      </div>
+      <div className="flex items-center gap-1">
+        {steps.map((step) => (
+          <span
+            key={step.key}
+            title={step.label}
+            className={`h-2 w-2 rounded-full ${
+              step.status === 'done'
+                ? 'bg-emerald-500'
+                : step.status === 'active'
+                  ? 'bg-indigo-500'
+                  : 'bg-gray-300'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

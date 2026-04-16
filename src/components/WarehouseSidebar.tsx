@@ -18,6 +18,7 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
     { id: 'inventory', label: 'Inventory', icon: '' },
     { id: 'inbound', label: 'Inbound', icon: '' },
     { id: 'outbound', label: 'Transfer orders', icon: '' },
+    { id: 'logistics-schedule', label: 'Logistics Schedule', icon: '' },
     { id: 'stock-check-requests', label: 'Stock Check Requests', icon: '' },
   ];
 

@@ -1,7 +1,44 @@
 import { api } from '../lib/apiClient';
-import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
+import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData, BatchSplit, BatchTimelineStep } from '../types/orderFulfillment';
 
 const BASE = '/api/v1/fulfillment';
+
+const TIMELINE_FLOW: BatchTimelineStep['key'][] = [
+  'planned',
+  'in_production',
+  'fg_ready',
+  'picking',
+  'invoiced',
+  'shipped',
+  'delivered',
+];
+
+function timelineCursorFromSplit(split: BatchSplit): BatchTimelineStep['key'] {
+  const ff = String(split.ffStatus || '').toLowerCase();
+  if (ff === 'delivered' || ff === 'closed') return 'delivered';
+  if (ff === 'shipped') return 'shipped';
+  if (ff === 'invoiced') return 'invoiced';
+  if (ff === 'picking') return 'picking';
+  if (ff === 'fg_ready') return 'fg_ready';
+  return 'in_production';
+}
+
+export function buildBatchTimelineSteps(split: BatchSplit): BatchTimelineStep[] {
+  const activeKey = timelineCursorFromSplit(split);
+  const activeIdx = TIMELINE_FLOW.indexOf(activeKey);
+  return TIMELINE_FLOW.map((key, idx) => ({
+    key,
+    label:
+      key === 'planned' ? 'Planned'
+        : key === 'in_production' ? 'In Production'
+          : key === 'fg_ready' ? 'FG Ready'
+            : key === 'picking' ? 'Picking'
+              : key === 'invoiced' ? 'Invoiced'
+                : key === 'shipped' ? 'Shipped'
+                  : 'Delivered',
+    status: idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : 'pending',
+  }));
+}
 
 /** Normalize GET payloads whether the API returns a raw array or a wrapped `{ data: [...] }`. */
 function unwrapList<T>(res: unknown): T[] {

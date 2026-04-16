@@ -5,7 +5,11 @@ import { useToast } from '../../context/ToastContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import logoFull from '../../assets/logo/eilogofull.svg';
 import procurementData from '../../mocks/procurement-data.json';
-import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
+import {
+  fetchProcurementRequests as fetchProcurementRequestsApi,
+  updateProcurementRequest as updateProcurementRequestApi,
+  createProcurementRequest as createProcurementRequestApi,
+} from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as ApiProcurementRequest } from '../../services/procurement.service';
 import {
   fetchProcurementQuotations,
@@ -41,7 +45,7 @@ import {
   itemDetailsToProcurementRequestItems,
   assignPrItemToDraftLines,
   matchBackendPrItemForDraftLine,
-  mergeBackendPrItemsAfterPartialRelease,
+  splitBackendPrItemsAfterPartialRelease,
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
@@ -8898,16 +8902,27 @@ const Procurement: React.FC = () => {
                       };
 
                       const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
-                        | { items?: BackendPRItem[] }
+                        | {
+                            items?: BackendPRItem[];
+                            planningExtractedId?: number;
+                            planningBatchId?: number | null;
+                            priority?: string;
+                            requiredByDate?: string | null;
+                            notes?: string | null;
+                            preferredVendor?: string | null;
+                          }
                         | undefined;
-                      const mergedItems = mergeBackendPrItemsAfterPartialRelease(
-                        Array.isArray(prRow?.items) ? prRow.items : [],
+
+                      const backendItemsForSplit = Array.isArray(prRow?.items) ? prRow!.items : [];
+                      const { releasedItems, remainingItems } = splitBackendPrItemsAfterPartialRelease(
+                        backendItemsForSplit,
                         lineItemsForModal,
                         linesForCreate
                       );
+
                       const prUpd = await updateProcurementRequestApi(req.id, {
                         status: 'PO Draft',
-                        items: mergedItems,
+                        items: releasedItems,
                       });
                       if (!prUpd.success) {
                         addToast(
@@ -8920,6 +8935,35 @@ const Procurement: React.FC = () => {
                         void invalidatePurchaseOrdersQueries();
                         return;
                       }
+
+                      let remainingCreatedCode: string | null = null;
+                      if (remainingItems.length > 0) {
+                        // Create a NEW procurement request row for the remainder so future PO drafts are linked to the correct requestId.
+                        if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+                          addToast('error', 'Cannot split PR remainder: missing planningExtractedId on backend PR.');
+                        } else {
+                          const remainingRes = await createProcurementRequestApi({
+                            planningExtractedId: prRow.planningExtractedId,
+                            planningBatchId: prRow.planningBatchId ?? null,
+                            priority: prRow.priority ?? 'Medium',
+                            requiredByDate: prRow.requiredByDate ?? null,
+                            notes: prRow.notes ?? null,
+                            preferredVendor: prRow.preferredVendor ?? null,
+                            items: remainingItems,
+                          });
+
+                          if (!remainingRes.success || !remainingRes.data) {
+                            addToast(
+                              'error',
+                              typeof remainingRes.error === 'string'
+                                ? remainingRes.error
+                                : 'Failed to create remaining procurement request for PR remainder.',
+                            );
+                          } else {
+                            remainingCreatedCode = remainingRes.data.code ?? null;
+                          }
+                        }
+                      }
                       void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
 
                       updateProcurementState((current) => ({
@@ -8930,8 +8974,10 @@ const Procurement: React.FC = () => {
                       addToast(
                         'success',
                         `Draft PO ${newDpoId} created for ${req.code}${
-                          linesForCreate.some((l) => (Number(l.qty) || 0) < l.originalQty)
-                            ? ' (remaining qty left on request)'
+                          remainingItems.length > 0
+                            ? remainingCreatedCode
+                              ? `; remainder split into ${remainingCreatedCode}`
+                              : '; remainder split into a new PR'
                             : ''
                         }`
                       );
