@@ -134,6 +134,8 @@ export type DraftPOLineItem = {
   /** From persisted PO line — used for stable PR↔PO matching when splitting */
   raw_material_id?: number;
   pack_material_id?: number;
+  /** UOM sent on purchase_orders.items for warehouse kg conversion (e.g. KG, G, PCS) */
+  unit?: string;
 };
 
 export type DraftPO = {

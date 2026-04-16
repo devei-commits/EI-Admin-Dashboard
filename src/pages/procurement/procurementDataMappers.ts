@@ -746,10 +746,15 @@ export function draftLineItemsToPurchaseOrderItems(
     const ld = normalizeLeadTimeDays(l.leadTimeDays);
     const rmId = src?.raw_material_id ?? l.raw_material_id;
     const pmId = src?.pack_material_id ?? l.pack_material_id;
+    const unitFromLine = String(l.unit ?? '').trim();
+    const unitFromPr = String(src?.unit ?? '').trim();
+    const defaultUnit = src?.type === 'PM' || (pmId != null && Number(pmId) > 0) ? 'PCS' : 'KG';
+    const unit = unitFromLine || unitFromPr || defaultUnit;
     return {
       itemName: l.item,
       itemCode: l.itemCode,
       quantity: l.qty,
+      unit,
       rate: String(l.pricePerUnit),
       tax: String(l.gstPercent || 18),
       ...(ld !== undefined ? { lead_time_days: ld } : {}),
@@ -824,11 +829,9 @@ export function mergeBackendPrItemsAfterPartialRelease(
     }
     const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
     const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
-    const partialFlag = lineMoq > 0 && remaining < lineMoq;
     out.push({
       ...bi,
       quantity_requested: remaining,
-      ...(partialFlag ? { partial_release_remainder: true } : {}),
     });
   }
   return out;
@@ -884,12 +887,9 @@ export function splitBackendPrItemsAfterPartialRelease(
 
     const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
     const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
-    const partialFlag = lineMoq > 0 && remaining < lineMoq;
-
     remainingItems.push({
       ...bi,
       quantity_requested: remaining,
-      ...(partialFlag ? { partial_release_remainder: true } : {}),
     });
   }
 

@@ -27,6 +27,7 @@ import {
   fetchProcurementRequests,
   updateProcurementRequest,
   type ProcurementRequestItem,
+  type ProcurementRequest,
 } from '../services/procurement.service';
 import { fetchPriceListPage, type PriceListItemPage } from '../services/itemsList.service';
 import {
@@ -179,6 +180,87 @@ function plannedLineMatchesItemsInvolvedRow(line: PlannedLine, item: ItemsInvolv
   const nameItem = String(item.name ?? '').trim().toLowerCase();
   const nameLine = String(line.itemName ?? '').trim().toLowerCase();
   return nameItem.length > 0 && nameLine.length > 0 && nameItem === nameLine;
+}
+
+/** Draft PO line counts toward released qty if it matches PE scope + material. */
+function plannedLineCountsTowardItemRelease(line: PlannedLine, item: ItemsInvolvedDisplayRow): boolean {
+  if (!plannedLineMatchesItemsInvolvedRow(line, item)) return false;
+  const linePe = Number(line.planningExtractedId) || 0;
+  const ids = item.planningExtractedIds ?? [];
+  if (ids.length > 0) {
+    return linePe <= 0 || ids.includes(linePe);
+  }
+  const itemPe = Number(item.planningExtractedId) || 0;
+  if (itemPe > 0 && linePe > 0 && linePe !== itemPe) return false;
+  return true;
+}
+
+function procurementRequestItemMatchesInvolvedRow(
+  line: ProcurementRequestItem,
+  item: ItemsInvolvedDisplayRow
+): boolean {
+  if (line.type !== item.itemType) return false;
+  const matId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+  const lineRm = Number(line.raw_material_id);
+  const linePm = Number(line.pack_material_id);
+  const lineMatId = item.itemType === 'RM' ? lineRm : linePm;
+  if (Number.isFinite(matId) && matId > 0) {
+    return Number.isFinite(lineMatId) && lineMatId === matId;
+  }
+  const codeItem = normalizeMaterialCode(String(item.code ?? '').trim().toLowerCase());
+  const codeLine = normalizeMaterialCode(String(line.code ?? '').trim().toLowerCase());
+  if (codeItem.length > 0 && codeLine.length > 0 && codeItem === codeLine) return true;
+  const nameItem = String(item.name ?? '').trim().toLowerCase();
+  const nameLine = String(line.name ?? '').trim().toLowerCase();
+  return nameItem.length > 0 && nameLine.length > 0 && nameItem === nameLine;
+}
+
+function procurementRequestIsActiveForReleaseCount(pr: ProcurementRequest): boolean {
+  const st = String(pr.status ?? '').trim();
+  if (!st) return true;
+  if (/cancel/i.test(st)) return false;
+  if (/reject/i.test(st)) return false;
+  return true;
+}
+
+function sumProcurementRequestQtyForItem(item: ItemsInvolvedDisplayRow, prs: ProcurementRequest[]): number {
+  const idSet = new Set<number>();
+  for (const id of item.planningExtractedIds ?? []) {
+    const n = Number(id);
+    if (Number.isFinite(n) && n > 0) idSet.add(n);
+  }
+  if (idSet.size === 0) {
+    const single = Number(item.planningExtractedId);
+    if (Number.isFinite(single) && single > 0) idSet.add(single);
+  }
+  if (idSet.size === 0) return 0;
+  let sum = 0;
+  for (const pr of prs) {
+    if (!procurementRequestIsActiveForReleaseCount(pr)) continue;
+    const peId = Number(pr.planningExtractedId);
+    if (!idSet.has(peId)) continue;
+    const items = Array.isArray(pr.items) ? pr.items : [];
+    for (const line of items) {
+      if (!procurementRequestItemMatchesInvolvedRow(line, item)) continue;
+      sum += Number(line.quantity_requested ?? line.shortage ?? 0) || 0;
+    }
+  }
+  return sum;
+}
+
+function sumPlanningPOLineQtyForItem(item: ItemsInvolvedDisplayRow, lines: PlannedLine[]): number {
+  return lines.reduce((sum, line) => {
+    return plannedLineCountsTowardItemRelease(line, item) ? sum + (Number(line.qty) || 0) : sum;
+  }, 0);
+}
+
+/** Qty already committed via Procurement Requests or Planning-linked draft POs (de-duped). */
+function releasedQtyTowardPlanningGap(
+  item: ItemsInvolvedDisplayRow,
+  prs: ProcurementRequest[],
+  plannedLines: PlannedLine[]
+): number {
+  return Math.max(sumProcurementRequestQtyForItem(item, prs), sumPlanningPOLineQtyForItem(item, plannedLines));
 }
 
 function normalizeMaterialCode(code: string): string {
@@ -1806,13 +1888,8 @@ const Planning = () => {
     return out;
   }, [purchaseOrders]);
 
-  const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) => {
-    const lines = plannedLinesFromBackend;
-    return lines.some((line) => {
-      if (Number(item.planningExtractedId) > 0 && Number(line.planningExtractedId) > 0 && Number(line.planningExtractedId) !== Number(item.planningExtractedId)) return false;
-      return plannedLineMatchesItemsInvolvedRow(line, item);
-    });
-  };
+  const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) =>
+    plannedLinesFromBackend.some((line) => plannedLineCountsTowardItemRelease(line, item));
 
   const getQuotationSlabsForItem = (item: ItemsInvolvedDisplayRow) => {
     const rid = Number(item.raw_material_id);
@@ -1880,10 +1957,12 @@ const Planning = () => {
       // eslint-disable-next-line no-console
       console.groupEnd();
     }
-    const shortfall = Math.max(0, item.totalRequired);
+    const gapNeed = Math.max(0, item.totalRequired);
+    const releasedTowardGap = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
+    const remainingGap = Math.max(0, gapNeed - releasedTowardGap);
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
     const qtyStr =
-      surplus > 0 ? String(surplus) : shortfall > 0 ? String(Math.round(shortfall)) : '';
+      surplus > 0 ? String(surplus) : remainingGap > 0 ? String(Math.round(remainingGap)) : '';
     const parsedTerms = parsePaymentTermsString(first?.paymentTerms ?? 'As per contract');
     setReleaseToPlanningItem(item);
     setReleaseToPlanningForm({
@@ -2036,6 +2115,7 @@ const Planning = () => {
     }
 
     await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
 
     setReleaseToPlanningItem(null);
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
@@ -3278,7 +3358,16 @@ const Planning = () => {
                         const hasPlannedShortfall = Number(item.plannedQtyNum || 0) > 0
                           && availableForPlanning < Number(item.plannedQtyNum || 0);
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const canReleaseToPlanning = hasShortfall || hasPlannedShortfall;
+                        const gapNeed = Math.max(0, Number(item.totalRequired) || 0);
+                        const releasedTowardGap = releasedQtyTowardPlanningGap(
+                          item,
+                          procurementRequests,
+                          plannedLinesFromBackend
+                        );
+                        const remainingPlanningGap = Math.max(0, gapNeed - releasedTowardGap);
+                        const shortageForRelease = hasShortfall || hasPlannedShortfall;
+                        const canReleaseToPlanning =
+                          shortageForRelease && remainingPlanningGap > 1e-6;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2">
@@ -3336,12 +3425,27 @@ const Planning = () => {
                             <td className="px-2 py-2 text-center text-gray-500 text-xs">{item.bomFlag}</td>
                             <td className="px-2 py-2 text-center">
                               <div className="flex flex-col items-center gap-1 min-w-[7rem]">
-                                {hasShortfall && hasExistingPlannedLine && (
+                                {shortageForRelease && releasedTowardGap > 1e-6 && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-800 border border-slate-200"
+                                    title="Quantity already on Procurement / draft PO from Release to Planning."
+                                  >
+                                    Released {item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                      ? releasedTowardGap.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                      : Math.round(releasedTowardGap).toLocaleString()}
+                                    {gapNeed > 1e-6
+                                      ? ` / need ${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                        ? gapNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                        : Math.round(gapNeed).toLocaleString()}`
+                                      : ''}
+                                  </span>
+                                )}
+                                {hasShortfall && hasExistingPlannedLine && remainingPlanningGap > 1e-6 && (
                                   <span
                                     className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                    title="At least one planned line exists for this item; you can add another release."
+                                    title="Open procurement / draft PO lines exist; you can release more until the gap is covered."
                                   >
-                                    Planned line
+                                    Partial release
                                   </span>
                                 )}
                                 <button
@@ -3351,7 +3455,9 @@ const Planning = () => {
                                   title={
                                     canReleaseToPlanning
                                       ? undefined
-                                      : 'No planning shortage: both remaining requirement and planned coverage are satisfied by free stock + in transit. Use Procurement / Items List for optional quotes.'
+                                      : !shortageForRelease
+                                        ? 'No planning shortage: remaining requirement and planned coverage are satisfied by free stock + in transit. Use Procurement / Items List for optional quotes.'
+                                        : `Gap already covered by procurement / draft PO (${releasedTowardGap.toLocaleString()} ≥ ${gapNeed.toLocaleString()}). Edit quantities in Procurement if needed.`
                                   }
                                   onClick={() => openReleaseToPlanningModal(item)}
                                 >
@@ -3435,14 +3541,15 @@ const Planning = () => {
         const slabs = getQuotationSlabsForItem(item);
         const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
         const previous = plannedLinesFromBackend
-          .filter((l) => {
-            if (Number(item.planningExtractedId) > 0 && Number(l.planningExtractedId) > 0 && Number(l.planningExtractedId) !== Number(item.planningExtractedId)) {
-              return false;
-            }
-            return plannedLineMatchesItemsInvolvedRow(l, item);
-          })
+          .filter((l) => plannedLineCountsTowardItemRelease(l, item))
           .slice(0, 10);
-        const shortfall = Math.max(0, item.totalRequired);
+        const gapNeedModal = Math.max(0, item.totalRequired);
+        const releasedModal = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
+        const remainingGapModal = Math.max(0, gapNeedModal - releasedModal);
+        const qtyFmt = (n: number) =>
+          item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+            ? n.toLocaleString(undefined, { maximumFractionDigits: 3 })
+            : Math.round(n).toLocaleString();
         const releasePtStages = resolveStagedPaymentTermsForForm(
           releaseToPlanningForm.paymentTermsRaw,
           releaseToPlanningForm.paymentTermsType,
@@ -3462,7 +3569,9 @@ const Planning = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <h3 className="font-bold text-slate-900 text-sm mb-1">{item.name} <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.code}</span></h3>
-                    <p className="text-xs text-slate-500 mb-3">{item.itemType} · {item.unit} · Gap {Math.round(shortfall).toLocaleString()} {item.unit}</p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      {item.itemType} · {item.unit} · Need {qtyFmt(gapNeedModal)} · Released {qtyFmt(releasedModal)} · Remaining {qtyFmt(remainingGapModal)}
+                    </p>
                     <div className="border-t border-slate-200 my-3" />
                     <table className="w-full text-xs">
                       <thead>

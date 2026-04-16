@@ -6,6 +6,7 @@ import {
   fetchAllWarehouseLocationHistory,
   fetchRackLocations,
   fetchUsageStats,
+  inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
 import { queryKeys } from '../../lib/queryClient';
@@ -15,6 +16,7 @@ import type {
   RackLocationEntry,
   InTransitBreakdownItem,
   UsageStatsRow,
+  WarehouseInventoryRow,
 } from '../../services/warehouseInventory.service';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 
@@ -39,7 +41,10 @@ export interface InventoryItem {
   poQuantity?: number;
   reorderPt: number;
   avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  /** Display status (threshold + qc_status); may be a custom qc value */
+  status: string;
+  /** Stored qc_status on warehouse_inventory */
+  qcStatus?: string;
   /** Item group names/codes this item belongs to (from masters) */
   itemGroupNames?: string[];
   itemGroupCodes?: string[];
@@ -865,31 +870,7 @@ function StockLocationCell({
 }
 
 /** Map API row to InventoryItem for table/sidebar */
-function rowToInventoryItem(row: {
-  id: string;
-  code: string;
-  name: string;
-  subtitle: string;
-  type: 'RM' | 'PM' | 'FG/PR';
-  sourceId: number;
-  itemGroupNames: string[];
-  itemGroupCodes: string[];
-  zone: string;
-  rack: string;
-  whStock: number;
-  whUnit: string;
-  ml1Stock: number;
-  ml2Stock: number;
-  stockInHand: number;
-  reserved: number;
-  inTransit: number;
-  inTransitBreakdown?: InTransitBreakdownItem[];
-  poQuantity?: number;
-  reorderPt: number;
-  avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
-  warehouseInventoryId?: number;
-}): InventoryItem {
+function rowToInventoryItem(row: WarehouseInventoryRow): InventoryItem {
   return {
     id: row.id,
     code: row.code,
@@ -911,6 +892,9 @@ function rowToInventoryItem(row: {
     reorderPt: row.reorderPt,
     avgMo: row.avgMo,
     status: row.status,
+    qcStatus: row.qcStatus,
+    batchNumber: row.batchNumber ?? undefined,
+    expiryDate: row.expiryDate ?? undefined,
     itemGroupNames: row.itemGroupNames,
     itemGroupCodes: row.itemGroupCodes,
     warehouseInventoryId: row.warehouseInventoryId,
@@ -1205,6 +1189,8 @@ const WarehouseInventory = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((row) => {
+        const adjustText =
+          row.actionType === 'INVENTORY_ADJUST' ? inventoryAdjustChangeLines(row.changesJson).join(' ') : '';
         const fields = [
           row.code || '',
           row.name || '',
@@ -1213,6 +1199,8 @@ const WarehouseInventory = () => {
           row.fromRack || '',
           row.toZone || '',
           row.toRack || '',
+          row.note || '',
+          adjustText,
         ]
           .join(' ')
           .toLowerCase();
@@ -1497,7 +1485,12 @@ const WarehouseInventory = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredHistoryRows.map((row) => (
+                    {filteredHistoryRows.map((row) => {
+                      const adjustLines =
+                        row.actionType === 'INVENTORY_ADJUST'
+                          ? inventoryAdjustChangeLines(row.changesJson)
+                          : [];
+                      return (
                       <tr key={row.id}>
                         <td className="px-4 py-3">
                           <div className="text-sm font-semibold text-gray-900">
@@ -1519,17 +1512,38 @@ const WarehouseInventory = () => {
                           <div className="text-xs text-gray-500">{row.toRack || '—'}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
-                          {row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
-                            ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
-                            : (row.actionType || 'Move')}
+                          {row.actionType === 'INVENTORY_ADJUST'
+                            ? 'Inventory adjust'
+                            : row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
+                              ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
+                              : (row.actionType || 'Move')}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {(row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') && (
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-md">
+                          {row.actionType === 'INVENTORY_ADJUST' ? (
+                            <div className="space-y-1">
+                              {adjustLines.length > 0 ? (
+                                <ul className="list-disc list-inside text-xs text-gray-600">
+                                  {adjustLines.map((line, i) => (
+                                    <li key={i}>{line}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                              {row.note ? (
+                                <div className="text-xs text-gray-700">
+                                  <span className="font-medium">Note:</span> {row.note}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') ? (
                             <span className="text-amber-700 font-medium">
-                              +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'} {row.batchNo ? `· ${row.batchNo}` : ''}
+                              +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'}{' '}
+                              {row.batchNo ? `· ${row.batchNo}` : ''}
                             </span>
+                          ) : (
+                            '—'
                           )}
-                          {row.actionType !== 'BMR_RESERVED' && row.actionType !== 'BPR_RESERVED' && '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {row.qtyDelta != null ? row.qtyDelta : '—'}
@@ -1538,7 +1552,8 @@ const WarehouseInventory = () => {
                           {new Date(row.movedAt).toLocaleString()}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

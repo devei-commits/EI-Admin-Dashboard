@@ -44,7 +44,64 @@ export interface WarehouseInventoryRow {
   poQuantity?: number;
   reorderPt: number;
   avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  /** Display status (may include threshold-derived values or custom qc_status) */
+  status: string;
+  /** Raw qc_status from warehouse_inventory (editor + history) */
+  qcStatus?: string;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+}
+
+/** Match list PATCH display logic: threshold overrides when qc is default "In Stock". */
+export function deriveWarehouseInventoryDisplayStatus(
+  qcStatus: string | null | undefined,
+  stockInHand: number,
+  reorderPt: number
+): 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock' | string {
+  let status = (qcStatus || 'In Stock').trim();
+  if (status === 'In Stock' && reorderPt > 0) {
+    if (stockInHand < reorderPt * 0.5) return 'Critical';
+    if (stockInHand < reorderPt) return 'Low Stock';
+  }
+  return status || 'In Stock';
+}
+
+export const INVENTORY_AUDIT_FIELD_LABELS: Record<string, string> = {
+  wh_stock: 'WH stock',
+  ml1_stock: 'ML1 stock',
+  ml2_stock: 'ML2 stock',
+  stock_in_hand: 'Stock in hand',
+  reserved: 'Reserved',
+  in_transit: 'In transit',
+  zone: 'Zone',
+  rack: 'Rack',
+  qc_status: 'QC status',
+  wh_unit: 'Unit',
+  reorder_pt: 'Reorder point',
+  avg_mo: 'Avg monthly',
+  batch_number: 'Batch / lot',
+  expiry_date: 'Expiry',
+};
+
+function formatInventoryAuditValue(key: string, val: unknown): string {
+  if (val == null || val === '') return '—';
+  if (typeof val === 'number' && Number.isFinite(val)) return String(val);
+  return String(val);
+}
+
+/** Human-readable lines from INVENTORY_ADJUST `changes_json.changed`. */
+export function inventoryAdjustChangeLines(changesJson: unknown): string[] {
+  if (!changesJson || typeof changesJson !== 'object') return [];
+  const c = (changesJson as { changed?: Record<string, [unknown, unknown]> }).changed;
+  if (!c || typeof c !== 'object') return [];
+  return Object.keys(c)
+    .sort()
+    .map((k) => {
+      const pair = c[k];
+      const [a, b] = Array.isArray(pair) ? pair : [undefined, undefined];
+      const label = INVENTORY_AUDIT_FIELD_LABELS[k] || k;
+      return `${label}: ${formatInventoryAuditValue(k, a)} → ${formatInventoryAuditValue(k, b)}`;
+    });
 }
 
 const LOG = true;
@@ -106,7 +163,10 @@ interface ApiWarehouseRow {
   poQuantity?: number;
   reorderPt: number;
   avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  status: string;
+  qcStatus?: string;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
 }
 
 export async function fetchWarehouseInventory(): Promise<ServiceResult<{
@@ -147,6 +207,9 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',
+      qcStatus: r.qcStatus,
+      batchNumber: r.batchNumber ?? null,
+      expiryDate: r.expiryDate ?? null,
     }));
     const itemGroups = Array.isArray(data?.itemGroups) ? data.itemGroups : [];
     log('Loaded from backend', { rowCount: rows.length, itemGroupCount: itemGroups.length });
@@ -235,6 +298,32 @@ export interface UpdateWarehouseStockPayload {
   zone?: string;
   rack?: string;
   qc_status?: string;
+  wh_unit?: string;
+  reorder_pt?: number;
+  avg_mo?: number;
+  batch_number?: string | null;
+  expiry_date?: string | null;
+  /** Stored on INVENTORY_ADJUST history row */
+  note?: string;
+  reason?: string;
+}
+
+export interface UpdateWarehouseStockResponse {
+  id: number;
+  wh_stock: number;
+  ml1_stock: number;
+  ml2_stock: number;
+  stock_in_hand: number;
+  reserved: number;
+  in_transit: number;
+  zone: string;
+  rack: string;
+  qc_status: string;
+  wh_unit: string;
+  reorder_pt: number;
+  avg_mo: number;
+  batch_number: string | null;
+  expiry_date: string | null;
 }
 
 export interface WarehouseLocationHistoryEntry {
@@ -262,29 +351,28 @@ export interface WarehouseLocationHistoryEntry {
   code?: string;
   name?: string;
   subtitle?: string;
+  /** INVENTORY_ADJUST: { before, after, changed } */
+  changesJson?: unknown;
+  note?: string | null;
 }
 
 /** PATCH warehouse inventory row (adjust stock). Backend recomputes stock_in_hand = wh + ml1 + ml2. */
 export async function updateWarehouseStock(
   warehouseInventoryId: number,
   payload: UpdateWarehouseStockPayload
-): Promise<ServiceResult<{ wh_stock: number; ml1_stock: number; ml2_stock: number; stock_in_hand: number; reserved: number; in_transit: number }>> {
+): Promise<ServiceResult<UpdateWarehouseStockResponse>> {
   try {
-    const res = await api.patch<{
-      wh_stock: number;
-      ml1_stock: number;
-      ml2_stock: number;
-      stock_in_hand: number;
-      reserved: number;
-      in_transit: number;
-    }>(`/api/v1/warehouse-inventory/${warehouseInventoryId}`, payload);
+    const res = await api.patch<UpdateWarehouseStockResponse>(
+      `/api/v1/warehouse-inventory/${warehouseInventoryId}`,
+      payload
+    );
     const data = res?.data ?? res;
     log('Updated warehouse stock', { warehouseInventoryId, payload, response: data });
-    return { data: data as any, error: null, success: true };
+    return { data: data as UpdateWarehouseStockResponse, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to update warehouse stock';
     log('Update warehouse stock failed', { warehouseInventoryId, error: message });
-    return { data: null as any, error: message, success: false };
+    return { data: null as unknown as UpdateWarehouseStockResponse, error: message, success: false };
   }
 }
 
@@ -377,6 +465,9 @@ export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: W
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',
+      qcStatus: r.qcStatus,
+      batchNumber: r.batchNumber ?? null,
+      expiryDate: r.expiryDate ?? null,
     }));
     return { data: { rows }, error: null, success: true };
   } catch (e) {
