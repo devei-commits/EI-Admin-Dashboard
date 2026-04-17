@@ -68,7 +68,7 @@ import {
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
-type Section = 'calendar' | 'bmr' | 'bpr' | 'equipment' | 'team' | 'transfers';
+type Section = 'calendar' | 'bmr' | 'bpr' | 'yield-report' | 'equipment' | 'team' | 'transfers';
 export type ScheduleSlot = { equipId: string; category: 'mfg' | 'fill' | 'pack'; dateIso: string };
 type BMRStatus = 'draft' | 'batch_confirmed' | 'rm_reserved' | 'scheduled' | 'rm_connected' | 'dispensing' | 'in_production' | 'bulk_qc' | 'qc_failed' | 'cleared';
 type BPRStatus = 'draft' | 'pm_reserved' | 'scheduled' | 'pm_connected' | 'pm_dispensing' | 'filling' | 'fill_qc' | 'packaging' | 'pack_qc' | 'qc_failed' | 'fg_ready';
@@ -5688,6 +5688,176 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
   );
 }
 
+/* ──────────── YIELD REPORT VIEW ────────────────────────────── */
+function YieldReportView({ batches }: { batches: Batch[] }) {
+  const [search, setSearch] = useState('');
+  const [selectedBmrNo, setSelectedBmrNo] = useState<string | null>(null);
+  const fgReadyBatches = useMemo(() => batches.filter((b) => b.bprStatus === 'fg_ready'), [batches]);
+  const searchLower = search.trim().toLowerCase();
+  const rows = useMemo(() => {
+    const filtered = searchLower
+      ? fgReadyBatches.filter((b) =>
+        b.bmrNo.toLowerCase().includes(searchLower)
+        || b.bprNo.toLowerCase().includes(searchLower)
+        || (b.batchNo || '').toLowerCase().includes(searchLower)
+        || (b.productName || '').toLowerCase().includes(searchLower)
+        || (b.soNo || '').toLowerCase().includes(searchLower))
+      : fgReadyBatches;
+    return filtered.map((b) => {
+      const plannedKg = Number(b.batchSize) || 0;
+      const bmrYieldKg = Number(b.bulkYield) || 0;
+      const bprBulkUnits = Number(b.fillYield) || 0;
+      const builtUnits = Number(b.fgYield) || bprBulkUnits;
+      const orderQty = Number(b.orderQty) || 0;
+      const plannedUnits = b.totalBatches > 0 ? Math.ceil(orderQty / b.totalBatches) : orderQty;
+      const bmrWastageKg = Math.max(0, plannedKg - bmrYieldKg);
+      const bprWastageUnits = Math.max(0, bprBulkUnits - builtUnits);
+      const overallWastageUnits = Math.max(0, plannedUnits - builtUnits);
+      const bmrYieldPct = plannedKg > 0 ? Math.max(0, Math.min(100, (bmrYieldKg / plannedKg) * 100)) : 0;
+      const outputVsPlanPct = plannedUnits > 0 ? Math.max(0, Math.min(100, (builtUnits / plannedUnits) * 100)) : 0;
+      return {
+        b, plannedKg, plannedUnits,
+        bmrYieldKg, bmrWastageKg, bmrYieldPct,
+        bprBulkUnits, builtUnits, bprWastageUnits, overallWastageUnits, outputVsPlanPct,
+      };
+    });
+  }, [fgReadyBatches, searchLower]);
+  const totalYieldKg = rows.reduce((s, r) => s + r.bmrYieldKg, 0);
+  const totalActualOutputUnits = rows.reduce((s, r) => s + r.builtUnits, 0);
+  const totalBmrWastageKg = rows.reduce((s, r) => s + r.bmrWastageKg, 0);
+  const totalBprWastageUnits = rows.reduce((s, r) => s + r.bprWastageUnits, 0);
+  const selectedRow = selectedBmrNo ? rows.find((r) => r.b.bmrNo === selectedBmrNo) ?? null : null;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden section" id="section-yield-report">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
+        <div>
+          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Yield Report</div>
+          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">FG-ready batch-wise output report from QC-yield inputs.</div>
+        </div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search BMR/BPR, batch, SO, product…"
+          className="w-full sm:w-72 text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-emerald-300"
+        />
+      </div>
+      <div className="kpi-row grid grid-cols-2 sm:grid-cols-5 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0">
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">FG Ready Batches</div><div className="kpi-val text-lg font-extrabold text-emerald-600">{rows.length}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Yield (KG)</div><div className="kpi-val text-lg font-extrabold text-blue-600">{totalYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Actual Output (Units)</div><div className="kpi-val text-lg font-extrabold text-purple-600">{fmt(Math.round(totalActualOutputUnits))}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Wastage (KG)</div><div className="kpi-val text-lg font-extrabold text-amber-600">{totalBmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BPR Wastage (Units)</div><div className="kpi-val text-lg font-extrabold text-rose-600">{fmt(Math.round(totalBprWastageUnits))}</div></div>
+      </div>
+      <div className="flex-1 overflow-auto p-5">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-400"><Activity size={30} className="mb-2 opacity-20" /><p className="text-sm">No FG-ready batches found for yield reporting.</p></div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-100">
+            <table className="w-full text-xs bg-white">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Batch</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Product / SO</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Plan (KG)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Yield (KG)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Waste (KG)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Yield %</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BPR Bulk (Units)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Actual Output (Units)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BPR Waste (Units)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Overall Waste (Units)</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Output vs Plan %</th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-600">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.b.bmrNo} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-gray-800">{r.b.bmrNo}</div>
+                      <div className="text-[10px] text-gray-500">{r.b.bprNo} · {r.b.batchNo || '—'}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="text-gray-800">{r.b.productName}</div>
+                      <div className="text-[10px] text-gray-500">{r.b.soNo || '—'}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">{r.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">{r.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono text-amber-700">{r.bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono">{r.bmrYieldPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(Math.round(r.bprBulkUnits))}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-purple-700">{fmt(Math.round(r.builtUnits))}</td>
+                    <td className="px-3 py-2 text-right font-mono text-rose-700">{fmt(Math.round(r.bprWastageUnits))}</td>
+                    <td className="px-3 py-2 text-right font-mono text-amber-700">{fmt(Math.round(r.overallWastageUnits))}</td>
+                    <td className="px-3 py-2 text-right font-mono">{r.outputVsPlanPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBmrNo(r.b.bmrNo)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+                      >
+                        <Eye size={10} /> View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {selectedRow && (
+        <Modal
+          onClose={() => setSelectedBmrNo(null)}
+          title={`Yield Detail — ${selectedRow.b.bmrNo}`}
+          subtitle={`${selectedRow.b.productName} · ${selectedRow.b.bprNo} · ${selectedRow.b.batchNo || '—'}`}
+          size="xl"
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="text-xs font-semibold text-gray-800">{selectedRow.b.soNo || '—'}</p></div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">FG Date</p><p className="text-xs font-semibold text-gray-800">{selectedRow.b.fgDate || '—'}</p></div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BMR Status</p><p className="text-xs font-semibold text-gray-800">{bmrStatusLabel[selectedRow.b.bmrStatus]}</p></div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BPR Status</p><p className="text-xs font-semibold text-gray-800">{bprStatusLabel[selectedRow.b.bprStatus]}</p></div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+              <h4 className="text-sm font-bold text-blue-900 mb-3">BMR (Manufacturing) Detail</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Planned batch weight</span><b>{selectedRow.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Actual yield weight</span><b>{selectedRow.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">BMR wastage</span><b className="text-amber-700">{selectedRow.bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Yield efficiency</span><b>{selectedRow.bmrYieldPct.toFixed(1)}%</b></div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
+              <h4 className="text-sm font-bold text-purple-900 mb-3">BPR (Filling & Packing) Detail</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Bulk available to fill</span><b>{fmt(Math.round(selectedRow.bprBulkUnits))} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Actual output produced</span><b>{fmt(Math.round(selectedRow.builtUnits))} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{fmt(Math.round(selectedRow.bprWastageUnits))} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Output vs planned units</span><b>{selectedRow.outputVsPlanPct.toFixed(1)}%</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <h4 className="text-sm font-bold text-emerald-900 mb-3">Combined Batch Summary</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div><p className="text-gray-500">Planned units</p><p className="font-semibold">{fmt(Math.round(selectedRow.plannedUnits))}</p></div>
+              <div><p className="text-gray-500">Actual output units</p><p className="font-semibold">{fmt(Math.round(selectedRow.builtUnits))}</p></div>
+              <div><p className="text-gray-500">Overall unit wastage</p><p className="font-semibold text-amber-700">{fmt(Math.round(selectedRow.overallWastageUnits))}</p></div>
+              <div><p className="text-gray-500">Overall quality state</p><p className="font-semibold">{selectedRow.b.bprStatus === 'fg_ready' ? 'FG Ready' : 'In Progress'}</p></div>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 /* ──────────── CALENDAR VIEW ────────────────────────────────── */
 
 function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset, onWeekOffsetChange, schedulableBatches = [], onManualSchedule }: {
@@ -6469,6 +6639,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'calendar', label: 'Production Calendar', icon: <Calendar size={15} /> },
   { id: 'bmr', label: 'BMR - Manufacturing', icon: <FlaskConical size={15} /> },
   { id: 'bpr', label: 'BPR - Filling & Packing', icon: <Package size={15} /> },
+  { id: 'yield-report', label: 'Yield Report', icon: <Activity size={15} /> },
   { id: 'transfers', label: 'Transfer orders', icon: <Truck size={15} /> },
   { id: 'equipment', label: 'Equipment & Capacity', icon: <Wrench size={15} /> },
   { id: 'team', label: 'Team Management', icon: <Users size={15} /> },
@@ -6932,6 +7103,8 @@ const Production = () => {
         return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => setShowCreateBatchModal(true)} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
       case 'bpr':
         return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
+      case 'yield-report':
+        return <YieldReportView batches={state.batches} />;
       case 'transfers':
         return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshAfterMrnSave} />;
       case 'equipment':

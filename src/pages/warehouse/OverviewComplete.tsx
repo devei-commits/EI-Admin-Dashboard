@@ -337,6 +337,11 @@ const OutboundDashboard = () => {
 
   const handleInitiateTransfer = async () => {
     if (!selectedMRN) return;
+    const effectivePicker = String(selectedMRN.assignedPicker || assignedPicker || '').trim();
+    if (!effectivePicker) {
+      showToast('Assign a picker before initiating transfer.', 'error');
+      return;
+    }
     persistPanelState(selectedMRN.id);
     const mtrOutbound = isMtrOutbound(selectedMRN);
     if (mtrOutbound && selectedMRN.status === 'Completed') {
@@ -387,7 +392,7 @@ const OutboundDashboard = () => {
         }
         const updatedApi = await updateMRN(selectedMRN.id, {
           initiateTransferLineIds: toInitiate,
-          assignedPicker: assignedPicker || undefined,
+          assignedPicker: effectivePicker,
           transferTeam: assignedTransferBy || undefined,
           ...(scheduleLogisticsPayload || {}),
           lineItems: buildLineItemsForSave(),
@@ -398,14 +403,14 @@ const OutboundDashboard = () => {
       } else {
         await updateMRN(selectedMRN.id, {
           status: UI_TO_API_STATUS['In Transfer'],
-          assignedPicker: assignedPicker || undefined,
+          assignedPicker: effectivePicker,
           transferTeam: assignedTransferBy || undefined,
           lineItems: buildLineItemsForSave(),
         });
         setMrnData((prev) =>
           prev.map((mrn) =>
             mrn.id === selectedMRN.id
-              ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Transfer' as const }
+              ? { ...mrn, assignedPicker: effectivePicker, transferTeam: assignedTransferBy, status: 'In Transfer' as const }
               : mrn
           )
         );
@@ -707,7 +712,9 @@ const OutboundDashboard = () => {
                 <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Assign Picker / Transfer Team</h3>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">Picker</label>
+                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                      Picker <span className="text-rose-600">*</span>
+                    </label>
                     {String(selectedMRN.assignedPicker || '').trim() ? (
                       <div
                         className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
@@ -903,6 +910,7 @@ const OutboundDashboard = () => {
                 onClick={handleInitiateTransfer}
                 disabled={
                   initiatingTransfer ||
+                  !String(selectedMRN.assignedPicker || assignedPicker || '').trim() ||
                   (isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed') ||
                   (isMtrOutbound(selectedMRN) &&
                     selectedMRN.lineItems.length > 0 &&
@@ -911,9 +919,11 @@ const OutboundDashboard = () => {
                     ['In Transfer', 'In Transit', 'Received at MU', 'Completed'].includes(selectedMRN.status))
                 }
                 title={
-                  isMtrOutbound(selectedMRN)
-                    ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
-                    : undefined
+                  !String(selectedMRN.assignedPicker || assignedPicker || '').trim()
+                    ? 'Picker is required before initiating transfer.'
+                    : isMtrOutbound(selectedMRN)
+                      ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
+                      : undefined
                 }
                 className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
               >

@@ -17,6 +17,7 @@ import {
   shipFulfillmentSplits,
   deliverFulfillmentSplits,
 } from '../services/fulfillment.service';
+import { Modal } from '../components/orders/Modal';
 
 type ViewMode = 'orders' | 'batches';
 
@@ -26,6 +27,21 @@ export const OrderFulfillment: React.FC = () => {
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedYield, setSelectedYield] = useState<{
+    bmrNo: string;
+    bprNo: string;
+    productName: string;
+    soNo: string;
+    plannedQty: number;
+    bmrYieldKg: number;
+    bprBulkUnits: number;
+    actualOutputUnits: number;
+    bmrWasteKg: number;
+    bprWasteUnits: number;
+    overallWasteUnits: number;
+    bmrYieldPct: number;
+    completionPercent: number;
+  } | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -211,10 +227,77 @@ export const OrderFulfillment: React.FC = () => {
           ) : viewMode === 'orders' ? (
             <SaleOrdersView saleOrders={filteredSaleOrders} onAddSO={handleAddSO} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
           ) : (
-            <ProductsBatchesView saleOrders={filteredSaleOrders} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
+            <ProductsBatchesView
+              saleOrders={filteredSaleOrders}
+              onPickConfirm={handlePickConfirm}
+              onGenerateInvoice={handleGenerateInvoice}
+              onDispatch={handleDispatch}
+              onConfirmDelivery={handleConfirmDelivery}
+              onViewYieldSplit={(payload) => setSelectedYield(payload)}
+            />
           )}
         </div>
       </div>
+      {selectedYield && (
+        <Modal
+          isOpen={Boolean(selectedYield)}
+          onClose={() => setSelectedYield(null)}
+          title={`Batch Yield Detail — ${selectedYield.bmrNo}`}
+          size="xl"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Product</p><p className="text-xs font-semibold text-gray-800">{selectedYield.productName}</p></div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="text-xs font-semibold text-gray-800">{selectedYield.soNo || '—'}</p></div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BMR</p><p className="text-xs font-semibold text-gray-800">{selectedYield.bmrNo}</p></div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BPR</p><p className="text-xs font-semibold text-gray-800">{selectedYield.bprNo}</p></div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                <h4 className="text-sm font-bold text-blue-900 mb-2">BMR (Production)</h4>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between"><span>Planned batch (KG)</span><b>{selectedYield.plannedQty.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+                  <div className="flex justify-between"><span>Actual yield (KG)</span><b>{selectedYield.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+                  <div className="flex justify-between"><span>Wastage (KG)</span><b>{selectedYield.bmrWasteKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+                  <div className="flex justify-between"><span>Yield %</span><b>{selectedYield.bmrYieldPct.toFixed(1)}%</b></div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-4">
+                <h4 className="text-sm font-bold text-purple-900 mb-2">BPR (Filling/Packing)</h4>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between"><span>Bulk units</span><b>{Math.round(selectedYield.bprBulkUnits).toLocaleString('en-IN')}</b></div>
+                  <div className="flex justify-between"><span>Actual output units</span><b>{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</b></div>
+                  <div className="flex justify-between"><span>BPR wastage units</span><b>{Math.round(selectedYield.bprWasteUnits).toLocaleString('en-IN')}</b></div>
+                  <div className="flex justify-between"><span>Overall waste units</span><b>{Math.round(selectedYield.overallWasteUnits).toLocaleString('en-IN')}</b></div>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <h4 className="text-sm font-bold text-emerald-900 mb-2">Fulfillment Completion</h4>
+              <div className="grid md:grid-cols-3 gap-3 text-xs mb-3">
+                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Planned Qty</p>
+                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Actual Output</p>
+                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Completion %</p>
+                  <p className="font-semibold text-emerald-700">{selectedYield.completionPercent.toFixed(1)}%</p>
+                </div>
+              </div>
+              <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{ width: `${Math.max(0, Math.min(100, selectedYield.completionPercent))}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

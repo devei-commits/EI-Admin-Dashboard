@@ -5,6 +5,7 @@ import {
   Truck,
   MapPin,
   Eye,
+  Activity,
 } from 'lucide-react';
 import { FilterBar } from './FilterBar';
 import { PickModal } from './PickModal';
@@ -38,6 +39,21 @@ interface ProductsBatchesViewProps {
   onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
   onDispatch: (soNo: string, data: ShipData) => void;
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
+  onViewYieldSplit?: (payload: {
+    bmrNo: string;
+    bprNo: string;
+    productName: string;
+    soNo: string;
+    plannedQty: number;
+    bmrYieldKg: number;
+    bprBulkUnits: number;
+    actualOutputUnits: number;
+    bmrWasteKg: number;
+    bprWasteUnits: number;
+    overallWasteUnits: number;
+    bmrYieldPct: number;
+    completionPercent: number;
+  }) => void;
 }
 
 type Row = { so: SaleOrder; item: OrderItem; split: BatchSplit };
@@ -48,6 +64,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   onGenerateInvoice,
   onDispatch,
   onConfirmDelivery,
+  onViewYieldSplit,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
@@ -175,6 +192,32 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                   onShip={() => handleShipBatch(split.bprNo)}
                   onTrack={() => handleTrackBatch(split.bprNo)}
                   onViewSO={handleViewSO}
+                  onViewYield={onViewYieldSplit ? () => {
+                    const plannedQty = Number(split.plannedQty) || 0;
+                    const bmrYieldKg = Number(split.bulkYield) || 0;
+                    const bprBulkUnits = Number(split.fillYield) || 0;
+                    const actualOutputUnits = Number(split.fgYield) || bprBulkUnits;
+                    const bmrWasteKg = Math.max(0, plannedQty - bmrYieldKg);
+                    const bprWasteUnits = Math.max(0, bprBulkUnits - actualOutputUnits);
+                    const overallWasteUnits = Math.max(0, plannedQty - actualOutputUnits);
+                    const bmrYieldPct = plannedQty > 0 ? (bmrYieldKg / plannedQty) * 100 : 0;
+                    const completionPercent = plannedQty > 0 ? Math.min(100, (actualOutputUnits / plannedQty) * 100) : 0;
+                    onViewYieldSplit({
+                      bmrNo: split.bmrNo,
+                      bprNo: split.bprNo,
+                      productName: item.productName,
+                      soNo: so.soNo,
+                      plannedQty,
+                      bmrYieldKg,
+                      bprBulkUnits,
+                      actualOutputUnits,
+                      bmrWasteKg,
+                      bprWasteUnits,
+                      overallWasteUnits,
+                      bmrYieldPct,
+                      completionPercent,
+                    });
+                  } : undefined}
                 />
               ))
             )}
@@ -225,6 +268,7 @@ function BatchRow({
   onShip,
   onTrack,
   onViewSO,
+  onViewYield,
 }: {
   so: SaleOrder;
   item: OrderItem;
@@ -234,6 +278,7 @@ function BatchRow({
   onShip: () => void;
   onTrack: () => void;
   onViewSO: (soNo: string) => void;
+  onViewYield?: () => void;
 }) {
   const daysLeft = getDaysLeft(so.dueDate);
   const daysLeftFormatted = formatDaysLeft(daysLeft);
@@ -348,6 +393,12 @@ function BatchRow({
           )}
           {['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) && (
             <span className="text-[9.5px] text-gray-500">In Production</span>
+          )}
+          {split.ffStatus === 'fg_ready' && ((Number(split.bulkYield) || 0) > 0 || (Number(split.fillYield) || 0) > 0 || (Number(split.fgYield) || 0) > 0) && onViewYield && (
+            <Button size="sm" variant="secondary" onClick={onViewYield} className="whitespace-nowrap">
+              <Activity className="h-3.5 w-3.5 mr-1" />
+              Yield
+            </Button>
           )}
           <Button
             size="sm"
