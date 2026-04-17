@@ -552,8 +552,13 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
       </div>
     );
   }
-  // Only show batches that have been sent to production (Batches tab = sent batches only)
-  const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => row.sent === true);
+  // Show all sent batches, and always include rework batches so production-raised rework
+  // appears in Planning even if sent flag comes late/out-of-sync.
+  const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => {
+    const code = String(row.batchCode ?? '').toLowerCase();
+    const isRework = code.includes('-rw-');
+    return row.sent === true || isRework;
+  });
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
@@ -585,7 +590,7 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             {allBatches.length === 0
               ? 'No batches yet. Create batches from Plan Batches (PIs Extracted) per SO line.'
-              : 'No batches sent to production yet. In Plan Batches, select a batch and click “Send to Production” to see it here.'}
+              : 'No sent/rework batches yet. Rework batches created from Production are shown here for planning and procurement follow-up.'}
           </div>
         )}
       </div>

@@ -30,6 +30,7 @@ import {
   searchUsers as apiSearchUsers,
   type EquipmentData as APIEquipmentData, type BatchRow, type TeamMemberRow,
   type UserSearchResult,
+  type CreateReworkOptions,
   type QcReferencePayload,
   type QCSpec,
   type QcSpecsStored,
@@ -39,7 +40,14 @@ import { fetchFacilityAreas, type FacilityAreaDTO, type ZoneDTO } from '../servi
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
-import { fetchPlanningExtractedList, fetchItemsInvolvedByPlanningId, fetchSentBatchSummary, type SentBatchSummaryRow } from '../services/planningExtracted.service';
+import {
+  fetchPlanningExtractedList,
+  fetchItemsInvolvedByPlanningId,
+  fetchSentBatchSummary,
+  fetchAllBatches,
+  type SentBatchSummaryRow,
+  type ItemsInvolvedForPiRow,
+} from '../services/planningExtracted.service';
 import {
   createMRN, fetchMRNList, fetchMRNById, updateMRN, getApiErrorMessage, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
   type MRNRecordFromApi, type GeneratedMRNLabel, type MRNLocationHistoryEntry, type AssignablePicker as MRNAssignablePicker,
@@ -5211,8 +5219,8 @@ function CreateNewBatchModal({
 }: {
   batches: Batch[];
   onClose: () => void;
-  onSuccess: () => void;
-  createRworkBatch: (baseBatchId: number, reason?: string) => Promise<BatchRow>;
+  onSuccess: (created?: BatchRow) => void;
+  createRworkBatch: (baseBatchId: number, reasonOrOptions?: string | CreateReworkOptions) => Promise<BatchRow>;
   addToast: (type: 'success' | 'error' | 'info', message: string) => void;
 }) {
   type BatchWithPk = Batch & { _pk?: number; planningBatchId?: number | null };
@@ -5224,6 +5232,11 @@ function CreateNewBatchModal({
   const [selectedSoNo, setSelectedSoNo] = useState('');
   const [selectedBmrNo, setSelectedBmrNo] = useState('');
   const [reason, setReason] = useState('');
+  const [reworkQty, setReworkQty] = useState('');
+  const [reworkBatchSizeKg, setReworkBatchSizeKg] = useState('');
+  const [reworkItemsPreview, setReworkItemsPreview] = useState<ItemsInvolvedForPiRow[]>([]);
+  const [reworkItemsLoading, setReworkItemsLoading] = useState(false);
+  const [reworkItemsError, setReworkItemsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const batchesForSo = useMemo(
@@ -5231,12 +5244,91 @@ function CreateNewBatchModal({
     [batches, selectedSoNo],
   );
   const selected = batchesForSo.find(b => b.bmrNo === selectedBmrNo);
-  const canReworkSelected = selected?._pk != null && selected.planningBatchId != null && reason.trim().length > 0;
+  const plannedUnits = selected
+    ? (selected.totalBatches > 0
+      ? Math.ceil((Number(selected.orderQty) || 0) / selected.totalBatches)
+      : (Number(selected.orderQty) || 0))
+    : 0;
+  const actualUnits = selected ? (Number(selected.fgYield) || Number(selected.fillYield) || 0) : 0;
+  const shortfallUnits = Math.max(0, Math.round(plannedUnits - actualUnits));
+  const parsedReworkQty = Math.round(Number(reworkQty));
+  const canReworkSelected =
+    selected?._pk != null
+    && selected.planningBatchId != null
+    && reason.trim().length > 0
+    && Number.isFinite(parsedReworkQty)
+    && parsedReworkQty > 0;
+  const previewShortageRows = useMemo(
+    () => reworkItemsPreview
+      .filter((it) => Number(it.totalRequired || 0) > 0)
+      .map((it) => {
+        const req = Number(it.totalRequired) || 0;
+        const free = Number(it.sih || 0) + Number(it.inTransit || 0);
+        const shortage = Math.max(0, req - free);
+        return { ...it, req, free, shortage };
+      })
+      .filter((it) => it.shortage > 0)
+      .sort((a, b) => b.shortage - a.shortage)
+      .slice(0, 8),
+    [reworkItemsPreview],
+  );
 
   const onSoChange = (so: string) => {
     setSelectedSoNo(so);
     setSelectedBmrNo('');
+    setReworkQty('');
+    setReworkBatchSizeKg('');
+    setReworkItemsPreview([]);
+    setReworkItemsError(null);
   };
+
+  useEffect(() => {
+    if (!selected) {
+      setReworkQty('');
+      setReworkBatchSizeKg('');
+      setReworkItemsPreview([]);
+      setReworkItemsError(null);
+      return;
+    }
+    setReworkQty(shortfallUnits > 0 ? String(shortfallUnits) : '');
+    setReworkBatchSizeKg('');
+  }, [selectedBmrNo, selectedSoNo, shortfallUnits, selected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadReworkItemsPreview = async () => {
+      if (!selected?.planningBatchId) {
+        setReworkItemsPreview([]);
+        setReworkItemsError(null);
+        return;
+      }
+      setReworkItemsLoading(true);
+      setReworkItemsError(null);
+      try {
+        const allBatches = await fetchAllBatches();
+        const planningBatch = allBatches.find((b) => Number(b.id) === Number(selected.planningBatchId));
+        const planningExtractedId = planningBatch?.planningExtractedId;
+        if (!planningExtractedId) {
+          if (!cancelled) {
+            setReworkItemsPreview([]);
+            setReworkItemsError('Planning mapping not found for selected batch.');
+          }
+          return;
+        }
+        const items = await fetchItemsInvolvedByPlanningId(String(planningExtractedId));
+        if (!cancelled) setReworkItemsPreview(Array.isArray(items) ? items : []);
+      } catch {
+        if (!cancelled) {
+          setReworkItemsPreview([]);
+          setReworkItemsError('Failed to load RM/PM shortfall preview.');
+        }
+      } finally {
+        if (!cancelled) setReworkItemsLoading(false);
+      }
+    };
+    loadReworkItemsPreview();
+    return () => { cancelled = true; };
+  }, [selected?.planningBatchId]);
 
   const handleCreate = async () => {
     if (!selected?._pk) {
@@ -5247,11 +5339,32 @@ function CreateNewBatchModal({
       addToast('error', 'Selected batch is not linked to planning. Use a batch that was sent from Planning.');
       return;
     }
+    if (!Number.isFinite(parsedReworkQty) || parsedReworkQty <= 0) {
+      addToast('error', 'Enter a valid rework quantity (units).');
+      return;
+    }
+    const manualBatchSize = reworkBatchSizeKg.trim() ? Number(reworkBatchSizeKg) : null;
+    if (manualBatchSize != null && (!Number.isFinite(manualBatchSize) || manualBatchSize <= 0)) {
+      addToast('error', 'Batch size must be a valid number greater than 0.');
+      return;
+    }
     setSubmitting(true);
     try {
-      await createRworkBatch(selected._pk, reason.trim());
+      const baseOrderQty = Number(selected.orderQty) || 0;
+      const baseBatchSize = Number(selected.batchSize) || 0;
+      const suggestedBatchSize =
+        manualBatchSize != null
+          ? manualBatchSize
+          : (baseOrderQty > 0 && baseBatchSize > 0
+            ? Math.round((baseBatchSize * parsedReworkQty * 100) / baseOrderQty) / 100
+            : null);
+      const created = await createRworkBatch(selected._pk, {
+        reason: reason.trim(),
+        targetOrderQty: parsedReworkQty,
+        ...(suggestedBatchSize != null ? { targetBatchSizeKg: suggestedBatchSize } : {}),
+      });
       addToast('success', `Rework batch created (e.g. ${selected.bmrNo}-rw-01). Refreshing list.`);
-      onSuccess();
+      onSuccess(created);
       onClose();
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: string }).message) : 'Failed to create rework batch';
@@ -5324,6 +5437,74 @@ function CreateNewBatchModal({
               maxLength={500}
             />
           </div>
+          {selected && selected._pk != null && selected.planningBatchId != null && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-orange-900">Rework Preview (BMR)</p>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
+                  <p className="text-gray-500 uppercase">Planned</p>
+                  <p className="font-semibold text-gray-900">{plannedUnits.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
+                  <p className="text-gray-500 uppercase">Actual</p>
+                  <p className="font-semibold text-gray-900">{Math.round(actualUnits).toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
+                  <p className="text-gray-500 uppercase">Shortfall</p>
+                  <p className="font-semibold text-orange-700">{shortfallUnits.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Rework Qty (units)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={reworkQty}
+                    onChange={e => setReworkQty(e.target.value)}
+                    className="w-full border border-orange-200 rounded-lg px-2.5 py-2 text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Batch Size (KG, optional)</label>
+                  <input
+                    type="number"
+                    min={0.001}
+                    step={0.001}
+                    value={reworkBatchSizeKg}
+                    onChange={e => setReworkBatchSizeKg(e.target.value)}
+                    placeholder="Auto-scaled"
+                    className="w-full border border-orange-200 rounded-lg px-2.5 py-2 text-sm bg-white"
+                  />
+                </div>
+              </div>
+              <div className="rounded border border-orange-200 bg-white p-2.5">
+                <p className="text-[11px] font-semibold text-gray-800 mb-1.5">RM/PM shortfall preview (Planning Items Involved)</p>
+                {reworkItemsLoading ? (
+                  <p className="text-[11px] text-gray-500">Loading item-level shortfall…</p>
+                ) : reworkItemsError ? (
+                  <p className="text-[11px] text-amber-700">{reworkItemsError}</p>
+                ) : previewShortageRows.length === 0 ? (
+                  <p className="text-[11px] text-emerald-700">No immediate RM/PM shortage detected for this planning line.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {previewShortageRows.map((row) => (
+                      <div key={`${row.type}-${row.code}`} className="grid grid-cols-[auto_1fr_auto_auto] gap-2 text-[11px] border-b border-gray-100 pb-1">
+                        <span className={`font-semibold ${row.type === 'RM' ? 'text-blue-700' : 'text-purple-700'}`}>{row.type}</span>
+                        <span className="truncate text-gray-700" title={`${row.code} ${row.name}`}>{row.code} - {row.name}</span>
+                        <span className="text-gray-500">need {row.req.toLocaleString('en-IN')} {row.unit}</span>
+                        <span className="font-semibold text-red-700">short {row.shortage.toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-gray-500 pt-1">
+                      Rework request creates a new Planning batch entry; use Planning (PIs Extracted / Items Involved) to handle procurement in the normal flow.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100">Cancel</button>
@@ -7160,9 +7341,17 @@ const Production = () => {
         <CreateNewBatchModal
           batches={state.batches}
           onClose={() => setShowCreateBatchModal(false)}
-          onSuccess={() => {
+          onSuccess={(created) => {
             refreshBatches();
             queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+            if (created?.bmrNo) {
+              setSection('bmr');
+              setTimeout(() => {
+                const createdBatch = state.batches.find((b) => b.bmrNo === created.bmrNo) ?? apiBatchToBatch(created);
+                setModalBatch(createdBatch);
+                setModalType('detail');
+              }, 350);
+            }
           }}
           createRworkBatch={apiCreateRworkBatch}
           addToast={addToast}

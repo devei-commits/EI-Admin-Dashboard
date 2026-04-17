@@ -176,9 +176,29 @@ export async function createBatch(payload: Record<string, unknown>): Promise<Bat
   return (res as any)?.data ?? res;
 }
 
-/** Create a rework batch (BMR-YYYY-NNN-rw-01, rw-02, ...) from an existing batch. Same SO; optional reason stored in remarks. */
-export async function createRworkBatch(baseBatchId: number, reason?: string): Promise<BatchRow> {
-  const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, { baseBatchId, reason: reason ?? '' });
+export type CreateReworkOptions = {
+  reason?: string;
+  targetOrderQty?: number;
+  targetBatchSizeKg?: number;
+  rmLines?: Array<Record<string, unknown>>;
+  pmLines?: Array<Record<string, unknown>>;
+};
+
+/** Create a rework batch (BMR-YYYY-NNN-rw-01, rw-02, ...) from an existing batch. */
+export async function createRworkBatch(baseBatchId: number, reasonOrOptions?: string | CreateReworkOptions): Promise<BatchRow> {
+  const payload: Record<string, unknown> = { baseBatchId };
+  if (typeof reasonOrOptions === 'string') {
+    payload.reason = reasonOrOptions;
+  } else if (reasonOrOptions && typeof reasonOrOptions === 'object') {
+    payload.reason = reasonOrOptions.reason ?? '';
+    if (reasonOrOptions.targetOrderQty != null) payload.targetOrderQty = reasonOrOptions.targetOrderQty;
+    if (reasonOrOptions.targetBatchSizeKg != null) payload.targetBatchSizeKg = reasonOrOptions.targetBatchSizeKg;
+    if (Array.isArray(reasonOrOptions.rmLines)) payload.rmLines = reasonOrOptions.rmLines;
+    if (Array.isArray(reasonOrOptions.pmLines)) payload.pmLines = reasonOrOptions.pmLines;
+  } else {
+    payload.reason = '';
+  }
+  const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, payload);
   return (res as any)?.data ?? res;
 }
 

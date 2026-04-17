@@ -17,11 +17,14 @@ import {
   shipFulfillmentSplits,
   deliverFulfillmentSplits,
 } from '../services/fulfillment.service';
+import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
+import { useToast } from '../context/ToastContext';
 
 type ViewMode = 'orders' | 'batches';
 
 export const OrderFulfillment: React.FC = () => {
+  const { addToast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('orders');
   const [searchTerm, setSearchTerm] = useState('');
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
@@ -42,6 +45,11 @@ export const OrderFulfillment: React.FC = () => {
     bmrYieldPct: number;
     completionPercent: number;
   } | null>(null);
+  const [reworkSoInput, setReworkSoInput] = useState('');
+  const [reworkReason, setReworkReason] = useState('');
+  const [reworkQtyInput, setReworkQtyInput] = useState('');
+  const [reworkBatchSizeKgInput, setReworkBatchSizeKgInput] = useState('');
+  const [reworkSubmitting, setReworkSubmitting] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -154,6 +162,80 @@ export const OrderFulfillment: React.FC = () => {
       await loadOrders();
     } catch (err) {
       console.error('Failed to confirm delivery:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedYield) return;
+    const shortfall = Math.max(0, (Number(selectedYield.plannedQty) || 0) - (Number(selectedYield.actualOutputUnits) || 0));
+    setReworkSoInput(selectedYield.soNo || '');
+    setReworkReason('');
+    setReworkQtyInput(shortfall > 0 ? String(Math.round(shortfall)) : '');
+    setReworkBatchSizeKgInput('');
+  }, [selectedYield]);
+
+  const handleCreateReworkFromYield = async () => {
+    if (!selectedYield) return;
+    const shortfall = Math.max(0, (Number(selectedYield.plannedQty) || 0) - (Number(selectedYield.actualOutputUnits) || 0));
+    if (shortfall <= 0) {
+      addToast('info', 'No shortfall on this batch. Rework is not required.');
+      return;
+    }
+    const soTyped = String(reworkSoInput || '').trim().toUpperCase();
+    const expectedSo = String(selectedYield.soNo || '').trim().toUpperCase();
+    if (!soTyped) {
+      addToast('error', 'Enter SO ID to confirm rework batch creation.');
+      return;
+    }
+    if (soTyped !== expectedSo) {
+      addToast('error', `SO ID mismatch. Enter ${selectedYield.soNo} to continue.`);
+      return;
+    }
+    const targetOrderQty = Math.round(Number(reworkQtyInput));
+    if (!Number.isFinite(targetOrderQty) || targetOrderQty <= 0) {
+      addToast('error', 'Enter valid rework quantity (must be greater than 0).');
+      return;
+    }
+    const targetBatchSizeKg = reworkBatchSizeKgInput.trim() ? Number(reworkBatchSizeKgInput) : null;
+    if (targetBatchSizeKg != null && (!Number.isFinite(targetBatchSizeKg) || targetBatchSizeKg <= 0)) {
+      addToast('error', 'Batch size must be a valid number greater than 0.');
+      return;
+    }
+    setReworkSubmitting(true);
+    try {
+      const rows = await fetchBatches();
+      const base = rows.find((r) =>
+        String(r.bmrNo || '').trim().toUpperCase() === String(selectedYield.bmrNo || '').trim().toUpperCase()
+        && String(r.soNo || '').trim().toUpperCase() === expectedSo
+      );
+      if (!base?._pk) {
+        addToast('error', 'Base production batch not found for this SO/BMR.');
+        return;
+      }
+      if (!base.planningBatchId) {
+        addToast('error', 'Selected batch is not linked to Planning. Rework batch requires planning-linked base batch.');
+        return;
+      }
+      const baseOrderQty = Number(base.orderQty) || 0;
+      const baseBatchSizeKg = Number(base.batchSize) || 0;
+      const suggestedBatchSizeKg =
+        targetBatchSizeKg != null
+          ? targetBatchSizeKg
+          : (baseOrderQty > 0 && baseBatchSizeKg > 0
+            ? Math.round((baseBatchSizeKg * targetOrderQty * 100) / baseOrderQty) / 100
+            : null);
+      await createRworkBatch(base._pk, {
+        reason: reworkReason.trim() || `Rework from Fulfillment due to shortfall ${shortfall.toLocaleString('en-IN')} units.`,
+        targetOrderQty,
+        ...(suggestedBatchSizeKg != null ? { targetBatchSizeKg: suggestedBatchSizeKg } : {}),
+      });
+      addToast('success', `Rework batch created for ${selectedYield.soNo}.`);
+      await loadOrders();
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: string }).message) : 'Failed to create rework batch';
+      addToast('error', msg);
+    } finally {
+      setReworkSubmitting(false);
     }
   };
 
@@ -293,6 +375,89 @@ export const OrderFulfillment: React.FC = () => {
                   className="h-full bg-emerald-500"
                   style={{ width: `${Math.max(0, Math.min(100, selectedYield.completionPercent))}%` }}
                 />
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+              <h4 className="text-sm font-bold text-amber-900 mb-2">Rework Batch Creation</h4>
+              <p className="text-xs text-amber-900/80 mb-3">
+                If actual output is short against planned quantity after QC, create a rework batch for the same SO.
+              </p>
+              <div className="grid md:grid-cols-3 gap-3 mb-3">
+                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Planned Qty</p>
+                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Actual Output</p>
+                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                  <p className="text-[10px] text-gray-500 uppercase">Shortfall</p>
+                  <p className="font-semibold text-amber-700">{Math.max(0, Math.round(selectedYield.plannedQty - selectedYield.actualOutputUnits)).toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-white px-3 py-3 mb-3">
+                <p className="text-[11px] font-semibold text-amber-900 mb-2">Rework Preview (editable before create)</p>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">Rework Qty (units)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={reworkQtyInput}
+                      onChange={(e) => setReworkQtyInput(e.target.value)}
+                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 mb-1">Batch Size (KG, optional)</label>
+                    <input
+                      type="number"
+                      min={0.001}
+                      step={0.001}
+                      value={reworkBatchSizeKgInput}
+                      onChange={(e) => setReworkBatchSizeKgInput(e.target.value)}
+                      placeholder="Auto-scale from base batch"
+                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-gray-600">
+                  This rework will be created under the same SO and base batch linkage. Quantity defaults to the shortfall and can be adjusted here.
+                </p>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Confirm SO ID</label>
+                  <input
+                    type="text"
+                    value={reworkSoInput}
+                    onChange={(e) => setReworkSoInput(e.target.value)}
+                    placeholder={selectedYield.soNo}
+                    className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Reason (optional)</label>
+                  <input
+                    type="text"
+                    value={reworkReason}
+                    onChange={(e) => setReworkReason(e.target.value)}
+                    placeholder="Rework reason"
+                    className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleCreateReworkFromYield}
+                  disabled={reworkSubmitting || Math.max(0, selectedYield.plannedQty - selectedYield.actualOutputUnits) <= 0}
+                  className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {reworkSubmitting ? 'Creating Rework…' : 'Create Rework Batch'}
+                </button>
               </div>
             </div>
           </div>
