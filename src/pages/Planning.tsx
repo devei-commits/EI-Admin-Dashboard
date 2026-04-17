@@ -1516,6 +1516,12 @@ const Planning = () => {
         : `${Math.round(requiredToAddNum).toLocaleString()} pcs`;
     // NET now reflects surplus/shortage against planned requirement.
     const netNum = availableForPlanning - plannedQtyNum;
+    // Coverage on this screen must use the same denominator as NET / TOTAL REQ (planned gap),
+    // not the older backend aggregate requirement, otherwise rows can show 100% with negative NET.
+    const coveragePct =
+      plannedQtyNum > 0
+        ? Math.max(0, Math.min(100, Math.round((availableForPlanning / plannedQtyNum) * 100)))
+        : 100;
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
@@ -1535,7 +1541,7 @@ const Planning = () => {
       sihNum: row.sih,
       surplusShortage: surplusShortageStr,
       surplusShortageNum: row.surplusShortage,
-      coverage: `${row.coverage}%`,
+      coverage: `${coveragePct}%`,
       whBatches: row.batchNumber ?? '—',
       warehouseInventoryId: row.warehouseInventoryId ?? null,
       expiry: row.expiryDate ?? '—',
@@ -3364,6 +3370,8 @@ const Planning = () => {
                           procurementRequests,
                           plannedLinesFromBackend
                         );
+                        const releasedAgainstNeed = gapNeed > 0 ? Math.min(releasedTowardGap, gapNeed) : releasedTowardGap;
+                        const overReleasedQty = Math.max(0, releasedTowardGap - gapNeed);
                         const remainingPlanningGap = Math.max(0, gapNeed - releasedTowardGap);
                         const shortageForRelease = hasShortfall || hasPlannedShortfall;
                         const canReleaseToPlanning =
@@ -3431,12 +3439,17 @@ const Planning = () => {
                                     title="Quantity already on Procurement / draft PO from Release to Planning."
                                   >
                                     Released {item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                      ? releasedTowardGap.toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                      : Math.round(releasedTowardGap).toLocaleString()}
+                                      ? releasedAgainstNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                      : Math.round(releasedAgainstNeed).toLocaleString()}
                                     {gapNeed > 1e-6
                                       ? ` / need ${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
                                         ? gapNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
                                         : Math.round(gapNeed).toLocaleString()}`
+                                      : ''}
+                                    {overReleasedQty > 1e-6
+                                      ? ` (over +${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                        ? overReleasedQty.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                        : Math.round(overReleasedQty).toLocaleString()})`
                                       : ''}
                                   </span>
                                 )}
@@ -3448,21 +3461,29 @@ const Planning = () => {
                                     Partial release
                                   </span>
                                 )}
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                                  disabled={!canReleaseToPlanning}
-                                  title={
-                                    canReleaseToPlanning
-                                      ? undefined
-                                      : !shortageForRelease
-                                        ? 'No planning shortage: remaining requirement and planned coverage are satisfied by free stock + in transit. Use Procurement / Items List for optional quotes.'
-                                        : `Gap already covered by procurement / draft PO (${releasedTowardGap.toLocaleString()} ≥ ${gapNeed.toLocaleString()}). Edit quantities in Procurement if needed.`
-                                  }
-                                  onClick={() => openReleaseToPlanningModal(item)}
-                                >
-                                  Release to Planning
-                                </button>
+                                {canReleaseToPlanning ? (
+                                  <button
+                                    type="button"
+                                    className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold"
+                                    onClick={() => openReleaseToPlanningModal(item)}
+                                  >
+                                    Release to Planning
+                                  </button>
+                                ) : shortageForRelease ? (
+                                  <span
+                                    className="inline-flex items-center px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200"
+                                    title={`Gap already covered by procurement / draft PO (${releasedTowardGap.toLocaleString()} ≥ ${gapNeed.toLocaleString()}).`}
+                                  >
+                                    Covered
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200"
+                                    title="No planning shortage."
+                                  >
+                                    No shortage
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>

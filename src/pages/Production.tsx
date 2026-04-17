@@ -1125,6 +1125,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
   const [loadingPm, setLoadingPm] = useState(false);
   const [rmLoadError, setRmLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
+  const [planningCoverageByCode, setPlanningCoverageByCode] = useState<Record<string, number>>({});
 
   const needLoadRm = type === 'rm' && batchItems.length === 0;
   const needLoadPm = type === 'pm' && batchItems.length === 0;
@@ -1275,6 +1276,35 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
       .finally(() => setLoadingPm(false));
   }, [needLoadPm, batch.sku, batch.productName, batch.batchSize, batch.orderQty, batch.totalBatches, (batch as Batch & { _pk?: number })._pk]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let cancelled = false;
+    setPlanningCoverageByCode({});
+    fetchPlanningExtractedList()
+      .then((rows) => {
+        const row = findPlanningRowForBatch(rows, batch);
+        if (!row) return [];
+        return fetchItemsInvolvedByPlanningId(row.id);
+      })
+      .then((involved) => {
+        if (cancelled || !Array.isArray(involved)) return;
+        const next: Record<string, number> = {};
+        involved
+          .filter((x) => (type === 'rm' ? x.type === 'RM' : x.type === 'PM'))
+          .forEach((x) => {
+            const code = String(x.code ?? '').trim();
+            if (!code) return;
+            next[code] = Number(x.coverage ?? 0) || 0;
+          });
+        setPlanningCoverageByCode(next);
+      })
+      .catch(() => {
+        if (!cancelled) setPlanningCoverageByCode({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [batch.soNo, batch.productName, batch.sku, batch.batchNo, type]);
+
   const items = type === 'rm'
     ? (batchItems.length > 0 ? batchItems : derivedRm)
     : (batchItems.length > 0 ? batchItems : derivedPm);
@@ -1300,6 +1330,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
       const sih = stockMap[code] ?? 0;
       const reserved = reservedMap?.[code] ?? 0;
       const available = Math.max(0, sih - reserved);
+      const planningCoverage = planningCoverageByCode[code] ?? 0;
+      const planningCovered = planningCoverage >= 100;
       const ciKey =
         !hasKey && code
           ? stockKeys.find((k) => k.toLowerCase() === code.toLowerCase()) ?? null
@@ -1313,15 +1345,17 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
         SIH: sih,
         reserved_R: reserved,
         available_Y: available,
+        planningCoveragePct: planningCoverage,
+        planningCovered,
         required: it.required,
-        short: available < it.required,
+        short: !planningCovered && available < it.required,
       };
     });
     logProductionReserve('Reserve modal: BOM vs warehouse stockMap', {
       type,
       bmrNo: batch.bmrNo,
       bprNo: batch.bprNo,
-      formula: 'available_Y = SIH - reserved_R; Short when available_Y < required',
+      formula: 'available_Y = SIH - reserved_R; Short when planningCoveragePct < 100 and available_Y < required',
       stockMapSource: 'GET /api/v1/warehouse-inventory → buildStockMap (sums SIH per trimmed code)',
       bomLineCount: items.length,
       distinctBomCodes: [...new Set(bomCodes)],
@@ -1337,7 +1371,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
             ? 'Keys match but quantity short: increase SIH or reduce reserved elsewhere.'
             : undefined,
     });
-  }, [reserveItemsFingerprint, stockMap, reservedMap, type, batch.bmrNo, batch.bprNo]);
+  }, [reserveItemsFingerprint, stockMap, reservedMap, planningCoverageByCode, type, batch.bmrNo, batch.bprNo]);
 
   useEffect(() => {
     const next: Record<number, boolean> = {};
@@ -1366,7 +1400,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
     const sih = stockMap[code] ?? 0;
     const reserved = reservedMap?.[code] ?? 0;
     const available = Math.max(0, sih - reserved);
-    return available < r.required;
+    const planningCovered = (planningCoverageByCode[code] ?? 0) >= 100;
+    return !planningCovered && available < r.required;
   });
   const reserveDisabled = items.length === 0 || (type === 'rm' && rmHasShort);
 
@@ -1402,7 +1437,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                 const sih = stockMap[code] ?? 0;
                 const reserved = reservedMap?.[code] ?? 0;
                 const available = Math.max(0, sih - reserved);
-                const ok = available >= r.required;
+                const planningCoverage = planningCoverageByCode[code] ?? 0;
+                const planningCovered = planningCoverage >= 100;
+                const ok = planningCovered || available >= r.required;
                 const checked = selected[i] !== false;
                 return (
                   <tr key={i} className={!ok ? 'bg-red-50/50' : ''}>
@@ -1417,7 +1454,15 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                     <td className="px-3 py-2.5 font-mono text-gray-700">{type === 'rm' ? `${fmt(sih)} KG` : `${fmt(sih)} pcs`}</td>
                     <td className="px-3 py-2.5 font-mono text-gray-600">{type === 'rm' ? `${fmt(reserved)} KG` : `${fmt(reserved)} pcs`}</td>
                     <td className={`px-3 py-2.5 font-mono font-semibold ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{type === 'rm' ? `${fmt(available)} KG` : `${fmt(available)} pcs`}</td>
-                    <td className="px-3 py-2.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge> : <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>}</td>
+                    <td className="px-3 py-2.5">
+                      {ok
+                        ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">
+                            {planningCovered && available < r.required ? 'Covered' : 'OK'}
+                          </Badge>
+                        )
+                        : <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>}
+                    </td>
                   </tr>
                 );
               })}

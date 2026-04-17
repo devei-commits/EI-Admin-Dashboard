@@ -21,7 +21,7 @@ import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
-import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
+import { createGRN, fetchGRNList, updateGRN, type GRNRecordFromApi } from '../../services/grn.service';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import {
   fetchPriceListPage,
@@ -1536,7 +1536,9 @@ const Procurement: React.FC = () => {
           unit: detail.unit,
           plannedPrice: detail.plannedPrice,
           plannedValue: detail.estValue,
-          preferredVendor: primaryQuote?.vendor ?? null,
+          // Vendor cards must also include requests where vendor is chosen directly on request
+          // (e.g. Release to Planning) even before a quotation row exists.
+          preferredVendor: primaryQuote?.vendor ?? request.preferredVendor ?? null,
           quotedVendor,
           actualPrice,
           actualVsPlanned,
@@ -2449,11 +2451,32 @@ const Procurement: React.FC = () => {
 
     receiveGrnLockRef.current[poNo] = true;
     try {
-      const hasUnderOrCompleteGrnForPo = async () => {
+      const splitLegacyMultiLineGrnsForPo = async (backendPoId: string) => {
         const existingGrns = await fetchGRNList();
-        return existingGrns.some(
-          (g) => String(g.poNo ?? '').trim().toUpperCase() === poNo.toUpperCase() && (g.status === 'Under GRN' || g.status === 'GRN Complete'),
+        const poGrns = existingGrns.filter(
+          (g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber)
         );
+        for (const g of poGrns) {
+          const lines = Array.isArray(g.lineItems) ? g.lineItems : [];
+          if (lines.length <= 1) continue;
+          const first = lines[0];
+          await updateGRN(String(g.id), { lineItems: [first] });
+          for (let i = 1; i < lines.length; i += 1) {
+            const li = lines[i];
+            await createGRN({
+              grnNo: `GRN-${record.poNumber}-${li.itemCode || i + 1}-${Date.now()}-${i}`,
+              purchase_order_id: parseInt(backendPoId, 10),
+              poNo: g.poNo || record.poNumber,
+              vendor: g.vendor || record.vendor,
+              type: g.type as 'RM' | 'PM',
+              items: 1,
+              poValue: Number(li.unitPrice || 0) * Number(li.poQty || 0),
+              status: g.status || 'Under GRN',
+              receivedDate: g.receivedDate ?? null,
+              lineItems: [li],
+            });
+          }
+        }
       };
 
       // Linked path: update procurement request + create GRN.
@@ -2492,6 +2515,7 @@ const Procurement: React.FC = () => {
         const today = new Date().toISOString().split('T')[0];
         const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === String(requestId));
         const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
+        await splitLegacyMultiLineGrnsForPo(backendPoId);
 
         const trackingRes = await updatePoTracking(backendPoId, {
           deliveredAt: today,
@@ -2506,57 +2530,70 @@ const Procurement: React.FC = () => {
 
         let grnCreated = false;
         try {
-          const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
-          if (!alreadyHasGrn) {
+          const normalizedLines = record.lineItems.map((line: any, idx: number) => {
+            const prItem =
+              matchBackendPrItemForDraftLine(
+                {
+                  item: String(line.item ?? ''),
+                  itemCode: String(line.itemCode ?? ''),
+                  type: (record.request?.type ?? 'RM') as RequestType,
+                  qty: String(line.qty ?? ''),
+                  pricePerUnit: Number(line.pricePerUnit) || 0,
+                  gstPercent: Number(line.gstPercent) || 18,
+                  gstAmount: Number(line.gstAmount) || 0,
+                  lineTotal: Number(line.lineTotal) || 0,
+                },
+                items
+              ) ?? items[idx];
+            return {
+              id: `line-${idx}`,
+              item: String(line.item ?? ''),
+              itemCode: resolveItemCodeFromSources(
+                [prItem?.code, line.itemCode, line.item, prItem?.name],
+                record.request.type,
+                idx
+              ),
+              poQty: Number(line.qty) || 0,
+              rcvdQty: 0,
+              invoiceQty: 0,
+              unitPrice: Number(line.pricePerUnit) || 0,
+              diff: 0,
+              qcStatus: 'Pending',
+              qcBy: '',
+              raw_material_id: prItem?.raw_material_id,
+              pack_material_id: prItem?.pack_material_id,
+              product_id: prItem?.product_id,
+            };
+          });
+          const existingGrns = await fetchGRNList();
+          const existingLineKeys = new Set(
+            existingGrns
+              .filter((g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber))
+              .flatMap((g) => (Array.isArray(g.lineItems) ? g.lineItems : []))
+              .map((li) => String(li.itemCode || '').trim().toUpperCase())
+              .filter(Boolean)
+          );
+          for (let idx = 0; idx < normalizedLines.length; idx += 1) {
+            const line = normalizedLines[idx];
+            const lineKey = String(line.itemCode || '').trim().toUpperCase();
+            if (lineKey && existingLineKeys.has(lineKey)) continue;
             await createGRN({
-              grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+              grnNo: `GRN-${record.poNumber}-${line.itemCode || idx + 1}-${Date.now()}`,
               purchase_order_id: parseInt(backendPoId, 10),
               poNo: record.poNumber,
               vendor: record.vendor,
               type: record.request.type as 'RM' | 'PM',
-              items: record.lineItems.length,
-              poValue: record.grandTotal ?? 0,
+              items: 1,
+              poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
               status: 'Under GRN',
               receivedDate: today,
-              lineItems: record.lineItems.map((line: any, idx: number) => {
-                const prItem =
-                  matchBackendPrItemForDraftLine(
-                    {
-                      item: String(line.item ?? ''),
-                      itemCode: String(line.itemCode ?? ''),
-                      type: (record.request?.type ?? 'RM') as RequestType,
-                      qty: String(line.qty ?? ''),
-                      pricePerUnit: Number(line.pricePerUnit) || 0,
-                      gstPercent: Number(line.gstPercent) || 18,
-                      gstAmount: Number(line.gstAmount) || 0,
-                      lineTotal: Number(line.lineTotal) || 0,
-                    },
-                    items
-                  ) ?? items[idx];
-                return {
-                  id: `line-${idx}`,
-                  item: String(line.item ?? ''),
-                  itemCode: resolveItemCodeFromSources(
-                    [prItem?.code, line.itemCode, line.item, prItem?.name],
-                    record.request.type,
-                    idx
-                  ),
-                  poQty: Number(line.qty) || 0,
-                  rcvdQty: 0,
-                  invoiceQty: 0,
-                  unitPrice: Number(line.pricePerUnit) || 0,
-                  diff: 0,
-                  qcStatus: 'Pending',
-                  qcBy: '',
-                  raw_material_id: prItem?.raw_material_id,
-                  pack_material_id: prItem?.pack_material_id,
-                  product_id: prItem?.product_id,
-                };
-              }),
+              lineItems: [line],
             });
+            existingLineKeys.add(lineKey);
             grnCreated = true;
-          } else {
-            addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+          }
+          if (!grnCreated) {
+            addToast('info', 'GRN already exists for these PO items. Skipping duplicate creation.');
           }
         } catch (e) {
           addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
@@ -2601,6 +2638,7 @@ const Procurement: React.FC = () => {
       }
 
       const today = new Date().toISOString().split('T')[0];
+      await splitLegacyMultiLineGrnsForPo(backendPoId);
       const trackingRes = await updatePoTracking(backendPoId, {
         deliveredAt: today,
         deliveredNote: 'Marked delivered at WH (unlinked Planning PO) from Procurement',
@@ -2623,53 +2661,66 @@ const Procurement: React.FC = () => {
 
       let unlinkedGrnCreated = false;
       try {
-        const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
-        if (!alreadyHasGrn) {
-          const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
+        const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
+        const normalizedLines = record.lineItems.map((line: any, idx: number) => {
+          const raw = rawItemsForGrn[idx] ?? {};
+          return {
+            id: `line-${idx}`,
+            item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
+            itemCode: resolveItemCodeFromSources(
+              [
+                raw.code,
+                raw.itemCode,
+                raw.item_code,
+                raw.itemId,
+                raw.item_id,
+                raw.rm_code,
+                raw.pm_code,
+                line.itemCode,
+                line.item,
+              ],
+              (record.request?.type ?? 'RM') as RequestType,
+              idx
+            ),
+            poQty: Number(line.qty) || Number(raw.quantity) || 0,
+            rcvdQty: 0,
+            invoiceQty: 0,
+            unitPrice: Number(line.pricePerUnit) || Number(raw.rate ?? raw.price ?? 0) || 0,
+            diff: 0,
+            qcStatus: 'Pending',
+            qcBy: '',
+            ...resolveMasterIdsFromRawItem(raw),
+          };
+        });
+        const existingGrns = await fetchGRNList();
+        const existingLineKeys = new Set(
+          existingGrns
+            .filter((g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber))
+            .flatMap((g) => (Array.isArray(g.lineItems) ? g.lineItems : []))
+            .map((li) => String(li.itemCode || '').trim().toUpperCase())
+            .filter(Boolean)
+        );
+        for (let idx = 0; idx < normalizedLines.length; idx += 1) {
+          const line = normalizedLines[idx];
+          const lineKey = String(line.itemCode || '').trim().toUpperCase();
+          if (lineKey && existingLineKeys.has(lineKey)) continue;
           await createGRN({
-            grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+            grnNo: `GRN-${record.poNumber}-${line.itemCode || idx + 1}-${Date.now()}`,
             purchase_order_id: parseInt(backendPoId, 10),
             poNo: record.poNumber,
             vendor: record.vendor,
             type: (record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
-            items: record.lineItems.length,
-            poValue: record.grandTotal ?? 0,
+            items: 1,
+            poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
             status: 'Under GRN',
             receivedDate: today,
-            lineItems: record.lineItems.map((line: any, idx: number) => {
-              const raw = rawItemsForGrn[idx] ?? {};
-              return {
-                id: `line-${idx}`,
-                item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
-                itemCode: resolveItemCodeFromSources(
-                  [
-                    raw.code,
-                    raw.itemCode,
-                    raw.item_code,
-                    raw.itemId,
-                    raw.item_id,
-                    raw.rm_code,
-                    raw.pm_code,
-                    line.itemCode,
-                    line.item,
-                  ],
-                  (record.request?.type ?? 'RM') as RequestType,
-                  idx
-                ),
-                poQty: Number(line.qty) || Number(raw.quantity) || 0,
-                rcvdQty: 0,
-                invoiceQty: 0,
-                unitPrice: Number(line.pricePerUnit) || Number(raw.rate ?? raw.price ?? 0) || 0,
-                diff: 0,
-                qcStatus: 'Pending',
-                qcBy: '',
-                ...resolveMasterIdsFromRawItem(raw),
-              };
-            }),
+            lineItems: [line],
           });
+          existingLineKeys.add(lineKey);
           unlinkedGrnCreated = true;
-        } else {
-          addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+        }
+        if (!unlinkedGrnCreated) {
+          addToast('info', 'GRN already exists for these PO items. Skipping duplicate creation.');
         }
       } catch (e) {
         addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
@@ -4412,7 +4463,26 @@ const Procurement: React.FC = () => {
                           );
                         }
 
-                        return filteredRequests.map((req) => {
+                        const vendorGroupLabel = (req: ProcurementRequest) => {
+                          const pref = String(req.preferredVendor ?? '').trim();
+                          if (pref) return pref;
+                          const q = quotes.find((x) => x.requestId === req.id);
+                          const qv = String(q?.vendor ?? '').trim();
+                          return qv || 'Unassigned';
+                        };
+
+                        const sortedRequests = [...filteredRequests].sort((a, b) => {
+                          const va = vendorGroupLabel(a).toLowerCase();
+                          const vb = vendorGroupLabel(b).toLowerCase();
+                          if (va !== vb) {
+                            if (va === 'unassigned') return 1;
+                            if (vb === 'unassigned') return -1;
+                            return va.localeCompare(vb);
+                          }
+                          return String(a.code ?? '').localeCompare(String(b.code ?? ''));
+                        });
+
+                        return sortedRequests.map((req, idx) => {
                           const dueDateRaw = String(req.dueDate ?? '').trim();
                           const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
                           const today = new Date();
@@ -4429,9 +4499,22 @@ const Procurement: React.FC = () => {
                             req.preferredVendor?.trim() ||
                             firstQuoteForReq?.vendor?.trim() ||
                             '—';
+                          const vendorGroup = prefVendorDisplay;
+                          const prevVendorGroup =
+                            idx > 0 ? vendorGroupLabel(sortedRequests[idx - 1]) : null;
+                          const showVendorHeader = idx === 0 || prevVendorGroup !== vendorGroup;
 
                           return (
-                            <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                            <div key={`${vendorGroup}::${req.id}`} className="space-y-2">
+                              {showVendorHeader && (
+                                <div className="px-4 py-2.5 rounded-lg border border-indigo-200 bg-linear-to-r from-indigo-50 via-slate-50 to-indigo-50 flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-900">{vendorGroup}</p>
+                                    <p className="text-[11px] text-slate-600">Vendor group</p>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                               {/* Card Header */}
                               <div className="px-5 py-3 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-slate-200 space-y-2">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4894,6 +4977,7 @@ const Procurement: React.FC = () => {
                                     );
                                   })()}
                                 </div>
+                              </div>
                               </div>
                             </div>
                           );

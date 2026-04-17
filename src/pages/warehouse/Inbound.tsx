@@ -23,6 +23,13 @@ function normalizeQcStatus(s: string | undefined): QCStatus {
   if (v === 'Quality checked') return 'Under test';
   return 'Under test';
 }
+
+/** Display-only GRN formatter: remove legacy "PO" token from GRN number. */
+function displayGrnNo(grnNo: string | null | undefined): string {
+  const raw = String(grnNo ?? '').trim();
+  if (!raw) return '—';
+  return raw.replace(/^GRN-PO-/i, 'GRN-');
+}
 type WorkflowStep = 'PO Received' | 'Qty Check' | 'QC Inspection' | 'Label Generation' | 'Dispatch Ready';
 
 const WORKFLOW_STEPS_REQUIRED: WorkflowStep[] = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
@@ -654,13 +661,13 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
     const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
     const zone = payload.toZone || payload.zone || '—';
-    const grnDisplay = payload.grn_no || payload.grn_id || grn.grnNo;
+    const grnDisplay = displayGrnNo(payload.grn_no || payload.grn_id || grn.grnNo);
 
     printWin.document.write(`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>QR Label - ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</title>
+    <title>QR Label - ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(activeLabel.boxIndex)}</title>
     <style>
       body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
       .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; width: 320px; }
@@ -674,7 +681,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   </head>
   <body>
     <div class="card">
-      <div class="head">GRN ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</div>
+      <div class="head">GRN ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(activeLabel.boxIndex)}</div>
       <div class="img-wrap"><img src="${esc(activeLabel.qrImageDataUrl)}" alt="QR Box ${esc(activeLabel.boxIndex)}" /></div>
       <p><strong>Product:</strong> ${esc(payload.product_name || '—')}</p>
       <p><strong>Item code:</strong> ${esc(payload.item_code || '—')}</p>
@@ -729,8 +736,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">GRN — {grn.grnNo}</h2>
-            <p className="text-sm text-slate-600 mt-0.5">{grn.vendor}</p>
+            <h2 className="text-lg font-bold text-slate-900">GRN — {displayGrnNo(grn.grnNo)}</h2>
           </div>
           <button
             onClick={onClose}
@@ -842,25 +848,13 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             ))}
           </div>
 
-          {/* PO Details Section */}
+          {/* GRN Details Section */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">PO & shipment</h3>
+            <h3 className="text-sm font-semibold text-slate-700">GRN & shipment</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">GRN NO.</p>
-                <p className="text-sm font-mono font-bold text-blue-600">{grn.grnNo}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">PO NO.</p>
-                <p className="text-sm font-mono font-bold text-emerald-600">{grn.poNo}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Vendor</p>
-                <p className="text-sm font-medium text-slate-900">{grn.vendor}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">PO Value</p>
-                <p className="text-sm font-bold text-amber-700">₹{grn.poValue.toLocaleString('en-IN')}</p>
+                <p className="text-sm font-mono font-bold text-blue-600">{displayGrnNo(grn.grnNo)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Received Date</p>
@@ -1515,8 +1509,6 @@ const WarehouseInbound = () => {
       const query = searchQuery.toLowerCase();
       return (
         grn.grnNo.toLowerCase().includes(query) ||
-        grn.poNo.toLowerCase().includes(query) ||
-        grn.vendor.toLowerCase().includes(query) ||
         grn.assignedTo.toLowerCase().includes(query)
       );
     }
@@ -1653,7 +1645,7 @@ const WarehouseInbound = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search GRN, PO, vendor…"
+                placeholder="Search GRN or item…"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               />
             </div>
@@ -1663,18 +1655,14 @@ const WarehouseInbound = () => {
         {/* Data Table */}
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px]">
+            <table className="w-full min-w-[840px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">GRN No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">PO No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Vendor</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Item</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">PO Qty</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">RCVD Qty</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Remaining</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">PO Value</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Received</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned To</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">QC</th>
@@ -1684,11 +1672,11 @@ const WarehouseInbound = () => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
                 ) : filteredItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">No GRN items found</td>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No GRN items found</td>
                   </tr>
                 ) : (
                   filteredItemRows.map(({ rowId, grn, lineItem }) => (
@@ -1701,13 +1689,7 @@ const WarehouseInbound = () => {
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
                     >
                       <td className="px-4 py-3.5">
-                        <span className="text-sm font-mono font-medium text-blue-600">{grn.grnNo}</span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="text-sm font-mono text-emerald-600">{grn.poNo}</span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="text-sm font-medium text-slate-800">{grn.vendor}</span>
+                        <span className="text-sm font-mono font-medium text-blue-600">{displayGrnNo(grn.grnNo)}</span>
                       </td>
                       <td className="px-4 py-4">
                         {lineItem ? (
@@ -1718,9 +1700,6 @@ const WarehouseInbound = () => {
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-sm font-medium text-slate-700">{lineItem ? lineItem.poQty : '—'}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className="text-sm font-medium text-slate-700">{lineItem ? lineItem.rcvdQty : '—'}</span>
@@ -1737,9 +1716,6 @@ const WarehouseInbound = () => {
                           }`}>
                           {grn.type}
                         </span>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <span className="text-sm font-semibold text-amber-700">{formatCurrency(grn.poValue)}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         {grn.receivedDate ? (
