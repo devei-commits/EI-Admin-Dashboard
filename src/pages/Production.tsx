@@ -5212,12 +5212,15 @@ function Btn({ color, icon, onClick, children }: { color: string; icon?: React.R
 
 function CreateNewBatchModal({
   batches,
+  preset,
   onClose,
   onSuccess,
   createRworkBatch,
   addToast,
 }: {
   batches: Batch[];
+  /** When set (e.g. from Yield Report), SO and base BMR are fixed and selects are hidden. */
+  preset?: { soNo: string; bmrNo: string } | null;
   onClose: () => void;
   onSuccess: (created?: BatchRow) => void;
   createRworkBatch: (baseBatchId: number, reasonOrOptions?: string | CreateReworkOptions) => Promise<BatchRow>;
@@ -5281,6 +5284,14 @@ function CreateNewBatchModal({
     setReworkItemsPreview([]);
     setReworkItemsError(null);
   };
+
+  const presetLocked = Boolean(preset?.soNo && preset?.bmrNo);
+  useEffect(() => {
+    if (!preset?.soNo || !preset?.bmrNo) return;
+    setSelectedSoNo(preset.soNo);
+    setSelectedBmrNo(preset.bmrNo);
+    setReason('');
+  }, [preset?.soNo, preset?.bmrNo]);
 
   useEffect(() => {
     if (!selected) {
@@ -5378,55 +5389,77 @@ function CreateNewBatchModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">Create New Batch (Rework)</h2>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Create New Batch (Rework)</h2>
+            {presetLocked && (
+              <p className="text-[11px] font-medium text-emerald-700 mt-0.5">Pre-filled from Yield Report — confirm reason and quantities below.</p>
+            )}
+          </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">×</button>
         </div>
         <div className="px-6 py-5 space-y-4">
           <p className="text-sm text-gray-600">
             When a batch fails, create a new batch for the same SO to continue production. The new batch will be in the planning table and named with suffix <strong>rw-01</strong>, <strong>rw-02</strong>, etc.
           </p>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Sales order</label>
-            <select
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              value={selectedSoNo}
-              onChange={e => onSoChange(e.target.value)}
-            >
-              <option value="">— Select SO —</option>
-              {soList.map(so => (
-                <option key={so} value={so}>{so}</option>
-              ))}
-            </select>
-            {soList.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">No batches in production. Sync or send batches from Planning first.</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Rework from batch</label>
-            <select
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              value={selectedBmrNo}
-              onChange={e => setSelectedBmrNo(e.target.value)}
-              disabled={!selectedSoNo}
-            >
-              <option value="">— Select batch —</option>
-              {batchesForSo.map(b => (
-                <option key={b.bmrNo} value={b.bmrNo}>
-                  {b.bmrNo} — {b.productName ?? b.sku}
-                  {b.planningBatchId ? '' : ' (not linked to planning)'}
-                </option>
-              ))}
-            </select>
-            {selectedSoNo && batchesForSo.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">No batches for this SO.</p>
-            )}
-            {selected && selected._pk != null && selected.planningBatchId != null && !reason.trim() && (
-              <p className="text-xs text-amber-600 mt-1">Enter a reason for the rework.</p>
-            )}
-            {selected && !selected.planningBatchId && (
-              <p className="text-xs text-amber-600 mt-1">This batch is not linked to planning. Send it from Planning first, or choose another batch.</p>
-            )}
-          </div>
+          {presetLocked ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 space-y-1.5">
+              <p className="text-[11px] font-semibold text-emerald-900 uppercase tracking-wide">Base batch (from yield)</p>
+              <div className="text-sm text-gray-900"><span className="text-gray-500 text-xs mr-1">SO</span><strong>{preset!.soNo}</strong></div>
+              <div className="text-sm text-gray-900"><span className="text-gray-500 text-xs mr-1">BMR</span><strong>{preset!.bmrNo}</strong></div>
+              <p className="text-[10px] text-gray-600">To pick a different SO or batch, close this dialog and use <strong>Create New Batch</strong> from the BMR tab.</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Sales order</label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={selectedSoNo}
+                  onChange={e => onSoChange(e.target.value)}
+                >
+                  <option value="">— Select SO —</option>
+                  {soList.map(so => (
+                    <option key={so} value={so}>{so}</option>
+                  ))}
+                </select>
+                {soList.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No batches in production. Sync or send batches from Planning first.</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Rework from batch</label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={selectedBmrNo}
+                  onChange={e => setSelectedBmrNo(e.target.value)}
+                  disabled={!selectedSoNo}
+                >
+                  <option value="">— Select batch —</option>
+                  {batchesForSo.map(b => (
+                    <option key={b.bmrNo} value={b.bmrNo}>
+                      {b.bmrNo} — {b.productName ?? b.sku}
+                      {b.planningBatchId ? '' : ' (not linked to planning)'}
+                    </option>
+                  ))}
+                </select>
+                {selectedSoNo && batchesForSo.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No batches for this SO.</p>
+                )}
+                {selected && selected._pk != null && selected.planningBatchId != null && !reason.trim() && (
+                  <p className="text-xs text-amber-600 mt-1">Enter a reason for the rework.</p>
+                )}
+                {selected && !selected.planningBatchId && (
+                  <p className="text-xs text-amber-600 mt-1">This batch is not linked to planning. Send it from Planning first, or choose another batch.</p>
+                )}
+              </div>
+            </>
+          )}
+          {presetLocked && selected && selected._pk != null && selected.planningBatchId != null && !reason.trim() && (
+            <p className="text-xs text-amber-600 -mt-2">Enter a reason for the rework.</p>
+          )}
+          {presetLocked && selected && !selected.planningBatchId && (
+            <p className="text-xs text-amber-600 -mt-2">This batch is not linked to planning. Send it from Planning first, or use BMR Create New Batch to choose another batch.</p>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Reason for rework <span className="text-red-500">*</span></label>
             <textarea
@@ -5869,8 +5902,107 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
   );
 }
 
+/** Unit shortfall vs planned batch allocation (same basis as rework modal). */
+function yieldBatchReworkShortfallUnits(batch: Batch): number {
+  const plannedUnits = batch.totalBatches > 0
+    ? Math.ceil((Number(batch.orderQty) || 0) / batch.totalBatches)
+    : (Number(batch.orderQty) || 0);
+  const actualUnits = Number(batch.fgYield) || Number(batch.fillYield) || 0;
+  return Math.max(0, Math.round(plannedUnits - actualUnits));
+}
+
+function yieldBatchEligibleForRework(batch: Batch): boolean {
+  return batch._pk != null
+    && batch.planningBatchId != null
+    && yieldBatchReworkShortfallUnits(batch) > 0;
+}
+
+function YieldReworkPreflightModal({
+  batch,
+  onClose,
+  onContinue,
+}: {
+  batch: Batch;
+  onClose: () => void;
+  onContinue: () => void;
+}) {
+  const plannedKg = Number(batch.batchSize) || 0;
+  const bmrYieldKg = Number(batch.bulkYield) || 0;
+  const bmrWastageKg = Math.max(0, plannedKg - bmrYieldKg);
+  const bprBulkUnits = Number(batch.fillYield) || 0;
+  const builtUnits = Number(batch.fgYield) || bprBulkUnits;
+  const orderQty = Number(batch.orderQty) || 0;
+  const plannedUnits = batch.totalBatches > 0 ? Math.ceil(orderQty / batch.totalBatches) : orderQty;
+  const shortfallUnits = yieldBatchReworkShortfallUnits(batch);
+  const bprWastageUnits = Math.max(0, bprBulkUnits - builtUnits);
+  const linkageOk = batch._pk != null && batch.planningBatchId != null;
+  const canContinue = linkageOk && shortfallUnits > 0;
+
+  return (
+    <Modal
+      onClose={onClose}
+      title="Confirm rework from yield"
+      subtitle={`${batch.bmrNo} · ${batch.productName ?? batch.sku}`}
+      size="lg"
+    >
+      <p className="text-xs text-gray-600 mb-4">
+        Review quantities and shortfall. The next step opens the rework form with <strong>SO</strong> and <strong>base BMR</strong> filled in automatically.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-xs">
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="font-semibold text-gray-900">{batch.soNo || '—'}</p></div>
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BMR</p><p className="font-semibold text-gray-900">{batch.bmrNo}</p></div>
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BPR</p><p className="font-semibold text-gray-900">{batch.bprNo}</p></div>
+        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Batch no.</p><p className="font-semibold text-gray-900">{batch.batchNo || '—'}</p></div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3 mb-4">
+        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          <h4 className="text-xs font-bold text-blue-900 mb-2">BMR (KG)</h4>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-gray-600">Planned</span><b>{plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Yield</span><b>{bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Wastage</span><b className="text-amber-700">{bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
+          <h4 className="text-xs font-bold text-purple-900 mb-2">BPR (units)</h4>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between"><span className="text-gray-600">Bulk to fill</span><b>{fmt(Math.round(bprBulkUnits))}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">FG / output</span><b>{fmt(Math.round(builtUnits))}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{fmt(Math.round(bprWastageUnits))}</b></div>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-orange-200 bg-orange-50/70 p-3 mb-4">
+        <h4 className="text-xs font-bold text-orange-900 mb-2">Rework basis (units)</h4>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div><p className="text-gray-500">Planned</p><p className="font-semibold">{fmt(Math.round(plannedUnits))}</p></div>
+          <div><p className="text-gray-500">Actual</p><p className="font-semibold">{fmt(Math.round(builtUnits))}</p></div>
+          <div><p className="text-gray-500">Shortfall</p><p className="font-semibold text-orange-800">{fmt(shortfallUnits)}</p></div>
+        </div>
+        {!linkageOk && (
+          <p className="text-[11px] text-amber-800 mt-2">This batch is missing production id or planning link — rework cannot be created from here. Use Planning / BMR flows to fix linkage.</p>
+        )}
+        {linkageOk && shortfallUnits <= 0 && (
+          <p className="text-[11px] text-gray-700 mt-2">No unit shortfall vs plan; rework from yield is not needed for this batch.</p>
+        )}
+      </div>
+      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100">Cancel</button>
+        <button
+          type="button"
+          disabled={!canContinue}
+          onClick={onContinue}
+          className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+        >
+          Continue to rework form
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ──────────── YIELD REPORT VIEW ────────────────────────────── */
-function YieldReportView({ batches }: { batches: Batch[] }) {
+function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch[]; onRequestReworkPreflight?: (b: Batch) => void }) {
   const [search, setSearch] = useState('');
   const [selectedBmrNo, setSelectedBmrNo] = useState<string | null>(null);
   const fgReadyBatches = useMemo(() => batches.filter((b) => b.bprStatus === 'fg_ready'), [batches]);
@@ -5950,6 +6082,7 @@ function YieldReportView({ batches }: { batches: Batch[] }) {
                   <th className="px-3 py-2 text-right font-semibold text-gray-600">BPR Waste (Units)</th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-600">Overall Waste (Units)</th>
                   <th className="px-3 py-2 text-right font-semibold text-gray-600">Output vs Plan %</th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-600">Rework</th>
                   <th className="px-3 py-2 text-center font-semibold text-gray-600">Details</th>
                 </tr>
               </thead>
@@ -5973,6 +6106,25 @@ function YieldReportView({ batches }: { batches: Batch[] }) {
                     <td className="px-3 py-2 text-right font-mono text-rose-700">{fmt(Math.round(r.bprWastageUnits))}</td>
                     <td className="px-3 py-2 text-right font-mono text-amber-700">{fmt(Math.round(r.overallWastageUnits))}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.outputVsPlanPct.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        disabled={!onRequestReworkPreflight || !yieldBatchEligibleForRework(r.b)}
+                        title={
+                          !onRequestReworkPreflight
+                            ? ''
+                            : !yieldBatchEligibleForRework(r.b)
+                              ? (!r.b._pk || !r.b.planningBatchId
+                                ? 'Rework needs a planning-linked batch with production id'
+                                : 'No unit shortfall vs planned batch')
+                              : 'Create rework batch from this yield row'
+                        }
+                        onClick={() => onRequestReworkPreflight?.(r.b)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-50 disabled:opacity-40 disabled:pointer-events-none"
+                      >
+                        <Layers size={10} /> Rework
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-center">
                       <button
                         type="button"
@@ -6033,6 +6185,25 @@ function YieldReportView({ batches }: { batches: Batch[] }) {
               <div><p className="text-gray-500">Overall quality state</p><p className="font-semibold">{selectedRow.b.bprStatus === 'fg_ready' ? 'FG Ready' : 'In Progress'}</p></div>
             </div>
           </div>
+          {onRequestReworkPreflight && (
+            <div className="mt-4 flex flex-wrap gap-2 justify-end">
+              <button
+                type="button"
+                disabled={!yieldBatchEligibleForRework(selectedRow.b)}
+                title={
+                  !yieldBatchEligibleForRework(selectedRow.b)
+                    ? (!selectedRow.b._pk || !selectedRow.b.planningBatchId
+                      ? 'Rework needs a planning-linked batch with production id'
+                      : 'No unit shortfall vs planned batch')
+                    : 'Confirm quantities, then open rework form with SO and BMR filled in'
+                }
+                onClick={() => { onRequestReworkPreflight(selectedRow.b); setSelectedBmrNo(null); }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Layers size={14} /> Create rework batch…
+              </button>
+            </div>
+          )}
         </Modal>
       )}
     </div>
@@ -6917,6 +7088,8 @@ const Production = () => {
   const [pendingMtrItems, setPendingMtrItems] = useState<DispensingItem[] | null>(null);
   const [sentSummary, setSentSummary] = useState<SentBatchSummaryRow[]>([]);
   const [showCreateBatchModal, setShowCreateBatchModal] = useState(false);
+  const [createBatchPreset, setCreateBatchPreset] = useState<{ soNo: string; bmrNo: string } | null>(null);
+  const [yieldReworkPreflightBatch, setYieldReworkPreflightBatch] = useState<Batch | null>(null);
   const loadedFromApi = useRef(false);
 
   const whStockRM = useMemo(() => buildStockMap(whInventory, 'RM'), [whInventory]);
@@ -7281,11 +7454,16 @@ const Production = () => {
           />
         );
       case 'bmr':
-        return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => setShowCreateBatchModal(true)} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
+        return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => { setCreateBatchPreset(null); setShowCreateBatchModal(true); }} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
       case 'bpr':
         return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
       case 'yield-report':
-        return <YieldReportView batches={state.batches} />;
+        return (
+          <YieldReportView
+            batches={state.batches}
+            onRequestReworkPreflight={(b) => setYieldReworkPreflightBatch(b)}
+          />
+        );
       case 'transfers':
         return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshAfterMrnSave} />;
       case 'equipment':
@@ -7337,10 +7515,23 @@ const Production = () => {
           }}
           onBatchChange={bmrNo => { const b = state.batches.find(x => x.bmrNo === bmrNo); if (b) setModalBatch(b); }} />
       )}
+      {yieldReworkPreflightBatch && (
+        <YieldReworkPreflightModal
+          batch={yieldReworkPreflightBatch}
+          onClose={() => setYieldReworkPreflightBatch(null)}
+          onContinue={() => {
+            const b = yieldReworkPreflightBatch;
+            setCreateBatchPreset({ soNo: b.soNo, bmrNo: b.bmrNo });
+            setYieldReworkPreflightBatch(null);
+            setShowCreateBatchModal(true);
+          }}
+        />
+      )}
       {showCreateBatchModal && (
         <CreateNewBatchModal
           batches={state.batches}
-          onClose={() => setShowCreateBatchModal(false)}
+          preset={createBatchPreset}
+          onClose={() => { setShowCreateBatchModal(false); setCreateBatchPreset(null); }}
           onSuccess={(created) => {
             refreshBatches();
             queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
