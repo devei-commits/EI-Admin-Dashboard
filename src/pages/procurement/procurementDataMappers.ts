@@ -707,6 +707,56 @@ export function assignPrItemToDraftLines(
   });
 }
 
+/**
+ * When draft PO line quantities change, keep linked `procurement_requests.items` aligned with the PO.
+ * If qty is reduced, remainder lines are emitted so planned material stays visible for re-sourcing (same idea as partial release split).
+ */
+export function syncProcurementItemsAfterDraftPoLineQtyEdit(
+  backendItems: ProcurementRequestItem[],
+  oldLines: DraftPOLineItem[],
+  newLines: DraftPOLineItem[]
+): { updatedItems: ProcurementRequestItem[]; remainderItems: ProcurementRequestItem[] } {
+  if (!Array.isArray(backendItems) || backendItems.length === 0) {
+    return { updatedItems: backendItems, remainderItems: [] };
+  }
+  const updatedItems = backendItems.map((b) => ({ ...b }));
+  if (!Array.isArray(newLines) || newLines.length === 0) {
+    return { updatedItems, remainderItems: [] };
+  }
+
+  const assigned = assignPrItemToDraftLines(newLines, updatedItems);
+  const remainderItems: ProcurementRequestItem[] = [];
+
+  for (let i = 0; i < newLines.length; i += 1) {
+    const prHit = assigned[i];
+    if (!prHit) continue;
+
+    const newQ = parseQuantityRequested(newLines[i]?.qty);
+    const oldQ = parseQuantityRequested(oldLines[i]?.qty ?? newLines[i]?.qty);
+    const delta = Math.max(0, oldQ - newQ);
+
+    if (delta > 0) {
+      remainderItems.push({
+        ...prHit,
+        quantity_requested: delta,
+        ...(prHit.required != null ? { required: delta } : {}),
+        ...(prHit.shortage != null ? { shortage: delta } : {}),
+        partial_release_remainder: true,
+      } as ProcurementRequestItem);
+    }
+
+    prHit.quantity_requested = newQ;
+    if (prHit.required != null) {
+      prHit.required = newQ;
+    }
+    if (prHit.shortage != null) {
+      prHit.shortage = newQ;
+    }
+  }
+
+  return { updatedItems, remainderItems };
+}
+
 /** Map UI itemDetails → API-shaped PR lines so release/split can attach raw_material_id / pack_material_id to PO rows. */
 export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): ProcurementRequestItem[] {
   return details.map((d) => {

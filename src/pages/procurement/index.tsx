@@ -46,6 +46,8 @@ import {
   assignPrItemToDraftLines,
   matchBackendPrItemForDraftLine,
   splitBackendPrItemsAfterPartialRelease,
+  syncProcurementItemsAfterDraftPoLineQtyEdit,
+  parseQuantityRequested,
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
@@ -3149,11 +3151,8 @@ const Procurement: React.FC = () => {
       if (orig > 0 && qty > orig) {
         return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${qty} exceeds open request qty ${orig}.`;
       }
-      const remaining = Math.max(0, orig - qty);
-      if (moq > 0 && remaining > 0 && remaining < moq) {
-        const maxPartial = Math.max(0, orig - moq);
-        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} leaves remainder ${remaining} below MOQ ${moq}. Use full ${orig} or keep qty <= ${maxPartial}.`;
-      }
+      // Intentionally no check for (orig - qty) < MOQ: small remainders return to the linked PR / new remainder
+      // request; MOQ is enforced on procurement request update and Items List, not on this split math.
     }
     return null;
   };
@@ -9225,6 +9224,12 @@ const Procurement: React.FC = () => {
                     addToast('warning', editQtyErr);
                     return;
                   }
+                  const qtyEdited = form.lineItems.some((l, idx) => {
+                    const next = parseQuantityRequested(l.qty);
+                    const prev = parseQuantityRequested(d.lineItems[idx]?.qty);
+                    return next !== prev;
+                  });
+
                   if (d.backendPoId) {
                     const payload = {
                       vendorName: form.vendor,
@@ -9244,6 +9249,76 @@ const Procurement: React.FC = () => {
                       return;
                     }
                   }
+
+                  const prRow = backendRequestId
+                    ? (backendPrArray.find((p) => String(p.id) === backendRequestId) as
+                        | {
+                            items?: BackendPRItem[];
+                            planningExtractedId?: number;
+                            planningBatchId?: number | null;
+                            priority?: string;
+                            requiredByDate?: string | null;
+                            notes?: string | null;
+                            preferredVendor?: string | null;
+                          }
+                        | undefined)
+                    : undefined;
+                  const backendItemsForSync = Array.isArray(prRow?.items) ? prRow!.items : [];
+                  if (backendRequestId && backendItemsForSync.length > 0 && qtyEdited) {
+                    const { updatedItems, remainderItems } = syncProcurementItemsAfterDraftPoLineQtyEdit(
+                      backendItemsForSync,
+                      d.lineItems,
+                      form.lineItems
+                    );
+                    const prUpd = await updateProcurementRequestApi(backendRequestId, { items: updatedItems });
+                    if (!prUpd.success) {
+                      addToast(
+                        'error',
+                        typeof prUpd.error === 'string'
+                          ? prUpd.error
+                          : 'Draft PO saved but updating the linked procurement request failed. Fix the request manually.',
+                      );
+                      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                    } else {
+                      let remainderCreatedLabel: string | null = null;
+                      if (remainderItems.length > 0) {
+                        if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+                          addToast(
+                            'warning',
+                            'Linked request was updated; could not create a remainder request (missing planning link). Add the backlog lines manually.',
+                          );
+                        } else {
+                          const remainderNotes = `Remainder from ${d.requestCode || d.dpoNumber}: draft PO line qty reduced (${d.dpoNumber}).`;
+                          const remainingRes = await createProcurementRequestApi({
+                            planningExtractedId: prRow.planningExtractedId,
+                            planningBatchId: prRow.planningBatchId ?? null,
+                            priority: prRow.priority ?? 'Medium',
+                            requiredByDate: prRow.requiredByDate ?? null,
+                            notes: [prRow.notes, remainderNotes].filter(Boolean).join('\n\n') || remainderNotes,
+                            preferredVendor: prRow.preferredVendor ?? null,
+                            items: remainderItems,
+                          });
+                          if (!remainingRes.success || !remainingRes.data) {
+                            addToast(
+                              'error',
+                              typeof remainingRes.error === 'string'
+                                ? remainingRes.error
+                                : 'Linked request updated but creating the remainder procurement request failed.',
+                            );
+                          } else if (remainingRes.data.id != null) {
+                            remainderCreatedLabel = `PR-REQ-${String(remainingRes.data.id).padStart(3, '0')}`;
+                          }
+                        }
+                      }
+                      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      if (remainderItems.length > 0 && remainderCreatedLabel) {
+                        addToast('success', `Procurement synced; remainder tracked as ${remainderCreatedLabel}.`);
+                      } else if (remainderItems.length > 0) {
+                        addToast('success', 'Procurement synced; remainder request created.');
+                      }
+                    }
+                  }
+
                   setDraftPOs((prev) =>
                     prev.map((po) =>
                       po.id === d.id
