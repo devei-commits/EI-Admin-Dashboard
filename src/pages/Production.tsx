@@ -1403,15 +1403,17 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
     ? <>Select RM items to reserve in Warehouse against BMR <b>{batch.bmrNo}</b>. Available = WH SIH − Reserved. Reserved stock won&apos;t be allocated to other orders. After reserving, use <b>RM Transfer</b> in batch detail to raise a transfer request.</>
     : <>Reserve Packaging Materials for BPR <b>{batch.bprNo}</b>. Available = SIH − Reserved.</>;
 
-  const rmHasShort = type === 'rm' && items.some((r) => {
+  /** Reserve allocates warehouse free stock only — Planning “coverage” must not override SIH − reserved. */
+  const itemHasWhShort = (r: DispensingItem) => {
     const code = String(r.code ?? '').trim();
     const sih = stockMap[code] ?? 0;
     const reserved = reservedMap?.[code] ?? 0;
     const available = Math.max(0, sih - reserved);
-    const planningCovered = (planningCoverageByCode[code] ?? 0) >= 100;
-    return !planningCovered && available < r.required;
-  });
-  const reserveDisabled = items.length === 0 || (type === 'rm' && rmHasShort);
+    return available < r.required;
+  };
+  const rmHasShort = type === 'rm' && items.some(itemHasWhShort);
+  const pmHasShort = type === 'pm' && items.some(itemHasWhShort);
+  const reserveDisabled = items.length === 0 || rmHasShort || pmHasShort;
 
   return (
     <Modal onClose={onClose} title={title} size="lg">
@@ -1446,11 +1448,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                 const reserved = reservedMap?.[code] ?? 0;
                 const available = Math.max(0, sih - reserved);
                 const planningCoverage = planningCoverageByCode[code] ?? 0;
-                const planningCovered = planningCoverage >= 100;
-                const ok = planningCovered || available >= r.required;
+                const whOk = available >= r.required;
                 const checked = selected[i] !== false;
                 return (
-                  <tr key={i} className={!ok ? 'bg-red-50/50' : ''}>
+                  <tr key={i} className={!whOk ? 'bg-red-50/50' : ''}>
                     <td className="px-3 py-2.5">
                       <input type="checkbox" id={`res-${i}`} checked={checked} onChange={e => setSelected(prev => ({ ...prev, [i]: e.target.checked }))} className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
                     </td>
@@ -1461,15 +1462,15 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                     <td className="px-3 py-2.5 font-mono font-semibold">{type === 'rm' ? `${fmt(r.required)} KG` : `${fmt(r.required)} pcs`}</td>
                     <td className="px-3 py-2.5 font-mono text-gray-700">{type === 'rm' ? `${fmt(sih)} KG` : `${fmt(sih)} pcs`}</td>
                     <td className="px-3 py-2.5 font-mono text-gray-600">{type === 'rm' ? `${fmt(reserved)} KG` : `${fmt(reserved)} pcs`}</td>
-                    <td className={`px-3 py-2.5 font-mono font-semibold ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{type === 'rm' ? `${fmt(available)} KG` : `${fmt(available)} pcs`}</td>
+                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`}>{type === 'rm' ? `${fmt(available)} KG` : `${fmt(available)} pcs`}</td>
                     <td className="px-3 py-2.5">
-                      {ok
-                        ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">
-                            {planningCovered && available < r.required ? 'Covered' : 'OK'}
-                          </Badge>
-                        )
-                        : <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>}
+                      {whOk ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
+                      ) : (
+                        <span title={`Planning Items Involved coverage (reference): ${planningCoverage}%. Reserve still needs WH available ≥ required.`}>
+                          <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1480,7 +1481,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
       )}
       <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         {type === 'rm' && rmHasShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve RM while any item is short. Raise PR or receive stock first.</span>
+          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve RM while free warehouse stock is below required (SIH − Reserved). Match Planning Items Involved — receive stock or release procurement first.</span>
+        )}
+        {type === 'pm' && pmHasShort && (
+          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve PM while free warehouse stock is below required (SIH − Reserved).</span>
         )}
         <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
         <button onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={reserveDisabled}>
