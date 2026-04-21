@@ -35,6 +35,7 @@ export interface InventoryItem {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  underGrn?: number;
   /** In-transit lines from pending GRNs: vendor, PO id, expected date */
   inTransitBreakdown?: InTransitBreakdownItem[];
   /** Total quantity from purchase orders (vendor) */
@@ -68,7 +69,7 @@ interface Location {
   temperature: string;
   maxCapacity: string;
   icon: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface Rack {
@@ -79,7 +80,7 @@ interface Rack {
   levels: number;
   slotsPerLevel: number;
   condition: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 // Mock data based on the image
@@ -887,6 +888,7 @@ function rowToInventoryItem(row: WarehouseInventoryRow): InventoryItem {
     stockInHand: row.stockInHand,
     reserved: row.reserved,
     inTransit: row.inTransit,
+    underGrn: Number(row.underGrn) || 0,
     inTransitBreakdown: row.inTransitBreakdown,
     poQuantity: row.poQuantity,
     reorderPt: row.reorderPt,
@@ -1045,7 +1047,7 @@ const WarehouseInventory = () => {
         if (res.success && res.data) {
           setHistoryRows(res.data.history || []);
         } else {
-          setHistoryError(res.error || 'Failed to load inventory history');
+          setHistoryError(String(res.error || 'Failed to load inventory history'));
         }
       })
       .catch((err) => {
@@ -1397,18 +1399,20 @@ const WarehouseInventory = () => {
                 />
               </div>
               <button
-                onClick={() => setIsLocationModalOpen(true)}
+                onClick={() => navigate('/facility-management')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                title="Manage areas/zones in Facility Management"
               >
                 <MapPin className="w-4 h-4" />
-                Location
+                Manage Areas
               </button>
               <button
-                onClick={() => setIsRackModalOpen(true)}
+                onClick={() => navigate('/facility-management')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                title="Manage racks in Facility Management"
               >
                 <Grid3x3 className="w-4 h-4" />
-                Rack
+                Manage Racks
               </button>
             </div>
           )}
@@ -1640,6 +1644,9 @@ const WarehouseInventory = () => {
                         Reserved
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Under GRN
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         In Transit
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -1666,6 +1673,14 @@ const WarehouseInventory = () => {
                           ? `${item.type}-${item.sourceId}`
                           : null;
                       const plan = planKey ? planningTotalsByKey.get(planKey) : undefined;
+                      // Show planning-stage open qty (remaining), not full qty duplicated across later stages.
+                      const plannedOpenQty = plan
+                        ? Math.max(
+                            0,
+                            Number(plan.plannedQty || 0) -
+                              (Number(item.poQuantity || 0) + Number(item.inTransit || 0) + Number(item.underGrn || 0))
+                          )
+                        : 0;
                       const canReleaseToPlanning =
                         plan != null && (item.type === 'RM' || item.type === 'PM') && plan.totalRequired < item.stockInHand;
 
@@ -1719,11 +1734,11 @@ const WarehouseInventory = () => {
                             {plan ? (
                               item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Number(plan.plannedQty).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
+                                  {plannedOpenQty.toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
                                 </div>
                               ) : (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Math.round(plan.plannedQty).toLocaleString()}{' '}
+                                  {Math.round(plannedOpenQty).toLocaleString()}{' '}
                                   <span className="text-xs font-normal text-gray-500">pcs (planning)</span>
                                 </div>
                               )
@@ -1739,12 +1754,18 @@ const WarehouseInventory = () => {
                               <span className="font-semibold text-sm">{item.reserved}</span>
                             </div>
                           </td>
+                          <td className="px-4 py-3">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full border border-violet-200">
+                              <span className="font-semibold text-sm">{Number(item.underGrn || 0)} {item.whUnit}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                             <div className="relative inline-block">
                               <button
                                 type="button"
                                 onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
                                 className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+                                title="In Transit stage only (Under GRN shown separately)."
                               >
                                 {item.inTransit} {item.whUnit}
                                 {(item.inTransitBreakdown?.length ?? 0) > 0 && (
@@ -1779,7 +1800,9 @@ const WarehouseInventory = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">{item.poQuantity != null ? item.poQuantity : '—'}</div>
+                            <div className="text-sm text-gray-600" title="PO-stage remaining after quantities moved to Under GRN.">
+                              {item.poQuantity != null ? item.poQuantity : '—'}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-sm text-gray-600">{item.reorderPt}</div>

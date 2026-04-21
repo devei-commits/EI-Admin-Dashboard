@@ -3,9 +3,9 @@
  * Main container for order fulfillment management
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Package, Search, Loader2, LayoutDashboard } from 'lucide-react';
+import { ShoppingCart, Package, Search, Loader2, LayoutDashboard, ArrowUpDown } from 'lucide-react';
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
 import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
@@ -22,11 +22,18 @@ import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
 
 type ViewMode = 'orders' | 'batches';
+type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
+type SortOrder = 'asc' | 'desc';
 
 export const OrderFulfillment: React.FC = () => {
   const { addToast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('orders');
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | SaleOrder['soStatus']>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | 'normal' | 'high'>('all');
+  const [cityFilter, setCityFilter] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('dueDate');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -239,15 +246,65 @@ export const OrderFulfillment: React.FC = () => {
     }
   };
 
-  const filteredSaleOrders = saleOrders.filter(so => {
-    const lowerSearchTerm = searchTerm.toLowerCase();
-    return (
-      so.soNo.toLowerCase().includes(lowerSearchTerm) ||
-      so.customer.toLowerCase().includes(lowerSearchTerm) ||
-      so.customerCity.toLowerCase().includes(lowerSearchTerm) ||
-      so.items.some(item => item.productName.toLowerCase().includes(lowerSearchTerm))
-    );
-  });
+  const cityOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const so of saleOrders) {
+      const city = String(so.customerCity || '').trim();
+      if (city) unique.add(city);
+    }
+    return ['all', ...Array.from(unique).sort((a, b) => a.localeCompare(b))];
+  }, [saleOrders]);
+
+  const statusOptions = useMemo(() => {
+    const unique = new Set<SaleOrder['soStatus']>();
+    for (const so of saleOrders) unique.add(so.soStatus);
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [saleOrders]);
+
+  const filteredSaleOrders = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const filtered = saleOrders.filter((so) => {
+      if (statusFilter !== 'all' && so.soStatus !== statusFilter) return false;
+      if (priorityFilter !== 'all' && so.priority !== priorityFilter) return false;
+      if (cityFilter !== 'all' && String(so.customerCity || '').trim() !== cityFilter) return false;
+      if (!q) return true;
+      return (
+        so.soNo.toLowerCase().includes(q) ||
+        so.customer.toLowerCase().includes(q) ||
+        so.customerCity.toLowerCase().includes(q) ||
+        so.items.some((item) => item.productName.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q))
+      );
+    });
+
+    const sortValue = (so: SaleOrder): string | number => {
+      switch (sortKey) {
+        case 'orderDate':
+          return new Date(so.orderDate).getTime() || 0;
+        case 'dueDate':
+          return new Date(so.dueDate).getTime() || 0;
+        case 'customer':
+          return so.customer.toLowerCase();
+        case 'soNo':
+          return so.soNo.toLowerCase();
+        case 'soValue':
+          return Number(so.soValue) || 0;
+        default:
+          return 0;
+      }
+    };
+
+    filtered.sort((a, b) => {
+      const av = sortValue(a);
+      const bv = sortValue(b);
+      if (typeof av === 'string' && typeof bv === 'string') {
+        return sortOrder === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      const an = Number(av) || 0;
+      const bn = Number(bv) || 0;
+      return sortOrder === 'asc' ? an - bn : bn - an;
+    });
+    return filtered;
+  }, [saleOrders, searchTerm, statusFilter, priorityFilter, cityFilter, sortKey, sortOrder]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
@@ -267,7 +324,7 @@ export const OrderFulfillment: React.FC = () => {
             </Link>
           </div>
 
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-4">
             <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-lg p-1">
               <button 
                 onClick={() => setViewMode('orders')} 
@@ -282,15 +339,90 @@ export const OrderFulfillment: React.FC = () => {
                 <Package size={16} /> Products & Batches
               </button>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="Search orders..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm"
-              />
+            <span className="text-xs text-gray-500">
+              Showing {filteredSaleOrders.length} of {saleOrders.length} orders
+            </span>
+          </div>
+
+          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/70 p-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
+              <div className="relative xl:col-span-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search SO, customer, city, SKU, product..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm bg-white"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | SaleOrder['soStatus'])}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">All Statuses</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value as 'all' | 'normal' | 'high')}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">All Priorities</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+              </select>
+              <select
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              >
+                <option value="all">All Cities</option>
+                {cityOptions.filter((city) => city !== 'all').map((city) => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <select
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as SortKey)}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="dueDate">Sort: Due date</option>
+                  <option value="orderDate">Sort: Order date</option>
+                  <option value="customer">Sort: Customer</option>
+                  <option value="soNo">Sort: SO no</option>
+                  <option value="soValue">Sort: SO value</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white hover:bg-gray-100 flex items-center gap-1.5"
+                  title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                >
+                  <ArrowUpDown size={15} />
+                  {sortOrder.toUpperCase()}
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('all');
+                  setPriorityFilter('all');
+                  setCityFilter('all');
+                  setSortKey('dueDate');
+                  setSortOrder('asc');
+                }}
+                className="text-xs font-semibold text-gray-600 hover:text-gray-900 underline"
+              >
+                Clear filters
+              </button>
             </div>
           </div>
 

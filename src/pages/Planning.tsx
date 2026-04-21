@@ -137,6 +137,9 @@ interface ItemsInvolvedDisplayRow {
   orderedQtyNum: number;
   net: string;
   netNum: number;
+  /** NET adjusted for Release→PR/PO pipeline (display only; not used for production or release rules). */
+  netPipelineNum: number;
+  netPipeline: string;
   inTransit: string;
   reorderPt: string;
   avgMo: string;
@@ -357,6 +360,7 @@ interface SalesOrder {
   batchSize: string;
   batchesRequired: number;
   bomStatus: 'Production Released' | 'Production Ready' | 'In Progress' | 'Planned';
+  bomConfirmedAt?: string | null;
   approvedBy: string;
   rawMaterials: RawMaterial[];
   packagingMaterials: PackagingMaterial[];
@@ -422,6 +426,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     batchSize: row.batchSize,
     batchesRequired: row.batchesRequired,
     bomStatus: (row.bomStatus as SalesOrder['bomStatus']) || 'Planned',
+    bomConfirmedAt: (row as { bomConfirmedAt?: string | null }).bomConfirmedAt ?? null,
     approvedBy: row.approvedBy,
     rawMaterials: (row.rawMaterials ?? []).map((rm, i) => ({ ...rm, id: rm.id ?? String((rm as { raw_material_id?: number }).raw_material_id ?? i) } as RawMaterial)),
     packagingMaterials: (row.packagingMaterials ?? []).map((pm, i) => ({ ...pm, id: pm.id ?? String((pm as { pack_material_id?: number }).pack_material_id ?? i) } as PackagingMaterial)),
@@ -540,6 +545,9 @@ function PlanningBatchTableRow({
 
 /** Batches tab: list all planning batches. Row click → batch detail popup (items, stock, PR per shortfall). */
 function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatchAllRow) => void }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'sent' | 'rework'>('all');
+  const [sortBy, setSortBy] = useState<'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc'>('dueAsc');
   const { data: allBatches = [], isLoading } = useQuery({
     queryKey: ['planning-batches-all'],
     queryFn: fetchAllBatches,
@@ -559,11 +567,87 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
     const isRework = code.includes('-rw-');
     return row.sent === true || isRework;
   });
+  const searchedRows = rows.filter((row) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    const haystack = [
+      row.batchCode,
+      row.soNo,
+      row.customerName,
+      row.productName,
+      row.dueDate,
+    ]
+      .map((v) => String(v ?? '').toLowerCase())
+      .join(' ');
+    return haystack.includes(q);
+  });
+  const filteredRows = searchedRows.filter((row) => {
+    if (batchTypeFilter === 'all') return true;
+    const isRework = String(row.batchCode ?? '').toLowerCase().includes('-rw-');
+    if (batchTypeFilter === 'rework') return isRework;
+    return row.sent === true;
+  });
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const codeA = String(a.batchCode ?? '').toLowerCase();
+    const codeB = String(b.batchCode ?? '').toLowerCase();
+    const sizeA = Number(a.sizeKg) || 0;
+    const sizeB = Number(b.sizeKg) || 0;
+    const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    switch (sortBy) {
+      case 'dueDesc':
+        return dueB - dueA;
+      case 'sizeAsc':
+        return sizeA - sizeB;
+      case 'sizeDesc':
+        return sizeB - sizeA;
+      case 'codeAsc':
+        return codeA.localeCompare(codeB);
+      case 'codeDesc':
+        return codeB.localeCompare(codeA);
+      case 'dueAsc':
+      default:
+        return dueA - dueB;
+    }
+  });
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
         Batches sent to production. Edit batch code and size (kg), then Save. Click a row (outside fields) to view items, stock, and raise PR for shortfalls.
       </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search batch, SO, customer, product..."
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+        <select
+          value={batchTypeFilter}
+          onChange={(e) => setBatchTypeFilter(e.target.value as 'all' | 'sent' | 'rework')}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+        >
+          <option value="all">All types</option>
+          <option value="sent">Sent only</option>
+          <option value="rework">Rework only</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc')}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+        >
+          <option value="dueAsc">Sort: Due date (earliest)</option>
+          <option value="dueDesc">Sort: Due date (latest)</option>
+          <option value="sizeDesc">Sort: Size (high to low)</option>
+          <option value="sizeAsc">Sort: Size (low to high)</option>
+          <option value="codeAsc">Sort: Batch code (A-Z)</option>
+          <option value="codeDesc">Sort: Batch code (Z-A)</option>
+        </select>
+      </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -580,17 +664,17 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {sortedRows.map((row) => (
                 <PlanningBatchTableRow key={`${row.planningExtractedId}-${row.id}`} row={row} onOpenDetail={onBatchClick} />
               ))}
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && (
+        {sortedRows.length === 0 && (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             {allBatches.length === 0
               ? 'No batches yet. Create batches from Plan Batches (PIs Extracted) per SO line.'
-              : 'No sent/rework batches yet. Rework batches created from Production are shown here for planning and procurement follow-up.'}
+              : 'No batches matched your current filters/search.'}
           </div>
         )}
       </div>
@@ -683,7 +767,9 @@ const Planning = () => {
   const [sendToProductionSending, setSendToProductionSending] = useState(false);
   const [sendToProductionSuccess, setSendToProductionSuccess] = useState<null | { title: string; message: string }>(null);
   const canSendToProduction =
-    isReadyForProduction || selectedSOForBatch?.bomStatus === 'Production Ready';
+    isReadyForProduction ||
+    selectedSOForBatch?.bomStatus === 'Production Ready' ||
+    Boolean(selectedSOForBatch?.bomConfirmedAt);
 
   // Planning list: used for PIs Extracted tab and tab stats
   const { data: planningExtractedList = [], isLoading: planningLoading } = useQuery({
@@ -977,12 +1063,25 @@ const Planning = () => {
     })));
   }, [selectedBatchId, selectedBatchData]);
 
-  // Sync feasibility preview qty to order qty when Plan Batches modal opens or SO changes
+  // Sync preview qty to "remaining after sent batches" (falls back to order qty when nothing sent yet).
   useEffect(() => {
     if (!selectedSOForBatch) return;
     const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
-    setFeasibilityPreviewQty(orderQtyNum);
-  }, [selectedSOForBatch?.id, selectedSOForBatch?.orderQty]);
+    const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const sent = selectedSOForBatch.sentBatchIndices ?? [];
+    const sentKg = customBatches.reduce(
+      (sum, b, idx) => (sent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
+      0
+    );
+    const remainingKg = Math.max(0, totalKgNum - sentKg);
+    if (orderQtyNum <= 0 || totalKgNum <= 0) {
+      setFeasibilityPreviewQty(orderQtyNum);
+      return;
+    }
+    const kgPerUnit = totalKgNum / orderQtyNum;
+    const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : orderQtyNum;
+    setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+  }, [selectedSOForBatch?.id, selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg, selectedSOForBatch?.sentBatchIndices, customBatches]);
 
   const kgPerUnitForPlanBatches = useMemo(() => {
     const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
@@ -1505,99 +1604,6 @@ const Planning = () => {
     },
     enabled: activeMainTab === 'items-involved',
   });
-  const itemsInvolved = useMemo(() => itemsInvolvedRows.map((row): ItemsInvolvedDisplayRow => {
-    const shortage = row.surplusShortage < 0 ? Math.abs(row.surplusShortage) : 0;
-    const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
-    const sihStr = Math.round(row.sih).toLocaleString();
-    const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
-    const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
-    const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
-    // TOTAL REQ on this screen means extra qty to be added in WH for planned batches.
-    // SIH here is already free stock (stock_in_hand - reserved); in-transit is added pipeline.
-    const requiredToAddNum = Math.max(0, plannedQtyNum - availableForPlanning);
-    const totalReqStr =
-      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${Number(requiredToAddNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
-        : `${Math.round(requiredToAddNum).toLocaleString()} pcs`;
-    // NET now reflects surplus/shortage against planned requirement.
-    const netNum = availableForPlanning - plannedQtyNum;
-    // Coverage on this screen must use the same denominator as NET / TOTAL REQ (planned gap),
-    // not the older backend aggregate requirement, otherwise rows can show 100% with negative NET.
-    const coveragePct =
-      plannedQtyNum > 0
-        ? Math.max(0, Math.min(100, Math.round((availableForPlanning / plannedQtyNum) * 100)))
-        : 100;
-    const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
-    const netDisplay =
-      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${netNum >= 0 ? '+' : ''}${Number(netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
-        : `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`;
-    return {
-      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
-      name: row.name,
-      code: row.code,
-      category: row.type === 'PM' ? 'PM - Primary' : 'RM',
-      usedIn: String(row.batchCount ?? 0),
-      usedInProducts: row.usedInProducts ?? [],
-      totalReq: totalReqStr,
-      totalRequired: requiredToAddNum,
-      batchCount: row.batchCount ?? 0,
-      sih: sihStr,
-      sihNum: row.sih,
-      surplusShortage: surplusShortageStr,
-      surplusShortageNum: row.surplusShortage,
-      coverage: `${coveragePct}%`,
-      whBatches: row.batchNumber ?? '—',
-      warehouseInventoryId: row.warehouseInventoryId ?? null,
-      expiry: row.expiryDate ?? '—',
-      bomFlag: 'Original',
-      itemType: row.type,
-      planningExtractedIds: row.planningExtractedIds ?? [],
-      planningExtractedId: row.planningExtractedIds?.[0] ?? null,
-      raw_material_id: row.raw_material_id ?? undefined,
-      pack_material_id: row.pack_material_id ?? undefined,
-      unit: row.unit,
-      reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
-      reservedNum: Number(row.reserved ?? 0) || 0,
-      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
-      plannedQtyNum,
-      orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
-      orderedQtyNum,
-      net: netDisplay,
-      netNum,
-      inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
-      reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
-      avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
-      status: row.status ?? 'In Stock',
-    };
-  }), [itemsInvolvedRows]);
-
-  const itemsInvolvedProductOptions = useMemo(() => {
-    const set = new Set<string>();
-    itemsInvolved.forEach((row) => (row.usedInProducts ?? []).forEach((p) => set.add(p)));
-    return ['all', ...Array.from(set).sort()];
-  }, [itemsInvolved]);
-
-  const filteredItemsInvolved = useMemo(() => {
-    return itemsInvolved.filter((row) => {
-      if (itemsInvolvedCategoryFilter === 'RM' && row.itemType !== 'RM') return false;
-      if (itemsInvolvedCategoryFilter === 'PM' && row.itemType !== 'PM') return false;
-      if (itemsInvolvedCategoryFilter === 'shortage' && row.netNum >= 0) return false;
-      if (itemsInvolvedCategoryFilter === 'available' && row.netNum < 0) return false;
-      if (itemsInvolvedProductFilter !== 'all') {
-        const usedIn = row.usedInProducts ?? [];
-        if (!usedIn.includes(itemsInvolvedProductFilter)) return false;
-      }
-      const search = itemsInvolvedSearchTerm.trim().toLowerCase();
-      if (search) {
-        const matchName = row.name?.toLowerCase().includes(search);
-        const matchCode = row.code?.toLowerCase().includes(search);
-        const matchUsedIn = (row.usedInProducts ?? []).some((p) => p.toLowerCase().includes(search));
-        if (!matchName && !matchCode && !matchUsedIn) return false;
-      }
-      return true;
-    });
-  }, [itemsInvolved, itemsInvolvedCategoryFilter, itemsInvolvedProductFilter, itemsInvolvedSearchTerm]);
 
   // Tab-specific stats — derived from API data (planning-extracted, items-involved, procurement)
   const tabStats = useMemo(() => {
@@ -1899,6 +1905,120 @@ const Planning = () => {
     return out;
   }, [purchaseOrders]);
 
+  const itemsInvolved = useMemo(() => itemsInvolvedRows.map((row): ItemsInvolvedDisplayRow => {
+    const shortage = row.surplusShortage < 0 ? Math.abs(row.surplusShortage) : 0;
+    const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
+    const sihStr = Math.round(row.sih).toLocaleString();
+    const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
+    const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
+    const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
+    // TOTAL REQ on this screen means extra qty to be added in WH for planned batches.
+    // SIH here is already free stock (stock_in_hand - reserved); in-transit is added pipeline.
+    const requiredToAddNum = Math.max(0, plannedQtyNum - availableForPlanning);
+    const totalReqStr =
+      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
+        ? `${Number(requiredToAddNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
+        : `${Math.round(requiredToAddNum).toLocaleString()} pcs`;
+    // Physical NET (SIH + in-transit vs batch planned) — used for filters and Release rules; not merged with procurement.
+    const netNum = availableForPlanning - plannedQtyNum;
+    /** Stub row for PR / draft-PO totals only (planning pipeline visualization for NET column). */
+    const itemForPrGap = {
+      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
+      name: row.name,
+      code: row.code,
+      itemType: row.type,
+      planningExtractedIds: row.planningExtractedIds ?? [],
+      planningExtractedId: row.planningExtractedIds?.[0] ?? null,
+      raw_material_id: row.raw_material_id ?? undefined,
+      pack_material_id: row.pack_material_id ?? undefined,
+    } as ItemsInvolvedDisplayRow;
+    const releasedTowardPlanning = releasedQtyTowardPlanningGap(
+      itemForPrGap,
+      procurementRequests,
+      plannedLinesFromBackend
+    );
+    const gapVsPlanned = Math.max(0, plannedQtyNum - availableForPlanning);
+    const pipelineCover = Math.min(releasedTowardPlanning, gapVsPlanned);
+    // Planning pipeline NET (Items Involved display only): SIH + in-transit + capped release/PR toward gap vs batch planned.
+    const netPipelineNum = availableForPlanning + pipelineCover - plannedQtyNum;
+    const coveragePct =
+      plannedQtyNum > 0
+        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / plannedQtyNum) * 100)))
+        : 100;
+    const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
+    const netDisplay =
+      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
+        ? `${netPipelineNum >= 0 ? '+' : ''}${Number(netPipelineNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
+        : `${netPipelineNum >= 0 ? '+' : ''}${Math.round(netPipelineNum).toLocaleString()}${unitSuffix}`;
+    return {
+      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
+      name: row.name,
+      code: row.code,
+      category: row.type === 'PM' ? 'PM - Primary' : 'RM',
+      usedIn: String(row.batchCount ?? 0),
+      usedInProducts: row.usedInProducts ?? [],
+      totalReq: totalReqStr,
+      totalRequired: requiredToAddNum,
+      batchCount: row.batchCount ?? 0,
+      sih: sihStr,
+      sihNum: row.sih,
+      surplusShortage: surplusShortageStr,
+      surplusShortageNum: row.surplusShortage,
+      coverage: `${coveragePct}%`,
+      whBatches: row.batchNumber ?? '—',
+      warehouseInventoryId: row.warehouseInventoryId ?? null,
+      expiry: row.expiryDate ?? '—',
+      bomFlag: 'Original',
+      itemType: row.type,
+      planningExtractedIds: row.planningExtractedIds ?? [],
+      planningExtractedId: row.planningExtractedIds?.[0] ?? null,
+      raw_material_id: row.raw_material_id ?? undefined,
+      pack_material_id: row.pack_material_id ?? undefined,
+      unit: row.unit,
+      reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
+      reservedNum: Number(row.reserved ?? 0) || 0,
+      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
+      plannedQtyNum,
+      orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
+      orderedQtyNum,
+      net: netDisplay,
+      netNum,
+      netPipelineNum,
+      netPipeline: netDisplay,
+      inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
+      reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
+      avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
+      status: row.status ?? 'In Stock',
+    };
+  }), [itemsInvolvedRows, procurementRequests, plannedLinesFromBackend]);
+
+  const itemsInvolvedProductOptions = useMemo(() => {
+    const set = new Set<string>();
+    itemsInvolved.forEach((row) => (row.usedInProducts ?? []).forEach((p) => set.add(p)));
+    return ['all', ...Array.from(set).sort()];
+  }, [itemsInvolved]);
+
+  const filteredItemsInvolved = useMemo(() => {
+    return itemsInvolved.filter((row) => {
+      if (itemsInvolvedCategoryFilter === 'RM' && row.itemType !== 'RM') return false;
+      if (itemsInvolvedCategoryFilter === 'PM' && row.itemType !== 'PM') return false;
+      if (itemsInvolvedCategoryFilter === 'shortage' && row.netNum >= 0) return false;
+      if (itemsInvolvedCategoryFilter === 'available' && row.netNum < 0) return false;
+      if (itemsInvolvedProductFilter !== 'all') {
+        const usedIn = row.usedInProducts ?? [];
+        if (!usedIn.includes(itemsInvolvedProductFilter)) return false;
+      }
+      const search = itemsInvolvedSearchTerm.trim().toLowerCase();
+      if (search) {
+        const matchName = row.name?.toLowerCase().includes(search);
+        const matchCode = row.code?.toLowerCase().includes(search);
+        const matchUsedIn = (row.usedInProducts ?? []).some((p) => p.toLowerCase().includes(search));
+        if (!matchName && !matchCode && !matchUsedIn) return false;
+      }
+      return true;
+    });
+  }, [itemsInvolved, itemsInvolvedCategoryFilter, itemsInvolvedProductFilter, itemsInvolvedSearchTerm]);
+
   const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) =>
     plannedLinesFromBackend.some((line) => plannedLineCountsTowardItemRelease(line, item));
 
@@ -2166,8 +2286,9 @@ const Planning = () => {
     setSelectedSOForBatch(order);
     setBomFormula((order.rawMaterials ?? []).map((rm) => ({ ...rm, specificGravity: (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1 })));
     setBomPackaging(order.packagingMaterials);
-    setIsReadyForProduction(false);
-    setActiveBatchTab('bom-editor');
+    const alreadyConfirmed = Boolean(order.bomConfirmedAt);
+    setIsReadyForProduction(alreadyConfirmed);
+    setActiveBatchTab(alreadyConfirmed ? 'batch-plan' : 'bom-editor');
     setSwapSourceIndex(null);
     setNumBatches(String(order.batchesRequired || 1));
     setBatchSizeKg(order.batchSize?.replace(/\D/g, '') || '500');
@@ -2538,6 +2659,14 @@ const Planning = () => {
         'success',
         `BOM confirmed for B-${String(selectedBatchPlanSequence).padStart(2, '0')} — ${selectedSOForBatch.productName}. Open Batch Plan to allocate units and send this batch.`
       );
+      setSelectedSOForBatch((prev) =>
+        prev
+          ? {
+              ...prev,
+              bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            }
+          : prev
+      );
       setIsReadyForProduction(true);
       setActiveBatchTab('batch-plan');
     } catch (error) {
@@ -2603,7 +2732,7 @@ const Planning = () => {
   };
 
   /** Persist send for the Plan Batches modal path (full extract + planning_batches sync). */
-  const performSendBatchFromPlanModal = async (batchIndex: number): Promise<{ batchLabel: string }> => {
+  const performSendBatchFromPlanModal = async (batchIndex: number): Promise<{ batchLabel: string; nextBatchIndex: number; remainingUnits: number }> => {
     if (!selectedSOForBatch) {
       throw new Error('No sales order selected');
     }
@@ -2644,7 +2773,17 @@ const Planning = () => {
 
     setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
     const batchLabel = `B-${String(batchIndex + 1).padStart(2, '0')}`;
-    return { batchLabel };
+    const nextBatchIndex = customBatches.findIndex((_, idx) => !mergedSent.includes(idx));
+    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const sentKg = customBatches.reduce(
+      (sum, b, idx) => (mergedSent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
+      0
+    );
+    const remainingKg = Math.max(0, orderTotalKg - sentKg);
+    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
+    const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : 0;
+    return { batchLabel, nextBatchIndex, remainingUnits };
   };
 
   const runConfirmedSendToProduction = async () => {
@@ -2653,14 +2792,21 @@ const Planning = () => {
     try {
       if (sendToProductionConfirm.source === 'plan-modal') {
         const batchIndex = sendToProductionConfirm.batchIndex;
-        const { batchLabel } = await performSendBatchFromPlanModal(batchIndex);
-        // After confirming send from Plan Batches flow, close related planning/batch popups.
-        setPlanBatchesModalOpen(false);
-        setBatchForDetailModal(null);
+        const { batchLabel, nextBatchIndex, remainingUnits } = await performSendBatchFromPlanModal(batchIndex);
+        // Keep Plan Batches popup open and move focus to next pending batch.
+        if (nextBatchIndex >= 0) {
+          const nextRow = (planningBatches as PlanningBatchRow[])[nextBatchIndex];
+          if (nextRow?.id != null) setSelectedBatchId(Number(nextRow.id));
+          setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+        }
+        setActiveBatchTab('batch-plan');
         setSendToProductionConfirm(null);
         setSendToProductionSuccess({
           title: 'Batch created & confirmed',
-          message: `${batchLabel} for ${selectedSOForBatch?.soNumber ?? 'this order'} — ${selectedSOForBatch?.productName ?? ''} was sent to Production. You can schedule it in Production → Calendar.`,
+          message:
+            nextBatchIndex >= 0
+              ? `${batchLabel} sent to Production. Moved to the next pending batch in Plan Batches.`
+              : `${batchLabel} sent to Production. All planned batches are now sent.`,
         });
       } else {
         const { batch } = sendToProductionConfirm;
@@ -3350,7 +3496,12 @@ const Planning = () => {
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REORDER PT</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">AVG/MO</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">QC / STATUS</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">NET</th>
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="Pipeline NET vs batch planned qty: free stock + in-transit + quantity already released to procurement toward the shortfall, minus planned. For planning visibility only — not used in production or batch calculations. Shortage / Release rules use physical net (SIH + in-transit − planned) without procurement overlay."
+                      >
+                        NET
+                      </th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">COVERAGE</th>
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">WH BATCHES</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">EXPIRY</th>
@@ -3422,8 +3573,13 @@ const Planning = () => {
                               {item.status === 'Out of Stock' && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>}
                               {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
                             </td>
-                            <td className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
-                              }`}>
+                            <td
+                              className={`px-2 py-2 text-right font-semibold text-xs ${item.netPipelineNum < 0 ? 'text-red-600' : 'text-green-600'
+                                }`}
+                              title={`Planning pipeline NET (display only): ${item.netPipeline}. Physical net for filters / Release: ${item.netNum >= 0 ? '+' : ''}${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                ? Number(item.netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                : Math.round(item.netNum).toLocaleString()}. Not used in production calculations.`}
+                            >
                               {item.net}
                             </td>
                             <td className="px-2 py-2 text-center">

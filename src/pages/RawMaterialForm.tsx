@@ -41,6 +41,15 @@ function inferRmCategoryKeyFromCode(code: string): string {
   return '';
 }
 
+function toCodeToken(input: string): string {
+  return String(input || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 16);
+}
+
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
   if (input == null) return null;
   if (typeof input === 'string') {
@@ -234,11 +243,10 @@ const RawMaterialRefactored: React.FC = () => {
   !isNewRm ||
   Boolean(
    formData.rmCategoryKey?.trim() &&
+    formData.subCategory?.trim() &&
     formData.rmSku?.trim() &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
-    formData.grade?.trim() &&
-    formData.compliance?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
  const lockPrimaryFields = !!existingRmId;
@@ -273,11 +281,13 @@ const RawMaterialRefactored: React.FC = () => {
  const getRmCodePreview = () => {
   const cat = formData.rmCategoryKey ? RM_CATEGORIES[formData.rmCategoryKey] : null;
   if (!cat) return { prefix: '—', next: '—' };
-  if (generatedRmCode && generatedRmCode.startsWith(cat.prefix)) {
-   const suffix = generatedRmCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
-   return { prefix: cat.prefix, next: suffix };
+  const subToken = toCodeToken(formData.subCategory);
+  const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+  if (generatedRmCode && generatedRmCode.startsWith(seriesPrefix)) {
+   const suffix = generatedRmCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
+   return { prefix: seriesPrefix, next: suffix };
   }
-  return { prefix: cat.prefix, next: '…' };
+  return { prefix: seriesPrefix, next: '…' };
  };
 
  const generateRmCode = async (confirm = false) => {
@@ -289,13 +299,19 @@ const RawMaterialRefactored: React.FC = () => {
    addToast('error', 'Select an RM Category first');
    return;
   }
+  if (!formData.subCategory?.trim()) {
+   addToast('error', 'Enter RM Sub-Category first');
+   return;
+  }
   if (generatedRmCode && !confirm) {
    const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
    if (!ok) return;
   }
   const cat = RM_CATEGORIES[formData.rmCategoryKey];
+  const subToken = toCodeToken(formData.subCategory);
+  const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
   try {
-   const code = await fetchNextRawMaterialCode(cat.prefix);
+   const code = await fetchNextRawMaterialCode(seriesPrefix);
    setGeneratedRmCode(code);
    setFormData(prev => ({ ...prev, rmSku: code }));
    addToast('success', `Code generated: ${code}`);
@@ -479,6 +495,12 @@ const RawMaterialRefactored: React.FC = () => {
     focusFieldById('rmCategoryKey');
     return;
    }
+   if (!formData.subCategory?.trim()) {
+    addToast('error', 'Enter RM Sub-Category (Primary info step)');
+    setCurrentStage(0);
+    focusFieldById('subCategory');
+    return;
+   }
    if (!formData.rmSku?.trim()) {
     addToast('error', 'Generate or enter SKU / RM code before submitting');
     setCurrentStage(0);
@@ -492,10 +514,9 @@ const RawMaterialRefactored: React.FC = () => {
    setErrors({ ...validation.errors, ...taxValidation.errors });
     const stageByField: Record<string, number> = {
       rmSku: 0,
+      subCategory: 0,
       inciName: 0,
       tradeCommercialName: 0,
-      grade: 0,
-      compliance: 0,
       hsnCode: 0,
       gst: 0,
     };
@@ -575,60 +596,30 @@ const RawMaterialRefactored: React.FC = () => {
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Category (Industry Buckets)</h3>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
-        <select
-         id="rmCategoryKey"
-         value={formData.rmCategoryKey}
-         onChange={handleInputChange}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-         <option value="">Select</option>
-         {Object.entries(RM_CATEGORIES).map(([k, v]) => (
-          <option key={k} value={k}>{v.label}</option>
-         ))}
-        </select>
-       </div>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
-        <select
-         id="qcInspectionGroup"
-         value={formData.qcInspectionGroup}
-         onChange={handleInputChange}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-         <option value="">Select</option>
-         {RM_QC_GROUPS.map((g) => (
-          <option key={g} value={g}>{g}</option>
-         ))}
-        </select>
-       </div>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
-        <input
-         type="text"
-         id="subCategory"
-         value={formData.subCategory}
-         onChange={handleInputChange}
-         placeholder="e.g. Silicone emollient / Glycolic acid / Paraben blend"
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-       </div>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
-        <select
-         id="rmDefaultStorageType"
-         value={formData.rmDefaultStorageType}
-         onChange={handleInputChange}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-         <option value="">Select</option>
-         {RM_STORAGE_TYPES.map((s) => (
-          <option key={s} value={s}>{s}</option>
-         ))}
-        </select>
-       </div>
+      <div>
+       <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
+       <select
+        id="rmCategoryKey"
+        value={formData.rmCategoryKey}
+        onChange={handleInputChange}
+        className="w-full max-w-xl p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+       >
+        <option value="">Select</option>
+        {Object.entries(RM_CATEGORIES).map(([k, v]) => (
+         <option key={k} value={k}>{v.label}</option>
+        ))}
+       </select>
+       <p className="text-xs text-gray-500 mt-1.5">Step 0 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
+      </div>
+      <div className="mt-4">
+       <InputField
+        label="Sub‑Category"
+        id="subCategory"
+        value={formData.subCategory}
+        onChange={handleInputChange}
+        placeholder="e.g. Silicone emollient / Glycolic acid / Paraben blend"
+        requiredMark
+       />
       </div>
      </div>
 
@@ -698,22 +689,6 @@ const RawMaterialRefactored: React.FC = () => {
      placeholder="What vendor calls this raw material"
      requiredMark
      readOnly={lockPrimaryFields}
-    />
-    <InputField
-     label="Grade"
-     id="grade"
-     value={formData.grade}
-     onChange={handleInputChange}
-     placeholder="e.g. Cosmetic Grade, Pharma Grade"
-     requiredMark
-    />
-    <InputField
-     label="Compliance/Certificate"
-     id="compliance"
-     value={formData.compliance}
-     onChange={handleInputChange}
-     placeholder="e.g. COSMOS, ECOCERT, RSPO"
-     requiredMark
     />
      </div>
 
@@ -825,13 +800,6 @@ const RawMaterialRefactored: React.FC = () => {
      placeholder="e.g. KG, GM, L"
     />
     <InputField
-     label="Issue UoM"
-     id="issueUom"
-     value={formData.issueUom}
-     onChange={handleInputChange}
-     placeholder="Unit in which material is issued"
-    />
-    <InputField
      label="Conversion Factor"
      id="conversionFactor"
      value={formData.conversionFactor}
@@ -845,13 +813,6 @@ const RawMaterialRefactored: React.FC = () => {
      onChange={handleInputChange}
      placeholder="e.g. 25 KG bag, 200 KG drum"
     />
-    <InputField
-     label="Accounting Category"
-     id="accountingCategory"
-     value={formData.accountingCategory}
-     onChange={handleInputChange}
-     placeholder="ERP / finance category mapping"
-    />
       <SelectField label="Preferred Currency" id="preferredCurrency" value={formData.preferredCurrency} onChange={handleInputChange}
        options={['INR', 'USD', 'EUR', 'GBP']} />
      </div>
@@ -860,6 +821,31 @@ const RawMaterialRefactored: React.FC = () => {
    case 2: // Technical & Regulatory
     return (
      <div className="space-y-4">
+      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4 bg-gray-50/50">
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — classification</h3>
+       <p className="text-xs text-gray-500 -mt-2">Not required to create the RM; complete when available.</p>
+       <InputField
+        label="Grade"
+        id="grade"
+        value={formData.grade}
+        onChange={handleInputChange}
+        placeholder="e.g. Cosmetic Grade, Pharma Grade"
+       />
+       <InputField
+        label="Compliance/Certificate"
+        id="compliance"
+        value={formData.compliance}
+        onChange={handleInputChange}
+        placeholder="e.g. COSMOS, ECOCERT, RSPO"
+       />
+       <InputField
+        label="Accounting Category"
+        id="accountingCategory"
+        value={formData.accountingCategory}
+        onChange={handleInputChange}
+        placeholder="ERP / finance category mapping"
+       />
+      </div>
       <InputField
        label="Function/Role"
        id="functionRole"
@@ -1113,6 +1099,44 @@ const RawMaterialRefactored: React.FC = () => {
    case 7: // Inventory, Storage & WH
     return (
      <div className="space-y-4">
+      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4 bg-gray-50/50">
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — QC & default storage</h3>
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+        <select
+         id="qcInspectionGroup"
+         value={formData.qcInspectionGroup}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {RM_QC_GROUPS.map((g) => (
+          <option key={g} value={g}>{g}</option>
+         ))}
+        </select>
+       </div>
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
+        <select
+         id="rmDefaultStorageType"
+         value={formData.rmDefaultStorageType}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {RM_STORAGE_TYPES.map((s) => (
+          <option key={s} value={s}>{s}</option>
+         ))}
+        </select>
+       </div>
+       <InputField
+        label="Issue UoM"
+        id="issueUom"
+        value={formData.issueUom}
+        onChange={handleInputChange}
+        placeholder="Unit in which material is issued"
+       />
+      </div>
     <TextareaField
      label="Storage Conditions"
      id="storageConditions"
@@ -1455,7 +1479,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-0 fields (category, code, INCI, trade/commercial name, grade, compliance, and taxable HSN/GST when applicable) before continuing."
+                  nextDisabledTitle="Fill all required step-0 fields (category, sub-category, code, INCI, trade/commercial name, and taxable HSN/GST when applicable) before continuing."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}

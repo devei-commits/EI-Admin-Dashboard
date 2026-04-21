@@ -38,6 +38,7 @@ export interface WarehouseInventoryRow {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  underGrn?: number;
   /** In-transit lines from pending GRNs: vendor, PO id, expected date */
   inTransitBreakdown?: InTransitBreakdownItem[];
   /** Total quantity from purchase orders (vendor) */
@@ -159,6 +160,7 @@ interface ApiWarehouseRow {
   stockInHand: number;
   reserved: number;
   inTransit: number;
+  underGrn?: number;
   inTransitBreakdown?: InTransitBreakdownItem[];
   poQuantity?: number;
   reorderPt: number;
@@ -202,6 +204,7 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
+      underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
       reorderPt: Number(r.reorderPt) || 0,
@@ -272,6 +275,7 @@ export async function fetchWarehouseInventoryPage(opts: {
       })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
+      underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
       reorderPt: Number(r.reorderPt) || 0,
@@ -460,6 +464,7 @@ export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: W
       stockInHand: Number.isFinite(Number(r.stockInHand)) ? Number(r.stockInHand) : 0,
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
+      underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
       reorderPt: Number(r.reorderPt) || 0,

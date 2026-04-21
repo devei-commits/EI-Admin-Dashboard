@@ -34,6 +34,14 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+function toCodeToken(input: string): string {
+  return String(input || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 16);
+}
 const PM_REQUIRED_FIELDS: Array<{
   id: string;
   label: string;
@@ -41,13 +49,11 @@ const PM_REQUIRED_FIELDS: Array<{
   toastMessage: string;
 }> = [
   { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 0 — PM Category is required' },
+  { id: 'subCategory', label: 'Sub-Category', section: 0, toastMessage: 'Step 0 — Sub-Category is required' },
   { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 0 — Generate or enter SKU before submitting' },
   { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 0 — Item Name is required' },
   { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 0 — Level is required' },
   { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 0 — Category is required' },
-  { id: 'matBody', label: 'Body Material', section: 0, toastMessage: 'Step 0 — Body Material is required' },
-  { id: 'matClosure', label: 'Closure Material', section: 0, toastMessage: 'Step 0 — Closure Material is required' },
-  { id: 'specNominal', label: 'Nominal Volume', section: 0, toastMessage: 'Step 0 — Nominal Volume is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -233,13 +239,11 @@ const PackagingRefactored: React.FC = () => {
     !isNewPm ||
     Boolean(
       formData.pmCategory?.trim() &&
+        formData.subCategory?.trim() &&
         (formData.itemCode || generatedCode)?.trim() &&
         formData.name?.trim() &&
         formData.level?.trim() &&
         formData.itemCategory?.trim() &&
-        formData.matBody?.trim() &&
-        formData.matClosure?.trim() &&
-        formData.specNominal?.trim() &&
         (!taxIsTaxable || formData.pkgHsn?.trim())
     );
   const lockPrimaryFields = !!existingPmId;
@@ -328,11 +332,13 @@ const PackagingRefactored: React.FC = () => {
   const getCodePreview = () => {
     const cat = PM_CATEGORIES[formData.pmCategory];
     if (!cat) return { prefix: '—', next: '—' };
-    if (generatedCode && generatedCode.startsWith(cat.prefix)) {
-      const suffix = generatedCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
-      return { prefix: cat.prefix, next: suffix };
+    const subToken = toCodeToken(formData.subCategory);
+    const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+    if (generatedCode && generatedCode.startsWith(seriesPrefix)) {
+      const suffix = generatedCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
+      return { prefix: seriesPrefix, next: suffix };
     }
-    return { prefix: cat.prefix, next: '…' };
+    return { prefix: seriesPrefix, next: '…' };
   };
 
   const generateCode = async (confirm = false) => {
@@ -344,13 +350,19 @@ const PackagingRefactored: React.FC = () => {
       addToast('error', 'Select a PM Category first');
       return;
     }
+    if (!formData.subCategory?.trim()) {
+      addToast('error', 'Enter PM Sub-Category first');
+      return;
+    }
     if (generatedCode && !confirm) {
       const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
       if (!ok) return;
     }
     const cat = PM_CATEGORIES[formData.pmCategory];
     try {
-      const code = await fetchNextPackMaterialCode(cat.prefix);
+      const subToken = toCodeToken(formData.subCategory);
+      const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+      const code = await fetchNextPackMaterialCode(seriesPrefix);
       setGeneratedCode(code);
       setFormData(prev => ({ ...prev, itemCode: code }));
       addToast('success', `Code generated: ${code}`);
@@ -644,39 +656,18 @@ const PackagingRefactored: React.FC = () => {
                   {errors.pmCategory ? <p className="mt-1 text-xs text-red-600">{errors.pmCategory}</p> : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
-                  <select
-                    id="qcGroup"
-                    value={formData.qcGroup}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {QC_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
                   <input
                     type="text"
                     id="subCategory"
                     value={formData.subCategory}
                     onChange={handleInputChange}
                     placeholder="e.g. Airless bottle / Flip-top cap / BOPP label / 5-ply shipper"
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.subCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    }`}
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
-                  <select
-                    id="storeLoc"
-                    value={formData.storeLoc}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {STORAGE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  {errors.subCategory ? <p className="mt-1 text-xs text-red-600">{errors.subCategory}</p> : null}
                 </div>
               </div>
             </div>
@@ -711,7 +702,7 @@ const PackagingRefactored: React.FC = () => {
                       disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      Regenerate (change category)
+                      Regenerate (change category / sub-category)
                     </button>
                   )}
                   <button
@@ -756,43 +747,6 @@ const PackagingRefactored: React.FC = () => {
                   requiredMark
                   error={errors.itemCategory}
                 />
-                <InputField
-                  label="Intended Use"
-                  id="intendedUse"
-                  value={formData.intendedUse}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Face serum bottle, Outer mono-carton"
-                />
-                <InputField
-                  label="Expected Product Types"
-                  id="expectedProductTypes"
-                  value={formData.expectedProductTypes}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Creams, Serums, Shampoos"
-                />
-                <InputField
-                  label="Reusability"
-                  id="reusability"
-                  value={formData.reusability}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Single use, Refillable, Re-closable"
-                />
-              </div>
-              <div className="mt-3 space-y-3">
-                <TextareaField
-                  label="Regulatory Notes"
-                  id="regulatory"
-                  value={formData.regulatory}
-                  onChange={handleInputChange}
-                  placeholder="Any packaging-specific regulations or country notes"
-                />
-                <TextareaField
-                  label="Identity Notes"
-                  id="identityNotes"
-                  value={formData.identityNotes}
-                  onChange={handleInputChange}
-                  placeholder="Any extra description to identify this item uniquely"
-                />
               </div>
             </div>
 
@@ -809,35 +763,6 @@ const PackagingRefactored: React.FC = () => {
                   requiredMark
                   error={errors.itemCode}
                   readOnly={lockPrimaryFields}
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoho Item ID</label>
-                  <input
-                    type="text"
-                    id="zohoId"
-                    value={formData.zohoId ?? ''}
-                    readOnly
-                    autoComplete="off"
-                    aria-readonly="true"
-                    placeholder="Populated from the server after save (when Books sync is on)"
-                    onChange={() => {}}
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Read-only — returned by the API after a successful save.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
-                  <select id="pkgUnit" value={formData.pkgUnit} onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    {['PCS', 'GM', 'ML', 'L', 'KG'].map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <InputField
-                  label="SKU (for Zoho)"
-                  id="pkgSku"
-                  value={formData.pkgSku}
-                  onChange={handleInputChange}
-                  placeholder="Optional; defaults to SKU above"
                 />
                 <InputField
                   label="HSN Code"
@@ -862,33 +787,128 @@ const PackagingRefactored: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1">Taxable: valid HSN required. Exempted / NonGST: HSN optional.</p>
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <input type="checkbox" id="pkgReturnable" checked={formData.pkgReturnable} onChange={handleInputChange}
-                  className="w-4 h-4 rounded border-gray-300 text-indigo-600" />
-                <label htmlFor="pkgReturnable" className="text-sm text-gray-700">Returnable Item</label>
-              </div>
-              <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Associate Items</label>
-                <textarea
-                  id="pkgAssociateItems"
-                  value={formData.pkgAssociateItems}
+            </div>
+
+          </div>
+        );
+
+      case 1: // Material & Specs
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — identity & Zoho details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Expected Product Types"
+                  id="expectedProductTypes"
+                  value={formData.expectedProductTypes}
                   onChange={handleInputChange}
-                  rows={2}
-                  placeholder="Link related BOM / RM / secondary packaging if any"
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Creams, Serums, Shampoos"
+                />
+                <InputField
+                  label="SKU (for Zoho)"
+                  id="pkgSku"
+                  value={formData.pkgSku}
+                  onChange={handleInputChange}
+                  placeholder="Optional; defaults to SKU above"
                 />
               </div>
-              <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+              <div className="mt-3 space-y-3">
+                <TextareaField
+                  label="Regulatory Notes"
+                  id="regulatory"
+                  value={formData.regulatory}
+                  onChange={handleInputChange}
+                  placeholder="Any packaging-specific regulations or country notes"
+                />
+                <TextareaField
+                  label="Identity Notes"
+                  id="identityNotes"
+                  value={formData.identityNotes}
+                  onChange={handleInputChange}
+                  placeholder="Any extra description to identify this item uniquely"
+                />
+                <div className="mt-3 flex items-center gap-2">
+                  <input type="checkbox" id="pkgReturnable" checked={formData.pkgReturnable} onChange={handleInputChange}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600" />
+                  <label htmlFor="pkgReturnable" className="text-sm text-gray-700">Returnable Item</label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Associate Items</label>
+                  <textarea
+                    id="pkgAssociateItems"
+                    value={formData.pkgAssociateItems}
+                    onChange={handleInputChange}
+                    rows={2}
+                    placeholder="Link related BOM / RM / secondary packaging if any"
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoho Item ID</label>
+                  <input
+                    type="text"
+                    id="zohoId"
+                    value={formData.zohoId ?? ''}
+                    readOnly
+                    autoComplete="off"
+                    aria-readonly="true"
+                    placeholder="Populated from the server after save (when Books sync is on)"
+                    onChange={() => {}}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Read-only — returned by the API after a successful save.</p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
                 <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-800 mb-2">Zoho Books</h4>
                 <p className="text-xs text-gray-600">
                   When you submit this form, the server saves the pack material and creates the Zoho item in one step (or rolls back both if Books fails). No separate sync button.
                 </p>
               </div>
             </div>
-
-            {/* Required material and fill spec for new PM */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Required Material & Fill</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — QC, storage & unit</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+                  <select
+                    id="qcGroup"
+                    value={formData.qcGroup}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {QC_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
+                  <select
+                    id="storeLoc"
+                    value={formData.storeLoc}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select</option>
+                    {STORAGE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
+                  <select
+                    id="pkgUnit"
+                    value={formData.pkgUnit}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {['PCS', 'GM', 'ML', 'L', 'KG'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Body Material"
@@ -896,7 +916,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.matBody}
                   onChange={handleInputChange}
                   placeholder="e.g. PET, Glass, HDPE"
-                  requiredMark
                   error={errors.matBody}
                 />
                 <InputField
@@ -905,29 +924,8 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.matClosure}
                   onChange={handleInputChange}
                   placeholder="e.g. PP cap, Pump, Dropper"
-                  requiredMark
                   error={errors.matClosure}
                 />
-                <InputField
-                  label="Nominal Volume"
-                  id="specNominal"
-                  value={formData.specNominal}
-                  onChange={handleInputChange}
-                  placeholder="Declared fill volume (e.g. 50 ml)"
-                  requiredMark
-                  error={errors.specNominal}
-                />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 1: // Material & Specs
-        return (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Inner Material"
                   id="matInner"
@@ -951,6 +949,14 @@ const PackagingRefactored: React.FC = () => {
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Nominal Volume"
+                  id="specNominal"
+                  value={formData.specNominal}
+                  onChange={handleInputChange}
+                  placeholder="Declared fill volume (e.g. 50 ml)"
+                  error={errors.specNominal}
+                />
                 <InputField
                   label="Brimful Volume"
                   id="specBrimful"
@@ -1022,6 +1028,25 @@ const PackagingRefactored: React.FC = () => {
       case 2: // Aesthetics
         return (
           <div className="space-y-4">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — usage details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Intended Use"
+                  id="intendedUse"
+                  value={formData.intendedUse}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Face serum bottle, Outer mono-carton"
+                />
+                <InputField
+                  label="Reusability"
+                  id="reusability"
+                  value={formData.reusability}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Single use, Refillable, Re-closable"
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InputField
                 label="Color Type"
@@ -1595,7 +1620,7 @@ const PackagingRefactored: React.FC = () => {
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete all required step-0 fields first (category, code, item name, level, category, body material, closure material, nominal volume, and taxable HSN when applicable).'
+                              ? 'Complete all required step-0 fields first (PM category, sub-category, code, item name, level, category, and taxable HSN when applicable).'
                               : undefined
                           }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"

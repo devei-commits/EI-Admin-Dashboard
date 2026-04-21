@@ -661,7 +661,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
     const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
     const zone = payload.toZone || payload.zone || '—';
-    const grnDisplay = displayGrnNo(payload.grn_no || payload.grn_id || grn.grnNo);
+    const grnDisplay = displayGrnNo(String(payload.grn_no || payload.grn_id || grn.grnNo || ''));
 
     printWin.document.write(`<!doctype html>
 <html>
@@ -693,6 +693,98 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       <p><strong>Expiry:</strong> ${esc(payload.expiry || '—')}</p>
       <p><strong>Mfg batch:</strong> ${esc(payload.mfg_batch || '—')}</p>
     </div>
+    <script>
+      window.onload = function () {
+        window.print();
+        window.onafterprint = function () { window.close(); };
+      };
+    </script>
+  </body>
+</html>`);
+    printWin.document.close();
+  };
+
+  const handlePrintAllLabels = () => {
+    if (!labels || labels.length === 0) return;
+    const printWin = window.open('', '_blank', 'width=900,height=760');
+    if (!printWin) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+      return;
+    }
+    const esc = (v: unknown) =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const cardsHtml = [...labels]
+      .sort((a, b) => a.boxIndex - b.boxIndex)
+      .map((label) => {
+        let payload: {
+          product_name?: string;
+          item_code?: string;
+          grn_no?: string;
+          grn_id?: number;
+          units_per_box?: number;
+          toRack?: string | null;
+          rack?: string | null;
+          toZone?: string | null;
+          zone?: string | null;
+          location_prefix?: string;
+          grn_batch_mfg?: string;
+          expiry?: string;
+          mfg_batch?: string;
+        } = {};
+        try {
+          payload = JSON.parse(label.qrPayload || '{}');
+        } catch {
+          payload = {};
+        }
+        const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
+        const zone = payload.toZone || payload.zone || '—';
+        const grnDisplay = displayGrnNo(String(payload.grn_no || payload.grn_id || grn.grnNo || ''));
+        return `
+          <article class="card">
+            <div class="head">GRN ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(label.boxIndex)}</div>
+            <div class="img-wrap"><img src="${esc(label.qrImageDataUrl)}" alt="QR Box ${esc(label.boxIndex)}" /></div>
+            <p><strong>Product:</strong> ${esc(payload.product_name || '—')}</p>
+            <p><strong>Item code:</strong> ${esc(payload.item_code || '—')}</p>
+            <p><strong>GRN:</strong> ${esc(grnDisplay)}</p>
+            <p><strong>Units:</strong> ${esc(payload.units_per_box ?? '—')}</p>
+            <p><strong>Rack:</strong> ${esc(rack)}</p>
+            <p><strong>Zone:</strong> ${esc(zone)}</p>
+            <p><strong>Batch mfg:</strong> ${esc(payload.grn_batch_mfg || '—')}</p>
+            <p><strong>Expiry:</strong> ${esc(payload.expiry || '—')}</p>
+            <p><strong>Mfg batch:</strong> ${esc(payload.mfg_batch || '—')}</p>
+          </article>
+        `;
+      })
+      .join('');
+
+    printWin.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>QR Labels - ${esc(displayGrnNo(grn.grnNo))}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+      .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; break-inside: avoid; }
+      .head { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+      .img-wrap { text-align: center; margin-bottom: 8px; }
+      img { width: 170px; height: 170px; object-fit: contain; }
+      p { margin: 3px 0; font-size: 11px; }
+      strong { font-weight: 700; }
+      @media print {
+        body { padding: 0; }
+        .card { border: 1px solid #000; page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid">${cardsHtml}</div>
     <script>
       window.onload = function () {
         window.print();
@@ -942,7 +1034,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                             type="number"
                             value={item.rcvdQty}
                             onChange={(e) => handleLineItemChange(item.id, 'rcvdQty', e.target.value)}
-                            className="w-16 px-3 py-2 border-2 border-blue-300 rounded-lg bg-white text-slate-900 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                            className="w-24 min-w-[6rem] px-2 py-2 border-2 border-blue-300 rounded-lg bg-white text-slate-900 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
                             min="0"
                           />
                         </td>
@@ -1244,6 +1336,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   className="px-4 py-2 bg-slate-700 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
                 >
                   Print selected QR
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintAllLabels}
+                  disabled={!labels || labels.length === 0}
+                  className="px-4 py-2 bg-indigo-700 text-white rounded-lg font-medium text-sm hover:bg-indigo-800 transition-colors disabled:opacity-50"
+                >
+                  Print all QR
                 </button>
               </div>
               <p className="text-[11px] text-slate-500">

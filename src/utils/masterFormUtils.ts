@@ -145,7 +145,7 @@ export const removeFromArray = (
 export const getPrimaryFields = (masterType: 'packaging' | 'rawMaterial' | 'bom'): string[] => {
  const primaryMap = {
   packaging: ['pkgSku', 'name', 'level', 'matBody', 'matClosure'],
-  rawMaterial: ['rmSku', 'inciName', 'tradeCommercialName', 'grade', 'compliance'],
+  rawMaterial: ['rmSku', 'inciName', 'tradeCommercialName'],
   bom: ['bomCode', 'client', 'name', 'dosage', 'type']
  };
  return primaryMap[masterType] || [];
@@ -268,8 +268,6 @@ const PRIMARY_FIELD_STEP: Record<'packaging' | 'rawMaterial' | 'bom', Record<str
   rmSku: 0,
   inciName: 0,
   tradeCommercialName: 0,
-  grade: 0,
-  compliance: 0,
  },
  packaging: {
   pkgSku: 0,
@@ -292,8 +290,6 @@ const PRIMARY_FIELD_LABEL: Record<'packaging' | 'rawMaterial' | 'bom', Record<st
   rmSku: 'SKU / RM code',
   inciName: 'INCI Name',
   tradeCommercialName: 'Trade/Commercial Name',
-  grade: 'Grade',
-  compliance: 'Compliance',
  },
  packaging: {
   pkgSku: 'SKU',

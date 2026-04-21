@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase } from '../../services/mrn.service';
-import { fetchLogisticsSchedules, type LogisticsScheduleRow } from '../../services/logisticsSchedule.service';
+import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
 
 /** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
 export type OutboundUiStatus =
@@ -147,6 +147,11 @@ const OutboundDashboard = () => {
   const [selectedMRNId, setSelectedMRNId] = useState<string | null>(null);
   const [assignedPicker, setAssignedPicker] = useState('');
   const [assignedTransferBy, setAssignedTransferBy] = useState('');
+  const [logisticsTrackingNo, setLogisticsTrackingNo] = useState('');
+  const [logisticsTransporter, setLogisticsTransporter] = useState('');
+  const [logisticsDispatchDate, setLogisticsDispatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [logisticsEtaDate, setLogisticsEtaDate] = useState('');
+  const [logisticsVehicleNo, setLogisticsVehicleNo] = useState('');
   const [pickedItems, setPickedItems] = useState<Record<string, boolean>>({});
   const [pickedQty, setPickedQty] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -163,38 +168,34 @@ const OutboundDashboard = () => {
       }
     >
   >({});
+  const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  const [selectedMlLocation, setSelectedMlLocation] = useState('');
 
-  const [vehicleSchedules, setVehicleSchedules] = useState<LogisticsScheduleRow[]>([]);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
   const persistedPickerLocked = Boolean((selectedMRN?.assignedPicker || '').trim());
   const savePickAvailable = selectedMRN?.status === 'Pending Pick';
-  const selectedSchedule = selectedScheduleId != null ? vehicleSchedules.find((s) => s.id === selectedScheduleId) ?? null : null;
+  const mlLocationOptions = productionAreas.flatMap((area) =>
+    (area.zones || []).map((zone) => ({
+      value: zone.code,
+      label: `${zone.code} — ${zone.name}`,
+    }))
+  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [list, pickers, schedules] = await Promise.all([
+        const [list, pickers, areasRes] = await Promise.all([
           fetchMRNList({ transferType: 'outbound' }),
           fetchMRNAssignablePickers(),
-          fetchLogisticsSchedules({ status: 'Active' }),
+          fetchFacilityAreas('production'),
         ]);
         if (!cancelled) {
           setMrnData(list.map(mapApiToMRN));
           setAssignablePickers(pickers);
-          setVehicleSchedules(Array.isArray(schedules) ? schedules : []);
-          // Keep previous selection if still valid; otherwise auto-pick the newest schedule.
-          if (!cancelled) {
-            setSelectedScheduleId((prev) => {
-              const stillExists = prev != null && (Array.isArray(schedules) ? schedules : []).some((s) => s.id === prev);
-              if (stillExists) return prev;
-              const newest = (Array.isArray(schedules) ? schedules : [])[0];
-              return newest ? newest.id : null;
-            });
-          }
+          setProductionAreas((areasRes.success ? areasRes.data : []) as FacilityAreaDTO[]);
         }
       } catch {
         if (!cancelled) setMrnData([]);
@@ -235,6 +236,12 @@ const OutboundDashboard = () => {
     const serverTeam = String(mrn.transferTeam || '').trim();
     setAssignedPicker(serverPicker ? mrn.assignedPicker : (existingState?.assignedPicker ?? ''));
     setAssignedTransferBy(serverTeam ? mrn.transferTeam : (existingState?.assignedTransferBy ?? ''));
+    setLogisticsTrackingNo(String(mrn.logisticsTrackingNo || '').trim());
+    setLogisticsTransporter(String(mrn.logisticsTransporter || '').trim());
+    setLogisticsDispatchDate(String(mrn.logisticsDispatchDate || '').trim() || new Date().toISOString().slice(0, 10));
+    setLogisticsEtaDate(String(mrn.logisticsEtaDate || '').trim());
+    setLogisticsVehicleNo(String(mrn.logisticsVehicleNo || '').trim());
+    setSelectedMlLocation(String(mrn.muReceiveZone || '').trim());
 
     const sessionPicked = existingState?.pickedItems ?? {};
     const nextPicked: Record<string, boolean> = {};
@@ -256,6 +263,7 @@ const OutboundDashboard = () => {
 
   const closePickPanel = () => {
     setSelectedMRNId(null);
+    setSelectedMlLocation('');
   };
 
   const persistPanelState = (mrnId: string) => {
@@ -290,12 +298,18 @@ const OutboundDashboard = () => {
       await updateMRN(selectedMRN.id, {
         assignedPicker: assignedPicker || undefined,
         transferTeam: assignedTransferBy || undefined,
+        logisticsTrackingNo: logisticsTrackingNo.trim() || undefined,
+        logisticsTransporter: logisticsTransporter.trim() || undefined,
+        logisticsDispatchDate: logisticsDispatchDate || undefined,
+        logisticsEtaDate: logisticsEtaDate || undefined,
+        logisticsVehicleNo: logisticsVehicleNo.trim() || undefined,
+        muReceiveZone: selectedMlLocation || undefined,
         lineItems: buildLineItemsForSave(),
       });
       setMrnData((prev) =>
         prev.map((mrn) =>
           mrn.id === selectedMRN.id
-            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, lineItems: selectedMRN.lineItems.map((li) => ({ ...li, quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity) })) }
+            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, muReceiveZone: selectedMlLocation, lineItems: selectedMRN.lineItems.map((li) => ({ ...li, quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity) })) }
             : mrn
         )
       );
@@ -321,11 +335,12 @@ const OutboundDashboard = () => {
         status: UI_TO_API_STATUS['In Pick'],
         assignedPicker: assignedPicker || undefined,
         transferTeam: assignedTransferBy || undefined,
+        muReceiveZone: selectedMlLocation || undefined,
         lineItems: buildLineItemsForSave(),
       });
       setMrnData((prev) =>
         prev.map((mrn) =>
-          mrn.id === selectedMRN.id ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Pick' as const } : mrn
+          mrn.id === selectedMRN.id ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, muReceiveZone: selectedMlLocation, status: 'In Pick' as const } : mrn
         )
       );
       showToast(`Pick saved for ${selectedMRN.mrnNo}. Status updated to In Pick.`);
@@ -368,33 +383,20 @@ const OutboundDashboard = () => {
           showToast('Selected lines are already initiated or completed.', 'error');
           return;
         }
-        const schedule = selectedScheduleId != null ? vehicleSchedules.find((s) => s.id === selectedScheduleId) ?? null : null;
-        const hasExistingLogistics =
-          !!String(selectedMRN.logisticsTrackingNo || '').trim() &&
-          !!String(selectedMRN.logisticsTransporter || '').trim() &&
-          !!String(selectedMRN.logisticsDispatchDate || '').trim() &&
-          !!String(selectedMRN.logisticsEtaDate || '').trim() &&
-          !!String(selectedMRN.logisticsVehicleNo || '').trim();
-
-        const scheduleLogisticsPayload = schedule
-          ? {
-              logisticsTrackingNo: schedule.trackingNo,
-              logisticsTransporter: schedule.transporter,
-              logisticsDispatchDate: schedule.dispatchDate,
-              logisticsEtaDate: schedule.etaDate,
-              logisticsVehicleNo: schedule.vehicleNo,
-            }
-          : null;
-
-        if (!scheduleLogisticsPayload && !hasExistingLogistics) {
-          showToast('Select a Logistics Vehicle Schedule before initiating outbound MTR.', 'error');
+        if (!logisticsTrackingNo.trim() || !logisticsTransporter.trim() || !logisticsVehicleNo.trim() || !logisticsDispatchDate) {
+          showToast('Fill required transfer details: Tracking/LR no, driver/transporter, vehicle no, and dispatch date.', 'error');
           return;
         }
         const updatedApi = await updateMRN(selectedMRN.id, {
           initiateTransferLineIds: toInitiate,
           assignedPicker: effectivePicker,
           transferTeam: assignedTransferBy || undefined,
-          ...(scheduleLogisticsPayload || {}),
+          logisticsTrackingNo: logisticsTrackingNo.trim(),
+          logisticsTransporter: logisticsTransporter.trim(),
+          logisticsDispatchDate,
+          logisticsEtaDate: logisticsEtaDate || undefined,
+          logisticsVehicleNo: logisticsVehicleNo.trim(),
+          muReceiveZone: selectedMlLocation || undefined,
           lineItems: buildLineItemsForSave(),
         });
         const mapped = mapApiToMRN(updatedApi as MRNRecordFromApi);
@@ -694,17 +696,6 @@ const OutboundDashboard = () => {
                     <p className="text-[9px] text-slate-500 uppercase">Notes</p>
                     <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.notes || '—'}</p>
                   </div>
-                  {isMtrOutbound(selectedMRN) && selectedSchedule && (
-                    <div className="rounded border border-cyan-200 bg-cyan-50 p-2 col-span-2">
-                      <p className="text-[9px] font-semibold text-cyan-700 uppercase">Selected vehicle schedule</p>
-                      <p className="text-[11px] font-semibold text-cyan-900">
-                        {selectedSchedule.vehicleNo} · {selectedSchedule.trackingNo}
-                      </p>
-                      <p className="text-[10px] text-cyan-800">
-                        Dispatch: {selectedSchedule.dispatchDate} · ETA: {selectedSchedule.etaDate}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </section>
 
@@ -745,42 +736,91 @@ const OutboundDashboard = () => {
                       className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
                     />
                   </div>
+                  {isMtrOutbound(selectedMRN) && (
+                    <div className="col-span-2">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        ML location (Destination)
+                      </label>
+                      <select
+                        value={selectedMlLocation}
+                        onChange={(e) => setSelectedMlLocation(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      >
+                        <option value="">— Select ML location —</option>
+                        {mlLocationOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Pulled from Facility Management (Production zones).
+                      </p>
+                    </div>
+                  )}
                 </div>
               </section>
 
               {isMtrOutbound(selectedMRN) && (
                 <section>
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">
-                    Vehicle schedule (for Initiate Transfer)
-                  </h3>
-                  <div className="grid grid-cols-1 gap-1.5">
-                    <div>
-                      <label className="block text-[9px] text-slate-500 uppercase mb-1">Select schedule</label>
-                      <select
-                        value={selectedScheduleId ?? ''}
-                        onChange={(e) => setSelectedScheduleId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                        className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-900"
-                      >
-                        <option value="">— Select schedule —</option>
-                        {vehicleSchedules.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.vehicleNo} · {s.trackingNo} · {s.dispatchDate} → {s.etaDate}
-                          </option>
-                        ))}
-                      </select>
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Initiate transfer details</h3>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="col-span-2">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        Tracking / LR no. <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={logisticsTrackingNo}
+                        onChange={(e) => setLogisticsTrackingNo(e.target.value)}
+                        placeholder="Enter LR or tracking number"
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      />
                     </div>
-
-                    {selectedSchedule && (
-                      <div className="rounded border border-cyan-200 bg-cyan-50 p-2">
-                        <p className="text-[9px] text-cyan-700 uppercase font-semibold mb-1">Schedule details</p>
-                        <p className="text-[11px] font-semibold text-cyan-900">
-                          {selectedSchedule.trackingNo} · {selectedSchedule.transporter}
-                        </p>
-                        <p className="text-[10px] text-cyan-800">
-                          Dispatch: {selectedSchedule.dispatchDate} · ETA: {selectedSchedule.etaDate} · Vehicle: {selectedSchedule.vehicleNo}
-                        </p>
-                      </div>
-                    )}
+                    <div className="col-span-2">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        Driver / transporter <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={logisticsTransporter}
+                        onChange={(e) => setLogisticsTransporter(e.target.value)}
+                        placeholder="Driver or transporter name"
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        Dispatch date <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={logisticsDispatchDate}
+                        onChange={(e) => setLogisticsDispatchDate(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">ETA (optional)</label>
+                      <input
+                        type="date"
+                        value={logisticsEtaDate}
+                        onChange={(e) => setLogisticsEtaDate(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                        Vehicle no. <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={logisticsVehicleNo}
+                        onChange={(e) => setLogisticsVehicleNo(e.target.value)}
+                        placeholder="Enter vehicle number"
+                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      />
+                    </div>
                   </div>
                 </section>
               )}

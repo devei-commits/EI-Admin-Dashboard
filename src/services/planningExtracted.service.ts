@@ -308,6 +308,8 @@ export interface ItemsInvolvedRow {
   reserved?: number;
   /** Planned quantity captured from production (BMR/BPR-linked reserved_batch_items). */
   plannedQty?: number;
+  /** Sum of purchase order line qty for this material (backend aggregate). */
+  poQty?: number;
   inTransit?: number;
   reorderPt?: number;
   avgMo?: number;

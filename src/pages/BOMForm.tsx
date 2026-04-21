@@ -27,6 +27,15 @@ const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 const PR_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const PR_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
+function toCodeToken(input: string): string {
+  return String(input || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 16);
+}
+
 interface BOMFormState {
   // Identity & coding (step 0)
   prCategoryKey: string;
@@ -418,7 +427,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generatedPrCode, setGeneratedPrCode] = useState('');
-  const focusPrField = useCallback((target: 'prCategoryKey' | 'skuCode' | 'productName' | 'formula' | 'pack') => {
+  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'skuCode' | 'productName' | 'formula' | 'pack') => {
     window.setTimeout(() => {
       if (target === 'formula') {
         const el = document.querySelector('input[placeholder="Or type INCI Name (manual)"]');
@@ -456,6 +465,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     !isNewProduct ||
     Boolean(
       formData.prCategoryKey.trim() &&
+        formData.prSubCategory.trim() &&
         formData.productName.trim() &&
         formData.category.trim() &&
         formData.productForm.trim() &&
@@ -595,11 +605,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const getPrCodePreview = () => {
     const cat = formData.prCategoryKey ? PR_CATEGORIES[formData.prCategoryKey] : null;
     if (!cat) return { prefix: '—', next: '—' };
-    if (generatedPrCode && generatedPrCode.startsWith(cat.prefix)) {
-      const suffix = generatedPrCode.slice(cat.prefix.length).replace(/^-+/, '') || '—';
-      return { prefix: cat.prefix, next: suffix };
+    const subToken = toCodeToken(formData.prSubCategory);
+    const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+    if (generatedPrCode && generatedPrCode.startsWith(seriesPrefix)) {
+      const suffix = generatedPrCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
+      return { prefix: seriesPrefix, next: suffix };
     }
-    return { prefix: cat.prefix, next: '…' };
+    return { prefix: seriesPrefix, next: '…' };
   };
 
   const generatePrCode = async (confirm = false) => {
@@ -611,13 +623,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'Select a PR Category first');
       return;
     }
+    if (!formData.prSubCategory.trim()) {
+      addToast('error', 'Enter PR Sub-Category first');
+      return;
+    }
     if (generatedPrCode && !confirm) {
       const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
       if (!ok) return;
     }
     const cat = PR_CATEGORIES[formData.prCategoryKey];
     try {
-      const code = await fetchNextBomCode(cat.prefix);
+      const subToken = toCodeToken(formData.prSubCategory);
+      const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+      const code = await fetchNextBomCode(seriesPrefix);
       setGeneratedPrCode(code);
       setFormData((prev) => ({ ...prev, skuCode: code }));
       addToast('success', `Code generated: ${code}`);
@@ -754,6 +772,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       focusPrField('productName');
       return;
     }
+    if (!formData.prSubCategory.trim()) {
+      setErrors({ prSubCategory: 'Step 0 — Sub-Category is required' });
+      addToast('error', 'Step 0 — Sub-Category is required');
+      setCurrentStage(0);
+      focusPrField('prSubCategory');
+      return;
+    }
     if (!formData.category.trim()) {
       setErrors({ category: 'Step 0 — Category is required' });
       addToast('error', 'Step 0 — Category is required');
@@ -882,40 +907,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
-                  <select
-                    value={formData.prQcGroup}
-                    onChange={(e) => handleInputChange('prQcGroup', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {PR_QC_GROUPS.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
                   <input
+                    id="prSubCategory"
                     type="text"
                     value={formData.prSubCategory}
                     onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
                     placeholder="e.g. Anti‑acne serum / Kids shampoo / SPF 50 lotion"
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    }`}
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
-                  <select
-                    value={formData.prDefaultStorageType}
-                    onChange={(e) => handleInputChange('prDefaultStorageType', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {PR_STORAGE_TYPES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                  {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
                 </div>
               </div>
             </div>
@@ -968,20 +971,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Brand / Client</label>
-                  <select
-                    value={formData.brandClient}
-                    onChange={(e) => handleInputChange('brandClient', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">Select brand / client</option>
-                    <option value="EI Own Brand">EI Own Brand</option>
-                    <option value="Client A">Client A</option>
-                    <option value="Client B">Client B</option>
-                  </select>
-                </div>
-
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size (in g or ml) <span className="text-red-600">*</span></label>
@@ -991,16 +980,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="e.g. 50g or 50ml"
                       value={formData.fillSize}
                       onChange={(e) => handleInputChange('fillSize', normalizeFillSizeInput(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1x50 tube"
-                      value={formData.packConfiguration}
-                      onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
@@ -1058,7 +1037,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Regenerate (change category)
+                      Regenerate (change category / sub-category)
                     </button>
                   )}
                 </div>
@@ -1080,84 +1059,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </div>
             </div>
 
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Zoho Books</h3>
-              <p className="text-xs text-slate-500 mb-3">
-                {isNewProduct
-                  ? 'Tax and SKU preferences are sent on final Submit. The server creates the product, Zoho Books item, and BOM together (or rolls back all if Books fails).'
-                  : 'Zoho item ID is read-only. Change other fields as needed; use Submit to save.'}
-              </p>
-              <div className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
-                    <input
-                      type="text"
-                      placeholder="Optional — defaults to PR code"
-                      value={formData.skuForZoho}
-                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                      disabled={lockPrimaryFields}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
-                    <select
-                      value={formData.bomTaxPreference}
-                      onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
-                      disabled={lockPrimaryFields}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
-                    >
-                      <option value="">Select tax preference</option>
-                      {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
-                    <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryFields ? 'bg-slate-100' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={formData.bomReturnable}
-                        onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
-                        disabled={lockPrimaryFields}
-                      />
-                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Associated Items</label>
-                    <textarea
-                      value={formData.bomAssociateItems}
-                      onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
-                      rows={2}
-                      disabled={lockPrimaryFields}
-                      placeholder="Link related BOM / RM / packaging if any"
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Zoho Item ID</label>
-                  <input
-                    type="text"
-                    readOnly
-                    autoComplete="off"
-                    aria-readonly="true"
-                    placeholder="Populated from the server after successful registration (when Books sync is on)"
-                    value={formData.zohoId}
-                    onChange={() => {}}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-800 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Read-only — returned after a successful save.</p>
-                </div>
-              </div>
-            </div>
           </div>
         );
       case 1:
@@ -1440,6 +1341,124 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       case 4:
         return (
             <div className="space-y-6">
+              <div className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — business, storage & Zoho</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Brand / Client</label>
+                    <select
+                      value={formData.brandClient}
+                      onChange={(e) => handleInputChange('brandClient', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">Select brand / client</option>
+                      <option value="EI Own Brand">EI Own Brand</option>
+                      <option value="Client A">Client A</option>
+                      <option value="Client B">Client B</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1x50 tube"
+                      value={formData.packConfiguration}
+                      onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">QC Inspection Group</label>
+                    <select
+                      value={formData.prQcGroup}
+                      onChange={(e) => handleInputChange('prQcGroup', e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select</option>
+                      {PR_QC_GROUPS.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Default Storage Location Type</label>
+                    <select
+                      value={formData.prDefaultStorageType}
+                      onChange={(e) => handleInputChange('prDefaultStorageType', e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select</option>
+                      {PR_STORAGE_TYPES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
+                    <input
+                      type="text"
+                      placeholder="Optional — defaults to PR code"
+                      value={formData.skuForZoho}
+                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
+                      disabled={lockPrimaryFields}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
+                    <select
+                      value={formData.bomTaxPreference}
+                      onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
+                      disabled={lockPrimaryFields}
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                    >
+                      <option value="">Select tax preference</option>
+                      {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
+                    <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryFields ? 'bg-slate-100' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={formData.bomReturnable}
+                        onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
+                        disabled={lockPrimaryFields}
+                      />
+                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Associated Items</label>
+                    <textarea
+                      value={formData.bomAssociateItems}
+                      onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
+                      rows={2}
+                      disabled={lockPrimaryFields}
+                      placeholder="Link related BOM / RM / packaging if any"
+                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Zoho Item ID</label>
+                  <input
+                    type="text"
+                    readOnly
+                    autoComplete="off"
+                    aria-readonly="true"
+                    placeholder="Populated from the server after successful registration (when Books sync is on)"
+                    value={formData.zohoId}
+                    onChange={() => {}}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-800 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Read-only — returned after a successful save.</p>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FINISHED PRODUCT SPECIFICATIONS</label>
                 <div className="space-y-3">
@@ -1517,7 +1536,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, product name, category, form, fill size, MRP price, and generated PR code on this step before continuing."
+      nextDisabledTitle="Complete PR category, sub-category, product name, category, form, fill size, MRP price, and generated PR code on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}

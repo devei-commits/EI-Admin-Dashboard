@@ -359,14 +359,15 @@ function buildReservedMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Reco
   return map;
 }
 
-/** At facility (MU-1 + MU-2) by code for MTR modal — so we can show "already at facility" and to-transfer = required - atFacility. */
+/** At production facility by code (all non-WH stocks) for MTR modal — dynamic, not tied to MU1/MU2 columns. */
 function buildAtFacilityMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
     if (r.type !== type) continue;
     const c = String(r.code ?? '').trim();
     if (!c) continue;
-    const add = (Number(r.ml1Stock) || 0) + (Number(r.ml2Stock) || 0);
+    // At facility = everything not currently in WH storage.
+    const add = Math.max(0, (Number(r.stockInHand) || 0) - (Number(r.whStock) || 0));
     map[c] = (map[c] ?? 0) + add;
   }
   return map;
@@ -1120,8 +1121,9 @@ function findPlanningRowForBatch(
   return byProductName ?? null;
 }
 
-function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onSave }: {
+function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRows, onClose, onSave }: {
   batch: Batch; type: 'rm' | 'pm'; stockMap: Record<string, number>; reservedMap?: Record<string, number>;
+  inventoryRows?: WarehouseInventoryRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
 }) {
   const batchItems = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
@@ -1414,6 +1416,12 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
   const rmHasShort = type === 'rm' && items.some(itemHasWhShort);
   const pmHasShort = type === 'pm' && items.some(itemHasWhShort);
   const reserveDisabled = items.length === 0 || rmHasShort || pmHasShort;
+  const processOwnerText = (parts: { underGrn: number; inTransit: number; poOpen: number }) => {
+    if (parts.underGrn > 0) return 'Contact Warehouse GRN/QC team';
+    if (parts.inTransit > 0) return 'Contact Procurement logistics follow-up';
+    if (parts.poOpen > 0) return 'Contact Procurement PO owner/vendor';
+    return 'Check Planning/Procurement release and stock coding';
+  };
 
   return (
     <Modal onClose={onClose} title={title} size="lg">
@@ -1450,6 +1458,13 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                 const planningCoverage = planningCoverageByCode[code] ?? 0;
                 const whOk = available >= r.required;
                 const checked = selected[i] !== false;
+                const stageRows = (inventoryRows ?? []).filter((row) =>
+                  row.type === (type === 'rm' ? 'RM' : 'PM') && String(row.code ?? '').trim() === code
+                );
+                const inTransitStage = stageRows.reduce((s, row) => s + (Number(row.inTransit) || 0), 0);
+                const underGrnStage = stageRows.reduce((s, row) => s + (Number((row as WarehouseInventoryRow & { underGrn?: number }).underGrn) || 0), 0);
+                const poOpenStage = stageRows.reduce((s, row) => s + (Number(row.poQuantity) || 0), 0);
+                const shortageQty = Math.max(0, r.required - available);
                 return (
                   <tr key={i} className={!whOk ? 'bg-red-50/50' : ''}>
                     <td className="px-3 py-2.5">
@@ -1467,9 +1482,19 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, onClose, onS
                       {whOk ? (
                         <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
                       ) : (
-                        <span title={`Planning Items Involved coverage (reference): ${planningCoverage}%. Reserve still needs WH available ≥ required.`}>
-                          <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>
-                        </span>
+                        <div className="space-y-1.5">
+                          <span title={`Planning Items Involved coverage (reference): ${planningCoverage}%. Reserve still needs WH available ≥ required.`}>
+                            <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>
+                          </span>
+                          <div className="text-[10px] leading-tight text-red-700">
+                            <div>
+                              Short {fmt(shortageQty)} {unit} | Under GRN {fmt(underGrnStage)} | In Transit {fmt(inTransitStage)} | PO open {fmt(poOpenStage)}
+                            </div>
+                            <div className="text-[9px] text-red-800/80">
+                              {processOwnerText({ underGrn: underGrnStage, inTransit: inTransitStage, poOpen: poOpenStage })}
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -3200,19 +3225,12 @@ function mtrAllPmLinesReceivedAtMu(mrn: MRNRecordFromApi): boolean {
 }
 
 /* ──────────── MTR MODAL ────────────────────────────────────── */
-/* Transfer From: always Main Warehouse. Transfer To: MU1 / MU2 (RM) or main warehouse (PM). Quantity editable. */
-
-const MAIN_WAREHOUSE_CODES = ['LOC-RM', 'LOC-ACT', 'LOC-PPM']; // first warehouse zone = main warehouse
-/** Transfer To options for RM: Manufacturing Units MU1 and MU2 (codes used for MTR target). */
-const MU_TRANSFER_TO_OPTIONS = [
-  { code: 'LOC-MU01', name: 'MU1' },
-  { code: 'LOC-MU02', name: 'MU2' },
-];
+/* Transfer endpoints are dynamic from Facility Management areas/zones/racks. */
 
 function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilityRM, atFacilityPM, whStockOnlyRM, whStockOnlyPM, reservedRM, reservedPM, initialRmItems, onClose, onSave, onMtrCreated }: {
   batch: Batch; type: 'rm' | 'pm';
   stockRM: Record<string, number>; stockPM: Record<string, number>;
-  /** At facility (MU-1 + MU-2) by code — for "already at facility" and to-transfer = required - atFacility */
+  /** At production facility by code — for "already at facility" and to-transfer = required - atFacility */
   atFacilityRM?: Record<string, number>; atFacilityPM?: Record<string, number>;
   /** WH stock only (available to transfer = whStockOnly - reserved) */
   whStockOnlyRM?: Record<string, number>; whStockOnlyPM?: Record<string, number>;
@@ -3262,7 +3280,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const hasShortage = shortages.length > 0;
 
   const allWhZones = warehouseAreas.flatMap(a => a.zones);
-  const mainWarehouseZone = allWhZones.find(z => MAIN_WAREHOUSE_CODES.includes(z.code)) || allWhZones[0];
+  const allProductionZones = productionAreas.flatMap(a => a.zones);
+  const mainWarehouseZone = allWhZones[0];
 
   const needLoadInMtr = (type === 'rm' && batchItems.length === 0 && passedItems.length === 0) || (type === 'pm' && batchItems.length === 0);
   useEffect(() => {
@@ -3401,16 +3420,17 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       setWarehouseAreas(wh);
       setProductionAreas(prod);
       const whZones = wh.flatMap(a => a.zones);
-      const mainWh = whZones.find(z => MAIN_WAREHOUSE_CODES.includes(z.code)) || whZones[0];
-      if (type === 'rm' && !transferTo) setTransferTo(MU_TRANSFER_TO_OPTIONS[0].code);
+      const mainWh = whZones[0];
+      const prodZones = prod.flatMap((a) => a.zones);
+      if (type === 'rm' && !transferTo) setTransferTo(prodZones[0]?.code ?? '');
       if (type === 'pm' && mainWh && !transferTo) setTransferTo(mainWh.code);
     });
   }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const transferFrom = type === 'rm' ? (mainWarehouseZone?.code ?? '') : (MU_TRANSFER_TO_OPTIONS[0]?.code ?? '');
-  const fromLabel = type === 'rm' ? 'Main Warehouse' : (MU_TRANSFER_TO_OPTIONS.find(z => z.code === transferFrom)?.name ?? 'MU1');
+  const transferFrom = type === 'rm' ? (mainWarehouseZone?.code ?? '') : (allProductionZones[0]?.code ?? '');
+  const fromLabel = type === 'rm' ? 'Main Warehouse' : (allProductionZones.find(z => z.code === transferFrom)?.name ?? 'Production');
   const toLabel = type === 'rm'
-    ? (MU_TRANSFER_TO_OPTIONS.find(z => z.code === transferTo)?.name ?? transferTo)
+    ? (allProductionZones.find(z => z.code === transferTo)?.name ?? transferTo)
     : (allWhZones.find(z => z.code === transferTo)?.name ?? 'Main Warehouse');
 
   const { addToast } = useToast();
@@ -3504,7 +3524,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
           <label className={LBL}>Transfer To</label>
           {type === 'rm' ? (
             <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
-              {MU_TRANSFER_TO_OPTIONS.map(z => (
+              {allProductionZones.length === 0 && <option value="">No production zones configured</option>}
+              {allProductionZones.map(z => (
                 <option key={z.code} value={z.code}>{z.name}</option>
               ))}
             </select>
@@ -3521,7 +3542,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         <div><label className={LBL}>Priority</label><select className={INP} value={priority} onChange={e => setPriority(e.target.value)}><option>Urgent</option><option>Normal</option><option>Low</option></select></div>
       </div>
       <SectionLabel icon={<Package size={12} />} color="text-gray-600">
-        Items to Transfer — x = needed, y = already at facility (MU-1+MU-2), to transfer = max(0, x−y). Available at source = WH − reserved.
+        Items to Transfer — x = needed, y = already at production facility, to transfer = max(0, x−y). Available at source = WH − reserved.
       </SectionLabel>
       {loadingItems && (
         <div className="py-4 text-center text-sm text-gray-500">Loading items for this batch…</div>
@@ -3536,7 +3557,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
               <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Item</th>
               <th className="px-2 py-1.5 text-left">Code</th>
               <th className="px-2 py-1.5 text-right">Required</th>
-              <th className="px-2 py-1.5 text-right">At facility (MU)</th>
+              <th className="px-2 py-1.5 text-right">At production facility</th>
               <th className="px-2 py-1.5 text-left">To transfer</th>
               <th className="px-2 py-1.5 text-right">Available (WH)</th>
               <th className="px-2 py-1.5 text-left">Unit</th>
@@ -3940,6 +3961,22 @@ function MRNDetailModal({
       }
     }
 
+    const isInitiatingTransfer =
+      isOutboundMtr &&
+      String(nextStatus).trim() === 'In Transit' &&
+      Array.isArray(payload.initiateTransferLineIds) &&
+      payload.initiateTransferLineIds.length > 0;
+    const missingInitiationLogistics =
+      !logisticsTrackingNo.trim() ||
+      !logisticsTransporter.trim() ||
+      !logisticsVehicleNo.trim() ||
+      !logisticsDispatchDate;
+    if (isInitiatingTransfer && missingInitiationLogistics) {
+      setLogisticsModalOpen(true);
+      addToast('error', 'Enter transfer details in the popup before initiating transfer.');
+      return;
+    }
+
     setSaveError(null);
     setSaving(true);
     try {
@@ -3972,6 +4009,9 @@ function MRNDetailModal({
     } catch (e) {
       const msg = getApiErrorMessage(e) || 'Failed to save';
       setSaveError(msg);
+      if (msg.toLowerCase().includes('before initiating transfer')) {
+        setLogisticsModalOpen(true);
+      }
       addToast('error', msg);
     } finally {
       setSaving(false);
@@ -4020,8 +4060,8 @@ function MRNDetailModal({
       addToast('error', 'Select at least one line that is pending initiation.');
       return;
     }
-    if (!logisticsTrackingNo.trim() || !logisticsTransporter.trim() || !logisticsDispatchDate || !logisticsEtaDate || !logisticsVehicleNo.trim()) {
-      addToast('error', 'Fill all logistics details before initiating transfer.');
+    if (!logisticsTrackingNo.trim() || !logisticsTransporter.trim() || !logisticsVehicleNo.trim() || !logisticsDispatchDate) {
+      addToast('error', 'Fill required transfer details: Tracking/LR no, driver/transporter, vehicle no, and dispatch date.');
       return;
     }
     setLogisticsModalOpen(false);
@@ -4031,7 +4071,7 @@ function MRNDetailModal({
       logisticsTrackingNo: logisticsTrackingNo.trim(),
       logisticsTransporter: logisticsTransporter.trim(),
       logisticsDispatchDate,
-      logisticsEtaDate,
+      logisticsEtaDate: logisticsEtaDate || undefined,
       logisticsVehicleNo: logisticsVehicleNo.trim(),
     });
   };
@@ -4534,7 +4574,7 @@ function MRNDetailModal({
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Initiate transfer</h3>
-                <p className="text-xs text-slate-500 mt-1">Add logistics before moving selected lines to `In Transit`.</p>
+                <p className="text-xs text-slate-500 mt-1">Provide transfer details before moving selected lines to `In Transit`.</p>
               </div>
               <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close logistics popup">
                 <X className="h-4 w-4" />
@@ -4546,7 +4586,7 @@ function MRNDetailModal({
                 <input value={logisticsTrackingNo} onChange={(e) => setLogisticsTrackingNo(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Transporter / courier</label>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Driver / transporter</label>
                 <input value={logisticsTransporter} onChange={(e) => setLogisticsTransporter(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
@@ -4554,7 +4594,7 @@ function MRNDetailModal({
                 <input type="date" value={logisticsDispatchDate} onChange={(e) => setLogisticsDispatchDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">ETA</label>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">ETA (optional)</label>
                 <input type="date" value={logisticsEtaDate} onChange={(e) => setLogisticsEtaDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               </div>
               <div className="sm:col-span-2">
@@ -7498,12 +7538,21 @@ const Production = () => {
           type="rm"
           stockMap={whStockRM}
           reservedMap={whReservedRM}
+          inventoryRows={whInventory}
           onClose={closeModal}
           onSave={updates => { handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalBatch && modalType === 'reservePM' && (
-        <ReserveMaterialModal batch={modalBatch} type="pm" stockMap={whStockPM} reservedMap={whReservedPM} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <ReserveMaterialModal
+          batch={modalBatch}
+          type="pm"
+          stockMap={whStockPM}
+          reservedMap={whReservedPM}
+          inventoryRows={whInventory}
+          onClose={closeModal}
+          onSave={updates => { handleModalSave(updates); closeModal(); }}
+        />
       )}
       {modalType === 'schedule' && scheduleSlot && (
         <SmartScheduleModal slot={scheduleSlot} batch={modalBatch} equipment={state.equipment} batches={state.batches}
