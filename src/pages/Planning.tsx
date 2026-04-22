@@ -361,6 +361,8 @@ interface SalesOrder {
   batchesRequired: number;
   bomStatus: 'Production Released' | 'Production Ready' | 'In Progress' | 'Planned';
   bomConfirmedAt?: string | null;
+  /** Single BOM-level Specific Gravity (vs water). Null until the planner confirms BOM on the first-batch flow. */
+  bomSpecificGravity?: number | null;
   approvedBy: string;
   rawMaterials: RawMaterial[];
   packagingMaterials: PackagingMaterial[];
@@ -427,6 +429,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     batchesRequired: row.batchesRequired,
     bomStatus: (row.bomStatus as SalesOrder['bomStatus']) || 'Planned',
     bomConfirmedAt: (row as { bomConfirmedAt?: string | null }).bomConfirmedAt ?? null,
+    bomSpecificGravity: (row as { bomSpecificGravity?: number | null }).bomSpecificGravity ?? null,
     approvedBy: row.approvedBy,
     rawMaterials: (row.rawMaterials ?? []).map((rm, i) => ({ ...rm, id: rm.id ?? String((rm as { raw_material_id?: number }).raw_material_id ?? i) } as RawMaterial)),
     packagingMaterials: (row.packagingMaterials ?? []).map((pm, i) => ({ ...pm, id: pm.id ?? String((pm as { pack_material_id?: number }).pack_material_id ?? i) } as PackagingMaterial)),
@@ -708,6 +711,8 @@ const Planning = () => {
   const [plannedStartDate, setPlannedStartDate] = useState('2026-03-04');
   const [productionLine, setProductionLine] = useState('Line 1 — Primary Mixer');
   const [bomFormula, setBomFormula] = useState<RawMaterial[]>([]);
+  /** Single BOM-level Specific Gravity (vs water). Picked once on first-batch BOM confirmation, then locked for subsequent batches. */
+  const [bomLevelSG, setBomLevelSG] = useState<string>('1');
   const [quickAddRmCode, setQuickAddRmCode] = useState('');
   const [quickAddInciName, setQuickAddInciName] = useState('');
   const [quickAddPercentage, setQuickAddPercentage] = useState('');
@@ -951,7 +956,15 @@ const Planning = () => {
     enabled: planBatchesModalOpen && !!planningIdForBatch,
   });
 
-  const { data: planningBatches = [] } = useQuery({
+  // `isSuccess` / `isFetched` let the auto-add effect wait until the initial fetch has resolved —
+  // without this, `planningBatches.length === 0` (the useQuery default) is indistinguishable from
+  // "list loaded and genuinely empty", and the auto-add would fire while backend already has batches,
+  // producing the 400 "LAST_BATCH_NOT_SENT".
+  const {
+    data: planningBatches = [],
+    isSuccess: planningBatchesLoaded,
+    isFetched: planningBatchesFetched,
+  } = useQuery({
     queryKey: ['planning-batches', planningIdForBatch],
     queryFn: () => fetchPlanningBatches(planningIdForBatch),
     enabled: planBatchesModalOpen && !!planningIdForBatch,
@@ -993,17 +1006,41 @@ const Planning = () => {
     if (row.batchSizeKg != null) setBatchSizeKg(String(row.batchSizeKg));
     if (row.plannedStartDate) setPlannedStartDate(row.plannedStartDate);
     if (row.productionLine) setProductionLine(row.productionLine);
-    // Only restore customBatches from saved row when we have saved data; never create placeholders from batchCount
+    // Only restore customBatches from saved row when we have saved data; never create placeholders from batchCount.
+    // Content-equal guard: avoid writing a new reference when the sizes already match what the user/backend has,
+    // which was causing Plan Batches summary values (pending / preview / gaps) to flicker on every render.
     if (Array.isArray(row.customBatches) && row.customBatches.length > 0) {
-      setCustomBatches(row.customBatches);
+      const incoming = row.customBatches;
+      setCustomBatches((prev) => {
+        if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
+          return prev;
+        }
+        return incoming;
+      });
     }
   }, [planBatchesModalOpen, selectedSOForBatch?.id, planningRowForBatch]);
 
   // Batch-first: ensure at least one batch and set selected batch; sync customBatches from planningBatches
   const addedOneBatchRef = useRef(false);
+  // Auto-increment next batch when opening the modal: if every existing batch has already been sent
+  // and there are still units to allot, create the next (incremented) batch so the popup shows e.g.
+  // B-02 instead of staying on the last sent B-01. Gate with a ref so it runs at most once per
+  // modal-open cycle (reset when the modal closes).
+  const autoAddedNextBatchRef = useRef(false);
   useEffect(() => {
     if (!planBatchesModalOpen || !planningIdForBatch) return;
     if (planningBatches.length === 0 && !addedOneBatchRef.current) {
+      // Guard #1: wait until the planning_batches query has actually resolved. Before it does, length===0
+      // only means "default useQuery value", not "server has zero batches". Firing the auto-add here
+      // against a server that already has batches causes 400 LAST_BATCH_NOT_SENT.
+      if (!planningBatchesLoaded || !planningBatchesFetched) return;
+      // Guard #2: if the planning_extracted row says a batch already exists (batch_count > 0), the list is
+      // just stale in the client — do NOT auto-add; let the next refetch bring the existing rows instead.
+      const rowBatchCount = Number((planningRowForBatch as { batchCount?: number } | undefined)?.batchCount) || 0;
+      if (rowBatchCount > 0) return;
+      // Guard #3: if the SO already has any sent_batch_indices recorded, batches existed at some point —
+      // don't risk re-creating a phantom first batch.
+      if ((selectedSOForBatch?.sentBatchIndices ?? []).length > 0) return;
       addedOneBatchRef.current = true;
       addOneBatchFromMaster(planningIdForBatch)
         .then((newBatch) => {
@@ -1016,12 +1053,51 @@ const Planning = () => {
           }
         })
         .catch(() => {
+          // On failure (e.g. 400 LAST_BATCH_NOT_SENT from a race), clear the guard so the refetched
+          // list can populate normally on the next tick, and refetch to reconcile with the server.
           addedOneBatchRef.current = false;
+          queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
         });
       return;
     }
     if (planningBatches.length > 0) {
       addedOneBatchRef.current = true;
+
+      // Auto-increment: if every batch in the list has been sent AND the order still has pending
+      // units, kick off an add-one so the user lands on the next (unsent) batch. Only fires if the
+      // query has fully resolved, and at most once per modal session. The backend add-one endpoint
+      // already validates LAST_BATCH_NOT_SENT, so this is safe.
+      if (planningBatchesLoaded && planningBatchesFetched && !autoAddedNextBatchRef.current) {
+        const sentIdx = selectedSOForBatch?.sentBatchIndices ?? [];
+        const allSent = planningBatches.every((_, i) => sentIdx.includes(i));
+        const oq = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+        const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+        const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
+        const sentKg = (planningBatches as PlanningBatchRow[]).reduce(
+          (s, b, i) => (sentIdx.includes(i) ? s + (Number(b.sizeKg) || 0) : s),
+          0
+        );
+        const pendingUnits = kpu > 0 ? Math.max(0, (tk - sentKg) / kpu) : 0;
+        if (allSent && pendingUnits > 0) {
+          autoAddedNextBatchRef.current = true;
+          addOneBatchFromMaster(planningIdForBatch)
+            .then((newBatch) => {
+              if (newBatch) {
+                mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                setSelectedBatchId(Number(newBatch.id));
+              } else {
+                autoAddedNextBatchRef.current = false;
+              }
+            })
+            .catch(() => {
+              autoAddedNextBatchRef.current = false;
+              queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+            });
+          return;
+        }
+      }
+
       const first = planningBatches[0] as PlanningBatchRow;
       if (
         selectedBatchId === null ||
@@ -1029,13 +1105,80 @@ const Planning = () => {
       ) {
         setSelectedBatchId(Number(first.id));
       }
-      setCustomBatches(planningBatches.map((b: PlanningBatchRow) => ({ sizeKg: b.sizeKg ?? 500 })));
+      // Content-equal guard: keep the same `customBatches` reference when sizes already match the backend.
+      // Without this, every `selectedBatchId` or `planningBatches` dep tick would create a new array ref and
+      // force downstream memos (pending / preview / gaps) to recompute, causing visible jitter in the modal.
+      const incoming = (planningBatches as PlanningBatchRow[]).map((b) => ({ sizeKg: Number(b.sizeKg ?? 500) }));
+      setCustomBatches((prev) => {
+        if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
+          return prev;
+        }
+        return incoming;
+      });
     }
-  }, [planBatchesModalOpen, planningIdForBatch, planningBatches, selectedBatchId]);
+  }, [
+    planBatchesModalOpen,
+    planningIdForBatch,
+    planningBatches,
+    selectedBatchId,
+    planningBatchesLoaded,
+    planningBatchesFetched,
+    planningRowForBatch,
+    selectedSOForBatch?.sentBatchIndices,
+    selectedSOForBatch?.orderQty,
+    selectedSOForBatch?.totalKg,
+    queryClient,
+  ]);
 
   useEffect(() => {
-    if (!planBatchesModalOpen) addedOneBatchRef.current = false;
+    if (!planBatchesModalOpen) {
+      addedOneBatchRef.current = false;
+      autoAddedNextBatchRef.current = false;
+    }
   }, [planBatchesModalOpen]);
+
+  // Mirror `selectedBatchId` into a ref so the auto-select effect below can read the latest value
+  // without depending on it (which would re-trigger the effect after its own setState).
+  const selectedBatchIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    selectedBatchIdRef.current = selectedBatchId;
+  }, [selectedBatchId]);
+
+  /**
+   * When the Plan Batch tab is active, auto-select the first unsent batch so the "next working batch"
+   * auto-increments across allotments. Runs ONCE per (modal open + sent-set) — the `autoSelectedForKeyRef`
+   * guard prevents this effect from fighting with the user's manual batch selection or looping with other
+   * effects that depend on `selectedBatchId`. Intentionally omits `selectedBatchId` from deps so the effect
+   * is driven by external state changes only (modal open, tab switch, a new batch was sent), not by its own
+   * setState — which was the root of the "Maximum update depth" cascade.
+   */
+  const autoSelectedForKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!planBatchesModalOpen) {
+      autoSelectedForKeyRef.current = null;
+      return;
+    }
+    if (activeBatchTab !== 'batch-plan') return;
+    if (!planningBatches || planningBatches.length === 0) return;
+    const sent = Array.isArray(selectedSOForBatch?.sentBatchIndices)
+      ? (selectedSOForBatch!.sentBatchIndices as number[]).map(Number)
+      : [];
+    const key = `${selectedSOForBatch?.id ?? ''}|${sent.join(',')}|${planningBatches.length}`;
+    if (autoSelectedForKeyRef.current === key) return;
+    autoSelectedForKeyRef.current = key;
+    const rows = planningBatches as PlanningBatchRow[];
+    const firstUnsentIdx = rows.findIndex((_, idx) => !sent.includes(idx));
+    if (firstUnsentIdx < 0) return;
+    const target = rows[firstUnsentIdx];
+    if (target?.id == null) return;
+    // Only override selection when the current batch is already sent (or unset); never override a manual pick.
+    const currentIdx = rows.findIndex((b) => Number(b.id) === Number(selectedBatchIdRef.current));
+    const currentIsSent = currentIdx >= 0 && sent.includes(currentIdx);
+    if (selectedBatchIdRef.current != null && !currentIsSent) return;
+    if (Number(target.id) !== Number(selectedBatchIdRef.current)) {
+      setSelectedBatchId(Number(target.id));
+    }
+  }, [planBatchesModalOpen, activeBatchTab, planningBatches, selectedSOForBatch?.id, selectedSOForBatch?.sentBatchIndices]);
 
   // When selected batch data loads, sync BOM from that batch (batch-specific BOM)
   useEffect(() => {
@@ -1078,7 +1221,10 @@ const Planning = () => {
       (sum, b, idx) => (sent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
       0
     );
-  }, [customBatches, selectedSOForBatch?.sentBatchIndices, selectedSOForBatch]);
+    // Depend only on the sent-index array (primitive-identity stable when unchanged) and customBatches;
+    // the whole `selectedSOForBatch` object is not needed and its identity churn was causing this memo
+    // to recompute more often than necessary.
+  }, [customBatches, selectedSOForBatch?.sentBatchIndices]);
 
   // Sync preview qty to "remaining after sent batches" (falls back to order qty when nothing sent yet).
   useEffect(() => {
@@ -1095,10 +1241,12 @@ const Planning = () => {
     const next = Math.max(0, remainingUnits);
     setFeasibilityPreviewQty((prev) => (prev === next ? prev : next));
   }, [
+    // Depend on primitive fields only; depending on the whole `selectedSOForBatch` object caused this
+    // effect to re-run whenever any unrelated field (e.g. bomStatus, bomConfirmedAt) changed and created
+    // a new object reference, which in turn thrashed feasibilityPreviewQty → customBatches → summary.
     selectedSOForBatch?.id,
     selectedSOForBatch?.orderQty,
     selectedSOForBatch?.totalKg,
-    selectedSOForBatch,
     sentKgForPlanBatches,
   ]);
 
@@ -1108,17 +1256,41 @@ const Planning = () => {
     return orderQtyNum > 0 && totalKgNum > 0 ? totalKgNum / orderQtyNum : 0;
   }, [selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg]);
 
-  /** Order vs planned batch sizes: pending kg/units and unsent batch count (Plan Batches modal). */
+  /**
+   * Order vs planned batches: pending kg/units and unsent batch count (Plan Batches modal).
+   *
+   * Pending = orderTotalKg − sentKg − previewKg
+   *   • sentKg   : sum of `customBatches[i].sizeKg` for i in `sentBatchIndices` (stable; only changes
+   *                when a batch is actually sent)
+   *   • previewKg: `feasibilityPreviewQty * kgPerUnit` (live — updates as the user types in the
+   *                Preview qty input, so the user sees pending shrink while they allocate the next
+   *                batch)
+   *
+   * Preview is read directly here instead of being folded back into `customBatches` by Effect B,
+   * which decouples this memo from that sync. That's why changing the preview no longer triggers
+   * a customBatches → summary → preview loop.
+   */
   const planBatchesAllocationSummary = useMemo(() => {
     if (!selectedSOForBatch) return null;
     const oq = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
     const tk = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
-    const allocKg = customBatches.reduce((s, b) => s + (Number(b.sizeKg) || 0), 0);
+    const sent = selectedSOForBatch.sentBatchIndices ?? [];
+
+    const sentKg = customBatches.reduce(
+      (s, b, i) => (sent.includes(i) ? s + (Number(b.sizeKg) || 0) : s),
+      0
+    );
+    const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    const previewKg = Math.max(0, previewUnits * kpu);
+    // Preview cannot exceed what remains after the sent batches.
+    const remainingAfterSentKg = Math.max(0, tk - sentKg);
+    const effectivePreviewKg = Math.min(previewKg, remainingAfterSentKg);
+
+    const allocKg = sentKg + effectivePreviewKg;
     const pendKg = Math.max(0, tk - allocKg);
     const pendUnits = kpu > 0 ? pendKg / kpu : 0;
     const allocUnits = kpu > 0 ? allocKg / kpu : 0;
-    const sent = selectedSOForBatch.sentBatchIndices ?? [];
     const unsentCount = customBatches.filter((_, i) => !sent.includes(i)).length;
     return {
       orderQty: oq,
@@ -1130,7 +1302,16 @@ const Planning = () => {
       allocUnits,
       unsentCount,
     };
-  }, [selectedSOForBatch, customBatches]);
+    // Stable primitive/array-identity deps — avoids recomputing pending every time
+    // `selectedSOForBatch` gets a new reference from an unrelated field update.
+  }, [
+    selectedSOForBatch?.id,
+    selectedSOForBatch?.orderQty,
+    selectedSOForBatch?.totalKg,
+    selectedSOForBatch?.sentBatchIndices,
+    customBatches,
+    feasibilityPreviewQty,
+  ]);
 
   // When preview qty changes, reflect it once into the next active batch-units input in Batch Plan.
   // "Next active" = expanded batch if any; otherwise first unsent batch.
@@ -1146,12 +1327,20 @@ const Planning = () => {
       selectedBatchId != null && planningBatches.length > 0
         ? (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId))
         : -1;
-    let targetIdx = selIdx >= 0 && selIdx < customBatches.length ? selIdx : -1;
-    if (targetIdx < 0) {
+    // Target the selected batch only if it exists AND is unsent; otherwise the first unsent batch.
+    // CRITICAL: do NOT fall back to index 0 when there is no unsent batch. The old fallback wrote the
+    // preview qty into an already-SENT batch's sizeKg, which corrupted `sentKgForPlanBatches` and
+    // triggered a feedback loop with Effect A (preview ↔ sent-kg ping-pong = "Maximum update depth").
+    let targetIdx = -1;
+    if (selIdx >= 0 && selIdx < customBatches.length && !sent.includes(selIdx)) {
+      targetIdx = selIdx;
+    } else {
       const firstUnsent = customBatches.findIndex((_, i) => !sent.includes(i));
-      targetIdx = firstUnsent >= 0 ? firstUnsent : 0;
+      if (firstUnsent >= 0) targetIdx = firstUnsent;
     }
     if (targetIdx < 0 || targetIdx >= customBatches.length) return;
+    // Safety net — never overwrite a sent batch, even if the logic above missed a case.
+    if (sent.includes(targetIdx)) return;
 
     const nextUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
     if (lastAppliedPreviewQtyRef.current === nextUnits) return;
@@ -1166,17 +1355,25 @@ const Planning = () => {
         const maxKg = Math.max(0, orderTk - otherKg);
         let newKg = nextUnits * kgPerUnitForPlanBatches;
         if (newKg > maxKg) newKg = maxKg;
+        // Content-equal guard: if the target batch already has the computed sizeKg (within float tolerance),
+        // keep the same array reference so pending / preview / gaps memos don't recompute needlessly.
+        const currentKg = Number(prev[targetIdx]?.sizeKg) || 0;
+        if (Math.abs(currentKg - newKg) < 1e-6) return prev;
         return prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: newKg } : b));
       });
       setExpandedBatchIndex(targetIdx);
     } catch (e) {
       console.error('[Planning] preview qty → batch units sync failed', e);
     }
+    // Primitive/array-identity deps only. Dropping the whole `selectedSOForBatch` object prevents this
+    // effect from re-running when unrelated fields change identity (bomStatus, bomConfirmedAt, etc.).
   }, [
     feasibilityPreviewQty,
     activeBatchTab,
     planBatchesModalOpen,
-    selectedSOForBatch,
+    selectedSOForBatch?.id,
+    selectedSOForBatch?.totalKg,
+    selectedSOForBatch?.sentBatchIndices,
     selectedBatchId,
     planningBatches,
     kgPerUnitForPlanBatches,
@@ -2303,7 +2500,14 @@ const Planning = () => {
 
   const handlePlanBatches = (order: SalesOrder) => {
     setSelectedSOForBatch(order);
-    setBomFormula((order.rawMaterials ?? []).map((rm) => ({ ...rm, specificGravity: (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1 })));
+    // Seed bomFormula with per-line SG = BOM-level SG when confirmed; fallback to any pre-existing per-line value.
+    const seededSg = order.bomSpecificGravity != null && order.bomSpecificGravity > 0 ? order.bomSpecificGravity : null;
+    setBomFormula((order.rawMaterials ?? []).map((rm) => ({
+      ...rm,
+      specificGravity: seededSg ?? (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1,
+    })));
+    // Initial BOM-level SG input value: saved value if confirmed, else sensible default.
+    setBomLevelSG(seededSg != null ? String(seededSg) : '1');
     setBomPackaging(order.packagingMaterials);
     const alreadyConfirmed = Boolean(order.bomConfirmedAt);
     setIsReadyForProduction(alreadyConfirmed);
@@ -2630,13 +2834,23 @@ const Planning = () => {
       addToast('error', 'Add at least one raw material or packaging line to the BOM before confirming.');
       return;
     }
+    // First-batch confirmation requires a valid BOM-level Specific Gravity; ignore when BOM is already confirmed
+    // (subsequent saves keep the previously locked value).
+    const bomSgValue = Number(bomLevelSG);
+    const alreadyConfirmed = Boolean(selectedSOForBatch.bomConfirmedAt);
+    if (!alreadyConfirmed && (!Number.isFinite(bomSgValue) || bomSgValue <= 0)) {
+      addToast('error', 'Enter a valid BOM Specific Gravity (greater than 0) before confirming.');
+      return;
+    }
+    // Fan the BOM-level SG into every RM line so downstream vessel-volume math keeps working per-line.
+    const effectiveSg = Number.isFinite(bomSgValue) && bomSgValue > 0 ? bomSgValue : 1;
     const rmLines: BOMRmLine[] = bomFormula.map((item) => ({
       phase: item.phase ?? 'Phase A',
       inci_name: item.name,
       rm_code: item.code ?? item.id,
       pct_w_w: item.percentage,
       uom: item.unit || 'kg',
-      specific_gravity: item.specificGravity ?? 1,
+      specific_gravity: effectiveSg,
       ...(typeof item.id === 'string' && /^\d+$/.test(item.id) ? { raw_material_id: parseInt(item.id, 10) } : {}),
     }));
     const pmLines: BOMPmLine[] = bomPackaging.map((item) => ({
@@ -2666,6 +2880,7 @@ const Planning = () => {
       }
       const confirmed = await updatePlanningExtracted(selectedSOForBatch.id, {
         bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        bomSpecificGravity: effectiveSg,
       });
       if (!confirmed) {
         addToast('error', 'Failed to confirm BOM. Check stock and try again.');
@@ -2683,9 +2898,13 @@ const Planning = () => {
           ? {
               ...prev,
               bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              bomSpecificGravity: effectiveSg,
             }
           : prev
       );
+      // Reflect fan-out locally so any in-memory calc before refetch stays consistent.
+      setBomFormula((prev) => prev.map((it) => ({ ...it, specificGravity: effectiveSg })));
+      setBomLevelSG(String(effectiveSg));
       setIsReadyForProduction(true);
       setActiveBatchTab('batch-plan');
     } catch (error) {
@@ -5181,6 +5400,36 @@ const Planning = () => {
                       <p className="text-sm font-semibold text-yellow-900">Editing BOM for {selectedSOForBatch.productName}. Make all BOM updates here (add/swap materials). When done, click <strong>Confirm BOM</strong> below — then use the <strong>Batch Plan</strong> tab to set how many batches and schedule. Each batch gets its own saved BOM copy (e.g. PE-5-B1) when you save the batch plan, so this BOM is reused per batch.</p>
                     </div>
                   </div>
+                  {/* BOM-level Specific Gravity: one value for the whole blend, required on first-batch confirmation.
+                      Hidden once locked — the saved value still drives every RM line via the backend fan-out. */}
+                  {!canSendToProduction && (
+                    <div className="rounded-lg border p-4 bg-indigo-50 border-indigo-200">
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-gray-900">BOM Specific Gravity</h3>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Enter the blend specific gravity (vs water). Required to confirm BOM on the first batch; applied to every RM line.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label htmlFor="bom-level-sg" className="sr-only">BOM Specific Gravity</label>
+                          <input
+                            id="bom-level-sg"
+                            type="number"
+                            value={bomLevelSG}
+                            onChange={(e) => setBomLevelSG(e.target.value)}
+                            step="0.01"
+                            min="0.1"
+                            max="3"
+                            placeholder="1.00"
+                            className="w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            title="Specific gravity (vs water) for vessel volume — single BOM-level value"
+                          />
+                          <span className="text-xs text-gray-500">vs water</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                       FORMULA BOM ({bomFormula.length} RM ITEMS)
@@ -5190,23 +5439,31 @@ const Planning = () => {
                         <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200">
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-gray-900">{item.name}</p>
-                            <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {item.percentage}% · {item.phase ?? 'Phase A'}{item.specificGravity != null && item.specificGravity !== 1 ? ` · SG ${item.specificGravity}` : ''}</p>
+                            <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {item.percentage}% · {item.phase ?? 'Phase A'}</p>
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
-                            <input type="number" value={item.percentage} onChange={(e) => { const updated = [...bomFormula]; updated[idx] = { ...item, percentage: parseFloat(e.target.value) }; setBomFormula(updated); }} step="0.1" className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input
+                              type="number"
+                              value={item.percentage}
+                              onChange={(e) => { const updated = [...bomFormula]; updated[idx] = { ...item, percentage: parseFloat(e.target.value) }; setBomFormula(updated); }}
+                              step="0.1"
+                              readOnly={canSendToProduction}
+                              disabled={canSendToProduction}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                            />
                             <span className="text-sm font-semibold text-gray-600">%</span>
-                            <label className="flex items-center gap-1 text-xs text-gray-600">
-                              <span>SG</span>
-                              <input type="number" value={item.specificGravity ?? 1} onChange={(e) => { const updated = [...bomFormula]; updated[idx] = { ...item, specificGravity: parseFloat(e.target.value) || 1 }; setBomFormula(updated); }} step="0.01" min="0.1" max="3" className="w-14 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" title="Specific gravity (vs water) for vessel volume" />
-                            </label>
-                            <button onClick={() => setBomFormula(bomFormula.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                            {!canSendToProduction && (
+                              <button onClick={() => setBomFormula(bomFormula.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
-                      <span>+</span>Add RM via Swap Panel
-                    </button>
+                    {!canSendToProduction && (
+                      <button className="mt-4 text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
+                        <span>+</span>Add RM via Swap Panel
+                      </button>
+                    )}
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -5220,9 +5477,19 @@ const Planning = () => {
                             <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {idx === 0 ? 'Primary' : 'Secondary'}</p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <input type="number" value={item.value} onChange={(e) => { const updated = [...bomPackaging]; updated[idx] = { ...item, value: parseFloat(e.target.value) }; setBomPackaging(updated); }} step="0.1" className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input
+                              type="number"
+                              value={item.value}
+                              onChange={(e) => { const updated = [...bomPackaging]; updated[idx] = { ...item, value: parseFloat(e.target.value) }; setBomPackaging(updated); }}
+                              step="0.1"
+                              readOnly={canSendToProduction}
+                              disabled={canSendToProduction}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                            />
                             <span className="text-sm font-semibold text-gray-600">Qty/unit</span>
-                            <button onClick={() => setBomPackaging(bomPackaging.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                            {!canSendToProduction && (
+                              <button onClick={() => setBomPackaging(bomPackaging.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -5230,20 +5497,26 @@ const Planning = () => {
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-200">
                     {!canSendToProduction ? (
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmBOM()}
-                        disabled={!canConfirmBomPerBatch}
-                        title={
-                          canConfirmBomPerBatch
-                            ? 'Confirm BOM: available stock is reserved; raise POs for any gaps'
-                            : 'Add RM/PM lines in the BOM editor first'
-                        }
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${canConfirmBomPerBatch ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'
-                          }`}
-                      >
-                        Confirm BOM
-                      </button>
+                      (() => {
+                        const sgValid = Number.isFinite(Number(bomLevelSG)) && Number(bomLevelSG) > 0;
+                        const canConfirm = canConfirmBomPerBatch && sgValid;
+                        const disabledReason = !canConfirmBomPerBatch
+                          ? 'Add RM/PM lines in the BOM editor first'
+                          : !sgValid
+                            ? 'Enter a BOM Specific Gravity greater than 0'
+                            : 'Confirm BOM: available stock is reserved; raise POs for any gaps';
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmBOM()}
+                            disabled={!canConfirm}
+                            title={disabledReason}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${canConfirm ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          >
+                            Confirm BOM
+                          </button>
+                        );
+                      })()
                     ) : (
                       <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
                         BOM Confirmed

@@ -53,6 +53,10 @@ export interface PlanningExtractedRow {
   sentBatchIndices?: number[];
   batchCount?: number | null;
   customBatches?: { sizeKg: number }[] | null;
+  /** Single BOM-level Specific Gravity chosen at first-batch confirmation (null until BOM is confirmed). */
+  bomSpecificGravity?: number | null;
+  /** Timestamp when the planner confirmed BOM + SG; null means BOM is not yet confirmed. */
+  bomConfirmedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -93,7 +97,9 @@ export interface UpdatePlanningExtractedPayload {
   batchSizeKg?: number;
   plannedStartDate?: string;
   productionLine?: string;
-  bomConfirmedAt?: string;
+  bomConfirmedAt?: string | null;
+  /** Single BOM-level Specific Gravity (fans out to rm_lines[].specific_gravity on the backend). */
+  bomSpecificGravity?: number | null;
   customBatches?: CustomBatch[];
   sentBatchIndices?: number[];
 }
@@ -104,6 +110,7 @@ export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
   plannedStartDate?: string | null;
   productionLine?: string | null;
   bomConfirmedAt?: string | null;
+  bomSpecificGravity?: number | null;
   customBatches?: CustomBatch[] | null;
 }
 

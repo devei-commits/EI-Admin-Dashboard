@@ -2912,7 +2912,23 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
             type="number"
             min={qcType === 'bmr' ? 0.01 : 1}
             step={qcType === 'bmr' ? '0.01' : 1}
-            placeholder={qcType === 'bmr' ? `e.g. ${batch.batchSize} (planned batch size KG)` : 'Enter count'}
+            placeholder={(() => {
+              if (qcType === 'bmr') return `e.g. ${batch.batchSize} (planned batch size KG)`;
+              // BPR (fill / pack): mirror BMR's placeholder shape so users see the expected count
+              // derived from the actual BMR bulk yield (or planned batch size when bulk not yet recorded).
+              const plannedKg = Number(batch.batchSize) || 0;
+              const plannedUnits = Number(batch.orderQty) || 0;
+              const kgPerUnit = plannedKg > 0 && plannedUnits > 0 ? plannedKg / plannedUnits : 0;
+              const actualBulkKg =
+                batch.bulkYield != null && Number.isFinite(Number(batch.bulkYield)) && Number(batch.bulkYield) > 0
+                  ? Number(batch.bulkYield)
+                  : plannedKg;
+              const expectedUnits = kgPerUnit > 0 ? Math.round(actualBulkKg / kgPerUnit) : plannedUnits;
+              const sourceLabel = batch.bulkYield != null && Number(batch.bulkYield) > 0
+                ? 'actual bulk KG'
+                : 'planned batch KG';
+              return `e.g. ${expectedUnits} units (expected from ${actualBulkKg} ${sourceLabel})`;
+            })()}
             value={yieldVal}
             onChange={e => setYieldVal(e.target.value)}
           />

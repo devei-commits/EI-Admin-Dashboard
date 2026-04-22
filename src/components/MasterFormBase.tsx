@@ -165,19 +165,33 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
 
      {/* Right content card */}
      <main className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
-      {/* Section header with stage title */}
-      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-       <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
-        <h2 className="text-sm font-bold text-gray-800 truncate">
-         {stages[currentStage]}
-        </h2>
-        {primaryFields.length > 0 && currentStage === 0 && (
-         <span className="text-[11px] text-gray-500">
-          Primary fields drive derived data
-         </span>
-        )}
+     {/* Section header with stage title + Prev/Next (mirrors Packaging master) */}
+     <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+      <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
+       <h2 className="text-sm font-bold text-gray-800 truncate">
+        {stages[currentStage]}
+       </h2>
+       <div className="flex items-center gap-2 shrink-0">
+        <button
+         type="button"
+         onClick={() => onStageChange(Math.max(0, currentStage - 1))}
+         disabled={currentStage === 0}
+         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+         Previous
+        </button>
+        <button
+         type="button"
+         title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
+         onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
+         disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
+         className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+         Next
+        </button>
        </div>
       </div>
+     </div>
 
       {/* Body */}
       <div className="px-3 py-4 sm:px-4 sm:py-6">
@@ -204,26 +218,6 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           ))}
          </div>
         )}
-
-        {/* Navigation Buttons */}
-        <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-         <button
-          onClick={() => onStageChange(Math.max(0, currentStage - 1))}
-          disabled={currentStage === 0}
-          className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
-         >
-          Previous
-         </button>
-         <button
-          type="button"
-          title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
-          onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
-          disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-         >
-          Next
-         </button>
-        </div>
        </div>
       </div>
      </main>

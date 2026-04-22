@@ -636,22 +636,21 @@ const RawMaterialRefactored: React.FC = () => {
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Category (Industry Buckets)</h3>
-      <div>
-       <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
-       <select
-        id="rmCategoryKey"
-        value={formData.rmCategoryKey}
-        onChange={handleInputChange}
-        className="w-full max-w-xl p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-       >
-        <option value="">Select</option>
-        {Object.entries(RM_CATEGORIES).map(([k, v]) => (
-         <option key={k} value={k}>{v.label}</option>
-        ))}
-       </select>
-       <p className="text-xs text-gray-500 mt-1.5">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
-      </div>
-      <div className="mt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
+        <select
+         id="rmCategoryKey"
+         value={formData.rmCategoryKey}
+         onChange={handleInputChange}
+         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+         <option value="">Select</option>
+         {Object.entries(RM_CATEGORIES).map(([k, v]) => (
+          <option key={k} value={k}>{v.label}</option>
+         ))}
+        </select>
+       </div>
        <InputField
         label="Sub‑Category"
         id="subCategory"
@@ -661,6 +660,7 @@ const RawMaterialRefactored: React.FC = () => {
         requiredMark
        />
       </div>
+      <p className="text-xs text-gray-500 mt-2">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
      </div>
 
      <div>
@@ -710,88 +710,92 @@ const RawMaterialRefactored: React.FC = () => {
       readOnly={lockPrimaryFields}
      />
 
-     <div className="space-y-4 border-t border-gray-200 pt-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Identity</h3>
-    <InputField
-     label="INCI Name"
-     id="inciName"
-     value={formData.inciName}
-     onChange={handleInputChange}
-     placeholder="Official INCI name as per supplier / standard"
-     requiredMark
-     readOnly={lockPrimaryFields}
-    />
-    <InputField
-     label="Trade/Commercial Name"
-     id="tradeCommercialName"
-     value={formData.tradeCommercialName}
-     onChange={handleInputChange}
-     placeholder="What vendor calls this raw material"
-     requiredMark
-     readOnly={lockPrimaryFields}
-    />
-    <SelectField
-     label="Primary UoM"
-     id="primaryUom"
-     value={formData.primaryUom}
-     onChange={handleInputChange}
-     options={['KG', 'GM', 'L', 'ML']}
-     disabled={lockPrimaryFields}
-     requiredMark
-     error={errors.primaryUom}
-    />
-    <p className="text-xs text-gray-500 -mt-2">
-     Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) are derived from the product’s Specific Gravity at BOM confirmation — no manual conversion factor on the master.
-    </p>
+     <div className="border-t border-gray-200 pt-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+       <InputField
+        label="INCI Name"
+        id="inciName"
+        value={formData.inciName}
+        onChange={handleInputChange}
+        placeholder="Official INCI name as per supplier / standard"
+        requiredMark
+        readOnly={lockPrimaryFields}
+       />
+       <InputField
+        label="Trade/Commercial Name"
+        id="tradeCommercialName"
+        value={formData.tradeCommercialName}
+        onChange={handleInputChange}
+        placeholder="What vendor calls this raw material"
+        requiredMark
+        readOnly={lockPrimaryFields}
+       />
+       <SelectField
+        label="Primary UoM"
+        id="primaryUom"
+        value={formData.primaryUom}
+        onChange={handleInputChange}
+        options={['KG', 'GM', 'L', 'ML']}
+        disabled={lockPrimaryFields}
+        requiredMark
+        error={errors.primaryUom}
+       />
+      </div>
+      <p className="text-xs text-gray-500 mt-2">
+       Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) are derived from the product’s Specific Gravity at BOM confirmation — no manual conversion factor on the master.
+      </p>
      </div>
 
-     <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Tax Classification</h3>
-      <SelectField
-       label="Returnable Item"
-       id="rmReturnable"
-       value={formData.rmReturnable}
-       onChange={handleInputChange}
-       options={['Yes', 'No']}
-       disabled={lockPrimaryFields}
-       requiredMark
-       error={errors.rmReturnable}
-      />
-      <SelectField
-       label="Tax Preference"
-       id="rmTaxPreference"
-       value={formData.rmTaxPreference}
-       onChange={handleInputChange}
-       options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-       disabled={lockPrimaryFields}
-       requiredMark
-       error={errors.rmTaxPreference}
-      />
-      <p className="text-xs text-gray-500 -mt-2">
+     <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax Classification</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+       <SelectField
+        label="Returnable Item"
+        id="rmReturnable"
+        value={formData.rmReturnable}
+        onChange={handleInputChange}
+        options={['Yes', 'No']}
+        disabled={lockPrimaryFields}
+        requiredMark
+        error={errors.rmReturnable}
+       />
+       <SelectField
+        label="Tax Preference"
+        id="rmTaxPreference"
+        value={formData.rmTaxPreference}
+        onChange={handleInputChange}
+        options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
+        disabled={lockPrimaryFields}
+        requiredMark
+        error={errors.rmTaxPreference}
+       />
+       {taxIsTaxable ? (
+        <>
+         <InputField
+          label="HSN Code"
+          id="hsnCode"
+          value={formData.hsnCode}
+          onChange={handleInputChange}
+          placeholder="Tax classification code"
+          error={errors.hsnCode}
+          requiredMark
+         />
+         <SelectField
+          label="GST %"
+          id="gst"
+          value={formData.gst}
+          onChange={handleInputChange}
+          options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
+          requiredMark
+          error={errors.gst}
+         />
+        </>
+       ) : null}
+      </div>
+      <p className="text-xs text-gray-500 mt-2">
        Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
       </p>
-      {taxIsTaxable ? (
-       <>
-        <InputField
-         label="HSN Code"
-         id="hsnCode"
-         value={formData.hsnCode}
-         onChange={handleInputChange}
-         placeholder="Tax classification code"
-         error={errors.hsnCode}
-         requiredMark
-        />
-        <SelectField
-         label="GST %"
-         id="gst"
-         value={formData.gst}
-         onChange={handleInputChange}
-         options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
-         requiredMark
-         error={errors.gst}
-        />
-       </>
-      ) : null}
      </div>
 
     </div>
@@ -800,285 +804,344 @@ const RawMaterialRefactored: React.FC = () => {
 
    case 1: // Units & Procurement
     return (
-     <div className="space-y-4">
-    <InputField
-     label="Category label (derived)"
-     id="rmCategory"
-     value={formData.rmCategory}
-     onChange={handleInputChange}
-     placeholder="Updates when you pick RM Category above"
-     readOnly={lockPrimaryFields}
-    />
-    <InputField
-     label="Hazard Handling Class"
-     id="hazardHandlingClass"
-     value={formData.hazardHandlingClass}
-     onChange={handleInputChange}
-     placeholder="e.g. Flammable, Corrosive, General"
-    />
-    <InputField
-     label="Series Prefix (derived)"
-     id="seriesPrefix"
-     value={formData.seriesPrefix}
-     onChange={handleInputChange}
-     placeholder="From RM Category; editable if needed"
-    />
-    <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
-     <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Zoho Books</h3>
-     <p className="text-xs text-gray-500">
-      {isNewRm
-       ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
-       : 'Zoho item ID is read-only.'}
-     </p>
-     <InputField
-      label="SKU (for Zoho)"
-      id="sku"
-      value={formData.sku}
-      onChange={handleInputChange}
-      placeholder="Optional; defaults to RM SKU"
-      disabled={lockPrimaryFields}
-     />
-     <TextareaField
-      label="Associate Items"
-      id="rmAssociateItems"
-      value={formData.rmAssociateItems}
-      onChange={handleInputChange}
-      placeholder="Link related RM / PM / packaging codes if any"
-     />
-     <InputField
-      label="Zoho Item ID"
-      id="zohoId"
-      value={formData.zohoId}
-      onChange={() => {}}
-      placeholder="Populated from the server after save (when Books sync is on)"
-      readOnly
-     />
-     <p className="text-xs text-gray-500 -mt-1">Read-only — returned by the API after a successful save.</p>
-    </div>
-    <InputField
-     label="Standard Pack Size"
-     id="standardPackSize"
-     value={formData.standardPackSize}
-     onChange={handleInputChange}
-     placeholder="e.g. 25 KG bag, 200 KG drum"
-    />
-      <SelectField label="Preferred Currency" id="preferredCurrency" value={formData.preferredCurrency} onChange={handleInputChange}
-       options={['INR', 'USD', 'EUR', 'GBP']} />
+     <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Classification (Derived)</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Category label (derived)"
+         id="rmCategory"
+         value={formData.rmCategory}
+         onChange={handleInputChange}
+         placeholder="Updates when you pick RM Category above"
+         readOnly={lockPrimaryFields}
+        />
+        <InputField
+         label="Hazard Handling Class"
+         id="hazardHandlingClass"
+         value={formData.hazardHandlingClass}
+         onChange={handleInputChange}
+         placeholder="e.g. Flammable, Corrosive, General"
+        />
+        <InputField
+         label="Series Prefix (derived)"
+         id="seriesPrefix"
+         value={formData.seriesPrefix}
+         onChange={handleInputChange}
+         placeholder="From RM Category; editable if needed"
+        />
+       </div>
+      </div>
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Procurement</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Standard Pack Size"
+         id="standardPackSize"
+         value={formData.standardPackSize}
+         onChange={handleInputChange}
+         placeholder="e.g. 25 KG bag, 200 KG drum"
+        />
+        <SelectField
+         label="Preferred Currency"
+         id="preferredCurrency"
+         value={formData.preferredCurrency}
+         onChange={handleInputChange}
+         options={['INR', 'USD', 'EUR', 'GBP']}
+        />
+       </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
+       <p className="text-xs text-gray-500 mb-3">
+        {isNewRm
+         ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
+         : 'Zoho item ID is read-only.'}
+       </p>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="SKU (for Zoho)"
+         id="sku"
+         value={formData.sku}
+         onChange={handleInputChange}
+         placeholder="Optional; defaults to RM SKU"
+         disabled={lockPrimaryFields}
+        />
+        <InputField
+         label="Zoho Item ID"
+         id="zohoId"
+         value={formData.zohoId}
+         onChange={() => {}}
+         placeholder="Populated from the server after save (when Books sync is on)"
+         readOnly
+        />
+       </div>
+       <div className="mt-3">
+        <TextareaField
+         label="Associate Items"
+         id="rmAssociateItems"
+         value={formData.rmAssociateItems}
+         onChange={handleInputChange}
+         placeholder="Link related RM / PM / packaging codes if any"
+        />
+       </div>
+       <p className="text-xs text-gray-500 mt-2">Zoho Item ID is read-only — returned by the API after a successful save.</p>
+      </div>
      </div>
     );
 
    case 2: // Technical & Regulatory
     return (
-     <div className="space-y-4">
-      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4 bg-gray-50/50">
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — classification</h3>
-       <p className="text-xs text-gray-500 -mt-2">Not required to create the RM; complete when available.</p>
-       <InputField
-        label="Grade"
-        id="grade"
-        value={formData.grade}
-        onChange={handleInputChange}
-        placeholder="e.g. Cosmetic Grade, Pharma Grade"
-       />
-       <InputField
-        label="Compliance/Certificate"
-        id="compliance"
-        value={formData.compliance}
-        onChange={handleInputChange}
-        placeholder="e.g. COSMOS, ECOCERT, RSPO"
-       />
-       <InputField
-        label="Accounting Category"
-        id="accountingCategory"
-        value={formData.accountingCategory}
-        onChange={handleInputChange}
-        placeholder="ERP / finance category mapping"
-       />
+     <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 bg-gray-50/50">
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — Classification</h3>
+       <p className="text-xs text-gray-500 mb-3">Not required to create the RM; complete when available.</p>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Grade"
+         id="grade"
+         value={formData.grade}
+         onChange={handleInputChange}
+         placeholder="e.g. Cosmetic Grade, Pharma Grade"
+        />
+        <InputField
+         label="Compliance/Certificate"
+         id="compliance"
+         value={formData.compliance}
+         onChange={handleInputChange}
+         placeholder="e.g. COSMOS, ECOCERT, RSPO"
+        />
+        <InputField
+         label="Accounting Category"
+         id="accountingCategory"
+         value={formData.accountingCategory}
+         onChange={handleInputChange}
+         placeholder="ERP / finance category mapping"
+        />
+       </div>
       </div>
-      <InputField
-       label="Function/Role"
-       id="functionRole"
-       value={formData.functionRole}
-       onChange={handleInputChange}
-       placeholder="e.g. Emulsifier, Preservative, Fragrance"
-      />
-      <InputField
-       label="Type"
-       id="rmType"
-       value={formData.rmType}
-       onChange={handleInputChange}
-       placeholder="e.g. Liquid, Powder, Paste"
-      />
-      <InputField
-       label="CAS Number"
-       id="casNo"
-       value={formData.casNo}
-       onChange={handleInputChange}
-       placeholder="e.g. 9004-99-3"
-      />
-      <InputField
-       label="EINECS Number"
-       id="einecs"
-       value={formData.einecs}
-       onChange={handleInputChange}
-       placeholder="If applicable"
-      />
-      <InputField
-       label="Country of Origin"
-       id="countryOfOrigin"
-       value={formData.countryOfOrigin}
-       onChange={handleInputChange}
-       placeholder="e.g. India, France"
-      />
-      <InputField
-       label="Manufacturer"
-       id="manufacturer"
-       value={formData.manufacturer}
-       onChange={handleInputChange}
-       placeholder="Manufacturer / principal supplier"
-      />
-      <TextareaField
-       label="Synonyms"
-       id="synonyms"
-       value={formData.synonyms}
-       onChange={handleInputChange}
-       placeholder="Other names used internally or by vendors"
-      />
-      <TextareaField
-       label="Internal Notes"
-       id="internalNotes"
-       value={formData.internalNotes}
-       onChange={handleInputChange}
-       placeholder="Any internal-only remarks for R&D, QC, or Purchase"
-      />
-      <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
-      <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
-      <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable} onChange={handleInputChange} />
-      <CheckboxField label="CoA Available" id="coaAvailable" checked={formData.coaAvailable} onChange={handleInputChange} />
-    <TextareaField
-     label="Regulatory Notes"
-     id="regulatoryNotes"
-     value={formData.regulatoryNotes}
-     onChange={handleInputChange}
-     placeholder="Any specific restrictions, region notes, or regulatory info"
-    />
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Technical Identity</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Function/Role"
+         id="functionRole"
+         value={formData.functionRole}
+         onChange={handleInputChange}
+         placeholder="e.g. Emulsifier, Preservative, Fragrance"
+        />
+        <InputField
+         label="Type"
+         id="rmType"
+         value={formData.rmType}
+         onChange={handleInputChange}
+         placeholder="e.g. Liquid, Powder, Paste"
+        />
+        <InputField
+         label="CAS Number"
+         id="casNo"
+         value={formData.casNo}
+         onChange={handleInputChange}
+         placeholder="e.g. 9004-99-3"
+        />
+        <InputField
+         label="EINECS Number"
+         id="einecs"
+         value={formData.einecs}
+         onChange={handleInputChange}
+         placeholder="If applicable"
+        />
+        <InputField
+         label="Country of Origin"
+         id="countryOfOrigin"
+         value={formData.countryOfOrigin}
+         onChange={handleInputChange}
+         placeholder="e.g. India, France"
+        />
+        <InputField
+         label="Manufacturer"
+         id="manufacturer"
+         value={formData.manufacturer}
+         onChange={handleInputChange}
+         placeholder="Manufacturer / principal supplier"
+        />
+       </div>
+      </div>
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Notes</h3>
+       <div className="space-y-3">
+        <TextareaField
+         label="Synonyms"
+         id="synonyms"
+         value={formData.synonyms}
+         onChange={handleInputChange}
+         placeholder="Other names used internally or by vendors"
+        />
+        <TextareaField
+         label="Internal Notes"
+         id="internalNotes"
+         value={formData.internalNotes}
+         onChange={handleInputChange}
+         placeholder="Any internal-only remarks for R&D, QC, or Purchase"
+        />
+        <TextareaField
+         label="Regulatory Notes"
+         id="regulatoryNotes"
+         value={formData.regulatoryNotes}
+         onChange={handleInputChange}
+         placeholder="Any specific restrictions, region notes, or regulatory info"
+        />
+       </div>
+      </div>
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Regulatory Flags</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
+        <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
+        <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable} onChange={handleInputChange} />
+        <CheckboxField label="CoA Available" id="coaAvailable" checked={formData.coaAvailable} onChange={handleInputChange} />
+       </div>
+      </div>
      </div>
     );
 
    case 3: // Quality Specifications
     return (
-     <div className="space-y-4">
-    <InputField
-     label="Assay/Purity %"
-     id="assayPurity"
-     value={formData.assayPurity}
-     onChange={handleInputChange}
-     placeholder="e.g. NLT 98%"
-    />
-    <InputField
-     label="Appearance Spec"
-     id="appearanceSpec"
-     value={formData.appearanceSpec}
-     onChange={handleInputChange}
-     placeholder="e.g. Clear, colourless liquid"
-    />
-    <InputField
-     label="pH Range"
-     id="phSpec"
-     value={formData.phSpec}
-     onChange={handleInputChange}
-     placeholder="e.g. 5.0 – 7.0"
-    />
-    <InputField
-     label="Moisture / LOD %"
-     id="moistureLod"
-     value={formData.moistureLod}
-     onChange={handleInputChange}
-     placeholder="e.g. NMT 2%"
-    />
-    <InputField
-     label="Heavy Metals Spec"
-     id="heavyMetalsSpec"
-     value={formData.heavyMetalsSpec}
-     onChange={handleInputChange}
-     placeholder="e.g. Pb, As, Cd limits"
-    />
-    <InputField
-     label="Microbial Spec"
-     id="microbialSpec"
-     value={formData.microbialSpec}
-     onChange={handleInputChange}
-     placeholder="e.g. TAMC / TYMC limits"
-    />
-    <InputField
-     label="Odor & Color Spec"
-     id="odorColorSpec"
-     value={formData.odorColorSpec}
-     onChange={handleInputChange}
-     placeholder="e.g. Characteristic odour, pale yellow"
-    />
-    <TextareaField
-     label="Other Specifications"
-     id="otherSpecs"
-     value={formData.otherSpecs}
-     onChange={handleInputChange}
-     placeholder="Any additional quality criteria"
-    />
+     <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Assay/Purity %"
+         id="assayPurity"
+         value={formData.assayPurity}
+         onChange={handleInputChange}
+         placeholder="e.g. NLT 98%"
+        />
+        <InputField
+         label="Appearance Spec"
+         id="appearanceSpec"
+         value={formData.appearanceSpec}
+         onChange={handleInputChange}
+         placeholder="e.g. Clear, colourless liquid"
+        />
+        <InputField
+         label="pH Range"
+         id="phSpec"
+         value={formData.phSpec}
+         onChange={handleInputChange}
+         placeholder="e.g. 5.0 – 7.0"
+        />
+        <InputField
+         label="Moisture / LOD %"
+         id="moistureLod"
+         value={formData.moistureLod}
+         onChange={handleInputChange}
+         placeholder="e.g. NMT 2%"
+        />
+        <InputField
+         label="Heavy Metals Spec"
+         id="heavyMetalsSpec"
+         value={formData.heavyMetalsSpec}
+         onChange={handleInputChange}
+         placeholder="e.g. Pb, As, Cd limits"
+        />
+        <InputField
+         label="Microbial Spec"
+         id="microbialSpec"
+         value={formData.microbialSpec}
+         onChange={handleInputChange}
+         placeholder="e.g. TAMC / TYMC limits"
+        />
+        <InputField
+         label="Odor & Color Spec"
+         id="odorColorSpec"
+         value={formData.odorColorSpec}
+         onChange={handleInputChange}
+         placeholder="e.g. Characteristic odour, pale yellow"
+        />
+       </div>
+       <div className="mt-3">
+        <TextareaField
+         label="Other Specifications"
+         id="otherSpecs"
+         value={formData.otherSpecs}
+         onChange={handleInputChange}
+         placeholder="Any additional quality criteria"
+        />
+       </div>
+      </div>
      </div>
     );
 
    case 4: // Usage in Formulation
     return (
-     <div className="space-y-4">
-    <InputField
-     label="Recommended Use Level %"
-     id="recommendedUseLevel"
-     value={formData.recommendedUseLevel}
-     onChange={handleInputChange}
-     placeholder="e.g. 1.0 – 3.0"
-    />
-    <InputField
-     label="Max Use Level %"
-     id="maxUseLevel"
-     value={formData.maxUseLevel}
-     onChange={handleInputChange}
-     placeholder="Absolute maximum allowed in formula"
-    />
-    <InputField
-     label="Solubility (in what?)"
-     id="solubility"
-     value={formData.solubility}
-     onChange={handleInputChange}
-     placeholder="e.g. Soluble in oils / water / glycols"
-    />
-    <TextareaField
-     label="Processing Guidance"
-     id="processingGuidance"
-     value={formData.processingGuidance}
-     onChange={handleInputChange}
-     placeholder="Order of addition, temperature, special handling"
-    />
-    <TextareaField
-     label="Incompatibilities"
-     id="incompatibilities"
-     value={formData.incompatibilities}
-     onChange={handleInputChange}
-     placeholder="Actives, pH ranges, or other materials to avoid"
-    />
-    <TextareaField
-     label="Stability Notes"
-     id="stabilityNotes"
-     value={formData.stabilityNotes}
-     onChange={handleInputChange}
-     placeholder="Known stability observations from vendor / internal data"
-    />
-    <TextareaField
-     label="Claims Supported"
-     id="claims"
-     value={formData.claims}
-     onChange={handleInputChange}
-     placeholder="e.g. Moisturizing, anti-aging, anti-dandruff (with evidence)"
-    />
+     <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Use Levels</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Recommended Use Level %"
+         id="recommendedUseLevel"
+         value={formData.recommendedUseLevel}
+         onChange={handleInputChange}
+         placeholder="e.g. 1.0 – 3.0"
+        />
+        <InputField
+         label="Max Use Level %"
+         id="maxUseLevel"
+         value={formData.maxUseLevel}
+         onChange={handleInputChange}
+         placeholder="Absolute maximum allowed in formula"
+        />
+        <InputField
+         label="Solubility (in what?)"
+         id="solubility"
+         value={formData.solubility}
+         onChange={handleInputChange}
+         placeholder="e.g. Soluble in oils / water / glycols"
+        />
+       </div>
+      </div>
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Formulation Notes</h3>
+       <div className="space-y-3">
+        <TextareaField
+         label="Processing Guidance"
+         id="processingGuidance"
+         value={formData.processingGuidance}
+         onChange={handleInputChange}
+         placeholder="Order of addition, temperature, special handling"
+        />
+        <TextareaField
+         label="Incompatibilities"
+         id="incompatibilities"
+         value={formData.incompatibilities}
+         onChange={handleInputChange}
+         placeholder="Actives, pH ranges, or other materials to avoid"
+        />
+        <TextareaField
+         label="Stability Notes"
+         id="stabilityNotes"
+         value={formData.stabilityNotes}
+         onChange={handleInputChange}
+         placeholder="Known stability observations from vendor / internal data"
+        />
+        <TextareaField
+         label="Claims Supported"
+         id="claims"
+         value={formData.claims}
+         onChange={handleInputChange}
+         placeholder="e.g. Moisturizing, anti-aging, anti-dandruff (with evidence)"
+        />
+       </div>
+      </div>
      </div>
     );
 
@@ -1147,108 +1210,122 @@ const RawMaterialRefactored: React.FC = () => {
 
    case 7: // Inventory, Storage & WH
     return (
-     <div className="space-y-4">
-      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4 bg-gray-50/50">
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — QC & default storage</h3>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
-        <select
-         id="qcInspectionGroup"
-         value={formData.qcInspectionGroup}
+     <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 bg-gray-50/50">
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — QC & Default Storage</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+         <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
+         <select
+          id="qcInspectionGroup"
+          value={formData.qcInspectionGroup}
+          onChange={handleInputChange}
+          className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+         >
+          <option value="">Select</option>
+          {RM_QC_GROUPS.map((g) => (
+           <option key={g} value={g}>{g}</option>
+          ))}
+         </select>
+        </div>
+        <div>
+         <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
+         <select
+          id="rmDefaultStorageType"
+          value={formData.rmDefaultStorageType}
+          onChange={handleInputChange}
+          className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+         >
+          <option value="">Select</option>
+          {RM_STORAGE_TYPES.map((s) => (
+           <option key={s} value={s}>{s}</option>
+          ))}
+         </select>
+        </div>
+        <InputField
+         label="Issue UoM"
+         id="issueUom"
+         value={formData.issueUom}
          onChange={handleInputChange}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-         <option value="">Select</option>
-         {RM_QC_GROUPS.map((g) => (
-          <option key={g} value={g}>{g}</option>
-         ))}
-        </select>
+         placeholder="Unit in which material is issued"
+        />
        </div>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
-        <select
-         id="rmDefaultStorageType"
-         value={formData.rmDefaultStorageType}
-         onChange={handleInputChange}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-         <option value="">Select</option>
-         {RM_STORAGE_TYPES.map((s) => (
-          <option key={s} value={s}>{s}</option>
-         ))}
-        </select>
-       </div>
-       <InputField
-        label="Issue UoM"
-        id="issueUom"
-        value={formData.issueUom}
-        onChange={handleInputChange}
-        placeholder="Unit in which material is issued"
-       />
       </div>
-    <TextareaField
-     label="Storage Conditions"
-     id="storageConditions"
-     value={formData.storageConditions}
-     onChange={handleInputChange}
-     placeholder="e.g. Store below 25°C, protect from light"
-    />
-    <InputField
-     label="Shelf Life"
-     id="shelfLife"
-     value={formData.shelfLife}
-     onChange={handleInputChange}
-     placeholder="e.g. 24 months from DOM"
-    />
-    <InputField
-     label="Re-test Period"
-     id="retestPeriod"
-     value={formData.retestPeriod}
-     onChange={handleInputChange}
-     placeholder="e.g. 12 months"
-    />
-    <InputField
-     label="Warehouse Location"
-     id="warehouseLocation"
-     value={formData.warehouseLocation}
-     onChange={handleInputChange}
-     placeholder="Default bin / rack / zone"
-    />
-    <InputField
-     label="Batch Tracking Required"
-     id="batchTracking"
-     value={formData.batchTracking}
-     onChange={handleInputChange}
-     placeholder="e.g. Batch-wise, Lot-wise, Not required"
-    />
-    <InputField
-     label="FIFO / FEFO"
-     id="fifoFefo"
-     value={formData.fifoFefo}
-     onChange={handleInputChange}
-     placeholder="Policy used in WH (e.g. FIFO / FEFO)"
-    />
-    <InputField
-     label="Minimum Stock"
-     id="minimumStock"
-     value={formData.minimumStock}
-     onChange={handleInputChange}
-     placeholder="Trigger level for planning / purchase"
-    />
-    <InputField
-     label="Reorder Level"
-     id="reorderLevel"
-     value={formData.reorderLevel}
-     onChange={handleInputChange}
-     placeholder="When replenishment must be initiated"
-    />
-    <TextareaField
-     label="Handling Notes"
-     id="handlingNotes"
-     value={formData.handlingNotes}
-     onChange={handleInputChange}
-     placeholder="Special handling instructions for stores / production"
-    />
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Storage & Shelf Life</h3>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <InputField
+         label="Shelf Life"
+         id="shelfLife"
+         value={formData.shelfLife}
+         onChange={handleInputChange}
+         placeholder="e.g. 24 months from DOM"
+        />
+        <InputField
+         label="Re-test Period"
+         id="retestPeriod"
+         value={formData.retestPeriod}
+         onChange={handleInputChange}
+         placeholder="e.g. 12 months"
+        />
+        <InputField
+         label="Warehouse Location"
+         id="warehouseLocation"
+         value={formData.warehouseLocation}
+         onChange={handleInputChange}
+         placeholder="Default bin / rack / zone"
+        />
+        <InputField
+         label="Batch Tracking Required"
+         id="batchTracking"
+         value={formData.batchTracking}
+         onChange={handleInputChange}
+         placeholder="e.g. Batch-wise, Lot-wise, Not required"
+        />
+        <InputField
+         label="FIFO / FEFO"
+         id="fifoFefo"
+         value={formData.fifoFefo}
+         onChange={handleInputChange}
+         placeholder="Policy used in WH (e.g. FIFO / FEFO)"
+        />
+        <InputField
+         label="Minimum Stock"
+         id="minimumStock"
+         value={formData.minimumStock}
+         onChange={handleInputChange}
+         placeholder="Trigger level for planning / purchase"
+        />
+        <InputField
+         label="Reorder Level"
+         id="reorderLevel"
+         value={formData.reorderLevel}
+         onChange={handleInputChange}
+         placeholder="When replenishment must be initiated"
+        />
+       </div>
+      </div>
+
+      <div>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Handling Notes</h3>
+       <div className="space-y-3">
+        <TextareaField
+         label="Storage Conditions"
+         id="storageConditions"
+         value={formData.storageConditions}
+         onChange={handleInputChange}
+         placeholder="e.g. Store below 25°C, protect from light"
+        />
+        <TextareaField
+         label="Handling Notes"
+         id="handlingNotes"
+         value={formData.handlingNotes}
+         onChange={handleInputChange}
+         placeholder="Special handling instructions for stores / production"
+        />
+       </div>
+      </div>
      </div>
     );
 
