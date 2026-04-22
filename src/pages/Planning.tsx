@@ -1063,25 +1063,44 @@ const Planning = () => {
     })));
   }, [selectedBatchId, selectedBatchData]);
 
+  /**
+   * Sum of kg already committed by sent batches. Memoized so that edits to UNSENT batches
+   * (which don't affect "remaining after sent batches") do not cause the preview-qty sync
+   * effect below to re-fire and overwrite the user's working preview quantity — that was
+   * causing "Pending to plan" to flicker while typing in Preview qty (Effect A ↔ Effect B
+   * feedback loop through `customBatches`).
+   */
+  const sentKgForPlanBatches = useMemo(() => {
+    if (!selectedSOForBatch) return 0;
+    const sent = selectedSOForBatch.sentBatchIndices ?? [];
+    if (sent.length === 0) return 0;
+    return customBatches.reduce(
+      (sum, b, idx) => (sent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
+      0
+    );
+  }, [customBatches, selectedSOForBatch?.sentBatchIndices, selectedSOForBatch]);
+
   // Sync preview qty to "remaining after sent batches" (falls back to order qty when nothing sent yet).
   useEffect(() => {
     if (!selectedSOForBatch) return;
     const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
     const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-    const sent = selectedSOForBatch.sentBatchIndices ?? [];
-    const sentKg = customBatches.reduce(
-      (sum, b, idx) => (sent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
-      0
-    );
-    const remainingKg = Math.max(0, totalKgNum - sentKg);
+    const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
     if (orderQtyNum <= 0 || totalKgNum <= 0) {
-      setFeasibilityPreviewQty(orderQtyNum);
+      setFeasibilityPreviewQty((prev) => (prev === orderQtyNum ? prev : orderQtyNum));
       return;
     }
     const kgPerUnit = totalKgNum / orderQtyNum;
     const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : orderQtyNum;
-    setFeasibilityPreviewQty(Math.max(0, remainingUnits));
-  }, [selectedSOForBatch?.id, selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg, selectedSOForBatch?.sentBatchIndices, customBatches]);
+    const next = Math.max(0, remainingUnits);
+    setFeasibilityPreviewQty((prev) => (prev === next ? prev : next));
+  }, [
+    selectedSOForBatch?.id,
+    selectedSOForBatch?.orderQty,
+    selectedSOForBatch?.totalKg,
+    selectedSOForBatch,
+    sentKgForPlanBatches,
+  ]);
 
   const kgPerUnitForPlanBatches = useMemo(() => {
     const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;

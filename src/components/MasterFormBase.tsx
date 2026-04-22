@@ -153,13 +153,13 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
          } ${disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
         >
-         {idx}) {stage}
+         {idx + 1}) {stage}
         </button>
         );
        })}
       </nav>
       <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
-       {currentStage}) · {stages.length} sections
+       {currentStage + 1}) {stages.length} sections
       </div>
      </aside>
 

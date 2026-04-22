@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { UnifiedButton, UnifiedLabel, UnifiedCard } from '../ui';
-import PermissionMatrix from './PermissionMatrix';
+import DepartmentPermissionMatrix from './DepartmentPermissionMatrix';
 import {
  ModulePermission,
  GlobalSettings,
@@ -11,256 +11,298 @@ import {
 import { flattenPermissionsToGranted } from './types/permissionKeys';
 import { createRole as createRoleApi } from '../../services/role.service';
 
+const ROLE_HIERARCHY: Record<string, string[]> = {
+ admin: ['Super Admin', 'Admin'],
+ manager: ['BD Manager', 'R&D Manager', 'QA Manager'],
+ staff: [
+  'BD Staff',
+  'R&D Staff',
+  'QA Staff',
+  'Sales',
+  'Design',
+  'Procurement',
+  'Manufacturing and Production',
+  'Logistics',
+ ],
+ client: ['Doctor', 'Customer'],
+};
+const ROLE_LEVELS = Object.keys(ROLE_HIERARCHY);
+
+const toRoleCode = (name: string): string =>
+ name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+interface CreateRoleSummary {
+ successes: string[];
+ failures: Array<{ department: string; message: string }>;
+}
+
+const cloneDefaults = (): ModulePermission[] =>
+ JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)) as ModulePermission[];
+
 const CreateRole: React.FC = () => {
  const [formData, setFormData] = useState({
-  roleName: '',
   roleLevel: '',
   roleStatus: 'active' as 'active' | 'inactive',
-  description: ''
- });
-
- // Deep clone default permissions for state
- const [permissions, setPermissions] = useState<ModulePermission[]>(
-  JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS))
- );
-
- const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
-  ...DEFAULT_GLOBAL_SETTINGS
+  description: '',
  });
 
  const [activeStep, setActiveStep] = useState<'basic' | 'permissions'>('basic');
 
- const roleLevels = ['admin', 'manager', 'staff', 'client'];
+ // Per-department permission trees. Keyed by department name (role_name).
+ const [permissionsByDept, setPermissionsByDept] = useState<Record<string, ModulePermission[]>>({});
+ const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({ ...DEFAULT_GLOBAL_SETTINGS });
+ // Which departments are included in the bulk save. Defaults to all selected.
+ const [includedDepts, setIncludedDepts] = useState<Set<string>>(new Set());
 
- const roleHierarchy = {
-  admin: ['Super Admin', 'Admin'],
-  manager: ['BD Manager', 'R&D Manager', 'QA Manager'],
-  staff: [
-   'BD Staff', 'R&D Staff', 'QA Staff', 'Sales', 'Design', 
-   'Procurement', 'Manufacturing and Production', 'Logistics'
-  ],
-  client: ['Doctor', 'Customer']
- };
+ const departments = useMemo(
+  () => (formData.roleLevel ? ROLE_HIERARCHY[formData.roleLevel] ?? [] : []),
+  [formData.roleLevel]
+ );
+
+ // Re-seed per-department state whenever level changes. Admin gets full access; others get blank defaults.
+ useEffect(() => {
+  if (!formData.roleLevel) {
+   setPermissionsByDept({});
+   setIncludedDepts(new Set());
+   setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
+   return;
+  }
+  const seed: Record<string, ModulePermission[]> = {};
+  for (const dept of departments) {
+   seed[dept] =
+    formData.roleLevel === 'admin' ? createFullAccessPermissions() : cloneDefaults();
+  }
+  setPermissionsByDept(seed);
+  setIncludedDepts(new Set(departments));
+  if (formData.roleLevel === 'admin') {
+   setGlobalSettings({
+    ...DEFAULT_GLOBAL_SETTINGS,
+    accessToAllModules: true,
+    allowLogin: true,
+    allowMultipleSessions: true,
+    canChangePassword: true,
+    enableAuditLog: true,
+    canExportData: true,
+    canImportData: true,
+    canAccessReports: true,
+    canAccessSettings: true,
+   });
+  } else {
+   setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
+  }
+ }, [formData.roleLevel, departments]);
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { name, value } = e.target;
-  setFormData(prev => ({ ...prev, [name]: value }));
+  setFormData((prev) => ({ ...prev, [name]: value }));
+ };
 
-  // Auto-set permissions based on role level
-  if (name === 'roleLevel') {
-   if (value === 'admin') {
-    // Full access for admin roles
-    setPermissions(createFullAccessPermissions());
-    setGlobalSettings({
-     ...DEFAULT_GLOBAL_SETTINGS,
-     accessToAllModules: true,
-     allowLogin: true,
-     allowMultipleSessions: true,
-     canChangePassword: true,
-     enableAuditLog: true,
-     canExportData: true,
-     canImportData: true,
-     canAccessReports: true,
-     canAccessSettings: true,
-    });
-   } else {
-    // Reset to default for other levels
-    setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
-    setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
-   }
-  }
+ const handleDeptPermissionsChange = (dept: string, next: ModulePermission[]) => {
+  setPermissionsByDept((prev) => ({ ...prev, [dept]: next }));
+ };
+
+ const handleIncludeChange = (dept: string, include: boolean) => {
+  setIncludedDepts((prev) => {
+   const next = new Set(prev);
+   if (include) next.add(dept);
+   else next.delete(dept);
+   return next;
+  });
  };
 
  const [submitting, setSubmitting] = useState(false);
  const [submitError, setSubmitError] = useState<string | null>(null);
+ const [lastResult, setLastResult] = useState<CreateRoleSummary | null>(null);
 
- const createRoleWithPermissions = async () => {
+ const createRolesBulk = async () => {
   setSubmitError(null);
-  setSubmitting(true);
-  const roleCode = formData.roleName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-  if (!roleCode) {
-   setSubmitError('Role name must contain at least one letter or number.');
-   setSubmitting(false);
+  setLastResult(null);
+  if (!formData.roleLevel) {
+   setSubmitError('Pick a Role Level first.');
    return;
   }
-  try {
-   const { granted, globalSettings: gs } = flattenPermissionsToGranted(permissions, globalSettings);
-   await createRoleApi({
-    role_code: roleCode,
-    role_name: formData.roleName,
-    description: formData.description || undefined,
-    level: formData.roleLevel,
-    status: formData.roleStatus,
-    permissions: { granted, globalSettings: gs },
-   });
-   setFormData({ roleName: '', roleLevel: '', roleStatus: 'active', description: '' });
-   setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS)));
-   setGlobalSettings({ ...DEFAULT_GLOBAL_SETTINGS });
+  const toCreate = departments.filter((d) => includedDepts.has(d));
+  if (toCreate.length === 0) {
+   setSubmitError('Select at least one department to save.');
+   return;
+  }
+  setSubmitting(true);
+  const result: CreateRoleSummary = { successes: [], failures: [] };
+  for (const dept of toCreate) {
+   const tree = permissionsByDept[dept] ?? cloneDefaults();
+   const { granted, globalSettings: gs } = flattenPermissionsToGranted(tree, globalSettings);
+   const roleCode = toRoleCode(dept);
+   if (!roleCode) {
+    result.failures.push({ department: dept, message: 'Invalid role code.' });
+    continue;
+   }
+   try {
+    await createRoleApi({
+     role_code: roleCode,
+     role_name: dept,
+     description: formData.description || undefined,
+     level: formData.roleLevel,
+     status: formData.roleStatus,
+     permissions: { granted, globalSettings: gs },
+    });
+    result.successes.push(dept);
+   } catch (err) {
+    result.failures.push({
+     department: dept,
+     message: err instanceof Error ? err.message : 'Request failed (role code may already exist).',
+    });
+   }
+  }
+  setSubmitting(false);
+  setLastResult(result);
+  if (result.successes.length > 0 && result.failures.length === 0) {
+   setFormData({ roleLevel: '', roleStatus: 'active', description: '' });
    setActiveStep('basic');
-   alert('Role created successfully! View it in the "View Roles" tab.');
-  } catch (err) {
-   setSubmitError(err instanceof Error ? err.message : 'Failed to create role. Role code may already exist.');
-  } finally {
-   setSubmitting(false);
   }
  };
 
- const handleFormSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
- };
-
- const getAvailableRoles = () => {
-  if (formData.roleLevel) {
-   return roleHierarchy[formData.roleLevel as keyof typeof roleHierarchy] || [];
-  }
-  return [];
- };
-
- const isBasicInfoComplete = formData.roleName && formData.roleLevel;
+ const isBasicInfoComplete = Boolean(formData.roleLevel);
 
  return (
   <div className="w-full max-w-7xl">
-   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-4 sm:mb-6 tracking-tight">Create New Role</h2>
-   
-   {/* Step Indicator - Responsive */}
+   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-4 sm:mb-6 tracking-tight">
+    Create Roles (bulk by level)
+   </h2>
+
+   {/* Step indicator */}
    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-0 mb-6 sm:mb-8 p-4 bg-gray-50 rounded-xl sm:bg-transparent sm:p-0">
-    {/* Step 1 */}
     <div className="flex items-center">
-     <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
-      activeStep === 'basic' ? 'bg-slate-800 text-white' : 'bg-emerald-500 text-white'
-     }`}>
+     <div
+      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
+       activeStep === 'basic' ? 'bg-slate-800 text-white' : 'bg-emerald-500 text-white'
+      }`}
+     >
       {activeStep === 'permissions' ? (
        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
        </svg>
-      ) : '1'}
+      ) : (
+       '1'
+      )}
      </div>
-     <span className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${activeStep === 'basic' ? 'text-slate-800' : 'text-gray-600'}`}>
+     <span
+      className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${
+       activeStep === 'basic' ? 'text-slate-800' : 'text-gray-600'
+      }`}
+     >
       Basic Information
      </span>
     </div>
-    
-    {/* Progress Line - Horizontal on desktop, Vertical on mobile */}
     <div className="hidden sm:block flex-1 h-1 mx-4 bg-gray-200 rounded">
-     <div className={`h-full bg-slate-800 rounded transition-all duration-300 ${
-      activeStep === 'permissions' ? 'w-full' : 'w-0'
-     }`} />
+     <div
+      className={`h-full bg-slate-800 rounded transition-all duration-300 ${
+       activeStep === 'permissions' ? 'w-full' : 'w-0'
+      }`}
+     />
     </div>
-
-    {/* Mobile progress indicator */}
     <div className="sm:hidden w-0.5 h-6 bg-gray-200 ml-4 -my-1">
-     <div className={`w-full bg-slate-800 transition-all duration-300 ${
-      activeStep === 'permissions' ? 'h-full' : 'h-0'
-     }`} />
+     <div
+      className={`w-full bg-slate-800 transition-all duration-300 ${
+       activeStep === 'permissions' ? 'h-full' : 'h-0'
+      }`}
+     />
     </div>
-    
-    {/* Step 2 */}
     <div className="flex items-center">
-     <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
-      activeStep === 'permissions' ? 'bg-slate-800 text-white' : 'bg-gray-200 text-gray-500'
-     }`}>
+     <div
+      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
+       activeStep === 'permissions' ? 'bg-slate-800 text-white' : 'bg-gray-200 text-gray-500'
+      }`}
+     >
       2
      </div>
-     <span className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${activeStep === 'permissions' ? 'text-slate-800' : 'text-gray-400'}`}>
+     <span
+      className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${
+       activeStep === 'permissions' ? 'text-slate-800' : 'text-gray-400'
+      }`}
+     >
       Configure Permissions
      </span>
     </div>
    </div>
 
-   <form onSubmit={handleFormSubmit}>
-    {/* Step 1: Basic Information */}
+   <form onSubmit={(e) => e.preventDefault()}>
     {activeStep === 'basic' && (
      <UnifiedCard>
-      <h3 className="text-sm sm:text-md font-semibold text-gray-800 mb-4 sm:mb-6 uppercase tracking-wider">Role Information</h3>
+      <h3 className="text-sm sm:text-md font-semibold text-gray-800 mb-4 sm:mb-6 uppercase tracking-wider">
+       Role Information
+      </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-       {/* Role Level */}
        <div>
         <UnifiedLabel>Role Level</UnifiedLabel>
         <select
          name="roleLevel"
          value={formData.roleLevel}
          onChange={handleInputChange}
-         className="w-full px-4 sm:px-5 py-2.5 sm:py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide text-base"
+         className="w-full px-4 sm:px-5 py-2.5 sm:py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 bg-gray-50/50 text-base"
          required
         >
          <option value="">Select Role Level</option>
-         {roleLevels.map((level) => (
+         {ROLE_LEVELS.map((level) => (
           <option key={level} value={level}>
            {level.charAt(0).toUpperCase() + level.slice(1)}
           </option>
          ))}
         </select>
         <p className="mt-1 text-sm text-gray-500">
-         {formData.roleLevel === 'admin' && 'Admin roles have full system access by default'}
-         {formData.roleLevel === 'manager' && 'Manager roles have team management capabilities'}
-         {formData.roleLevel === 'staff' && 'Staff roles have limited access based on permissions'}
-         {formData.roleLevel === 'client' && 'Client roles have external access only'}
+         {formData.roleLevel === 'admin' && 'Admin levels get full access by default — review and save.'}
+         {formData.roleLevel === 'manager' && 'Managers see all manager-tier departments as rows.'}
+         {formData.roleLevel === 'staff' && 'All staff departments will appear as rows in the permissions table.'}
+         {formData.roleLevel === 'client' && 'External (client) roles with limited access by default.'}
         </p>
        </div>
 
-       {/* Role Name */}
-       <div>
-        <UnifiedLabel>Role Name</UnifiedLabel>
-        <select
-         name="roleName"
-         value={formData.roleName}
-         onChange={handleInputChange}
-         className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed leading-normal tracking-wide"
-         required
-         disabled={!formData.roleLevel}
-        >
-         <option value="">Select Role Name</option>
-         {getAvailableRoles().map((role) => (
-          <option key={role} value={role}>
-           {role}
-          </option>
-         ))}
-        </select>
-       </div>
-
-       {/* Role Status */}
        <div>
         <UnifiedLabel>Role Status</UnifiedLabel>
         <select
          name="roleStatus"
          value={formData.roleStatus}
          onChange={handleInputChange}
-         className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide"
+         className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 bg-gray-50/50"
          required
         >
          <option value="active">Active</option>
          <option value="inactive">Inactive</option>
         </select>
+        <p className="mt-1 text-xs text-gray-500">Shared across every department you save in this batch.</p>
        </div>
 
-       {/* Description */}
        <div className="md:col-span-2">
         <UnifiedLabel>Description</UnifiedLabel>
         <textarea
          name="description"
          value={formData.description}
          onChange={handleInputChange}
-         rows={4}
-         className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all resize-none leading-relaxed tracking-wide"
-         placeholder="Enter role description..."
+         rows={3}
+         className="w-full px-5 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 bg-gray-50/50 resize-none"
+         placeholder="Shared description applied to every role created in this batch (optional)."
         />
        </div>
       </div>
 
-      {/* Info Notice */}
-      {formData.roleLevel === 'admin' && (
+      {formData.roleLevel && (
        <div className="mt-6 p-4 bg-gray-50 border border-gray-100 rounded-lg">
-        <div className="flex items-start gap-3">
-         <svg className="w-5 h-5 text-slate-800 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-         </svg>
-         <div>
-          <p className="font-medium text-amber-800">Admin Role Detected</p>
-          <p className="text-sm text-slate-900 mt-1">
-           Admin roles are pre-configured with full system access. You can customize permissions in the next step.
-          </p>
-         </div>
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+         Departments that will appear as rows
+        </p>
+        <div className="flex flex-wrap gap-2">
+         {departments.map((d) => (
+          <span
+           key={d}
+           className="px-2.5 py-1 text-xs bg-white border border-gray-200 rounded-full text-gray-700"
+          >
+           {d}
+          </span>
+         ))}
         </div>
+        <p className="mt-3 text-xs text-gray-500">
+         One role will be created per department (role code auto-derived from the name). You can uncheck any row
+         in Step 2 to skip it.
+        </p>
        </div>
       )}
 
@@ -281,19 +323,17 @@ const CreateRole: React.FC = () => {
      </UnifiedCard>
     )}
 
-    {/* Step 2: Permissions Configuration */}
     {activeStep === 'permissions' && (
      <div className="space-y-6">
-      {/* Role Summary */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-6">
        <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
          <h3 className="text-lg font-semibold text-gray-800">
-          Configuring Permissions for: <span className="text-slate-800">{formData.roleName}</span>
+          Configuring permissions for <span className="capitalize text-slate-800">{formData.roleLevel}</span> level
          </h3>
          <p className="text-sm text-gray-600 mt-1">
-          Level: <span className="capitalize font-medium">{formData.roleLevel}</span> • 
-          Status: <span className="font-medium">{formData.roleStatus}</span>
+          {includedDepts.size} of {departments.length} department(s) selected • Status:{' '}
+          <span className="font-medium">{formData.roleStatus}</span>
          </p>
         </div>
         <button
@@ -309,17 +349,93 @@ const CreateRole: React.FC = () => {
        </div>
       </div>
 
-      {/* Permission Matrix */}
-      <UnifiedCard className="!p-6">
-       <PermissionMatrix
-        permissions={permissions}
-        globalSettings={globalSettings}
-        onPermissionChange={setPermissions}
-        onGlobalSettingChange={setGlobalSettings}
+      <UnifiedCard className="!p-4 sm:!p-6">
+       <DepartmentPermissionMatrix
+        departments={departments}
+        permissionsByDept={permissionsByDept}
+        includedDepartments={includedDepts}
+        onDeptPermissionsChange={handleDeptPermissionsChange}
+        onIncludeChange={handleIncludeChange}
        />
       </UnifiedCard>
 
-      {/* Action Buttons */}
+      {/* Global settings — applies to every saved role in this batch. */}
+      <UnifiedCard className="!p-4 sm:!p-6">
+       <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+        Global Settings (applied to every role in this batch)
+       </h4>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {(
+         [
+          ['accessToAllModules', 'Access to All Modules'],
+          ['allowLogin', 'Allow Login'],
+          ['allowMultipleSessions', 'Allow Multiple Sessions'],
+          ['canChangePassword', 'Can Change Password'],
+          ['enableAuditLog', 'Enable Audit Log'],
+          ['canExportData', 'Can Export Data'],
+          ['canImportData', 'Can Import Data'],
+          ['canAccessReports', 'Can Access Reports'],
+          ['canAccessSettings', 'Can Access Settings'],
+         ] as Array<[keyof GlobalSettings, string]>
+        ).map(([key, label]) => (
+         <label
+          key={String(key)}
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+         >
+          <input
+           type="checkbox"
+           checked={Boolean(globalSettings[key])}
+           onChange={() =>
+            setGlobalSettings((prev) => ({ ...prev, [key]: !prev[key] } as GlobalSettings))
+           }
+           className="w-4 h-4 rounded border-gray-300"
+          />
+          <span className="text-sm text-gray-700">{label}</span>
+         </label>
+        ))}
+       </div>
+       <div className="mt-4">
+        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+         Session Timeout (minutes)
+        </label>
+        <input
+         type="number"
+         min={5}
+         max={480}
+         value={globalSettings.sessionTimeout}
+         onChange={(e) =>
+          setGlobalSettings((prev) => ({
+           ...prev,
+           sessionTimeout: parseInt(e.target.value, 10) || 30,
+          }))
+         }
+         className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+        />
+       </div>
+      </UnifiedCard>
+
+      {lastResult && (
+       <div className="space-y-2">
+        {lastResult.successes.length > 0 && (
+         <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+          Created {lastResult.successes.length} role(s): {lastResult.successes.join(', ')}.
+         </div>
+        )}
+        {lastResult.failures.length > 0 && (
+         <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <p className="font-medium mb-1">{lastResult.failures.length} role(s) failed:</p>
+          <ul className="list-disc pl-5">
+           {lastResult.failures.map((f) => (
+            <li key={f.department}>
+             <span className="font-medium">{f.department}:</span> {f.message}
+            </li>
+           ))}
+          </ul>
+         </div>
+        )}
+       </div>
+      )}
+
       <div className="flex justify-between pt-4">
        <button
         type="button"
@@ -331,20 +447,24 @@ const CreateRole: React.FC = () => {
         </svg>
         Back
        </button>
-       
-       {submitError && <p className="text-red-600 text-sm mb-2">{submitError}</p>}
-       <UnifiedButton
-        type="button"
-        variant="primary"
-        size="lg"
-        disabled={submitting}
-        onClick={createRoleWithPermissions}
-       >
-        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        Create Role with Permissions
-       </UnifiedButton>
+
+       <div className="flex items-center gap-3">
+        {submitError && <p className="text-red-600 text-sm">{submitError}</p>}
+        <UnifiedButton
+         type="button"
+         variant="primary"
+         size="lg"
+         disabled={submitting || includedDepts.size === 0}
+         onClick={createRolesBulk}
+        >
+         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+         </svg>
+         {submitting
+          ? 'Saving…'
+          : `Save ${includedDepts.size} role${includedDepts.size === 1 ? '' : 's'}`}
+        </UnifiedButton>
+       </div>
       </div>
      </div>
     )}

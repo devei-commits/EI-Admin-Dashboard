@@ -13,7 +13,7 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
-import { validateMasterTaxDetails } from '../utils/masterFormUtils';
+import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 
 // ─── PM Category Code Series ─────────────────────────────────────────────────
@@ -48,12 +48,12 @@ const PM_REQUIRED_FIELDS: Array<{
   section: number;
   toastMessage: string;
 }> = [
-  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 0 — PM Category is required' },
-  { id: 'subCategory', label: 'Sub-Category', section: 0, toastMessage: 'Step 0 — Sub-Category is required' },
-  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 0 — Generate or enter SKU before submitting' },
-  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 0 — Item Name is required' },
-  { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 0 — Level is required' },
-  { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 0 — Category is required' },
+  { id: 'pmCategory', label: 'PM Category', section: 0, toastMessage: 'Step 1 — PM Category is required' },
+  { id: 'subCategory', label: 'Sub-Category', section: 0, toastMessage: 'Step 1 — Sub-Category is required' },
+  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 1 — Generate or enter SKU before submitting' },
+  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item Name is required' },
+  { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 1 — Level is required' },
+  { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -87,7 +87,8 @@ function createEmptyPackagingFormData() {
     pkgSku: '',
     pkgUnit: 'PCS',
     pkgHsn: '',
-    pkgTaxPreference: 'Taxable',
+    pkgGst: '',
+    pkgTaxPreference: '',
     pkgReturnable: false,
     pkgAssociateItems: '',
     name: '',
@@ -193,17 +194,17 @@ const PACKAGING_FORM_MOCK = {
 };
 
 const SECTIONS = [
-  '0) QC · Code · Identity & Zoho',
-  '1) Material & Specs',
-  '2) Aesthetics',
-  '3) Variants Matrix',
-  '4) Customization & Tooling',
-  '5) Compatibility (R&D / QA)',
-  '6) Vendors & Commercial',
-  '7) Secondary Packaging',
-  '8) Tertiary Packaging',
-  '9) Testing & Approval',
-  '10) Catalogue / Website',
+  'Primary info (details, code & tax)',
+  'Technical, material & procurement',
+  'Aesthetics',
+  'Variants Matrix',
+  'Customization & Tooling',
+  'Compatibility (R&D / QA)',
+  'Vendors & Commercial',
+  'Secondary Packaging',
+  'Tertiary Packaging',
+  'QA Testing & Documents',
+  'Catalogue / Website',
 ];
 
 function parsePmVendorTierPrice(raw: string): number {
@@ -244,7 +245,8 @@ const PackagingRefactored: React.FC = () => {
         formData.name?.trim() &&
         formData.level?.trim() &&
         formData.itemCategory?.trim() &&
-        (!taxIsTaxable || formData.pkgHsn?.trim())
+        formData.pkgTaxPreference?.trim() &&
+        (!taxIsTaxable || (formData.pkgHsn?.trim() && formData.pkgGst?.toString().trim()))
     );
   const lockPrimaryFields = !!existingPmId;
 
@@ -314,11 +316,15 @@ const PackagingRefactored: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
     if (id === 'zohoId') return;
-    if (id === 'pkgHsn' || id === 'pkgTaxPreference' || id in errors) {
+    if (id === 'pkgHsn' || id === 'pkgGst' || id === 'pkgTaxPreference' || id in errors) {
       setErrors((prev) => {
         const next = { ...prev };
         delete next[id];
-        if (id === 'pkgTaxPreference') delete next.pkgHsn;
+        if (id === 'pkgTaxPreference') {
+          delete next.pkgHsn;
+          delete next.pkgGst;
+          delete next.pkgTaxPreference;
+        }
         return next;
       });
     }
@@ -375,8 +381,8 @@ const PackagingRefactored: React.FC = () => {
   // Variant ops
   const handleAddVariant = () => {
     if (!tempVariant.volume || Number(tempVariant.volume) <= 0) {
-      setErrors(prev => ({ ...prev, varVolume: 'Step 3 — Fill volume is required' }));
-      addToast('error', 'Step 3 — Fill volume is required');
+      setErrors(prev => ({ ...prev, varVolume: 'Step 4 — Fill volume is required' }));
+      addToast('error', 'Step 4 — Fill volume is required');
       return;
     }
     setFormData(prev => ({
@@ -397,7 +403,7 @@ const PackagingRefactored: React.FC = () => {
   // Vendor ops
   const handleAddVendor = () => {
     if (!tempVendor.name.trim()) {
-      addToast('error', 'Step 6 — Vendor name is required');
+      addToast('error', 'Step 7 — Vendor name is required');
       return;
     }
     const adv = Number(tempVendor.advancePct);
@@ -565,7 +571,7 @@ const PackagingRefactored: React.FC = () => {
       const rawValue = formData[field.id as keyof typeof formData];
       const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
       if (!value) {
-        const stepNo = field.section;
+        const stepNo = field.section + 1;
         setErrors((prev) => ({
           ...prev,
           [field.id]: `Step ${stepNo} — ${field.label} is required`,
@@ -579,13 +585,14 @@ const PackagingRefactored: React.FC = () => {
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
     if (!taxValidation.valid) {
       setErrors((prev) => ({ ...prev, ...taxValidation.errors }));
-      const firstTax = taxValidation.errors.pkgHsn;
+      const firstTaxKey = ['pkgTaxPreference', 'pkgHsn', 'pkgGst'].find((k) => Boolean(taxValidation.errors[k]));
       addToast(
         'error',
-        firstTax ||
-          'When Tax Preference is Taxable, enter a valid HSN code (Step 0). Exempt / NonGST can leave HSN blank.'
+        (firstTaxKey && taxValidation.errors[firstTaxKey]) ||
+          'Select a Tax Preference and (for Taxable) fill a valid HSN code and GST % (Step 1).'
       );
       setCurrentSection(0);
+      if (firstTaxKey) focusPmField(firstTaxKey);
       return;
     }
     const payload = buildPayload();
@@ -764,28 +771,65 @@ const PackagingRefactored: React.FC = () => {
                   error={errors.itemCode}
                   readOnly={lockPrimaryFields}
                 />
-                <InputField
-                  label="HSN Code"
-                  id="pkgHsn"
-                  value={formData.pkgHsn}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 3923, 4819, 7010"
-                  error={errors.pkgHsn}
-                  requiredMark={formData.pkgTaxPreference === 'Taxable'}
-                />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="pkgTaxPreference" className="block text-sm font-medium text-gray-700 mb-1">
                     Tax Preference
-                    {formData.pkgTaxPreference === 'Taxable' ? (
-                      <span className="text-gray-500 font-normal text-xs ml-1">(HSN required)</span>
-                    ) : null}
+                    <span className="text-red-600 ml-0.5" aria-hidden>*</span>
                   </label>
-                  <select id="pkgTaxPreference" value={formData.pkgTaxPreference} onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map(t => <option key={t} value={t}>{t}</option>)}
+                  <select
+                    id="pkgTaxPreference"
+                    value={formData.pkgTaxPreference}
+                    onChange={handleInputChange}
+                    aria-invalid={errors.pkgTaxPreference ? true : undefined}
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.pkgTaxPreference ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select...</option>
+                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Taxable: valid HSN required. Exempted / NonGST: HSN optional.</p>
+                  {errors.pkgTaxPreference ? (
+                    <p className="mt-1 text-xs text-red-600">{errors.pkgTaxPreference}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">Taxable: HSN and GST % required. Exempted / NonGST: HSN / GST not needed.</p>
+                  )}
                 </div>
+                {formData.pkgTaxPreference === 'Taxable' ? (
+                  <>
+                    <InputField
+                      label="HSN Code"
+                      id="pkgHsn"
+                      value={formData.pkgHsn}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 3923, 4819, 7010"
+                      error={errors.pkgHsn}
+                      requiredMark
+                    />
+                    <div>
+                      <label htmlFor="pkgGst" className="block text-sm font-medium text-gray-700 mb-1">
+                        GST %
+                        <span className="text-red-600 ml-0.5" aria-hidden>*</span>
+                      </label>
+                      <select
+                        id="pkgGst"
+                        value={formData.pkgGst}
+                        onChange={handleInputChange}
+                        aria-invalid={errors.pkgGst ? true : undefined}
+                        className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                          errors.pkgGst ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">Select...</option>
+                        {GST_RATE_OPTIONS.map((v) => (
+                          <option key={v} value={v}>{v}%</option>
+                        ))}
+                      </select>
+                      {errors.pkgGst ? <p className="mt-1 text-xs text-red-600">{errors.pkgGst}</p> : null}
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -1309,7 +1353,8 @@ const PackagingRefactored: React.FC = () => {
         pkgSku: pm.sku ?? '',
         pkgHsn: pm.hsnCode ?? '',
         pkgUnit: pm.unit ?? 'PCS',
-        pkgTaxPreference: pm.taxPref ?? 'Taxable',
+        pkgTaxPreference: pm.taxPref ?? '',
+        pkgGst: (pm as any).gst != null ? String((pm as any).gst) : '',
         pkgReturnable: pm.pkgReturnable ?? false,
         pkgAssociateItems: pm.pkgAssociateItems ?? '',
       };
@@ -1573,14 +1618,14 @@ const PackagingRefactored: React.FC = () => {
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
                           } ${navLocked ? 'opacity-40 cursor-not-allowed' : ''}`}
                         >
-                          {section}
+                          {idx + 1}) {section}
                         </button>
                       );
                     })}
                   </nav>
 
                   <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
-                    {currentSection}) · {SECTIONS.length} sections
+                    {currentSection + 1}) {SECTIONS.length} sections
                   </div>
 
                   <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2">

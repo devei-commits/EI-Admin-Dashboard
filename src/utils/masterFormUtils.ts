@@ -203,10 +203,21 @@ export function isValidGstPercent(raw: string | number | undefined): boolean {
  return Number.isFinite(n) && n >= 0 && n <= 100;
 }
 
+/** Supported GST rate options shown when Tax Preference is Taxable. */
+export const GST_RATE_OPTIONS = ['0', '3', '5', '12', '18', '28'] as const;
+
+/** True when the provided GST % matches one of the standard slab values. */
+export function isAllowedGstRate(raw: string | number | undefined): boolean {
+ const s = typeof raw === 'number' ? String(raw) : String(raw ?? '').trim().replace(/%/g, '');
+ if (!s) return false;
+ return (GST_RATE_OPTIONS as readonly string[]).includes(s);
+}
+
 /**
  * Validate tax classification lines for masters that use Zoho-style tax preference.
- * - rawMaterial: requires hsnCode + gst when rmTaxPreference === Taxable
- * - packaging: requires pkgHsn when pkgTaxPreference === Taxable
+ * - Both RM and PM: require `*TaxPreference` to be explicitly chosen (not blank).
+ * - rawMaterial (Taxable): requires hsnCode + gst rate.
+ * - packaging   (Taxable): requires pkgHsn + pkgGst rate.
  */
 export function validateMasterTaxDetails(
  formData: Record<string, unknown>,
@@ -219,7 +230,12 @@ export function validateMasterTaxDetails(
  const taxStepPm = 0;
 
  if (masterType === 'rawMaterial') {
-  if (!taxPreferenceRequiresDetails(String(formData.rmTaxPreference ?? ''))) {
+  const pref = String(formData.rmTaxPreference ?? '').trim();
+  if (!pref) {
+   errors.rmTaxPreference = formatStepFieldMessage(taxStepRm, 'Tax Preference');
+   return { valid: false, errors };
+  }
+  if (!taxPreferenceRequiresDetails(pref)) {
    return { valid: true, errors: {} };
   }
   const hsn = String(formData.hsnCode ?? '').trim();
@@ -236,14 +252,19 @@ export function validateMasterTaxDetails(
   const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
   if (!gstStr) {
    errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'is required when Tax Preference is Taxable');
-  } else if (!isValidGstPercent(gstStr)) {
-   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'must be a number from 0 to 100');
+  } else if (!isAllowedGstRate(gstStr)) {
+   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'must be one of 0 / 3 / 5 / 12 / 18 / 28');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }
 
  if (masterType === 'packaging') {
-  if (!taxPreferenceRequiresDetails(String(formData.pkgTaxPreference ?? ''))) {
+  const pref = String(formData.pkgTaxPreference ?? '').trim();
+  if (!pref) {
+   errors.pkgTaxPreference = formatStepFieldMessage(taxStepPm, 'Tax Preference');
+   return { valid: false, errors };
+  }
+  if (!taxPreferenceRequiresDetails(pref)) {
    return { valid: true, errors: {} };
   }
   const hsn = String(formData.pkgHsn ?? '').trim();
@@ -255,6 +276,13 @@ export function validateMasterTaxDetails(
    );
   } else if (!isValidHsnOrSacCode(hsn)) {
    errors.pkgHsn = formatStepFieldMessage(taxStepPm, 'HSN code', 'must be 4–12 digits');
+  }
+  const gstRaw = formData.pkgGst;
+  const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
+  if (!gstStr) {
+   errors.pkgGst = formatStepFieldMessage(taxStepPm, 'GST %', 'is required when Tax Preference is Taxable');
+  } else if (!isAllowedGstRate(gstStr)) {
+   errors.pkgGst = formatStepFieldMessage(taxStepPm, 'GST %', 'must be one of 0 / 3 / 5 / 12 / 18 / 28');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }

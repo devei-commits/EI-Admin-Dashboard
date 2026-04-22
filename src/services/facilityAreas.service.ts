@@ -177,3 +177,42 @@ export async function createRack(payload: CreateRackPayload): Promise<ServiceRes
     return { data: null as unknown as RackDTO, error: e instanceof Error ? e.message : 'Failed to create rack', success: false };
   }
 }
+
+export interface EnsureCustomLocationPayload {
+  areaType: 'warehouse' | 'production';
+  zoneText: string;
+  rackText: string;
+}
+
+export interface EnsureCustomLocationResult {
+  areaId: number;
+  zoneId: number;
+  rackId: number;
+  zoneCode: string;
+  zoneName: string;
+  rackCode: string;
+  areaType: 'warehouse' | 'production';
+}
+
+/**
+ * Register a custom (free-text) zone + rack into Facility Management.
+ * Idempotent: reuses any existing zone (case-insensitive code/name match within the
+ * same location type) and any existing rack (case-insensitive code match within the
+ * zone). New entries are parented under a single auto-created "CUSTOM" area per
+ * area type (WH-CUSTOM / PROD-CUSTOM). Called from GRN (warehouse) and Production
+ * MU save paths when the user is in custom-location mode.
+ */
+export async function ensureCustomZoneAndRack(
+  payload: EnsureCustomLocationPayload
+): Promise<ServiceResult<EnsureCustomLocationResult>> {
+  try {
+    const res = await api.post<EnsureCustomLocationResult>(`${BASE}/ensure-custom`, payload);
+    return { data: extractOne<EnsureCustomLocationResult>(res), error: null, success: true };
+  } catch (e) {
+    return {
+      data: null as unknown as EnsureCustomLocationResult,
+      error: e instanceof Error ? e.message : 'Failed to register custom location',
+      success: false,
+    };
+  }
+}

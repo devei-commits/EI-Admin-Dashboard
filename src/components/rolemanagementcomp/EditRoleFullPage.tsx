@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Role, RoleUser } from './ViewRoles';
-import PermissionMatrix from './PermissionMatrix';
+import DepartmentPermissionMatrix from './DepartmentPermissionMatrix';
 import { UnifiedButton, inputClassName, selectClassName, textareaClassName } from '../ui';
 import {
  ModulePermission,
@@ -517,15 +517,69 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
            Configure access to each module<span className="hidden sm:inline">, sub-module, and column</span> for this role.
           </p>
          </div>
-         <div className="p-2 sm:p-4">
-          <PermissionMatrix
-           permissions={permissions}
-           globalSettings={globalSettings}
-           onPermissionChange={setPermissions}
-           onGlobalSettingChange={setGlobalSettings}
-           readOnly={false}
-          />
+         <div className="p-2 sm:p-4 space-y-6">
+         <DepartmentPermissionMatrix
+          departments={[editedRole.roleName]}
+          permissionsByDept={{ [editedRole.roleName]: permissions }}
+          onDeptPermissionsChange={(_dept, next) => setPermissions(next)}
+          readOnly={false}
+         />
+
+         {/* Global Settings (single-role edit) */}
+         <div className="p-4 border border-gray-100 rounded-lg bg-white">
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
+           Global Settings
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+           {(
+            [
+             ['accessToAllModules', 'Access to All Modules'],
+             ['allowLogin', 'Allow Login'],
+             ['allowMultipleSessions', 'Allow Multiple Sessions'],
+             ['canChangePassword', 'Can Change Password'],
+             ['enableAuditLog', 'Enable Audit Log'],
+             ['canExportData', 'Can Export Data'],
+             ['canImportData', 'Can Import Data'],
+             ['canAccessReports', 'Can Access Reports'],
+             ['canAccessSettings', 'Can Access Settings'],
+            ] as Array<[keyof GlobalSettings, string]>
+           ).map(([key, label]) => (
+            <label
+             key={String(key)}
+             className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+            >
+             <input
+              type="checkbox"
+              checked={Boolean(globalSettings[key])}
+              onChange={() =>
+               setGlobalSettings((prev) => ({ ...prev, [key]: !prev[key] } as GlobalSettings))
+              }
+              className="w-4 h-4 rounded border-gray-300"
+             />
+             <span className="text-sm text-gray-700">{label}</span>
+            </label>
+           ))}
+          </div>
+          <div className="mt-3">
+           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+            Session Timeout (minutes)
+           </label>
+           <input
+            type="number"
+            min={5}
+            max={480}
+            value={globalSettings.sessionTimeout}
+            onChange={(e) =>
+             setGlobalSettings((prev) => ({
+              ...prev,
+              sessionTimeout: parseInt(e.target.value, 10) || 30,
+             }))
+            }
+            className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+           />
+          </div>
          </div>
+        </div>
         </div>
        )}
 

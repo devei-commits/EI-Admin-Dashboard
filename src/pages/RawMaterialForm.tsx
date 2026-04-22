@@ -11,7 +11,7 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
-import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
+import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
@@ -73,8 +73,8 @@ function createEmptyRmFormData() {
     rmSku: '',
     zohoId: '',
     sku: '',
-    rmTaxPreference: 'Taxable',
-    rmReturnable: false,
+    rmTaxPreference: '',
+    rmReturnable: '' as '' | 'Yes' | 'No',
     rmAssociateItems: '',
     rmCategoryKey: '',
     rmCategory: '',
@@ -95,7 +95,6 @@ function createEmptyRmFormData() {
     internalNotes: '',
     primaryUom: '',
     issueUom: '',
-    conversionFactor: '',
     standardPackSize: '',
     hsnCode: '',
     gst: '',
@@ -247,6 +246,9 @@ const RawMaterialRefactored: React.FC = () => {
     formData.rmSku?.trim() &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
+    formData.primaryUom?.trim() &&
+    formData.rmTaxPreference?.trim() &&
+    formData.rmReturnable?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
  const lockPrimaryFields = !!existingRmId;
@@ -259,6 +261,22 @@ const RawMaterialRefactored: React.FC = () => {
     const next = { ...prev };
     delete next.hsnCode;
     delete next.gst;
+    delete next.rmTaxPreference;
+    return next;
+   });
+  }
+  if (id === 'rmReturnable') {
+   setErrors((prev) => {
+    const next = { ...prev };
+    delete next.rmReturnable;
+    return next;
+   });
+  }
+  if (id === 'primaryUom') {
+   setErrors((prev) => {
+    if (!prev.primaryUom) return prev;
+    const next = { ...prev };
+    delete next.primaryUom;
     return next;
    });
   }
@@ -324,8 +342,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Vendor operations
  const handleAddVendor = () => {
   if (!tempVendor.name.trim()) {
-   setErrors(prev => ({ ...prev, venName: 'Step 5 — Vendor name is required' }));
-   addToast('error', 'Step 5 — Vendor name is required');
+   setErrors(prev => ({ ...prev, venName: 'Step 6 — Vendor name is required' }));
+   addToast('error', 'Step 6 — Vendor name is required');
    return;
   }
   const adv = Number(tempVendor.advancePct);
@@ -434,8 +452,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Document operations
  const handleAddDocument = () => {
   if (!tempDocument.type || !tempDocument.link.trim()) {
-   setErrors(prev => ({ ...prev, documentType: 'Step 6 — Document type and link are required' }));
-   addToast('error', 'Step 6 — Document type and link are required');
+   setErrors(prev => ({ ...prev, documentType: 'Step 7 — Document type and link are required' }));
+   addToast('error', 'Step 7 — Document type and link are required');
    return;
   }
   setFormData(prev => ({
@@ -461,8 +479,8 @@ const RawMaterialRefactored: React.FC = () => {
  // Test operations
  const handleAddTest = () => {
   if (!tempTest.name || !tempTest.result) {
-   setErrors(prev => ({ ...prev, testName: 'Step 6 — Test name and result are required' }));
-   addToast('error', 'Step 6 — Test name and result are required');
+   setErrors(prev => ({ ...prev, testName: 'Step 7 — Test name and result are required' }));
+   addToast('error', 'Step 7 — Test name and result are required');
    return;
   }
   setFormData(prev => ({
@@ -508,6 +526,26 @@ const RawMaterialRefactored: React.FC = () => {
     return;
    }
   }
+  if (!formData.rmReturnable?.trim()) {
+   setErrors((prev) => ({
+    ...prev,
+    rmReturnable: 'Step 1 — Returnable Item is required (pick Yes or No)',
+   }));
+   addToast('error', 'Step 1 — Returnable Item is required (pick Yes or No)');
+   setCurrentStage(0);
+   focusFieldById('rmReturnable');
+   return;
+  }
+  if (!formData.primaryUom?.trim()) {
+   setErrors((prev) => ({
+    ...prev,
+    primaryUom: 'Step 1 — Primary UoM is required (pick KG / GM / L / ML)',
+   }));
+   addToast('error', 'Step 1 — Primary UoM is required (pick KG / GM / L / ML)');
+   setCurrentStage(0);
+   focusFieldById('primaryUom');
+   return;
+  }
   const validation = validatePrimaryFields(formData, 'rawMaterial');
   const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'rawMaterial');
   if (!validation.valid || !taxValidation.valid) {
@@ -517,23 +555,25 @@ const RawMaterialRefactored: React.FC = () => {
       subCategory: 0,
       inciName: 0,
       tradeCommercialName: 0,
+      primaryUom: 0,
+      rmTaxPreference: 0,
       hsnCode: 0,
       gst: 0,
     };
     const firstPrimaryMissing = getPrimaryFields('rawMaterial').find((f) => Boolean(validation.errors[f]));
-    const firstTaxMissing = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
+    const firstTaxMissing = ['rmTaxPreference', 'hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
     const firstField = firstTaxMissing || firstPrimaryMissing;
     if (firstField) {
       setCurrentStage(stageByField[firstField] ?? 0);
       focusFieldById(firstField);
     }
    if (!taxValidation.valid) {
-    const firstTax = ['hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
+    const firstTax = ['rmTaxPreference', 'hsnCode', 'gst'].find((f) => Boolean(taxValidation.errors[f]));
     addToast(
      'error',
      firstTax
       ? taxValidation.errors[firstTax]
-      : 'When Tax Preference is Taxable, enter a valid HSN code and GST % (Step 0). Exempt / NonGST can leave them blank.'
+      : 'Select a Tax Preference and (for Taxable) fill a valid HSN code and GST % (Step 1).'
     );
     setCurrentStage(0);
    } else {
@@ -609,7 +649,7 @@ const RawMaterialRefactored: React.FC = () => {
          <option key={k} value={k}>{v.label}</option>
         ))}
        </select>
-       <p className="text-xs text-gray-500 mt-1.5">Step 0 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
+       <p className="text-xs text-gray-500 mt-1.5">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
       </div>
       <div className="mt-4">
        <InputField
@@ -690,10 +730,33 @@ const RawMaterialRefactored: React.FC = () => {
      requiredMark
      readOnly={lockPrimaryFields}
     />
+    <SelectField
+     label="Primary UoM"
+     id="primaryUom"
+     value={formData.primaryUom}
+     onChange={handleInputChange}
+     options={['KG', 'GM', 'L', 'ML']}
+     disabled={lockPrimaryFields}
+     requiredMark
+     error={errors.primaryUom}
+    />
+    <p className="text-xs text-gray-500 -mt-2">
+     Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) are derived from the product’s Specific Gravity at BOM confirmation — no manual conversion factor on the master.
+    </p>
      </div>
 
      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 space-y-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Tax Classification</h3>
+      <SelectField
+       label="Returnable Item"
+       id="rmReturnable"
+       value={formData.rmReturnable}
+       onChange={handleInputChange}
+       options={['Yes', 'No']}
+       disabled={lockPrimaryFields}
+       requiredMark
+       error={errors.rmReturnable}
+      />
       <SelectField
        label="Tax Preference"
        id="rmTaxPreference"
@@ -701,28 +764,34 @@ const RawMaterialRefactored: React.FC = () => {
        onChange={handleInputChange}
        options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
        disabled={lockPrimaryFields}
+       requiredMark
+       error={errors.rmTaxPreference}
       />
       <p className="text-xs text-gray-500 -mt-2">
-       Taxable: HSN and GST % are required on this step. Exempted / NonGST: optional.
+       Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
       </p>
-      <InputField
-       label="HSN Code"
-       id="hsnCode"
-       value={formData.hsnCode}
-       onChange={handleInputChange}
-       placeholder="Tax classification code"
-       error={errors.hsnCode}
-       requiredMark={taxIsTaxable}
-      />
-      <InputField
-       label="GST %"
-       id="gst"
-       value={formData.gst}
-       onChange={handleInputChange}
-       placeholder="e.g. 18"
-       error={errors.gst}
-       requiredMark={taxIsTaxable}
-      />
+      {taxIsTaxable ? (
+       <>
+        <InputField
+         label="HSN Code"
+         id="hsnCode"
+         value={formData.hsnCode}
+         onChange={handleInputChange}
+         placeholder="Tax classification code"
+         error={errors.hsnCode}
+         requiredMark
+        />
+        <SelectField
+         label="GST %"
+         id="gst"
+         value={formData.gst}
+         onChange={handleInputChange}
+         options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
+         requiredMark
+         error={errors.gst}
+        />
+       </>
+      ) : null}
      </div>
 
     </div>
@@ -769,12 +838,6 @@ const RawMaterialRefactored: React.FC = () => {
       placeholder="Optional; defaults to RM SKU"
       disabled={lockPrimaryFields}
      />
-     <CheckboxField
-      label="Returnable Item"
-      id="rmReturnable"
-      checked={formData.rmReturnable}
-      onChange={handleInputChange}
-     />
      <TextareaField
       label="Associate Items"
       id="rmAssociateItems"
@@ -792,20 +855,6 @@ const RawMaterialRefactored: React.FC = () => {
      />
      <p className="text-xs text-gray-500 -mt-1">Read-only — returned by the API after a successful save.</p>
     </div>
-    <InputField
-     label="Primary UoM"
-     id="primaryUom"
-     value={formData.primaryUom}
-     onChange={handleInputChange}
-     placeholder="e.g. KG, GM, L"
-    />
-    <InputField
-     label="Conversion Factor"
-     id="conversionFactor"
-     value={formData.conversionFactor}
-     onChange={handleInputChange}
-     placeholder="e.g. 1 KG = 1000 GM → 1000"
-    />
     <InputField
      label="Standard Pack Size"
      id="standardPackSize"
@@ -1356,7 +1405,7 @@ const RawMaterialRefactored: React.FC = () => {
      zohoId: r.zohoId ?? '',
      sku: r.sku ?? '',
      hsnCode: r.hsnCode ?? '',
-     rmTaxPreference: r.taxPref ?? 'Taxable',
+     rmTaxPreference: r.taxPref ?? '',
      accountingCategory: r.salesPurchaseAccount ?? '',
    };
 
@@ -1371,12 +1420,20 @@ const RawMaterialRefactored: React.FC = () => {
    const finalSku = skuFromFd?.trim() ? skuFromFd.trim() : recordCode;
    if (finalSku) setGeneratedRmCode(finalSku);
 
-   setFormData((prev) => {
-     const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
+  setFormData((prev) => {
+    const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
 
-     // Scalar key normalization for older persisted shapes.
-     const anyFd: any = fdCleanOverlay ?? fdNormalized ?? fdObj ?? {};
-     if (!merged.rmSku) merged.rmSku = String(anyFd?.sku ?? anyFd?.code ?? '');
+    // `rmReturnable` is a required Yes/No selector in the UI, but older records may
+    // have persisted it as a plain boolean inside form_data. Coerce back to the
+    // current UI shape so edit loads don't silently skip the required state.
+    const rawReturnable: unknown = (merged as any).rmReturnable;
+    if (rawReturnable === true) (merged as any).rmReturnable = 'Yes';
+    else if (rawReturnable === false) (merged as any).rmReturnable = 'No';
+    else if (rawReturnable !== 'Yes' && rawReturnable !== 'No') (merged as any).rmReturnable = '';
+
+    // Scalar key normalization for older persisted shapes.
+    const anyFd: any = fdCleanOverlay ?? fdNormalized ?? fdObj ?? {};
+    if (!merged.rmSku) merged.rmSku = String(anyFd?.sku ?? anyFd?.code ?? '');
      if (!merged.inciName) merged.inciName = String(anyFd?.inciName ?? anyFd?.inci ?? anyFd?.inci_name ?? '');
      if (!merged.tradeCommercialName) {
        merged.tradeCommercialName = String(anyFd?.tradeCommercialName ?? anyFd?.trade_commercial_name ?? anyFd?.name ?? merged.tradeCommercialName ?? '');
@@ -1479,7 +1536,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-0 fields (category, sub-category, code, INCI, trade/commercial name, and taxable HSN/GST when applicable) before continuing."
+                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category, code, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable) before continuing."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}
@@ -1856,28 +1913,41 @@ const InputField: React.FC<{
  </div>
 );
 
+type SelectOption = string | { value: string; label: string };
+
 const SelectField: React.FC<{
  label: string;
  id: string;
  value: any;
  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
- options: string[];
+ options: SelectOption[];
  disabled?: boolean;
-}> = ({ label, id, value, onChange, options, disabled }) => (
+ requiredMark?: boolean;
+ error?: string;
+}> = ({ label, id, value, onChange, options, disabled, requiredMark, error }) => (
  <div>
-  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+   {label}
+   {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+  </label>
   <select
    id={id}
    value={value || ''}
    onChange={onChange}
    disabled={disabled}
-   className={`w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${disabled ? 'bg-slate-100' : ''}`}
+   aria-invalid={error ? true : undefined}
+   className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+    error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+   } ${disabled ? 'bg-slate-100' : ''}`}
   >
    <option value="">Select...</option>
-   {options.map(opt => (
-    <option key={opt} value={opt}>{opt}</option>
-   ))}
+   {options.map((opt) => {
+    const v = typeof opt === 'string' ? opt : opt.value;
+    const l = typeof opt === 'string' ? opt : opt.label;
+    return <option key={v} value={v}>{l}</option>;
+   })}
   </select>
+  {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
  </div>
 );
 

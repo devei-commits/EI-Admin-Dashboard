@@ -36,7 +36,12 @@ import {
   type QcSpecsStored,
   type QcSpecsByScope,
 } from '../services/production.service';
-import { fetchFacilityAreas, type FacilityAreaDTO, type ZoneDTO } from '../services/facilityAreas.service';
+import {
+  fetchFacilityAreas,
+  ensureCustomZoneAndRack,
+  type FacilityAreaDTO,
+  type ZoneDTO,
+} from '../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
@@ -3701,6 +3706,7 @@ function MRNDetailModal({
   onSave: (updated: MRNRecordFromApi) => void;
 }) {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const { data: productionFacilityRaw = [], isLoading: productionFacilityLoading } = useQuery({
     queryKey: ['facility-areas', 'production', 'mrn-modal'],
     queryFn: async () => {
@@ -3980,6 +3986,30 @@ function MRNDetailModal({
     setSaveError(null);
     setSaving(true);
     try {
+      // When the user typed a custom production zone/rack for MU receive, auto-register
+      // it into Facility Management so the pair becomes selectable next time.
+      // Idempotent: reuses an existing zone/rack when the text matches. Non-fatal: if
+      // registration fails we still persist the MRN so the user's save is not lost.
+      const effMuZone = String((payload.muReceiveZone as string | undefined) ?? muReceiveZone ?? '').trim();
+      const effMuRack = String((payload.muReceiveRack as string | undefined) ?? muReceiveRack ?? '').trim();
+      if (muLocationSource === 'custom' && effMuZone && effMuRack) {
+        try {
+          const ensured = await ensureCustomZoneAndRack({
+            areaType: 'production',
+            zoneText: effMuZone,
+            rackText: effMuRack,
+          });
+          if (ensured.success) {
+            queryClient.invalidateQueries({ queryKey: ['facility-areas'] });
+            queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
+          } else if (ensured.error) {
+            console.warn('[MRN] ensureCustomZoneAndRack failed:', ensured.error);
+          }
+        } catch (e) {
+          console.warn('[MRN] ensureCustomZoneAndRack threw:', e);
+        }
+      }
+
       const res = await updateMRN(mrn.id, {
         status,
         ...(!isOutboundMtr ? { assignedPicker: assignedPicker || undefined } : {}),

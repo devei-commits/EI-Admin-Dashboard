@@ -24,6 +24,16 @@ const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   MISC: { label: 'Miscellaneous (FG)', prefix: 'EI-PR-MISC' },
 };
 
+// Composite Item series: when the PR is flagged as a Composite Item, the
+// generated SKU uses the "EI-CI-<CAT>" prefix instead of "EI-PR-<CAT>".
+const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
+
+function getPrSeriesPrefix(categoryKey: string, isComposite: boolean): string {
+  const cat = PR_CATEGORIES[categoryKey];
+  if (!cat) return '';
+  return isComposite ? `${COMPOSITE_ITEM_PREFIX_BASE}-${categoryKey}` : cat.prefix;
+}
+
 const PR_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const PR_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
@@ -56,6 +66,9 @@ interface BOMFormState {
   bomTaxPreference: string;
   bomReturnable: boolean;
   bomAssociateItems: string;
+  /** Required at Step 1: must be explicitly set to 'Yes' or 'No'. When 'Yes',
+   *  the generated PR / BOM code uses the EI-CI-<CAT> prefix instead of EI-PR-<CAT>. */
+  bomCompositeItem: '' | 'Yes' | 'No';
 
   // Formula BOM Tab
   formulaIngredients: Array<{
@@ -128,6 +141,7 @@ function emptyBomForm(): BOMFormState {
     bomTaxPreference: 'Taxable',
     bomReturnable: false,
     bomAssociateItems: '',
+    bomCompositeItem: '',
     formulaIngredients: [],
     packingComponents: [],
     processSteps: [],
@@ -172,6 +186,7 @@ function mockBomForm(): BOMFormState {
     bomTaxPreference: 'Taxable',
     bomReturnable: false,
     bomAssociateItems: '',
+    bomCompositeItem: 'No',
     formulaIngredients: [
       { id: '1', inciName: 'Zinc Oxide', phase: 'Oil', percentWW: '15', uom: 'GM' },
       { id: '2', inciName: 'Titanium Dioxide', phase: 'Oil', percentWW: '10', uom: 'GM' },
@@ -222,6 +237,17 @@ function inferPrCategoryKeyFromCode(code: string): string {
   for (const [k, v] of Object.entries(PR_CATEGORIES)) {
     if (code.startsWith(`${v.prefix}-`) || code === v.prefix) return k;
   }
+  for (const k of Object.keys(PR_CATEGORIES)) {
+    const cp = `${COMPOSITE_ITEM_PREFIX_BASE}-${k}`;
+    if (code.startsWith(`${cp}-`) || code === cp) return k;
+  }
+  return '';
+}
+
+function inferPrCompositeFromCode(code: string): '' | 'Yes' | 'No' {
+  if (!code) return '';
+  if (code.startsWith(`${COMPOSITE_ITEM_PREFIX_BASE}-`)) return 'Yes';
+  if (code.startsWith('EI-PR-')) return 'No';
   return '';
 }
 
@@ -307,6 +333,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
+    bom_composite_item: fd.bomCompositeItem === 'Yes',
     status: 'Draft',
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
@@ -353,6 +380,7 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       process_steps: bomFormToProcessSteps(fd),
       ph_range: fd.phRange || null,
       stability_summary: fd.longTermStability || null,
+      bom_composite_item: fd.bomCompositeItem === 'Yes',
     },
   };
 }
@@ -393,9 +421,19 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
   const skuCode = p.product_code || '';
   const inferred = inferPrCategoryKeyFromCode(skuCode);
   const zi = p.zoho_item_id;
+  const rawComposite = (p as unknown as { bom_composite_item?: unknown }).bom_composite_item;
+  const compositeFromBackend: '' | 'Yes' | 'No' =
+    rawComposite === true || rawComposite === 'true' || rawComposite === 1 || rawComposite === '1'
+      ? 'Yes'
+      : rawComposite === false || rawComposite === 'false' || rawComposite === 0 || rawComposite === '0'
+        ? 'No'
+        : '';
+  const bomCompositeItem: '' | 'Yes' | 'No' =
+    compositeFromBackend || inferPrCompositeFromCode(skuCode);
   return {
     ...emptyBomForm(),
     prCategoryKey: inferred,
+    bomCompositeItem,
     productName: p.product_name || '',
     category: p.category || '',
     productForm: p.form || '',
@@ -427,7 +465,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generatedPrCode, setGeneratedPrCode] = useState('');
-  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'skuCode' | 'productName' | 'formula' | 'pack') => {
+  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'skuCode' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
     window.setTimeout(() => {
       if (target === 'formula') {
         const el = document.querySelector('input[placeholder="Or type INCI Name (manual)"]');
@@ -465,11 +503,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     !isNewProduct ||
     Boolean(
       formData.prCategoryKey.trim() &&
+        formData.bomCompositeItem &&
         formData.prSubCategory.trim() &&
         formData.productName.trim() &&
         formData.category.trim() &&
-        formData.productForm.trim() &&
-        formData.fillSize.trim() &&
         isValidMrpForPr(formData.mrp) &&
         formData.skuCode.trim()
     );
@@ -588,7 +625,22 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
     if (field === 'prCategoryKey') {
-      setFormData((prev) => ({ ...prev, prCategoryKey: value as string }));
+      // Changing the category invalidates any previously generated PR code
+      // because the series prefix (EI-PR-<CAT> / EI-CI-<CAT>) has changed.
+      setFormData((prev) => ({ ...prev, prCategoryKey: value as string, skuCode: '' }));
+      setGeneratedPrCode('');
+      return;
+    }
+    if (field === 'bomCompositeItem') {
+      // Flipping composite toggles between EI-PR-<CAT> and EI-CI-<CAT>; reset code.
+      setFormData((prev) => ({ ...prev, bomCompositeItem: value as '' | 'Yes' | 'No', skuCode: '' }));
+      setGeneratedPrCode('');
+      setErrors((prev) => {
+        if (!prev.bomCompositeItem) return prev;
+        const next = { ...prev };
+        delete next.bomCompositeItem;
+        return next;
+      });
       return;
     }
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -603,10 +655,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const getPrCodePreview = () => {
-    const cat = formData.prCategoryKey ? PR_CATEGORIES[formData.prCategoryKey] : null;
-    if (!cat) return { prefix: '—', next: '—' };
+    if (!formData.prCategoryKey) return { prefix: '—', next: '—' };
+    if (!formData.bomCompositeItem) return { prefix: '—', next: '—' };
+    const base = getPrSeriesPrefix(formData.prCategoryKey, formData.bomCompositeItem === 'Yes');
+    if (!base) return { prefix: '—', next: '—' };
     const subToken = toCodeToken(formData.prSubCategory);
-    const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+    const seriesPrefix = subToken ? `${base}-${subToken}` : base;
     if (generatedPrCode && generatedPrCode.startsWith(seriesPrefix)) {
       const suffix = generatedPrCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
       return { prefix: seriesPrefix, next: suffix };
@@ -623,6 +677,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'Select a PR Category first');
       return;
     }
+    if (!formData.bomCompositeItem) {
+      addToast('error', 'Select Composite Item (Yes / No) before generating the code');
+      return;
+    }
     if (!formData.prSubCategory.trim()) {
       addToast('error', 'Enter PR Sub-Category first');
       return;
@@ -631,10 +689,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
       if (!ok) return;
     }
-    const cat = PR_CATEGORIES[formData.prCategoryKey];
     try {
+      const base = getPrSeriesPrefix(formData.prCategoryKey, formData.bomCompositeItem === 'Yes');
       const subToken = toCodeToken(formData.prSubCategory);
-      const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
+      const seriesPrefix = subToken ? `${base}-${subToken}` : base;
       const code = await fetchNextBomCode(seriesPrefix);
       setGeneratedPrCode(code);
       setFormData((prev) => ({ ...prev, skuCode: code }));
@@ -759,29 +817,36 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const handleSubmit = async () => {
     setErrors({});
     if (!formData.prCategoryKey.trim()) {
-      setErrors({ prCategoryKey: 'Step 0 — PR Category is required' });
-      addToast('error', 'Step 0 — Select a PR Category');
+      setErrors({ prCategoryKey: 'Step 1 — PR Category is required' });
+      addToast('error', 'Step 1 — Select a PR Category');
       setCurrentStage(0);
       focusPrField('prCategoryKey');
       return;
     }
+    if (!formData.bomCompositeItem) {
+      setErrors({ bomCompositeItem: 'Step 1 — Composite Item selection is required' });
+      addToast('error', 'Step 1 — Select whether this is a Composite Item (Yes / No)');
+      setCurrentStage(0);
+      focusPrField('bomCompositeItem');
+      return;
+    }
     if (!formData.productName.trim()) {
-      setErrors({ productName: 'Step 0 — Product Name is required' });
-      addToast('error', 'Step 0 — Product Name is required');
+      setErrors({ productName: 'Step 1 — Product Name is required' });
+      addToast('error', 'Step 1 — Product Name is required');
       setCurrentStage(0);
       focusPrField('productName');
       return;
     }
     if (!formData.prSubCategory.trim()) {
-      setErrors({ prSubCategory: 'Step 0 — Sub-Category is required' });
-      addToast('error', 'Step 0 — Sub-Category is required');
+      setErrors({ prSubCategory: 'Step 1 — Sub-Category is required' });
+      addToast('error', 'Step 1 — Sub-Category is required');
       setCurrentStage(0);
       focusPrField('prSubCategory');
       return;
     }
     if (!formData.category.trim()) {
-      setErrors({ category: 'Step 0 — Category is required' });
-      addToast('error', 'Step 0 — Category is required');
+      setErrors({ category: 'Step 1 — Category is required' });
+      addToast('error', 'Step 1 — Category is required');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('category');
@@ -789,29 +854,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return;
     }
-    if (!formData.productForm.trim()) {
-      setErrors({ productForm: 'Step 0 — Product Form is required' });
-      addToast('error', 'Step 0 — Product Form is required');
-      setCurrentStage(0);
-      window.setTimeout(() => {
-        const el = document.getElementById('productForm');
-        if (el instanceof HTMLElement) el.focus();
-      }, 0);
-      return;
-    }
-    if (!formData.fillSize.trim()) {
-      setErrors({ fillSize: 'Step 0 — Fill Size is required' });
-      addToast('error', 'Step 0 — Fill Size is required');
-      setCurrentStage(0);
-      window.setTimeout(() => {
-        const el = document.getElementById('fillSize');
-        if (el instanceof HTMLElement) el.focus();
-      }, 0);
-      return;
-    }
     if (!isValidMrpForPr(formData.mrp)) {
-      setErrors({ mrp: 'Step 0 — MRP Price is required (enter a positive amount, e.g. 499 or ₹499)' });
-      addToast('error', 'Step 0 — MRP Price is required');
+      setErrors({ mrp: 'Step 1 — MRP Price is required (enter a positive amount, e.g. 499 or ₹499)' });
+      addToast('error', 'Step 1 — MRP Price is required');
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('mrp');
@@ -821,8 +866,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
     if (!productIdFromRoute) {
       if (!formData.skuCode.trim()) {
-        setErrors({ skuCode: 'Step 0 — Generate or enter PR / BOM code' });
-        addToast('error', 'Step 0 — Generate or enter PR code before submitting');
+        setErrors({ skuCode: 'Step 1 — Generate or enter PR / BOM code' });
+        addToast('error', 'Step 1 — Generate or enter PR code before submitting');
         setCurrentStage(0);
         focusPrField('skuCode');
         return;
@@ -830,9 +875,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
 
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
-      setErrors({ fillSize: 'Step 0 — Fill Size must be in g or ml format' });
-      addToast('error', 'Step 0 — Fill Size must be in g or ml format (example: 50g or 50ml)');
-      setCurrentStage(0);
+      setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
+      addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml) — see Step 5 (Specs & Regulatory)');
+      setCurrentStage(4);
       window.setTimeout(() => {
         const el = document.getElementById('fillSize');
         if (el instanceof HTMLElement) el.focus();
@@ -920,6 +965,33 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   />
                   {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
                 </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="bomCompositeItem" className="block text-sm font-medium text-gray-700 mb-1">
+                    Composite Item
+                    <span className="text-red-600 ml-0.5" aria-hidden>*</span>
+                  </label>
+                  <select
+                    id="bomCompositeItem"
+                    value={formData.bomCompositeItem}
+                    onChange={(e) => handleInputChange('bomCompositeItem', e.target.value)}
+                    disabled={lockPrimaryFields}
+                    aria-invalid={errors.bomCompositeItem ? true : undefined}
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.bomCompositeItem ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    } ${lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="">Select...</option>
+                    <option value="Yes">Yes — Composite Item</option>
+                    <option value="No">No — Single product</option>
+                  </select>
+                  {errors.bomCompositeItem ? (
+                    <p className="mt-1 text-xs text-red-600">{errors.bomCompositeItem}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Composite Items (bundles / kits) use the <span className="font-mono">EI-CI-&lt;CAT&gt;</span> series; regular products use <span className="font-mono">EI-PR-&lt;CAT&gt;</span>.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -955,56 +1027,27 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Form <span className="text-red-600">*</span></label>
-                    <select
-                      id="productForm"
-                      value={formData.productForm}
-                      onChange={(e) => handleInputChange('productForm', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">Select product form</option>
-                      <option value="Lotion/Cream">Lotion/Cream</option>
-                      <option value="Gel">Gel</option>
-                      <option value="Serum">Serum</option>
-                      <option value="Oil">Oil</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Fill Size (in g or ml) <span className="text-red-600">*</span></label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
+                      MRP Price <span className="text-red-600">*</span>
+                    </label>
                     <input
-                      id="fillSize"
+                      id="mrp"
                       type="text"
-                      placeholder="e.g. 50g or 50ml"
-                      value={formData.fillSize}
-                      onChange={(e) => handleInputChange('fillSize', normalizeFillSizeInput(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="e.g. Rs.499"
+                      value={formData.mrp}
+                      onChange={(e) => handleInputChange('mrp', e.target.value)}
+                      aria-invalid={Boolean(errors.mrp)}
+                      aria-describedby={errors.mrp ? 'mrp-error' : undefined}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
                     />
+                    {errors.mrp ? (
+                      <p id="mrp-error" className="mt-1 text-xs text-red-600">
+                        {errors.mrp}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
-                    MRP Price <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="mrp"
-                    type="text"
-                    placeholder="e.g. Rs.499"
-                    value={formData.mrp}
-                    onChange={(e) => handleInputChange('mrp', e.target.value)}
-                    aria-invalid={Boolean(errors.mrp)}
-                    aria-describedby={errors.mrp ? 'mrp-error' : undefined}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
-                  />
-                  {errors.mrp ? (
-                    <p id="mrp-error" className="mt-1 text-xs text-red-600">
-                      {errors.mrp}
-                    </p>
-                  ) : null}
-                </div>
               </div>
             </div>
 
@@ -1368,6 +1411,38 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="productForm">Product Form</label>
+                    <select
+                      id="productForm"
+                      value={formData.productForm}
+                      onChange={(e) => handleInputChange('productForm', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">Select product form</option>
+                      <option value="Lotion/Cream">Lotion/Cream</option>
+                      <option value="Gel">Gel</option>
+                      <option value="Serum">Serum</option>
+                      <option value="Oil">Oil</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="fillSize">Fill Size (in g or ml)</label>
+                    <input
+                      id="fillSize"
+                      type="text"
+                      placeholder="e.g. 50g or 50ml"
+                      value={formData.fillSize}
+                      onChange={(e) => handleInputChange('fillSize', normalizeFillSizeInput(e.target.value))}
+                      aria-invalid={errors.fillSize ? true : undefined}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                        errors.fillSize ? 'border-red-500 bg-red-50/40' : 'border-slate-200'
+                      }`}
+                    />
+                    {errors.fillSize ? (
+                      <p className="mt-1 text-xs text-red-600">{errors.fillSize}</p>
+                    ) : null}
+                  </div>
+                  <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">QC Inspection Group</label>
                     <select
                       value={formData.prQcGroup}
@@ -1536,7 +1611,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, sub-category, product name, category, form, fill size, MRP price, and generated PR code on this step before continuing."
+      nextDisabledTitle="Complete PR category, composite item, sub-category, product name, category, MRP price, and generated PR code on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}

@@ -5,6 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
 import {
   fetchFacilityAreas,
+  ensureCustomZoneAndRack,
   type FacilityAreaDTO,
   type ZoneDTO,
 } from '../../services/facilityAreas.service';
@@ -417,6 +418,29 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     setSaveError(null);
     setSaving(true);
     try {
+      // When the user typed a custom zone/rack, auto-register it into Facility Management
+      // so the same zone/rack becomes selectable next time (and is surfaced in Facility
+      // Management for admins). Idempotent: reuses an existing zone/rack when the text
+      // matches. Non-fatal: if registration fails we still persist the GRN so the user's
+      // save is not lost.
+      if (locationSource === 'custom' && locationZone.trim() && locationPrefix.trim()) {
+        try {
+          const ensured = await ensureCustomZoneAndRack({
+            areaType: 'warehouse',
+            zoneText: locationZone.trim(),
+            rackText: locationPrefix.trim(),
+          });
+          if (ensured.success) {
+            queryClient.invalidateQueries({ queryKey: ['facility-areas'] });
+            queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
+          } else if (ensured.error) {
+            console.warn('[GRN] ensureCustomZoneAndRack failed:', ensured.error);
+          }
+        } catch (e) {
+          console.warn('[GRN] ensureCustomZoneAndRack threw:', e);
+        }
+      }
+
       const res = await updateGRN(grn.id, {
         assignedTo,
         grnDate: grnDate || undefined,
