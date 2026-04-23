@@ -134,11 +134,17 @@ interface ItemsInvolvedDisplayRow {
   plannedQty: string;
   plannedQtyNum: number;
   orderedQty: string;
+  /** Legacy: warehouse_inventory.in_transit (synced total). Prefer supplyTowardGrossNum for gaps/coverage. */
   orderedQtyNum: number;
+  /** Free SIH + release pipeline stages (planned + PO + shipped in-transit) — comparable to TOTAL REQ. */
+  supplyTowardGrossNum: number;
+  /** Formatted NET (release shortfall vs full TOTAL REQ). */
   net: string;
+  /** supplyTowardGrossNum − totalRequired; Release to Planning increases supply so NET moves toward 0. */
   netNum: number;
-  /** NET adjusted for Release→PR/PO pipeline (display only; not used for production or release rules). */
+  /** Supply − qty not yet on planning_batches (informational; NET column uses netNum = vs full TOTAL REQ). */
   netPipelineNum: number;
+  /** Same formatted string as `net` (full-BOM release shortfall). */
   netPipeline: string;
   inTransit: string;
   /** Stage-flow PO balance (still on a PO, not yet shipped/received). */
@@ -1956,8 +1962,8 @@ const Planning = () => {
     const itemName = String(item.name ?? '').trim().toLowerCase();
     const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
     return (allPlanningBatches as PlanningBatchAllRow[])
-      // Include both sent and draft batches so the operator sees every batch for the
-      // selected product/item.
+      // Only batches sent to production — draft rows (e.g. auto-added next batch) stay out until sent.
+      .filter((b) => b.sent === true)
       .filter((b) => {
         const allowedProductNames = (item.usedInProducts ?? [])
           .map((p) => String(p ?? '').trim().toLowerCase())
@@ -2137,8 +2143,12 @@ const Planning = () => {
     const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
     const sihStr = Math.round(row.sih).toLocaleString();
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
-    const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
     const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
+    const poQtyStage = Number(row.poQty ?? 0) || 0;
+    const inTransitStage = Number(row.inTransitQty ?? 0) || 0;
+    /** Cover vs full BOM: all stage columns + free stock (not warehouse in_transit alone — avoids ignoring PO QTY). */
+    const supplyTowardGrossNum =
+      Number(row.sih ?? 0) + plannedQtyNum + poQtyStage + inTransitStage;
     // Gross BOM demand (confirmed PIs) vs warehouse; unallocated = gross − qty already in planning_batches.
     const grossDemand = Number(row.totalRequired ?? 0) || 0;
     const batchUnallocatedNum =
@@ -2149,37 +2159,20 @@ const Planning = () => {
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
         ? `${Number(grossDemand).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
         : `${Math.round(grossDemand).toLocaleString()} pcs`;
-    // Physical NET: free SIH + legacy in_transit vs full BOM demand (stays non-zero after batches exist if stock is short).
-    const netNum = availableForPlanning - grossDemand;
-    /** Stub row for PR / draft-PO totals only (planning pipeline visualization for NET column). */
-    const itemForPrGap = {
-      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
-      name: row.name,
-      code: row.code,
-      itemType: row.type,
-      planningExtractedIds: row.planningExtractedIds ?? [],
-      planningExtractedId: row.planningExtractedIds?.[0] ?? null,
-      raw_material_id: row.raw_material_id ?? undefined,
-      pack_material_id: row.pack_material_id ?? undefined,
-    } as ItemsInvolvedDisplayRow;
-    const releasedTowardPlanning = releasedQtyTowardPlanningGap(
-      itemForPrGap,
-      procurementRequests,
-      plannedLinesFromBackend
-    );
-    const gapVsBatch = Math.max(0, batchUnallocatedNum - availableForPlanning);
-    const pipelineCover = Math.min(releasedTowardPlanning, gapVsBatch);
-    // Planning pipeline NET (display): SIH + in-transit + capped release toward what is still unallocated to batches.
-    const netPipelineNum = availableForPlanning + pipelineCover - batchUnallocatedNum;
+    // NET vs full TOTAL REQ (production need): supply − gross. With no stock/pipeline = full shortfall (−TOTAL REQ).
+    // Release to Planning increases supply (planned → PO → in-transit) so NET moves toward 0 without double-counting batches.
+    const netNum = supplyTowardGrossNum - grossDemand;
+    // Batch-only remainder (for tooltips): supply vs what is still unallocated to planning_batches — not the main NET column.
+    const netPipelineNum = supplyTowardGrossNum - batchUnallocatedNum;
     const coveragePct =
       grossDemand > 0
-        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / grossDemand) * 100)))
+        ? Math.max(0, Math.min(100, Math.round((supplyTowardGrossNum / grossDemand) * 100)))
         : 100;
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${netPipelineNum >= 0 ? '+' : ''}${Number(netPipelineNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
-        : `${netPipelineNum >= 0 ? '+' : ''}${Math.round(netPipelineNum).toLocaleString()}${unitSuffix}`;
+        ? `${netNum >= 0 ? '+' : ''}${Number(netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
+        : `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`;
     return {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
       name: row.name,
@@ -2212,6 +2205,7 @@ const Planning = () => {
       plannedQtyNum,
       orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
       orderedQtyNum,
+      supplyTowardGrossNum,
       net: netDisplay,
       netNum,
       netPipelineNum,
@@ -2227,7 +2221,7 @@ const Planning = () => {
       avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
       status: row.status ?? 'In Stock',
     };
-  }), [itemsInvolvedRows, procurementRequests, plannedLinesFromBackend]);
+  }), [itemsInvolvedRows]);
 
   const itemsInvolvedProductOptions = useMemo(() => {
     const set = new Set<string>();
@@ -2325,10 +2319,9 @@ const Planning = () => {
       // eslint-disable-next-line no-console
       console.groupEnd();
     }
-    const availForGap = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+    const availForGap = Number(item.supplyTowardGrossNum ?? 0);
     const gapNeed = Math.max(0, Number(item.totalRequired || 0) - availForGap);
-    const releasedTowardGap = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
-    const remainingGap = Math.max(0, gapNeed - releasedTowardGap);
+    const remainingGap = gapNeed;
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
     const qtyStr =
       surplus > 0 ? String(surplus) : remainingGap > 0 ? String(Math.round(remainingGap)) : '';
@@ -2483,8 +2476,13 @@ const Planning = () => {
       await updateProcurementRequest(createRes.data.id, { preferredVendor: vendorName });
     }
 
-    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
-    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['procurement-requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }),
+      // Items involved NET / PLANNED QTY / stages come from this API — must refetch after release.
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] }),
+      queryClient.invalidateQueries({ queryKey: ['planning', 'batches', 'all', 'items-involved'] }),
+    ]);
 
     setReleaseToPlanningItem(null);
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
@@ -3783,7 +3781,7 @@ const Planning = () => {
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">QC / STATUS</th>
                       <th
                         className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Pipeline NET (display): free stock + in-transit + capped Release-to-Planning toward gap, minus PLANNED QTY column (release only). Shortage / Release rules use physical net (SIH + in-transit − PLANNED QTY) without procurement overlay."
+                        title="Release shortfall vs full TOTAL REQ: SIH + PLANNED + PO + IN TRANSIT − TOTAL REQ. Negative = material still needed for production; Release to Planning reduces this. Not batch-split-only."
                       >
                         NET
                       </th>
@@ -3797,25 +3795,24 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        // Release opens procurement when there is a shortage vs batch BOM remainder (NET < 0)
-                        // or stock+in-transit still below that remainder (batch shortfall).
+                        // Release when still short vs full TOTAL REQ (netNum) or vs batch-unallocated supply (planned shortfall).
                         const hasShortfall = item.netNum < 0;
-                        const availableForPlanning = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+                        const supplyTowardGross = Number(item.supplyTowardGrossNum ?? 0);
                         const grossReq = Number(item.totalRequired || 0);
-                        const hasPlannedShortfall = grossReq > 0 && availableForPlanning < grossReq;
+                        const hasPlannedShortfall = grossReq > 0 && supplyTowardGross < grossReq;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const gapNeed = Math.max(0, grossReq - availableForPlanning);
+                        const gapNeed = Math.max(0, grossReq - supplyTowardGross);
                         const releasedTowardGap = releasedQtyTowardPlanningGap(
                           item,
                           procurementRequests,
                           plannedLinesFromBackend
                         );
-                        const releasedAgainstNeed = gapNeed > 0 ? Math.min(releasedTowardGap, gapNeed) : releasedTowardGap;
-                        const overReleasedQty = Math.max(0, releasedTowardGap - gapNeed);
-                        const remainingPlanningGap = Math.max(0, gapNeed - releasedTowardGap);
+                        // gapNeed already uses supply (incl. planned from prior releases). Do not subtract releasedTowardGap again — that double-counted and hid further release until refresh.
+                        const releasedAgainstNeed =
+                          gapNeed > 0 ? Math.min(releasedTowardGap, grossReq) : releasedTowardGap;
+                        const overReleasedQty = Math.max(0, releasedTowardGap - grossReq);
                         const shortageForRelease = hasShortfall || hasPlannedShortfall;
-                        const canReleaseToPlanning =
-                          shortageForRelease && remainingPlanningGap > 1e-6;
+                        const canReleaseToPlanning = shortageForRelease && gapNeed > 1e-6;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2">
@@ -3860,11 +3857,11 @@ const Planning = () => {
                               {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
                             </td>
                             <td
-                              className={`px-2 py-2 text-right font-semibold text-xs ${item.netPipelineNum < 0 ? 'text-red-600' : 'text-green-600'
+                              className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
                                 }`}
-                              title={`Planning pipeline NET (display only): ${item.netPipeline}. Physical net for filters / Release: ${item.netNum >= 0 ? '+' : ''}${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                ? Number(item.netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                : Math.round(item.netNum).toLocaleString()}. Not used in production calculations.`}
+                              title={`NET = supply (SIH + planned + PO + in-transit) − full TOTAL REQ. Batch remainder (supply − unallocated to batches): ${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                ? Number(item.netPipelineNum).toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                : Math.round(item.netPipelineNum).toLocaleString()}.`}
                             >
                               {item.net}
                             </td>
@@ -3900,7 +3897,7 @@ const Planning = () => {
                                       : ''}
                                   </span>
                                 )}
-                                {hasShortfall && hasExistingPlannedLine && remainingPlanningGap > 1e-6 && (
+                                {hasShortfall && hasExistingPlannedLine && gapNeed > 1e-6 && (
                                   <span
                                     className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
                                     title="Open procurement / draft PO lines exist; you can release more until the gap is covered."
@@ -3919,7 +3916,7 @@ const Planning = () => {
                                 ) : shortageForRelease ? (
                                   <span
                                     className="inline-flex items-center px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200"
-                                    title={`Gap already covered by procurement / draft PO (${releasedTowardGap.toLocaleString()} ≥ ${gapNeed.toLocaleString()}).`}
+                                    title={`Supply (incl. planned) meets TOTAL REQ — no open gap (${gapNeed.toLocaleString()} remaining).`}
                                   >
                                     Covered
                                   </span>
@@ -4011,10 +4008,9 @@ const Planning = () => {
         const previous = plannedLinesFromBackend
           .filter((l) => plannedLineCountsTowardItemRelease(l, item))
           .slice(0, 10);
-        const availModal = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+        const availModal = Number(item.supplyTowardGrossNum ?? 0);
         const gapNeedModal = Math.max(0, Number(item.totalRequired || 0) - availModal);
         const releasedModal = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
-        const remainingGapModal = Math.max(0, gapNeedModal - releasedModal);
         const qtyFmt = (n: number) =>
           item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
             ? n.toLocaleString(undefined, { maximumFractionDigits: 3 })
@@ -4039,7 +4035,7 @@ const Planning = () => {
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <h3 className="font-bold text-slate-900 text-sm mb-1">{item.name} <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.code}</span></h3>
                     <p className="text-xs text-slate-500 mb-3">
-                      {item.itemType} · {item.unit} · Need {qtyFmt(gapNeedModal)} · Released {qtyFmt(releasedModal)} · Remaining {qtyFmt(remainingGapModal)}
+                      {item.itemType} · {item.unit} · Open gap vs TOTAL REQ (after supply): {qtyFmt(gapNeedModal)} · On PR / draft PO lines: {qtyFmt(releasedModal)}
                     </p>
                     <div className="border-t border-slate-200 my-3" />
                     <table className="w-full text-xs">

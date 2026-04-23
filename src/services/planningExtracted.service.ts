@@ -300,10 +300,10 @@ export interface ItemsInvolvedRow {
   planningExtractedIds: number[];
   /** Full BOM demand (confirmed PIs) — compare to SIH / procurement. */
   totalRequired: number;
-  /** Gross minus qty already captured in planning_batches (batch-split remainder). */
+  /** Gross minus qty already captured in **sent** planning_batches (draft next-batch rows excluded). */
   unallocatedToBatches?: number;
   unit: string;
-  /** Number of production batches (released) that use this item — consolidated view */
+  /** Batches sent to production that use this item (draft planning_batches excluded). */
   batchCount?: number;
   sih: number;
   surplusShortage: number;
