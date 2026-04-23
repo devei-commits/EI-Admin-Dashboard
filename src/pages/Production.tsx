@@ -3784,6 +3784,8 @@ function MRNDetailModal({
     [mrn.lineItems, mrn.lineTransferStatus],
   );
 
+  const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
+
   const [recvLinePick, setRecvLinePick] = useState<Record<string, boolean>>({});
   const [completeLinePick, setCompleteLinePick] = useState<Record<string, boolean>>({});
 
@@ -3930,7 +3932,6 @@ function MRNDetailModal({
     return [...racks].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
   }, [selectedMuZone]);
 
-  const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
   const muStorageFilled = Boolean(muReceiveZone.trim() && muReceiveRack.trim());
   const hasInTransitForReceive = isOutboundMtr && inTransitLineIds.length > 0;
   const hasReceivedLinesToComplete = isOutboundMtr && receivedAtMuLineIds.length > 0;
