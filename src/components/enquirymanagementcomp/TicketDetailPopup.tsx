@@ -16,17 +16,8 @@ import {
  StatusDropdown,
  PriorityDropdown,
 } from './TicketComponents';
-import { 
- fetchAvailableStaff,
- fetchTicketActivities,
- fetchTicketMessages,
- addTicketMessage,
- assignTicket,
- updateTicketStatus,
- updateTicketPriority,
- resolveTicket,
- closeTicket,
-} from '../../services/ticket.service';
+import { fetchAvailableStaff } from '../../services/ticket.service';
+import api from '../../lib/apiClient';
 
 // ==================== Activity Timeline ====================
 interface ActivityTimelineProps {
@@ -365,63 +356,95 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
   loadStaff();
  }, []);
 
+ useEffect(() => {
+  setActivities(ticket.activities || []);
+  setMessages(ticket.messages || []);
+ }, [ticket.id, ticket.updatedAt, ticket.activities, ticket.messages]);
+
  // Load activities and messages
  useEffect(() => {
   const loadData = async () => {
    setLoading(prev => ({ ...prev, activities: true, messages: true }));
-   
-   const [activitiesResult, messagesResult] = await Promise.all([
-    fetchTicketActivities(ticket.id),
-    fetchTicketMessages(ticket.id),
-   ]);
-
-   if (activitiesResult.success && activitiesResult.data) {
-    setActivities(activitiesResult.data);
+   try {
+    const res = await api.get<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`);
+    const data = res && typeof res === 'object' && 'data' in res ? (res as { data?: Ticket }).data : undefined;
+    if (data) {
+     if (Array.isArray(data.activities)) setActivities(data.activities);
+     if (Array.isArray(data.messages)) setMessages(data.messages);
+    }
+   } catch {
+    // keep ticket prop snapshot
+   } finally {
+    setLoading(prev => ({ ...prev, activities: false, messages: false }));
    }
-   if (messagesResult.success && messagesResult.data) {
-    setMessages(messagesResult.data);
-   }
-
-   setLoading(prev => ({ ...prev, activities: false, messages: false }));
   };
-  loadData();
+  void loadData();
  }, [ticket.id]);
 
  const handleAssign = useCallback(async (staffId: string) => {
-  const result = await assignTicket({ ticketId: ticket.id, staffId });
-  if (result.success && result.data) {
-   onUpdate(result.data);
+  const staff = availableStaff.find((s) => s.id === staffId);
+  if (!staff) return;
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, {
+    current_assignee: {
+     staffId: staff.id,
+     staffName: staff.name,
+     staffEmail: staff.email || '',
+     department: staff.department || '',
+     assignedAt: new Date().toISOString(),
+     assignedBy: '',
+     isActive: true,
+    },
+   });
+   if (res?.success && res.data) onUpdate(res.data);
+  } catch (e) {
+   console.error(e);
+  }
+ }, [ticket.id, onUpdate, availableStaff]);
+
+ const handleUnassign = useCallback(async () => {
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, {
+    current_assignee: null,
+   });
+   if (res?.success && res.data) onUpdate(res.data);
+  } catch (e) {
+   console.error(e);
   }
  }, [ticket.id, onUpdate]);
 
- const handleUnassign = useCallback(async () => {
-  // TODO: Implement unassign
- }, []);
-
  const handleStatusChange = useCallback(async (status: TicketStatus) => {
-  const result = await updateTicketStatus(ticket.id, status);
-  if (result.success && result.data) {
-   onUpdate(result.data);
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, { status });
+   if (res?.success && res.data) onUpdate(res.data);
+  } catch (e) {
+   console.error(e);
   }
  }, [ticket.id, onUpdate]);
 
  const handlePriorityChange = useCallback(async (priority: TicketPriority) => {
-  const result = await updateTicketPriority(ticket.id, priority);
-  if (result.success && result.data) {
-   onUpdate(result.data);
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, { priority });
+   if (res?.success && res.data) onUpdate(res.data);
+  } catch (e) {
+   console.error(e);
   }
  }, [ticket.id, onUpdate]);
 
  const handleSendMessage = useCallback(async (content: string, isInternal: boolean) => {
-  const result = await addTicketMessage({
-   ticketId: ticket.id,
-   content,
-   isInternal,
-  });
-  if (result.success && result.data) {
-   setMessages(prev => [...prev, result.data!]);
+  try {
+   const res = await api.post<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}/messages`, {
+    content,
+    isInternal,
+   });
+   if (res?.success && res.data) {
+    onUpdate(res.data);
+    setMessages(res.data.messages || []);
+   }
+  } catch (e) {
+   console.error(e);
   }
- }, [ticket.id]);
+ }, [ticket.id, onUpdate]);
 
  const handleLinkOrder = useCallback(() => {
   // TODO: Open order search modal
@@ -433,21 +456,29 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
  const handleResolve = useCallback(async () => {
   if (!resolutionNotes.trim()) return;
-  
-  const result = await resolveTicket({
-   ticketId: ticket.id,
-   resolutionNotes: resolutionNotes.trim(),
-  });
-  if (result.success && result.data) {
-   onUpdate(result.data);
-   setShowResolveModal(false);
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, {
+    status: 'resolved',
+    resolution_notes: resolutionNotes.trim(),
+    resolved_at: new Date().toISOString(),
+   });
+   if (res?.success && res.data) {
+    onUpdate(res.data);
+    setShowResolveModal(false);
+   }
+  } catch (e) {
+   console.error(e);
   }
  }, [ticket.id, resolutionNotes, onUpdate]);
 
  const handleClose = useCallback(async () => {
-  const result = await closeTicket(ticket.id);
-  if (result.success && result.data) {
-   onUpdate(result.data);
+  try {
+   const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, {
+    status: 'closed',
+   });
+   if (res?.success && res.data) onUpdate(res.data);
+  } catch (e) {
+   console.error(e);
   }
  }, [ticket.id, onUpdate]);
 
@@ -463,7 +494,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        </span>
        <StatusBadge status={ticket.status} />
        <PriorityBadge priority={ticket.priority} />
-       <CategoryBadge category={ticket.category} />
+       <CategoryBadge category={ticket.category as string} />
        {ticket.isOverdue && (
         <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
          OVERDUE
@@ -499,19 +530,19 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
     <div className="flex-1 overflow-hidden flex">
      {/* Left Panel - Details */}
      <div className="w-80 border-r border-gray-200 p-6 overflow-y-auto bg-gray-50/30">
-      {/* Customer Info */}
+      {/* Customer / reporter */}
       <div className="mb-6">
        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-        Customer
+        {ticket.ticketScope === 'internal' ? 'Reporter' : 'Customer'}
        </h4>
        <div className="bg-white rounded-lg p-4 border border-gray-200">
         <div className="flex items-center gap-3 mb-3">
          <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-white font-semibold">
-          {ticket.customer.name.split(' ').map(n => n[0]).join('')}
+          {(ticket.customer?.name || '?').split(' ').map(n => n[0]).join('')}
          </div>
          <div>
-          <p className="font-medium text-gray-900">{ticket.customer.name}</p>
-          {ticket.customer.company && (
+          <p className="font-medium text-gray-900">{ticket.customer?.name || '—'}</p>
+          {ticket.customer?.company && (
            <p className="text-xs text-gray-500">{ticket.customer.company}</p>
           )}
          </div>
@@ -521,17 +552,69 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
-          <span className="truncate">{ticket.customer.email}</span>
+          <span className="truncate">{ticket.customer?.email || '—'}</span>
          </div>
          <div className="flex items-center gap-2 text-gray-600">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
           </svg>
-          <span>{ticket.customer.phone}</span>
+          <span>{ticket.customer?.phone || '—'}</span>
          </div>
         </div>
        </div>
       </div>
+
+      {ticket.ticketScope === 'internal' && ticket.collaboration && (
+       <div className="mb-6">
+        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+         Tags &amp; areas
+        </h4>
+        <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3 text-sm">
+         {ticket.collaboration.issueAreas && ticket.collaboration.issueAreas.length > 0 && (
+          <div>
+           <p className="text-xs font-medium text-gray-500 mb-1">Issue areas</p>
+           <div className="flex flex-wrap gap-1.5">
+            {ticket.collaboration.issueAreas.map((id) => (
+             <span
+              key={id}
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+               id === 'pis' ? 'bg-amber-100 text-amber-900' : 'bg-gray-100 text-gray-700'
+              }`}
+             >
+              {id === 'pis' ? 'PIS' : id.replace(/-/g, ' ')}
+             </span>
+            ))}
+           </div>
+          </div>
+         )}
+         {ticket.collaboration.taggedTeams && ticket.collaboration.taggedTeams.length > 0 && (
+          <div>
+           <p className="text-xs font-medium text-gray-500 mb-1">Teams</p>
+           <div className="flex flex-wrap gap-1.5">
+            {ticket.collaboration.taggedTeams.map((t) => (
+             <span key={t.id} className="px-2 py-0.5 rounded-full text-xs bg-violet-50 text-violet-900 border border-violet-100">
+              {t.name || t.id}
+             </span>
+            ))}
+           </div>
+          </div>
+         )}
+         {ticket.collaboration.taggedMembers && ticket.collaboration.taggedMembers.length > 0 && (
+          <div>
+           <p className="text-xs font-medium text-gray-500 mb-1">Tagged colleagues</p>
+           <ul className="space-y-1 text-gray-800">
+            {ticket.collaboration.taggedMembers.map((m) => (
+             <li key={m.userid}>
+              {m.displayName || m.email || `User ${m.userid}`}
+              {m.email ? <span className="text-gray-500 text-xs ml-1">({m.email})</span> : null}
+             </li>
+            ))}
+           </ul>
+          </div>
+         )}
+        </div>
+       </div>
+      )}
 
       {/* Assignment */}
       <div className="mb-6">
@@ -610,7 +693,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        {[
         { id: 'messages', label: 'Messages', count: messages.length },
         { id: 'activity', label: 'Activity', count: activities.length },
-        { id: 'orders', label: 'Linked Orders', count: ticket.linkedOrders.length },
+        { id: 'orders', label: 'Linked Orders', count: ticket.linkedOrders?.length ?? 0 },
        ].map((tab) => (
         <button
          key={tab.id}
@@ -650,7 +733,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        )}
        {activeTab === 'orders' && (
         <LinkedOrdersSection
-         orders={ticket.linkedOrders}
+         orders={ticket.linkedOrders ?? []}
          onLinkOrder={handleLinkOrder}
          onUnlinkOrder={handleUnlinkOrder}
         />

@@ -3288,6 +3288,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const [reqDate, setReqDate] = useState(type === 'rm' ? (batch.rmConnectDate || today()) : (batch.pmConnectDate || today()));
   const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
   const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  /** Warehouse zone (RM and PM/BPR MTR) — from Facility Management */
+  const [transferFromCode, setTransferFromCode] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [derivedItems, setDerivedItems] = useState<DispensingItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -3303,7 +3305,6 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
 
   const allWhZones = warehouseAreas.flatMap(a => a.zones);
   const allProductionZones = productionAreas.flatMap(a => a.zones);
-  const mainWarehouseZone = allWhZones[0];
 
   const needLoadInMtr = (type === 'rm' && batchItems.length === 0 && passedItems.length === 0) || (type === 'pm' && batchItems.length === 0);
   useEffect(() => {
@@ -3441,19 +3442,23 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       const prod = prodRes.data || [];
       setWarehouseAreas(wh);
       setProductionAreas(prod);
-      const whZones = wh.flatMap(a => a.zones);
-      const mainWh = whZones[0];
-      const prodZones = prod.flatMap((a) => a.zones);
-      if (type === 'rm' && !transferTo) setTransferTo(prodZones[0]?.code ?? '');
-      if (type === 'pm' && mainWh && !transferTo) setTransferTo(mainWh.code);
     });
   }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const transferFrom = type === 'rm' ? (mainWarehouseZone?.code ?? '') : (allProductionZones[0]?.code ?? '');
-  const fromLabel = type === 'rm' ? 'Main Warehouse' : (allProductionZones.find(z => z.code === transferFrom)?.name ?? 'Production');
-  const toLabel = type === 'rm'
-    ? (allProductionZones.find(z => z.code === transferTo)?.name ?? transferTo)
-    : (allWhZones.find(z => z.code === transferTo)?.name ?? 'Main Warehouse');
+  useEffect(() => {
+    setTransferFromCode('');
+    setTransferTo('');
+  }, [type]);
+
+  useEffect(() => {
+    if (allWhZones.length === 0 && allProductionZones.length === 0) return;
+    /* RM and BPR/PM MTR: same route WH (pick) → production (manufacturing unit receive). */
+    setTransferFromCode((prev) => prev || (allWhZones[0]?.code ?? ''));
+    setTransferTo((prev) => prev || (allProductionZones[0]?.code ?? ''));
+  }, [type, allWhZones.length, allProductionZones.length]);
+
+  const fromLabel = zoneLabelInAreas(warehouseAreas, transferFromCode);
+  const toLabel = zoneLabelInAreas(productionAreas, transferTo);
 
   const { addToast } = useToast();
   const [sending, setSending] = useState(false);
@@ -3508,9 +3513,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         bmrNo: batch.bmrNo,
         source: 'MTR',
         itemType: type,
-        ...(type === 'rm' && String(transferTo || '').trim()
-          ? { muReceiveZone: String(transferTo).trim() }
-          : {}),
+        ...(String(transferFromCode || '').trim() ? { whDispatchZone: String(transferFromCode).trim() } : {}),
+        ...(String(transferTo || '').trim() ? { muReceiveZone: String(transferTo).trim() } : {}),
       });
       addToast(
         'success',
@@ -3543,25 +3547,33 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className={LBL}>Transfer From</label>
-          <div className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg">{fromLabel}</div>
+          <select className={INP} value={transferFromCode} onChange={e => setTransferFromCode(e.target.value)}>
+            {allWhZones.length === 0 && <option value="">No warehouse zones in Facility Management</option>}
+            {warehouseAreas.map((a) => (
+              <optgroup key={a.id} label={`${a.name} (warehouse)`}>
+                {(a.zones || []).map((z) => (
+                  <option key={z.code} value={z.code}>
+                    {z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''} ({z.code})
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
         <div>
           <label className={LBL}>Transfer To</label>
-          {type === 'rm' ? (
-            <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
-              {allProductionZones.length === 0 && <option value="">No production zones configured</option>}
-              {allProductionZones.map(z => (
-                <option key={z.code} value={z.code}>{z.name}</option>
-              ))}
-            </select>
-          ) : (
-            <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
-              {allWhZones.length === 0 && <option value="">Loading...</option>}
-              {allWhZones.map(z => (
-                <option key={z.code} value={z.code}>{z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''}</option>
-              ))}
-            </select>
-          )}
+          <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
+            {allProductionZones.length === 0 && <option value="">No production zones in Facility Management</option>}
+            {productionAreas.map((a) => (
+              <optgroup key={a.id} label={`${a.name} (manufacturing unit)`}>
+                {(a.zones || []).map((z) => (
+                  <option key={z.code} value={z.code}>
+                    {z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''} ({z.code})
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
         <div><label className={LBL}>Required By Date</label><input type="date" className={INP} value={reqDate} onChange={e => setReqDate(e.target.value)} /></div>
         <div><label className={LBL}>Priority</label><select className={INP} value={priority} onChange={e => setPriority(e.target.value)}><option>Urgent</option><option>Normal</option><option>Low</option></select></div>
@@ -3714,6 +3726,37 @@ function matchMrnMuLocationToFacility(
   return { areaId: m.areaId, zoneId: m.zoneId, rackId: m.rackId };
 }
 
+/** When MTR saved only a destination zone (no rack), map zone code to production area + zone. */
+function matchMrnZoneCodeToFacility(
+  muReceiveZone: string | null | undefined,
+  areas: FacilityAreaDTO[]
+): { areaId: number; zoneId: number; zone: ZoneDTO } | null {
+  const zt = (muReceiveZone || '').trim();
+  if (!zt) return null;
+  for (const area of areas) {
+    for (const zone of area.zones || []) {
+      if (zone.code === zt) return { areaId: area.id, zoneId: zone.id, zone };
+      if (muFacilityZoneDisplayLabel(zone) === zt || (zone.name || '').trim() === zt) {
+        return { areaId: area.id, zoneId: zone.id, zone };
+      }
+    }
+  }
+  return null;
+}
+
+function zoneLabelInAreas(areas: FacilityAreaDTO[], zoneCode: string): string {
+  const zc = (zoneCode || '').trim();
+  if (!zc) return '—';
+  for (const a of areas) {
+    for (const z of a.zones || []) {
+      if (z.code === zc) {
+        return `${a.name} — ${z.name}${z.zoneLabel ? ` — ${z.zoneLabel}` : ''}`.trim();
+      }
+    }
+  }
+  return zc;
+}
+
 function MRNDetailModal({
   mrn,
   assignablePickers = [],
@@ -3820,6 +3863,8 @@ function MRNDetailModal({
     setLogisticsVehicleNo(mrn.logisticsVehicleNo ?? '');
   }, [mrn.id, mrn.status, mrn.assignedPicker, mrn.receivedAtMu, mrn.noOfBoxes, mrn.unitsPerBox, mrn.generatedLabels, mrn.lineTransferStatus]);
 
+  const mtrMuDestLocked = isOutboundMtr && Boolean(String(mrn.muReceiveZone || '').trim());
+
   useEffect(() => {
     if (productionFacilityLoading) return;
     const areas = productionFacilityData;
@@ -3848,15 +3893,39 @@ function MRNDetailModal({
         setLocationPrefix(rack.code);
       }
     } else {
-      setMuLocationSource('custom');
-      setSelectedMuAreaId('');
-      setSelectedMuZoneId('');
-      setSelectedMuRackId('');
-      setMuReceiveZone(mrn.muReceiveZone ?? '');
-      setMuReceiveRack(mrn.muReceiveRack ?? '');
-      setLocationPrefix(mrn.locationPrefix ?? '');
+      const zOnly =
+        isOutboundMtr && !String(mrn.muReceiveRack || '').trim()
+          ? matchMrnZoneCodeToFacility(mrn.muReceiveZone, areas)
+          : null;
+      if (zOnly) {
+        setMuLocationSource('facility');
+        setSelectedMuAreaId(zOnly.areaId);
+        setSelectedMuZoneId(zOnly.zoneId);
+        setMuReceiveZone(zOnly.zone.code);
+        const racks = [...(zOnly.zone.racks || [])].sort((a, b) =>
+          String(a.code).localeCompare(String(b.code), undefined, { numeric: true })
+        );
+        const first = racks[0];
+        if (first) {
+          setSelectedMuRackId(first.id);
+          setMuReceiveRack(first.code);
+          setLocationPrefix(first.code);
+        } else {
+          setSelectedMuRackId('');
+          setMuReceiveRack(mrn.muReceiveRack ?? '');
+          setLocationPrefix(mrn.locationPrefix ?? '');
+        }
+      } else {
+        setMuLocationSource('custom');
+        setSelectedMuAreaId('');
+        setSelectedMuZoneId('');
+        setSelectedMuRackId('');
+        setMuReceiveZone(mrn.muReceiveZone ?? '');
+        setMuReceiveRack(mrn.muReceiveRack ?? '');
+        setLocationPrefix(mrn.locationPrefix ?? '');
+      }
     }
-  }, [mrn.id, mrn.muReceiveZone, mrn.muReceiveRack, mrn.locationPrefix, productionFacilityData, productionFacilityLoading]);
+  }, [mrn.id, mrn.muReceiveZone, mrn.muReceiveRack, mrn.locationPrefix, productionFacilityData, productionFacilityLoading, isOutboundMtr]);
 
   useEffect(() => {
     if (!isOutboundMtr || productionFacilityLoading) return;
@@ -4252,11 +4321,12 @@ function MRNDetailModal({
                 <span className="text-xs font-semibold text-slate-700">
                   MU put-away <span className="text-red-500">*</span>
                 </span>
-                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-slate-500 cursor-not-allowed' : 'text-slate-700 cursor-pointer'}`}>
                   <input
                     type="radio"
                     name="mrn-mu-location-source"
                     className="rounded-full border-slate-300"
+                    disabled={mtrMuDestLocked}
                     checked={muLocationSource === 'facility'}
                     onChange={() => {
                       setMuLocationSource('facility');
@@ -4270,11 +4340,12 @@ function MRNDetailModal({
                   />
                   Facility Management (production)
                 </label>
-                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-slate-500 cursor-not-allowed' : 'text-slate-700 cursor-pointer'}`}>
                   <input
                     type="radio"
                     name="mrn-mu-location-source"
                     className="rounded-full border-slate-300"
+                    disabled={mtrMuDestLocked}
                     checked={muLocationSource === 'custom'}
                     onChange={() => setMuLocationSource('custom')}
                   />
@@ -4284,6 +4355,11 @@ function MRNDetailModal({
               <p className="text-[10px] text-slate-500">
                 Production areas, zones, and racks are maintained under <strong>Facility Management</strong> (type Production). Zone <span className="font-mono">code</span> is stored for stock routing (e.g. include <span className="font-mono">MU02</span> or <span className="font-mono">LOC-MU02</span> for ML2).
               </p>
+              {mtrMuDestLocked && (
+                <p className="text-[10px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                  Destination manufacturing zone is fixed from <strong>Send MTR</strong>. Choose the <strong>rack</strong> for put-away, or change rack if needed.
+                </p>
+              )}
 
               {muLocationSource === 'facility' && productionFacilityLoading && (
                 <p className="text-xs text-slate-500">Loading production locations…</p>
@@ -4306,7 +4382,8 @@ function MRNDetailModal({
                         setSelectedMuZoneId('');
                         setSelectedMuRackId('');
                       }}
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                      disabled={mtrMuDestLocked}
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-500"
                     >
                       <option value="">— Select area —</option>
                       {productionFacilityData.map((a) => (
@@ -4325,7 +4402,7 @@ function MRNDetailModal({
                         setSelectedMuZoneId(v ? parseInt(v, 10) : '');
                         setSelectedMuRackId('');
                       }}
-                      disabled={selectedMuAreaId === ''}
+                      disabled={selectedMuAreaId === '' || mtrMuDestLocked}
                       className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                     >
                       <option value="">— Select zone —</option>
@@ -4369,9 +4446,10 @@ function MRNDetailModal({
                     <input
                       type="text"
                       value={muReceiveZone}
+                      readOnly={mtrMuDestLocked}
                       onChange={(e) => setMuReceiveZone(e.target.value)}
                       placeholder="e.g. LOC-MU01"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm read-only:bg-slate-100"
                     />
                   </div>
                   <div>

@@ -94,6 +94,7 @@ interface MRN {
   logisticsDispatchDate?: string | null;
   logisticsEtaDate?: string | null;
   logisticsVehicleNo?: string | null;
+  whDispatchZone?: string;
   muReceiveZone?: string;
   muReceiveRack?: string;
 }
@@ -138,6 +139,7 @@ function mapApiToMRN(r: MRNRecordFromApi): MRN {
     logisticsDispatchDate: r.logisticsDispatchDate ?? null,
     logisticsEtaDate: r.logisticsEtaDate ?? null,
     logisticsVehicleNo: r.logisticsVehicleNo ?? null,
+    whDispatchZone: r.whDispatchZone ?? undefined,
     muReceiveZone: r.muReceiveZone ?? undefined,
     muReceiveRack: r.muReceiveRack ?? undefined,
   };
@@ -174,33 +176,47 @@ const OutboundDashboard = () => {
     >
   >({});
   const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
   const [selectedMlLocation, setSelectedMlLocation] = useState('');
+
+  const zoneLabelInAreas = (areas: FacilityAreaDTO[], zoneCode: string) => {
+    const zc = (zoneCode || '').trim();
+    if (!zc) return '—';
+    for (const a of areas) {
+      for (const z of a.zones || []) {
+        if (z.code === zc) {
+          return `${a.name} — ${z.name}${z.zoneLabel ? ` — ${z.zoneLabel}` : ''}`.trim();
+        }
+      }
+    }
+    return zc;
+  };
 
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
+  /** Shown read-only for outbound MTR: server `muReceiveZone` (Send MTR) or legacy dedicated fallback in `selectedMlLocation`. */
+  const mtrMlDestinationCode = selectedMRN
+    ? String(selectedMRN.muReceiveZone || selectedMlLocation || '').trim()
+    : '';
   const persistedPickerLocked = Boolean((selectedMRN?.assignedPicker || '').trim());
   const savePickAvailable = selectedMRN?.status === 'Pending Pick';
-  const mlLocationOptions = productionAreas.flatMap((area) =>
-    (area.zones || []).map((zone) => ({
-      value: zone.code,
-      label: `${zone.code} — ${zone.name}`,
-    }))
-  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [list, pickers, areasRes] = await Promise.all([
+        const [list, pickers, areasProd, areasWh] = await Promise.all([
           fetchMRNList({ transferType: 'outbound' }),
           fetchMRNAssignablePickers(),
           fetchFacilityAreas('production'),
+          fetchFacilityAreas('warehouse'),
         ]);
         if (!cancelled) {
           setMrnData(list.map(mapApiToMRN));
           setAssignablePickers(pickers);
-          setProductionAreas((areasRes.success ? areasRes.data : []) as FacilityAreaDTO[]);
+          setProductionAreas((areasProd.success ? areasProd.data : []) as FacilityAreaDTO[]);
+          setWarehouseAreas((areasWh.success ? areasWh.data : []) as FacilityAreaDTO[]);
         }
       } catch {
         if (!cancelled) setMrnData([]);
@@ -766,26 +782,37 @@ const OutboundDashboard = () => {
                     />
                   </div>
                   {isMtrOutbound(selectedMRN) && (
-                    <div className="col-span-2">
-                      <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                        ML location (Destination) <span className="text-rose-600">*</span>
-                      </label>
-                      <select
-                        value={selectedMlLocation}
-                        onChange={(e) => setSelectedMlLocation(e.target.value)}
-                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
-                      >
-                        <option value="">— Select ML location —</option>
-                        {mlLocationOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        Pulled from Facility Management (Production zones).
-                      </p>
-                    </div>
+                    <>
+                      <div className="col-span-2">
+                        <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer from (warehouse)</label>
+                        <div
+                          className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                          title="Set in Production when sending the MTR. Not editable in Warehouse."
+                        >
+                          {selectedMRN.whDispatchZone
+                            ? zoneLabelInAreas(warehouseAreas, selectedMRN.whDispatchZone)
+                            : '—'}
+                        </div>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[9px] text-slate-500 uppercase mb-1">
+                          Transfer to (manufacturing / ML) <span className="text-rose-600">*</span>
+                        </label>
+                        <div
+                          className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                          title="Defined in Production (Send MTR) for RM and BPR/PM. Not editable in Warehouse."
+                        >
+                          {mtrMlDestinationCode
+                            ? zoneLabelInAreas(productionAreas, mtrMlDestinationCode)
+                            : '—'}
+                        </div>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          {mtrMlDestinationCode
+                            ? 'From Production (Send MTR). Use logistics below when you initiate transfer.'
+                            : 'No destination on this MRN yet — use Send MTR in Production (RM or PM) so the manufacturing zone is saved, or contact an admin for older transfer orders.'}
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
               </section>

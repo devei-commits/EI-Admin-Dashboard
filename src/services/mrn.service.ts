@@ -48,6 +48,7 @@ export interface MRNRecordFromApi {
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
+  whDispatchZone?: string | null;
   muReceiveZone?: string | null;
   muReceiveRack?: string | null;
   logisticsTrackingNo?: string | null;
@@ -73,6 +74,8 @@ export interface CreateMRNPayload {
   /** Outbound MTR: default MU zone (production location) on the MRN */
   muReceiveZone?: string;
   muReceiveRack?: string;
+  /** Outbound MTR: warehouse zone stock is issued from */
+  whDispatchZone?: string;
 }
 
 /** Fetch all MRNs, optionally filtered by transferType: 'outbound' (WH→MU) or 'inbound_from_mu' (MU→WH). */

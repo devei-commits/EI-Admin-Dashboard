@@ -26,9 +26,20 @@ export type TicketCategory =
  | 'technical-support' 
  | 'quotation-request' 
  | 'partnership' 
+ | 'refund'
+ | 'pis-issue'
  | 'other';
 
-export type TicketSource = 'website' | 'email' | 'phone' | 'whatsapp' | 'walk-in' | 'referral';
+export type TicketSource = 'website' | 'email' | 'phone' | 'whatsapp' | 'walk-in' | 'referral' | 'chat' | 'internal-cross-team' | 'other';
+
+export type TicketScope = 'customer' | 'internal';
+
+/** Cross-team internal ticket: @mentions and area tags */
+export interface TicketCollaboration {
+ taggedMembers: { userid: number; displayName?: string | null; email?: string | null }[];
+ taggedTeams: { id: string; name?: string | null }[];
+ issueAreas: string[];
+}
 
 // ==================== Staff Types ====================
 export interface StaffMember {
@@ -129,6 +140,8 @@ export interface LinkedOrder {
 export interface Ticket {
  id: string;
  ticketNumber: string;
+ /** customer-facing vs internal cross-team ticket */
+ ticketScope?: TicketScope;
  
  // Customer Information
  customer: {
@@ -138,7 +151,7 @@ export interface Ticket {
   phone: string;
   company?: string;
   isRegistered: boolean;
- };
+ } | null;
  
  // Ticket Details
  subject: string;
@@ -148,6 +161,8 @@ export interface Ticket {
  status: TicketStatus;
  source: TicketSource;
  tags?: string[];
+ /** Present when ticketScope is internal */
+ collaboration?: TicketCollaboration;
  
  // Assignment
  currentAssignee?: StaffAssignment;
