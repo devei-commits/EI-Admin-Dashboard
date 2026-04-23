@@ -298,7 +298,10 @@ export interface ItemsInvolvedRow {
   category: string;
   usedInProducts: string[];
   planningExtractedIds: number[];
+  /** Full BOM demand (confirmed PIs) — compare to SIH / procurement. */
   totalRequired: number;
+  /** Gross minus qty already captured in planning_batches (batch-split remainder). */
+  unallocatedToBatches?: number;
   unit: string;
   /** Number of production batches (released) that use this item — consolidated view */
   batchCount?: number;

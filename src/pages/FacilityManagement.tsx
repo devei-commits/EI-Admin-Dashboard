@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
+import FacilityItemLocationsPanel from './FacilityItemLocationsPanel';
 import {
   fetchFacilityAreas,
   createFacilityArea,
@@ -28,6 +29,7 @@ type RackForm = typeof RACK_FORM_EMPTY;
 
 const FacilityManagement: React.FC = () => {
   const { addToast } = useToast();
+  const [mainTab, setMainTab] = useState<'structure' | 'item_locations'>('structure');
 
   const [areas, setAreas] = useState<FacilityAreaDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,17 +168,48 @@ const FacilityManagement: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Create only. Structure: Location (4) → Zones → Racks.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {mainTab === 'structure'
+              ? 'Create only. Structure: Location (4) → Zones → Racks.'
+              : 'Default warehouse and production storage per item for transfer workflows.'}
+          </p>
         </div>
+        {mainTab === 'structure' && (
+          <button
+            onClick={openCreateArea}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Add Area
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 border-b border-gray-200 pb-2">
         <button
-          onClick={openCreateArea}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
+          type="button"
+          onClick={() => setMainTab('structure')}
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+            mainTab === 'structure' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          Add Area
+          Areas & zones
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('item_locations')}
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+            mainTab === 'item_locations' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Item locations
         </button>
       </div>
 
+      {mainTab === 'item_locations' && <FacilityItemLocationsPanel />}
+
+      {mainTab === 'structure' && (
+      <>
       {/* Type filter tabs */}
       <div className="flex gap-2">
         {(['all', 'warehouse', 'production'] as const).map((t) => (
@@ -329,6 +362,8 @@ const FacilityManagement: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Area Modal */}

@@ -57,6 +57,7 @@ import {
   createMRN, fetchMRNList, fetchMRNById, updateMRN, getApiErrorMessage, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
   type MRNRecordFromApi, type GeneratedMRNLabel, type MRNLocationHistoryEntry, type AssignablePicker as MRNAssignablePicker,
 } from '../services/mrn.service';
+import { resolveItemDedicatedForMrn } from '../services/itemDedicatedFacilityLocations.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchBOMByProductId, type BOMRecord, type BOMRmLine, type BOMPmLine } from '../services/bom.service';
 import { fetchBOMByBatchId } from '../services/production.service';
@@ -3507,6 +3508,9 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         bmrNo: batch.bmrNo,
         source: 'MTR',
         itemType: type,
+        ...(type === 'rm' && String(transferTo || '').trim()
+          ? { muReceiveZone: String(transferTo).trim() }
+          : {}),
       });
       addToast(
         'success',
@@ -3851,6 +3855,42 @@ function MRNDetailModal({
       setLocationPrefix(mrn.locationPrefix ?? '');
     }
   }, [mrn.id, mrn.muReceiveZone, mrn.muReceiveRack, mrn.locationPrefix, productionFacilityData, productionFacilityLoading]);
+
+  useEffect(() => {
+    if (!isOutboundMtr || productionFacilityLoading) return;
+    if (String(mrn.muReceiveRack || '').trim() || String(muReceiveRack || '').trim()) return;
+    const z = String(muReceiveZone || mrn.muReceiveZone || '').trim();
+    if (!z || !(mrn.lineItems || []).length) return;
+    let cancelled = false;
+    (async () => {
+      const res = await resolveItemDedicatedForMrn(mrn.lineItems);
+      if (cancelled || !res.success || !res.data?.prodOk || !res.data.prodRackCode) return;
+      const d = res.data;
+      if (d.prodZoneCode && z && d.prodZoneCode !== z) return;
+      const rackCode = d.prodRackCode;
+      const m = matchMrnMuLocationToFacility(z || d.prodZoneCode || null, rackCode, productionFacilityData);
+      setMuReceiveRack(rackCode);
+      if (m && productionFacilityData.length > 0) {
+        setMuLocationSource('facility');
+        setSelectedMuAreaId(m.areaId);
+        setSelectedMuZoneId(m.zoneId);
+        setSelectedMuRackId(m.rackId);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isOutboundMtr,
+    productionFacilityLoading,
+    mrn.id,
+    JSON.stringify(mrn.lineItems),
+    mrn.muReceiveZone,
+    mrn.muReceiveRack,
+    muReceiveZone,
+    muReceiveRack,
+    productionFacilityData,
+  ]);
 
   useEffect(() => {
     if (muLocationSource !== 'facility') return;

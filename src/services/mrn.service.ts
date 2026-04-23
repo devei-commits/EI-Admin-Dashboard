@@ -70,6 +70,9 @@ export interface CreateMRNPayload {
   source?: string;
   isInboundFromMu?: boolean;
   itemType?: 'rm' | 'pm';
+  /** Outbound MTR: default MU zone (production location) on the MRN */
+  muReceiveZone?: string;
+  muReceiveRack?: string;
 }
 
 /** Fetch all MRNs, optionally filtered by transferType: 'outbound' (WH→MU) or 'inbound_from_mu' (MU→WH). */

@@ -153,6 +153,8 @@ interface ItemsInvolvedDisplayRow {
   reorderPt: string;
   avgMo: string;
   status: string;
+  /** BOM qty not yet rolled into planning_batches (split remainder). */
+  unallocatedToBatches?: number;
 }
 
 type PlannedLine = {
@@ -2137,14 +2139,18 @@ const Planning = () => {
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
     const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
     const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
-    // BOM qty still unallocated to planning_batches (backend totalRequired). Goes *down* when batches absorb lines — not PLANNED QTY (release-only).
-    const batchUnallocatedNum = Number(row.totalRequired ?? 0) || 0;
+    // Gross BOM demand (confirmed PIs) vs warehouse; unallocated = gross − qty already in planning_batches.
+    const grossDemand = Number(row.totalRequired ?? 0) || 0;
+    const batchUnallocatedNum =
+      row.unallocatedToBatches != null && !Number.isNaN(Number(row.unallocatedToBatches))
+        ? Number(row.unallocatedToBatches) || 0
+        : Math.max(0, grossDemand - (Number(row.batchAllocatedQty ?? 0) || 0));
     const totalReqStr =
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${Number(batchUnallocatedNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
-        : `${Math.round(batchUnallocatedNum).toLocaleString()} pcs`;
-    // Physical NET: free SIH + legacy in_transit column vs batch shortfall (unallocated to batches). Release rules / filters.
-    const netNum = availableForPlanning - batchUnallocatedNum;
+        ? `${Number(grossDemand).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
+        : `${Math.round(grossDemand).toLocaleString()} pcs`;
+    // Physical NET: free SIH + legacy in_transit vs full BOM demand (stays non-zero after batches exist if stock is short).
+    const netNum = availableForPlanning - grossDemand;
     /** Stub row for PR / draft-PO totals only (planning pipeline visualization for NET column). */
     const itemForPrGap = {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
@@ -2163,11 +2169,11 @@ const Planning = () => {
     );
     const gapVsBatch = Math.max(0, batchUnallocatedNum - availableForPlanning);
     const pipelineCover = Math.min(releasedTowardPlanning, gapVsBatch);
-    // Planning pipeline NET (display): SIH + in-transit + capped release toward batch shortfall vs batchUnallocated.
+    // Planning pipeline NET (display): SIH + in-transit + capped release toward what is still unallocated to batches.
     const netPipelineNum = availableForPlanning + pipelineCover - batchUnallocatedNum;
     const coveragePct =
-      batchUnallocatedNum > 0
-        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / batchUnallocatedNum) * 100)))
+      grossDemand > 0
+        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / grossDemand) * 100)))
         : 100;
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
@@ -2182,7 +2188,8 @@ const Planning = () => {
       usedIn: String(row.batchCount ?? 0),
       usedInProducts: row.usedInProducts ?? [],
       totalReq: totalReqStr,
-      totalRequired: batchUnallocatedNum,
+      totalRequired: grossDemand,
+      unallocatedToBatches: batchUnallocatedNum,
       batchCount: row.batchCount ?? 0,
       sih: sihStr,
       sihNum: row.sih,
@@ -2318,7 +2325,8 @@ const Planning = () => {
       // eslint-disable-next-line no-console
       console.groupEnd();
     }
-    const gapNeed = Math.max(0, item.totalRequired);
+    const availForGap = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+    const gapNeed = Math.max(0, Number(item.totalRequired || 0) - availForGap);
     const releasedTowardGap = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
     const remainingGap = Math.max(0, gapNeed - releasedTowardGap);
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
@@ -3793,10 +3801,10 @@ const Planning = () => {
                         // or stock+in-transit still below that remainder (batch shortfall).
                         const hasShortfall = item.netNum < 0;
                         const availableForPlanning = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
-                        const hasPlannedShortfall = Number(item.totalRequired || 0) > 0
-                          && availableForPlanning < Number(item.totalRequired || 0);
+                        const grossReq = Number(item.totalRequired || 0);
+                        const hasPlannedShortfall = grossReq > 0 && availableForPlanning < grossReq;
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
-                        const gapNeed = Math.max(0, Number(item.totalRequired) || 0);
+                        const gapNeed = Math.max(0, grossReq - availableForPlanning);
                         const releasedTowardGap = releasedQtyTowardPlanningGap(
                           item,
                           procurementRequests,
@@ -4003,7 +4011,8 @@ const Planning = () => {
         const previous = plannedLinesFromBackend
           .filter((l) => plannedLineCountsTowardItemRelease(l, item))
           .slice(0, 10);
-        const gapNeedModal = Math.max(0, item.totalRequired);
+        const availModal = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
+        const gapNeedModal = Math.max(0, Number(item.totalRequired || 0) - availModal);
         const releasedModal = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
         const remainingGapModal = Math.max(0, gapNeedModal - releasedModal);
         const qtyFmt = (n: number) =>

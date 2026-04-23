@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase } from '../../services/mrn.service';
+import { resolveItemDedicatedForMrn } from '../../services/itemDedicatedFacilityLocations.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
 
 /** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
@@ -93,6 +94,8 @@ interface MRN {
   logisticsDispatchDate?: string | null;
   logisticsEtaDate?: string | null;
   logisticsVehicleNo?: string | null;
+  muReceiveZone?: string;
+  muReceiveRack?: string;
 }
 
 interface PickLineItem {
@@ -135,6 +138,8 @@ function mapApiToMRN(r: MRNRecordFromApi): MRN {
     logisticsDispatchDate: r.logisticsDispatchDate ?? null,
     logisticsEtaDate: r.logisticsEtaDate ?? null,
     logisticsVehicleNo: r.logisticsVehicleNo ?? null,
+    muReceiveZone: r.muReceiveZone ?? undefined,
+    muReceiveRack: r.muReceiveRack ?? undefined,
   };
 }
 
@@ -241,7 +246,26 @@ const OutboundDashboard = () => {
     setLogisticsDispatchDate(String(mrn.logisticsDispatchDate || '').trim() || new Date().toISOString().slice(0, 10));
     setLogisticsEtaDate(String(mrn.logisticsEtaDate || '').trim());
     setLogisticsVehicleNo(String(mrn.logisticsVehicleNo || '').trim());
-    setSelectedMlLocation(String(mrn.muReceiveZone || '').trim());
+    const existingMl = String(mrn.muReceiveZone || '').trim();
+    setSelectedMlLocation(existingMl);
+    if (!existingMl && isMtrOutbound(mrn) && mrn.lineItems.length > 0) {
+      void (async () => {
+        const res = await resolveItemDedicatedForMrn(
+          mrn.lineItems.map((li) => ({
+            id: li.id,
+            raw_material_id: li.raw_material_id,
+            pack_material_id: li.pack_material_id,
+            product_id: li.product_id,
+            quantity: li.quantity,
+            unit: li.unit,
+            notes: li.notes,
+          }))
+        );
+        if (res.success && res.data?.prodOk && res.data.prodZoneCode) {
+          setSelectedMlLocation(res.data.prodZoneCode);
+        }
+      })();
+    }
 
     const sessionPicked = existingState?.pickedItems ?? {};
     const nextPicked: Record<string, boolean> = {};
