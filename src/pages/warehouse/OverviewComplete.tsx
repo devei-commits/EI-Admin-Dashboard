@@ -387,6 +387,11 @@ const OutboundDashboard = () => {
           showToast('Fill required transfer details: Tracking/LR no, driver/transporter, vehicle no, and dispatch date.', 'error');
           return;
         }
+        const mlDestination = String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim();
+        if (!mlDestination) {
+          showToast('Select ML location (destination) before initiating transfer.', 'error');
+          return;
+        }
         const updatedApi = await updateMRN(selectedMRN.id, {
           initiateTransferLineIds: toInitiate,
           assignedPicker: effectivePicker,
@@ -396,7 +401,7 @@ const OutboundDashboard = () => {
           logisticsDispatchDate,
           logisticsEtaDate: logisticsEtaDate || undefined,
           logisticsVehicleNo: logisticsVehicleNo.trim(),
-          muReceiveZone: selectedMlLocation || undefined,
+          muReceiveZone: mlDestination,
           lineItems: buildLineItemsForSave(),
         });
         const mapped = mapApiToMRN(updatedApi as MRNRecordFromApi);
@@ -739,7 +744,7 @@ const OutboundDashboard = () => {
                   {isMtrOutbound(selectedMRN) && (
                     <div className="col-span-2">
                       <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                        ML location (Destination)
+                        ML location (Destination) <span className="text-rose-600">*</span>
                       </label>
                       <select
                         value={selectedMlLocation}
@@ -953,6 +958,12 @@ const OutboundDashboard = () => {
                   !String(selectedMRN.assignedPicker || assignedPicker || '').trim() ||
                   (isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed') ||
                   (isMtrOutbound(selectedMRN) &&
+                    (!String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim() ||
+                      !logisticsTrackingNo.trim() ||
+                      !logisticsTransporter.trim() ||
+                      !logisticsVehicleNo.trim() ||
+                      !logisticsDispatchDate)) ||
+                  (isMtrOutbound(selectedMRN) &&
                     selectedMRN.lineItems.length > 0 &&
                     selectedMRN.lineItems.every((li) => mtrLineLockedAtWh(li.id, selectedMRN.lineTransferStatus))) ||
                   (!isMtrOutbound(selectedMRN) &&
@@ -961,9 +972,12 @@ const OutboundDashboard = () => {
                 title={
                   !String(selectedMRN.assignedPicker || assignedPicker || '').trim()
                     ? 'Picker is required before initiating transfer.'
-                    : isMtrOutbound(selectedMRN)
-                      ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
-                      : undefined
+                    : isMtrOutbound(selectedMRN) &&
+                        !String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim()
+                      ? 'Select ML location (destination) before initiating transfer.'
+                      : isMtrOutbound(selectedMRN)
+                        ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
+                        : undefined
                 }
                 className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
               >

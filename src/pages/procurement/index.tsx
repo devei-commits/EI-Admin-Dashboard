@@ -79,6 +79,10 @@ import type {
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
+import { Search, X, ShoppingCart, DollarSign, Factory, Package, FileText, Truck, CheckCircle, TrendingUp } from 'lucide-react';
+import { KPICard } from '../../components/orders/KPICard';
+import { PipelineStrip } from '../../components/orders/PipelineStrip';
+import { formatLakhs } from '../../utils/orderFulfillmentUtils';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -804,6 +808,8 @@ const Procurement: React.FC = () => {
   const [issuedSearch, setIssuedSearch] = useState('');
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
+  /** Timeline stage filter for Issued POs itemised dashboard (parity with Fulfillment pipeline strip). Keys `issued-0` … `issued-6`. */
+  const [issuedPoPipelineStageKey, setIssuedPoPipelineStageKey] = useState<string | null>(null);
   const [_issuedViewMode, _setIssuedViewMode] = useState<'Table' | 'Cards'>('Cards');
   const [grnCategoryFilter, setGrnCategoryFilter] = useState<'All' | RequestType>('All');
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
@@ -2287,6 +2293,45 @@ const Procurement: React.FC = () => {
     );
   }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
+  /** KPI + timeline stage counts for Issued POs itemised dashboard (aligned with fulfillment overview). */
+  const issuedPoOverviewKpis = useMemo(() => {
+    const stageCounts = [0, 0, 0, 0, 0, 0, 0];
+    let advancePending = 0;
+    let inTransitCount = 0;
+    let rmPos = 0;
+    let pmPos = 0;
+    let totalValue = 0;
+    let pendingValue = 0;
+
+    for (const record of issuedPORecords) {
+      totalValue += record.grandTotal;
+      if (record.status === 'Released') advancePending++;
+      if (record.status === 'In Transit') inTransitCount++;
+      if (record.request.type === 'RM') rmPos++;
+      if (record.request.type === 'PM') pmPos++;
+
+      const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+      const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+      const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+      const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+      const idx = issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+      if (idx >= 0 && idx <= 6) stageCounts[idx]++;
+      if (idx < 6) pendingValue += record.grandTotal;
+    }
+
+    return {
+      totalPos: issuedPORecords.length,
+      rmPos,
+      pmPos,
+      advancePending,
+      inTransitCount,
+      totalValue,
+      pendingValue,
+      stageCounts,
+      grnCompletePoCount: stageCounts[6],
+    };
+  }, [issuedPORecords, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides, grnCompletePoNormSet]);
+
   /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
   const sideCounts = useMemo(
     () => ({
@@ -2314,6 +2359,19 @@ const Procurement: React.FC = () => {
         return false;
       }
 
+      if (issuedPoPipelineStageKey != null) {
+        const m = /^issued-(\d+)$/.exec(issuedPoPipelineStageKey);
+        const targetIdx = m ? Number(m[1]) : NaN;
+        if (Number.isFinite(targetIdx) && targetIdx >= 0 && targetIdx <= 6) {
+          const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+          const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+          const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+          const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+          const idx = issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+          if (idx !== targetIdx) return false;
+        }
+      }
+
       if (!issuedSearch.trim()) {
         return true;
       }
@@ -2331,7 +2389,43 @@ const Procurement: React.FC = () => {
         )
       );
     });
-  }, [categoryFilter, issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
+  }, [
+    categoryFilter,
+    grnCompletePoNormSet,
+    issuedPORecords,
+    issuedPoPipelineStageKey,
+    issuedSearch,
+    issuedStatusFilter,
+    issuedVendorFilter,
+    releasedPoTrackingByBackendId,
+    unlinkedPoTimelineOverrides,
+  ]);
+
+  /** Issued PO list grouped by vendor (Fulfillment-style client grouping). */
+  const groupedIssuedPoByVendor = useMemo(() => {
+    type IssuedRecord = (typeof filteredIssuedPORecords)[number];
+    const map = new Map<string, IssuedRecord[]>();
+    for (const record of filteredIssuedPORecords) {
+      const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
+      const list = map.get(vendorName) ?? [];
+      list.push(record);
+      map.set(vendorName, list);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([vendorName, orders]) => ({
+        vendorName,
+        orders,
+        poCount: orders.length,
+        lineCount: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
+        totalValue: orders.reduce((sum, o) => sum + o.grandTotal, 0),
+      }));
+  }, [filteredIssuedPORecords]);
+
+  const issuedFilteredLineCount = useMemo(
+    () => filteredIssuedPORecords.reduce((sum, r) => sum + r.lineItems.length, 0),
+    [filteredIssuedPORecords],
+  );
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
     const recBackend = (record as { backendPoId?: string }).backendPoId;
@@ -2410,6 +2504,7 @@ const Procurement: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
         queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
         void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+        void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
         if (isUnlinkedPlanning) {
           setUnlinkedPoTimelineOverrides((prev) => ({
             ...prev,
@@ -3748,6 +3843,7 @@ const Procurement: React.FC = () => {
     void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
     if (status === 'PO Released' || status === 'Delivery Pending') {
       void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
     }
     lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
@@ -5636,20 +5732,7 @@ const Procurement: React.FC = () => {
               {sideSection === 'Issued POs' && (() => {
                 const normPoKeyLocal = (n: string) =>
                   String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
-                const totalPos = issuedPORecords.length;
-                const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
-                const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
-                const advancePending = issuedPORecords.filter(record => record.status === 'Released').length;
-                const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
-                const grnComplete = completedGrns.length;
-
-                const itemisedRows = filteredIssuedPORecords.flatMap((record, recordIndex) =>
-                  record.lineItems.map((line, lineIndex) => ({
-                    key: `${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-r${recordIndex}-li${lineIndex}-${line.itemCode}`,
-                    record,
-                    line,
-                  })),
-                );
+                const k = issuedPoOverviewKpis;
 
                 const timelineStages = [
                   'PO Released',
@@ -5670,220 +5753,196 @@ const Procurement: React.FC = () => {
                 };
 
                 return (
-                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                    {/* Top summary strip */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 px-4 py-3 flex flex-col justify-between">
-                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">Total POs</p>
-                        <p className="mt-1 text-2xl font-bold">{totalPos}</p>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-gray-200">
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-800">Issued POs</h2>
+                        <p className="text-xs text-gray-500 mt-1">Purchase orders grouped by vendor (line items are listed per PO below)</p>
                       </div>
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">RM POs</p>
-                        <p className="mt-1 text-2xl font-bold">{rmPos}</p>
-                      </div>
-                      <div className="rounded-lg border border-violet-200 bg-violet-50 text-violet-900 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM POs</p>
-                        <p className="mt-1 text-2xl font-bold">{pmPos}</p>
-                      </div>
-                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">Advance Pending</p>
-                        <p className="mt-1 text-2xl font-bold">{advancePending}</p>
-                      </div>
-                      <div className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sky-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">In Transit</p>
-                        <p className="mt-1 text-2xl font-bold">{inTransitCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">GRN Complete</p>
-                        <p className="mt-1 text-2xl font-bold">{grnComplete}</p>
-                      </div>
+                      <span className="text-xs text-gray-500">
+                        {issuedFilteredLineCount} line{issuedFilteredLineCount !== 1 ? 's' : ''} · {filteredIssuedPORecords.length} PO
+                        {filteredIssuedPORecords.length !== 1 ? 's' : ''} · {groupedIssuedPoByVendor.length} vendor
+                        {groupedIssuedPoByVendor.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
 
-                    {/* Filters */}
-                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-slate-500">Category:</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 pt-2">
+                      <KPICard
+                        label="Total POs"
+                        value={String(k.totalPos)}
+                        icon={<ShoppingCart size={20} />}
+                        color="#3b82f6"
+                      />
+                      <KPICard
+                        label="Total Value"
+                        value={formatLakhs(k.totalValue)}
+                        icon={<DollarSign size={20} />}
+                        color="#10b981"
+                      />
+                      <KPICard
+                        label="RM POs"
+                        value={String(k.rmPos)}
+                        icon={<Factory size={20} />}
+                        color="#f59e0b"
+                      />
+                      <KPICard
+                        label="PM POs"
+                        value={String(k.pmPos)}
+                        icon={<Package size={20} />}
+                        color="#8b5cf6"
+                      />
+                      <KPICard
+                        label="Advance Pending"
+                        value={String(k.advancePending)}
+                        icon={<FileText size={20} />}
+                        color="#f97316"
+                      />
+                      <KPICard
+                        label="In Transit"
+                        value={String(k.inTransitCount)}
+                        icon={<Truck size={20} />}
+                        color="#ea580c"
+                      />
+                      <KPICard
+                        label="GRN Complete"
+                        value={String(k.grnCompletePoCount)}
+                        icon={<CheckCircle size={20} />}
+                        color="#14b8a6"
+                      />
+                      <KPICard
+                        label="Pending Value"
+                        value={formatLakhs(k.pendingValue)}
+                        icon={<TrendingUp size={20} />}
+                        color="#ef4444"
+                      />
+                    </div>
+
+                    <PipelineStrip
+                      stages={[
+                        { key: 'issued-0', label: 'Released', count: k.stageCounts[0], icon: null },
+                        { key: 'issued-1', label: 'Advance', count: k.stageCounts[1], icon: null },
+                        { key: 'issued-2', label: 'Confirmed', count: k.stageCounts[2], icon: null },
+                        { key: 'issued-3', label: 'Shipped', count: k.stageCounts[3], icon: null },
+                        { key: 'issued-4', label: 'Delivered', count: k.stageCounts[4], icon: null },
+                        { key: 'issued-5', label: 'Under GRN', count: k.stageCounts[5], icon: null },
+                        { key: 'issued-6', label: 'Complete', count: k.stageCounts[6], icon: null },
+                      ]}
+                      onStageClick={(stage) =>
+                        setIssuedPoPipelineStageKey((prev) => (stage === prev ? null : stage))
+                      }
+                    />
+
+                    <div className="flex items-center gap-2 flex-wrap bg-white/60 backdrop-blur-sm border border-gray-200/80 rounded-lg px-3 py-2.5 shadow-sm">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button
+                          type="button"
                           onClick={() => setCategoryFilter('All')}
-                          className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === 'All'
-                            ? 'border-amber-400 text-amber-800 bg-amber-50'
-                            : 'border-slate-300 text-slate-600 bg-white'
+                          className={`px-3 py-1 rounded-full border text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${categoryFilter === 'All'
+                            ? 'text-orange-600 bg-orange-50 border-orange-300 shadow-sm'
+                            : 'text-gray-600 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                             }`}
                         >
                           All
                         </button>
-                        {(['RM', 'PM'] as RequestType[]).map(type => (
+                        {(['RM', 'PM'] as RequestType[]).map((type) => (
                           <button
                             key={type}
+                            type="button"
                             onClick={() => setCategoryFilter(type)}
-                            className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === type
-                              ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
-                              : 'border-slate-300 text-slate-600 bg-white'
+                            className={`px-3 py-1 rounded-full border text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${categoryFilter === type
+                              ? 'text-orange-600 bg-orange-50 border-orange-300 shadow-sm'
+                              : 'text-gray-600 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                               }`}
                           >
                             {type}
                           </button>
                         ))}
-
-                        <span className="ml-3 text-slate-500">Vendor:</span>
-                        <select
-                          value={issuedVendorFilter}
-                          onChange={(event) => setIssuedVendorFilter(event.target.value)}
-                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                        >
-                          <option value="All Vendors">All Vendors</option>
-                          {Array.from(new Set(issuedPORecords.map(record => record.vendor))).map(vendor => (
-                            <option key={vendor} value={vendor}>{vendor}</option>
-                          ))}
-                        </select>
-
-                        <span className="ml-3 text-slate-500">Status:</span>
-                        <select
-                          value={issuedStatusFilter}
-                          onChange={(event) => setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')}
-                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                        >
-                          <option value="All">All Status</option>
-                          <option value="Released">Released</option>
-                          <option value="In Transit">In Transit</option>
-                          <option value="At Risk">At Risk</option>
-                        </select>
                       </div>
 
-                      <input
-                        value={issuedSearch}
-                        onChange={(event) => setIssuedSearch(event.target.value)}
-                        placeholder="Search PO no, vendor, item..."
-                        className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
-                      />
+                      <div className="w-px h-5 bg-gray-200 mx-1 hidden sm:block" />
+
+                      <select
+                        value={issuedVendorFilter}
+                        onChange={(event) => setIssuedVendorFilter(event.target.value)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-[10rem]"
+                      >
+                        <option value="All Vendors">All vendors</option>
+                        {Array.from(new Set(issuedPORecords.map((record) => record.vendor))).map((vendor) => (
+                          <option key={vendor} value={vendor}>
+                            {vendor}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={issuedStatusFilter}
+                        onChange={(event) =>
+                          setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')
+                        }
+                        className="px-3 py-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-[8rem]"
+                      >
+                        <option value="All">All status</option>
+                        <option value="Released">Released</option>
+                        <option value="In Transit">In Transit</option>
+                        <option value="At Risk">At Risk</option>
+                      </select>
+
+                      <div className="w-px h-5 bg-gray-200 mx-1 hidden md:block" />
+
+                      <div className="relative flex-grow min-w-[220px]">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={issuedSearch}
+                          onChange={(event) => setIssuedSearch(event.target.value)}
+                          placeholder="Search PO no, vendor, item..."
+                          className="w-full pl-9 pr-4 py-1.5 rounded-md border border-gray-300 bg-white text-gray-900 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors placeholder:text-gray-400"
+                        />
+                      </div>
+
+                      {(issuedSearch.trim() ||
+                        categoryFilter !== 'All' ||
+                        issuedVendorFilter !== 'All Vendors' ||
+                        issuedStatusFilter !== 'All' ||
+                        issuedPoPipelineStageKey != null) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIssuedSearch('');
+                              setCategoryFilter('All');
+                              setIssuedVendorFilter('All Vendors');
+                              setIssuedStatusFilter('All');
+                              setIssuedPoPipelineStageKey(null);
+                            }}
+                            className="ml-auto px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-full hover:bg-gray-100 hover:text-gray-800 transition-all flex items-center gap-1.5"
+                          >
+                            <X size={14} />
+                            Clear filters
+                          </button>
+                        )}
                     </div>
 
-                    {/* Itemised View table */}
-                    <div className="rounded-lg border border-blue-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-blue-100 flex items-center justify-between bg-slate-50">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sky-500 text-lg">▣</span>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Itemised View</p>
-                            <p className="text-[11px] text-slate-500">All line items across issued purchase orders</p>
+                    {filteredIssuedPORecords.length === 0 ? (
+                      <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p className="text-sm text-gray-500">No issued purchase orders match current filters.</p>
+                      </div>
+                    ) : (
+                    <div className="space-y-8">
+                      {groupedIssuedPoByVendor.map((vendorGroup) => (
+                        <div key={vendorGroup.vendorName} className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/60 border border-blue-100 px-4 py-2.5">
+                            <div className="text-sm font-semibold text-blue-900">{vendorGroup.vendorName}</div>
+                            <div className="text-xs text-blue-800">
+                              {vendorGroup.poCount} PO{vendorGroup.poCount !== 1 ? 's' : ''} · {vendorGroup.lineCount} line
+                              {vendorGroup.lineCount !== 1 ? 's' : ''} ·{' '}
+                              <span className="font-semibold text-blue-900">
+                                ₹{vendorGroup.totalValue.toLocaleString('en-IN')}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Total Value{' '}
-                          <span className="font-semibold text-amber-700">
-                            ₹{filteredIssuedPORecords.reduce((sum, po) => sum + po.grandTotal, 0).toLocaleString('en-IN')}
-                          </span>
-                        </p>
-                      </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Item</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">PO Number</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-left">Order Qty</th>
-                              <th className="px-4 py-2 text-right">Price/Unit</th>
-                              <th className="px-4 py-2 text-right">Line Value</th>
-                              <th className="px-4 py-2 text-left">Payment Terms</th>
-                              <th className="px-4 py-2 text-left">PO Status</th>
-                              <th className="px-4 py-2 text-left">LR No</th>
-                              <th className="px-4 py-2 text-left">Exp. Delivery</th>
-                              <th className="px-4 py-2 text-left">Adv. Paid</th>
-                              <th className="px-4 py-2 text-left">GRN Ref</th>
-                              <th className="px-4 py-2 text-right">Track</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {itemisedRows.map(({ key, record, line }) => {
-                              const trRow =
-                                record.backendPoId && releasedPoTrackingByBackendId
-                                  ? releasedPoTrackingByBackendId[String(record.backendPoId)]
-                                  : undefined;
-                              return (
-                              <tr
-                                key={key}
-                                className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
-                                onClick={() => openIssuedPODetail(record)}
-                              >
-                                <td className="px-4 py-2 align-top">
-                                  <div className="flex flex-col">
-                                    <span className="text-[12px] font-semibold text-slate-900">{line.item}</span>
-                                    <span className="text-[10px] text-slate-500">{line.itemCode}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.request.type === 'RM'
-                                    ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-                                    : 'bg-violet-50 text-violet-700 border border-violet-200'
-                                    }`}>
-                                    {record.request.type}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top font-mono text-[11px] text-sky-700">{record.poNumber}</td>
-                                <td className="px-4 py-2 align-top text-[11px]">{record.vendor}</td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">
-                                    <span className="text-slate-700">{line.qty}</span>
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top text-right text-[11px] text-slate-900">
-                                  ₹{line.pricePerUnit.toLocaleString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-right text-[11px] font-semibold text-amber-700">
-                                  ₹{line.lineTotal.toLocaleString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-600 max-w-56">
-                                  <PaymentTermsDisplay compact value={record.paymentTerms} />
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.status === 'In Transit'
-                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
-                                    : record.status === 'At Risk'
-                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    }`}>
-                                    {record.status}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-800">
-                                  {trRow?.orderTrackingRef?.trim() ? trRow.orderTrackingRef : '—'}
-                                </td>
-                                <td
-                                  className={`px-4 py-2 align-top text-[11px] ${record.etaDays < 0 ? 'text-rose-600' : 'text-slate-800'}`}
-                                >
-                                  {(record as { etaDateDisplay?: string }).etaDateDisplay ?? '—'}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-400">—</td>
-                                <td className="px-4 py-2 align-top text-[11px] text-emerald-600">—</td>
-                                <td className="px-4 py-2 align-top text-right">
-                                  <button
-                                    onClick={() => openIssuedPODetail(record)}
-                                    className="px-3 py-1 rounded-full border border-slate-300 bg-white text-[10px] text-slate-800 hover:bg-slate-50"
-                                  >
-                                    Track
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                            })}
-                            {itemisedRows.length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={14}>
-                                  No issued purchase orders match current filters.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Tracking cards under the itemised view */}
-                    <div className="space-y-3">
-                      {filteredIssuedPORecords.map((record, cardIndex) => {
+                          <div className="space-y-3">
+                      {vendorGroup.orders.map((record, cardIndex) => {
                         const completedIndex = getTimelineCompletedIndexForRecord(record);
                         const trCard =
                           record.backendPoId && releasedPoTrackingByBackendId
@@ -5896,22 +5955,19 @@ const Procurement: React.FC = () => {
                         return (
                           <div
                             key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-card-${cardIndex}`}
-                            className="rounded-lg border border-blue-200 bg-white px-4 py-4 text-xs text-slate-800 shadow-sm"
+                            className="rounded-lg border border-gray-200 bg-white px-4 py-4 text-xs text-gray-800 shadow-sm"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-300 font-mono text-[10px] text-sky-700">
+                                  <span className="px-2 py-0.5 rounded-full bg-gray-50 border border-gray-300 font-mono text-[10px] text-orange-700">
                                     {record.poNumber}
                                   </span>
-                                  <span className="px-1.5 py-0.5 rounded-full border border-slate-300 text-[10px] text-slate-600">
+                                  <span className="px-1.5 py-0.5 rounded-full border border-gray-300 text-[10px] text-gray-600">
                                     {record.request.type}
                                   </span>
                                 </div>
-                                <p className="text-sm font-semibold text-slate-900">{record.vendor}</p>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  {record.requestCode} · {record.lineItems.map(line => line.item).join(', ')}
-                                </p>
+                                <p className="text-[11px] text-gray-500">{record.requestCode}</p>
                               </div>
                               <div className="text-right">
                                 <p className="text-sm font-bold text-amber-700">
@@ -6035,7 +6091,11 @@ const Procurement: React.FC = () => {
                           </div>
                         );
                       })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                    )}
                   </div>
                 );
               })()}

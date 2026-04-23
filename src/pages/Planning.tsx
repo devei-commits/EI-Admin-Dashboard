@@ -141,6 +141,15 @@ interface ItemsInvolvedDisplayRow {
   netPipelineNum: number;
   netPipeline: string;
   inTransit: string;
+  /** Stage-flow PO balance (still on a PO, not yet shipped/received). */
+  poQtyStr: string;
+  poQtyNum: number;
+  /** Stage-flow in-transit balance (shipped, not yet GRN Complete). */
+  inTransitQtyStr: string;
+  inTransitQtyNum: number;
+  /** Stage-flow warehouse balance (received, physically in WH). */
+  whQtyStr: string;
+  whQtyNum: number;
   reorderPt: string;
   avgMo: string;
   status: string;
@@ -2128,15 +2137,14 @@ const Planning = () => {
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
     const availableForPlanning = Number(row.sih ?? 0) + orderedQtyNum;
     const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
-    // TOTAL REQ on this screen means extra qty to be added in WH for planned batches.
-    // SIH here is already free stock (stock_in_hand - reserved); in-transit is added pipeline.
-    const requiredToAddNum = Math.max(0, plannedQtyNum - availableForPlanning);
+    // BOM qty still unallocated to planning_batches (backend totalRequired). Goes *down* when batches absorb lines — not PLANNED QTY (release-only).
+    const batchUnallocatedNum = Number(row.totalRequired ?? 0) || 0;
     const totalReqStr =
       row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${Number(requiredToAddNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
-        : `${Math.round(requiredToAddNum).toLocaleString()} pcs`;
-    // Physical NET (SIH + in-transit vs batch planned) — used for filters and Release rules; not merged with procurement.
-    const netNum = availableForPlanning - plannedQtyNum;
+        ? `${Number(batchUnallocatedNum).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
+        : `${Math.round(batchUnallocatedNum).toLocaleString()} pcs`;
+    // Physical NET: free SIH + legacy in_transit column vs batch shortfall (unallocated to batches). Release rules / filters.
+    const netNum = availableForPlanning - batchUnallocatedNum;
     /** Stub row for PR / draft-PO totals only (planning pipeline visualization for NET column). */
     const itemForPrGap = {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
@@ -2153,13 +2161,13 @@ const Planning = () => {
       procurementRequests,
       plannedLinesFromBackend
     );
-    const gapVsPlanned = Math.max(0, plannedQtyNum - availableForPlanning);
-    const pipelineCover = Math.min(releasedTowardPlanning, gapVsPlanned);
-    // Planning pipeline NET (Items Involved display only): SIH + in-transit + capped release/PR toward gap vs batch planned.
-    const netPipelineNum = availableForPlanning + pipelineCover - plannedQtyNum;
+    const gapVsBatch = Math.max(0, batchUnallocatedNum - availableForPlanning);
+    const pipelineCover = Math.min(releasedTowardPlanning, gapVsBatch);
+    // Planning pipeline NET (display): SIH + in-transit + capped release toward batch shortfall vs batchUnallocated.
+    const netPipelineNum = availableForPlanning + pipelineCover - batchUnallocatedNum;
     const coveragePct =
-      plannedQtyNum > 0
-        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / plannedQtyNum) * 100)))
+      batchUnallocatedNum > 0
+        ? Math.max(0, Math.min(100, Math.round(((availableForPlanning + pipelineCover) / batchUnallocatedNum) * 100)))
         : 100;
     const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
@@ -2174,7 +2182,7 @@ const Planning = () => {
       usedIn: String(row.batchCount ?? 0),
       usedInProducts: row.usedInProducts ?? [],
       totalReq: totalReqStr,
-      totalRequired: requiredToAddNum,
+      totalRequired: batchUnallocatedNum,
       batchCount: row.batchCount ?? 0,
       sih: sihStr,
       sihNum: row.sih,
@@ -2202,6 +2210,12 @@ const Planning = () => {
       netPipelineNum,
       netPipeline: netDisplay,
       inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
+      poQtyStr: ((row.poQty ?? 0) as number).toLocaleString() + unitSuffix,
+      poQtyNum: Number(row.poQty ?? 0) || 0,
+      inTransitQtyStr: ((row.inTransitQty ?? 0) as number).toLocaleString() + unitSuffix,
+      inTransitQtyNum: Number(row.inTransitQty ?? 0) || 0,
+      whQtyStr: ((row.whQty ?? 0) as number).toLocaleString() + unitSuffix,
+      whQtyNum: Number(row.whQty ?? 0) || 0,
       reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
       avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
       status: row.status ?? 'In Stock',
@@ -3723,20 +3737,45 @@ const Planning = () => {
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CODE</th>
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CAT</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">USED IN</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="BOM requirement for confirmed PIs still not covered by planning_batches lines (full snapshot minus batch allocation). Decreases when you add/save batch RM/PM lines — independent of PLANNED QTY (Release to Planning)."
+                      >
                         <span className="block">TOTAL REQ</span>
                         <span className="block text-[9px] font-normal text-gray-500">RM · kg · PM · pcs</span>
                       </th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">STOCK IN HAND</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">RESERVED</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">PLANNED QTY</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">IN TRANSIT</th>
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="Only from Release to Planning (PR lines or Planning PE-* draft PO). BOM confirm and planning batches do not increase this. Qty not yet on any PO; moves to PO QTY when a PO includes this item."
+                      >
+                        PLANNED QTY
+                      </th>
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="Stage balance: qty on a PO that has NOT yet been marked In Transit or received. When PO is marked In Transit, this qty flows into IN TRANSIT."
+                      >
+                        PO QTY
+                      </th>
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="Stage balance: qty shipped (PO In Transit / open GRN) but NOT yet GRN Complete. On GRN Complete it flows into WH STOCK."
+                      >
+                        IN TRANSIT
+                      </th>
+                      <th
+                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
+                        title="Stage balance: physical warehouse stock in hand (KG) after GRN Complete."
+                      >
+                        WH STOCK
+                      </th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REORDER PT</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">AVG/MO</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">QC / STATUS</th>
                       <th
                         className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Pipeline NET vs batch planned qty: free stock + in-transit + quantity already released to procurement toward the shortfall, minus planned. For planning visibility only — not used in production or batch calculations. Shortage / Release rules use physical net (SIH + in-transit − planned) without procurement overlay."
+                        title="Pipeline NET (display): free stock + in-transit + capped Release-to-Planning toward gap, minus PLANNED QTY column (release only). Shortage / Release rules use physical net (SIH + in-transit − PLANNED QTY) without procurement overlay."
                       >
                         NET
                       </th>
@@ -3750,13 +3789,12 @@ const Planning = () => {
                   <tbody>
                     {filteredItemsInvolved.map((item, idx) => (
                       (() => {
-                        // Release opens procurement when there is a shortage either against
-                        // remaining requirement (NET < 0) or against already planned qty
-                        // (planned > available free SIH + in-transit).
+                        // Release opens procurement when there is a shortage vs batch BOM remainder (NET < 0)
+                        // or stock+in-transit still below that remainder (batch shortfall).
                         const hasShortfall = item.netNum < 0;
                         const availableForPlanning = Number(item.sihNum || 0) + Number(item.orderedQtyNum || 0);
-                        const hasPlannedShortfall = Number(item.plannedQtyNum || 0) > 0
-                          && availableForPlanning < Number(item.plannedQtyNum || 0);
+                        const hasPlannedShortfall = Number(item.totalRequired || 0) > 0
+                          && availableForPlanning < Number(item.totalRequired || 0);
                         const hasExistingPlannedLine = hasPlannedLineForItem(item);
                         const gapNeed = Math.max(0, Number(item.totalRequired) || 0);
                         const releasedTowardGap = releasedQtyTowardPlanningGap(
@@ -3800,8 +3838,10 @@ const Planning = () => {
                             <td className="px-2 py-2 text-right text-gray-900 text-xs">{item.totalReq}</td>
                             <td className="px-2 py-2 text-right text-orange-600 font-medium text-xs">{item.sih}</td>
                             <td className="px-2 py-2 text-right text-amber-700 text-xs">{item.reserved}</td>
-                            <td className="px-2 py-2 text-right text-blue-700 text-xs">{item.plannedQty}</td>
-                            <td className="px-2 py-2 text-right text-rose-600 text-xs">{item.inTransit}</td>
+                            <td className="px-2 py-2 text-right text-blue-700 text-xs" title="Release to Planning only (not BOM/batches). Qty not yet on any PO.">{item.plannedQty}</td>
+                            <td className="px-2 py-2 text-right text-indigo-700 text-xs" title="On a PO, not yet shipped or received">{item.poQtyStr}</td>
+                            <td className="px-2 py-2 text-right text-rose-600 text-xs" title="Shipped (in transit), not yet GRN Complete">{item.inTransitQtyStr}</td>
+                            <td className="px-2 py-2 text-right text-emerald-700 text-xs" title="In warehouse (received via GRN Complete)">{item.whQtyStr}</td>
                             <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.reorderPt}</td>
                             <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.avgMo}</td>
                             <td className="px-2 py-2 text-center">

@@ -3998,6 +3998,15 @@ function MRNDetailModal({
       addToast('error', 'Enter transfer details in the popup before initiating transfer.');
       return;
     }
+    const mlZoneForInitiate = String(
+      (payload.muReceiveZone !== undefined ? payload.muReceiveZone : muReceiveZone) || ''
+    ).trim();
+    if (isInitiatingTransfer && !mlZoneForInitiate) {
+      const msg = 'Select ML location (destination MU zone) before initiating transfer.';
+      setSaveError(msg);
+      addToast('error', msg);
+      return;
+    }
 
     setSaveError(null);
     setSaving(true);
@@ -4055,7 +4064,10 @@ function MRNDetailModal({
     } catch (e) {
       const msg = getApiErrorMessage(e) || 'Failed to save';
       setSaveError(msg);
-      if (msg.toLowerCase().includes('before initiating transfer')) {
+      if (
+        msg.toLowerCase().includes('before initiating transfer') &&
+        !msg.toLowerCase().includes('ml location')
+      ) {
         setLogisticsModalOpen(true);
       }
       addToast('error', msg);

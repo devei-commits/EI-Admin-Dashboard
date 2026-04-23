@@ -313,10 +313,24 @@ export interface ItemsInvolvedRow {
   expiryDate: string | null;
   /** From warehouse_inventory — same as Warehouse -> Inventory */
   reserved?: number;
-  /** Planned quantity captured from production (BMR/BPR-linked reserved_batch_items). */
+  /**
+   * Stage-flow planned balance: qty from Release to Planning not yet on any PO line.
+   * `totalReleased` is PR + Planning PE-* draft PO (not BOM confirm / planning_batches).
+   */
   plannedQty?: number;
-  /** Sum of purchase order line qty for this material (backend aggregate). */
+  /** Stage-flow PO balance: totalOnPO minus what has already shipped (in-transit) or been received. */
   poQty?: number;
+  /** Stage-flow in-transit balance: shipped but not yet received via GRN Complete. */
+  inTransitQty?: number;
+  /** Stage-flow warehouse balance: stock_in_hand after GRN Complete receipts. */
+  whQty?: number;
+  /** Qty from Release to Planning (max PR vs Planning-linked draft PO) for this item + PIs. */
+  totalReleased?: number;
+  /** Qty allocated in planning_batches (BOM/batch plan) — separate from Release to Planning; for reference only. */
+  batchAllocatedQty?: number;
+  totalOnPO?: number;
+  totalReceived?: number;
+  /** Legacy field: warehouse_inventory.in_transit (KG-normalized). Kept for back-compat. */
   inTransit?: number;
   reorderPt?: number;
   avgMo?: number;
