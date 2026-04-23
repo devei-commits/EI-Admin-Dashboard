@@ -1634,23 +1634,22 @@ const WarehouseInventory = () => {
                         ML2 Stock
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        <span className="block">Planned qty</span>
-                        <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">Planning · RM kg</span>
+                        Planned qty
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        PO Qty
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        In Transit
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Under GRN
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Stock in Hand
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Reserved
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Under GRN
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        In Transit
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        PO Qty
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Reorder PT
@@ -1747,16 +1746,8 @@ const WarehouseInventory = () => {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
-                              <span className="font-semibold text-sm">{item.reserved}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full border border-violet-200">
-                              <span className="font-semibold text-sm">{Number(item.underGrn || 0)} {item.whUnit}</span>
+                            <div className="text-sm text-gray-600" title="PO-stage remaining after quantities moved to Under GRN.">
+                              {item.poQuantity != null ? item.poQuantity : '—'}
                             </div>
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1800,8 +1791,16 @@ const WarehouseInventory = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600" title="PO-stage remaining after quantities moved to Under GRN.">
-                              {item.poQuantity != null ? item.poQuantity : '—'}
+                            <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full border border-violet-200">
+                              <span className="font-semibold text-sm">{Number(item.underGrn || 0)} {item.whUnit}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                              <span className="font-semibold text-sm">{item.reserved}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
