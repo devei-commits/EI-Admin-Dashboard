@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchLowThresholdAlerts } from '../services/warehouseInventory.service';
 import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { useGlobalState } from '../context/GlobalStateContext';
+import api from '../lib/apiClient';
 import {
   LayoutDashboard,
   Package,
@@ -367,6 +368,13 @@ const Dashboard = () => {
   const [dashboardTab, setDashboardTab] = useState<'overview' | 'lowThreshold'>('overview');
   const [lowThresholdRows, setLowThresholdRows] = useState<WarehouseInventoryRow[]>([]);
   const [lowThresholdLoading, setLowThresholdLoading] = useState(false);
+  const [websiteRequestStats, setWebsiteRequestStats] = useState({
+    openEnquiries: 89,
+    contactEnquiries: 5,
+    productSampleRequests: 6,
+    technicalDocRequests: 2,
+    newDevelopmentRequests: 12,
+  });
 
   useEffect(() => {
     if (dashboardTab !== 'lowThreshold') return;
@@ -379,6 +387,44 @@ const Dashboard = () => {
       .finally(() => setLowThresholdLoading(false));
   }, [dashboardTab]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadWebsiteRequestStats = async () => {
+      try {
+        const res = await api.get<{
+          success?: boolean;
+          data?: {
+            openEnquiries?: number;
+            contactEnquiries?: number;
+            productSampleRequests?: number;
+            technicalDocRequests?: number;
+            newDevelopmentRequests?: number;
+          };
+        }>('/api/v1/enquiries/dashboard-summary');
+        if (cancelled || !res?.success || !res.data) return;
+        setWebsiteRequestStats((prev) => ({
+          ...prev,
+          ...res.data,
+        }));
+      } catch (_error) {
+        // Keep fallback numbers if the endpoint is unavailable.
+      }
+    };
+    void loadWebsiteRequestStats();
+    const pollId = window.setInterval(() => {
+      void loadWebsiteRequestStats();
+    }, 30000);
+    const handleWindowFocus = () => {
+      void loadWebsiteRequestStats();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, []);
+
   const categories = [
     { id: 'all', label: 'All Modules' },
     { id: 'orders', label: 'Orders' },
@@ -389,7 +435,30 @@ const Dashboard = () => {
   ];
 
   const filteredModules = useMemo(() => {
-    let modules = MODULE_CARDS;
+    let modules = MODULE_CARDS.map((module) => {
+      if (module.title === 'New Developments') {
+        return {
+          ...module,
+          stats: [{ label: 'Active', value: websiteRequestStats.newDevelopmentRequests }],
+        };
+      }
+      if (module.title === 'Product Samples') {
+        return {
+          ...module,
+          stats: [
+            { label: 'Sample', value: websiteRequestStats.productSampleRequests },
+            { label: 'Tech Doc', value: websiteRequestStats.technicalDocRequests },
+          ],
+        };
+      }
+      if (module.title === 'Contact Enquiry') {
+        return {
+          ...module,
+          stats: [{ label: 'New', value: websiteRequestStats.contactEnquiries }],
+        };
+      }
+      return module;
+    });
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       modules = modules.filter(m => m.title.toLowerCase().includes(term) || m.description.toLowerCase().includes(term));
@@ -406,7 +475,7 @@ const Dashboard = () => {
       modules = modules.filter(m => allowed.includes(m.title));
     }
     return modules;
-  }, [searchTerm, selectedCategory]);
+  }, [searchTerm, selectedCategory, websiteRequestStats]);
 
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
@@ -515,7 +584,7 @@ const Dashboard = () => {
         <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/procurement" />
         <StatCard title="Pending Review" value={state.orders?.customerPOs?.filter((po: any) => po.status.includes('pending')).length || 0} icon={<Clock className="w-6 h-6" />} change="urgent" changeType="down" color="orange" link="/order-hub" />
         <StatCard title="Active Users" value={42} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
-        <StatCard title="Open Enquiries" value={89} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
+        <StatCard title="Open Enquiries" value={websiteRequestStats.openEnquiries} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
         <StatCard title="Open Tasks" value={18} icon={<CheckSquare className="w-6 h-6" />} change={`127 completed`} changeType="neutral" color="green" link="/task-management" />
         <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/raw-material" />
       </div>

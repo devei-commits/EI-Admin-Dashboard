@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import api from '../lib/apiClient';
 
 interface ProcessSampleRequest {
  id: number;
@@ -44,145 +45,81 @@ interface OtherRequest {
 
 type TabType = 'process' | 'product' | 'quotation' | 'technical' | 'other';
 
+type EnquiryApiRow = {
+ id?: string;
+ ticketNumber?: string;
+ subject?: string;
+ description?: string;
+ category?: string;
+ createdAt?: string;
+ customer?: {
+  name?: string;
+ };
+};
+
+type RequestType = TabType;
+
+const inferRequestType = (row: EnquiryApiRow): RequestType => {
+ const text = `${row.category || ''} ${row.subject || ''} ${row.description || ''}`.toLowerCase();
+ if (text.includes('process')) return 'process';
+ if (text.includes('product') && text.includes('sample')) return 'product';
+ if (text.includes('quotation') || text.includes('quote')) return 'quotation';
+ if (text.includes('technical') || text.includes('doc')) return 'technical';
+ return 'other';
+};
+
+const formatDate = (iso?: string): string => {
+ if (!iso) return '-';
+ const d = new Date(iso);
+ if (Number.isNaN(d.getTime())) return '-';
+ return d.toLocaleDateString('en-GB');
+};
+
+const toProcessRow = (row: EnquiryApiRow, index: number): ProcessSampleRequest => ({
+ id: index + 1,
+ productId: row.subject || row.category || '-',
+ reqNos: row.ticketNumber || row.id || '-',
+ comments: row.description || '',
+ customer: row.customer?.name || 'Website client',
+ date: formatDate(row.createdAt),
+});
+
+const toProductRow = (row: EnquiryApiRow, index: number): ProductSampleRequest => ({
+ id: index + 1,
+ productId: row.subject || row.category || '-',
+ reqNos: 1,
+ comments: row.description || '',
+ customer: row.customer?.name || 'Website client',
+ customerDetails: row.customer?.name || 'Website client',
+ date: formatDate(row.createdAt),
+});
+
+const toQuotationRow = (row: EnquiryApiRow, index: number): QuotationRequest => ({
+ id: index + 1,
+ productId: row.subject || row.category || '-',
+ requestedNumbers: 1,
+ comments: row.description || '',
+ date: formatDate(row.createdAt),
+});
+
+const toTechnicalRow = (row: EnquiryApiRow, index: number): TechnicalDocRequest => ({
+ id: index + 1,
+ productId: row.subject || row.category || '-',
+ comments: row.description || '',
+ date: formatDate(row.createdAt),
+});
+
+const toOtherRow = (row: EnquiryApiRow, index: number): OtherRequest => ({
+ id: index + 1,
+ productId: row.subject || row.category || '-',
+ comments: row.description || '',
+ date: formatDate(row.createdAt),
+});
+
 const ProductSamples = () => {
  const [activeTab, setActiveTab] = useState<TabType>('process');
- const [requests] = useState<ProcessSampleRequest[]>([
-  {
-   id: 1,
-   productId: 'PROD-001',
-   reqNos: 'REQ-2025-001',
-   comments: 'Sample request for skin care product testing',
-   customer: 'Dr. Preethi Nag',
-   date: '24-08-2021'
-  },
-  {
-   id: 2,
-   productId: 'PROD-002',
-   reqNos: 'REQ-2025-002',
-   comments: 'Hair care range samples needed',
-   customer: 'Rajesh Kumar',
-   date: '15-09-2025'
-  },
-  {
-   id: 3,
-   productId: 'PROD-003',
-   reqNos: 'REQ-2025-003',
-   comments: 'Anti-aging cream formulation samples',
-   customer: 'Priya Sharma',
-   date: '20-10-2025'
-  }
- ]);
-
- const [productSamples] = useState<ProductSampleRequest[]>([
-  {
-   id: 1,
-   productId: 'EI PRO RETINOL MOISTURISER',
-   reqNos: 2,
-   comments: '',
-   customer: 'chakram shivam',
-   customerDetails: 'Additional customer information for chakram shivam',
-   date: '24-05-2023'
-  },
-  {
-   id: 2,
-   productId: 'EI PRO RETINOL GAMMA SERUM',
-   reqNos: 1,
-   comments: '',
-   customer: 'KUMAR BISWAJIT SWAIN',
-   customerDetails: 'Additional customer information for KUMAR BISWAJIT SWAIN',
-   date: '17-05-2023'
-  },
-  {
-   id: 3,
-   productId: 'EI PRO RETINOL SUNSCREEN SPF 50 PA++++',
-   reqNos: 1,
-   comments: '',
-   customer: 'KUMAR BISWAJIT SWAIN',
-   customerDetails: 'Additional customer information for KUMAR BISWAJIT SWAIN',
-   date: '03-05-2023'
-  },
-  {
-   id: 4,
-   productId: 'EI PRO RETINOL ALPHA SERUM',
-   reqNos: 1,
-   comments: '',
-   customer: 'Deevi Saikrishna',
-   customerDetails: 'Additional customer information for Deevi Saikrishna',
-   date: '26-04-2023'
-  },
-  {
-   id: 5,
-   productId: 'EI PRO RETINOL ALPHA SERUM',
-   reqNos: 1,
-   comments: '',
-   customer: 'Deevi Saikrishna',
-   customerDetails: 'Additional customer information for Deevi Saikrishna',
-   date: '26-04-2023'
-  },
-  {
-   id: 6,
-   productId: 'EI PRO RETINOL ALPHA SERUM',
-   reqNos: 1,
-   comments: '',
-   customer: 'Deevi Saikrishna',
-   customerDetails: 'Additional customer information for Deevi Saikrishna',
-   date: '26-04-2023'
-  }
- ]);
-
- const [quotationRequests] = useState<QuotationRequest[]>([
-  {
-   id: 1,
-   productId: 'EI ADVANCED BARRIER REPAIR CREAM',
-   requestedNumbers: 200,
-   comments: 'abc',
-   date: '03-05-2023'
-  },
-  {
-   id: 2,
-   productId: 'EI PRO RETINOL ALPHA SERUM',
-   requestedNumbers: 2,
-   comments: 'test',
-   date: '26-04-2023'
-  },
-  {
-   id: 3,
-   productId: 'EI AGE REVERSAL SERUM',
-   requestedNumbers: 122,
-   comments: 'asfa',
-   date: '09-03-2021'
-  }
- ]);
-
- const [technicalDocRequests] = useState<TechnicalDocRequest[]>([
-  {
-   id: 1,
-   productId: 'EI ADVANCED BARRIER REPAIR CREAM',
-   comments: 'info on viscosity',
-   date: '03-05-2023'
-  },
-  {
-   id: 2,
-   productId: 'EI AGE REVERSAL SERUM',
-   comments: 'asfaf',
-   date: '09-03-2021'
-  }
- ]);
-
- const [otherRequests] = useState<OtherRequest[]>([
-  {
-   id: 1,
-   productId: 'EI ANTI AGING MOISTURE LOCK SERUM',
-   comments: 'Want to know a few more details that are not mentioned in the dashboard',
-   date: '09-04-2021'
-  },
-  {
-   id: 2,
-   productId: 'EI AGE REVERSAL SERUM',
-   comments: 'asdad',
-   date: '09-03-2021'
-  }
- ]);
+ const [enquiryRows, setEnquiryRows] = useState<EnquiryApiRow[]>([]);
+ const [loading, setLoading] = useState(false);
 
  const [searchTerm, setSearchTerm] = useState('');
  const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -214,6 +151,52 @@ const ProductSamples = () => {
  const [selectedRequest] = useState<ProcessSampleRequest | null>(null);
  const [selectedProductSample, setSelectedProductSample] = useState<ProductSampleRequest | null>(null);
  const [responseText, setResponseText] = useState('');
+
+ useEffect(() => {
+  let cancelled = false;
+  const loadRows = async () => {
+   setLoading(true);
+   try {
+    const res = await api.get<{ success?: boolean; data?: EnquiryApiRow[] } | EnquiryApiRow[]>('/api/v1/enquiries');
+    if (cancelled) return;
+    const list = Array.isArray(res)
+     ? res
+     : (res && typeof res === 'object' && Array.isArray((res as { data?: EnquiryApiRow[] }).data))
+      ? (res as { data: EnquiryApiRow[] }).data
+      : [];
+    setEnquiryRows(list);
+   } catch (_err) {
+    if (!cancelled) setEnquiryRows([]);
+   } finally {
+    if (!cancelled) setLoading(false);
+   }
+  };
+  void loadRows();
+  return () => {
+   cancelled = true;
+  };
+ }, []);
+
+ const requests = useMemo<ProcessSampleRequest[]>(
+  () => enquiryRows.filter((r) => inferRequestType(r) === 'process').map(toProcessRow),
+  [enquiryRows]
+ );
+ const productSamples = useMemo<ProductSampleRequest[]>(
+  () => enquiryRows.filter((r) => inferRequestType(r) === 'product').map(toProductRow),
+  [enquiryRows]
+ );
+ const quotationRequests = useMemo<QuotationRequest[]>(
+  () => enquiryRows.filter((r) => inferRequestType(r) === 'quotation').map(toQuotationRow),
+  [enquiryRows]
+ );
+ const technicalDocRequests = useMemo<TechnicalDocRequest[]>(
+  () => enquiryRows.filter((r) => inferRequestType(r) === 'technical').map(toTechnicalRow),
+  [enquiryRows]
+ );
+ const otherRequests = useMemo<OtherRequest[]>(
+  () => enquiryRows.filter((r) => inferRequestType(r) === 'other').map(toOtherRow),
+  [enquiryRows]
+ );
 
  // Filter requests based on search
  const filteredRequests = requests.filter(request => 
@@ -491,6 +474,9 @@ const ProductSamples = () => {
 
    {/* Tab Content */}
    <div className="bg-white rounded-b-xl shadow-sm border border-t-0 border-gray-100 p-4 md:p-6">
+    {loading && (
+     <div className="mb-4 text-sm text-gray-500">Loading requests...</div>
+    )}
     {activeTab === 'process' && (
      <div>
       {/* Controls */}
@@ -1330,50 +1316,52 @@ const ProductSamples = () => {
 
    {/* Product Sample Details Modal */}
    {showProductDetailsModal && selectedProductSample && (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-[2px] p-4">
+     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="border-b border-slate-200 px-6 py-4">
+       <h2 className="text-xl md:text-2xl font-semibold text-slate-800">Customer Details</h2>
+      </div>
       <div className="p-6">
-       <h2 className="text-2xl font-bold text-gray-800 mb-6">Customer Details</h2>
        
        <div className="space-y-4">
         {/* Product ID */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Product ID:</label>
-         <div className="col-span-8 text-gray-800">{selectedProductSample.productId}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Product ID:</label>
+         <div className="col-span-8 text-slate-800">{selectedProductSample.productId}</div>
         </div>
 
         {/* Req Nos */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Req Nos:</label>
-         <div className="col-span-8 text-blue-600">{selectedProductSample.reqNos}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Req Nos:</label>
+         <div className="col-span-8 font-medium text-blue-600">{selectedProductSample.reqNos}</div>
         </div>
 
         {/* Customer Name */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Customer Name:</label>
-         <div className="col-span-8 text-gray-800">{selectedProductSample.customer}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Customer Name:</label>
+         <div className="col-span-8 text-slate-800">{selectedProductSample.customer}</div>
         </div>
 
         {/* Customer Details */}
-        <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Customer Details:</label>
-         <div className="col-span-8 text-gray-800">
+        <div className="grid grid-cols-12 gap-4 items-start border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Customer Details:</label>
+         <div className="col-span-8 text-slate-800">
           {selectedProductSample.customerDetails || 'No additional details available'}
          </div>
         </div>
 
         {/* Comments */}
-        <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Comments:</label>
-         <div className="col-span-8 text-gray-800">
+        <div className="grid grid-cols-12 gap-4 items-start border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Comments:</label>
+         <div className="col-span-8 text-slate-800">
           {selectedProductSample.comments || 'No comments'}
          </div>
         </div>
 
         {/* Date */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-4 text-sm text-gray-600">Date:</label>
-         <div className="col-span-8 text-gray-800">{selectedProductSample.date}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
+         <label className="col-span-4 text-sm font-medium text-slate-500">Date:</label>
+         <div className="col-span-8 text-slate-800">{selectedProductSample.date}</div>
         </div>
        </div>
 
@@ -1384,7 +1372,7 @@ const ProductSamples = () => {
           setShowProductDetailsModal(false);
           setSelectedProductSample(null);
          }}
-         className="px-6 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 font-medium"
+         className="px-6 py-2 rounded-lg border border-blue-500 text-blue-600 hover:bg-blue-50 transition-colors font-medium"
         >
          Close
         </button>

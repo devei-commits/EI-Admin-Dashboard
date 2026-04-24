@@ -228,12 +228,36 @@ useEffect(() => {
   const byPriority: TicketDashboardStats['byPriority'] = { low: 0, medium: 0, high: 0, urgent: 0 };
   const today = new Date().toISOString().slice(0, 10);
   let closedToday = 0;
+
+  const ticketTrend = Array.from({ length: 7 }, (_, index) => {
+   const date = new Date();
+   date.setDate(date.getDate() - (6 - index));
+   return {
+    date: date.toISOString().slice(0, 10),
+    created: 0,
+    resolved: 0,
+   };
+  });
+  const trendByDate = new Map(ticketTrend.map((row) => [row.date, row]));
+
   list.forEach((t) => {
    const sk = statusKey(t.status);
    if (sk in byStatus) (byStatus as Record<string, number>)[sk] = ((byStatus as Record<string, number>)[sk] ?? 0) + 1;
    if (t.priority && t.priority in byPriority) byPriority[t.priority as keyof typeof byPriority]++;
    if ((t as { resolvedAt?: string }).resolvedAt?.slice(0, 10) === today) closedToday++;
+
+   const createdDate = t.createdAt?.slice(0, 10);
+   if (createdDate && trendByDate.has(createdDate)) {
+    trendByDate.get(createdDate)!.created += 1;
+   }
+
+   const resolvedDate = (t as { resolvedAt?: string }).resolvedAt?.slice(0, 10)
+    || (['resolved', 'closed'].includes(t.status) ? t.updatedAt?.slice(0, 10) : undefined);
+   if (resolvedDate && trendByDate.has(resolvedDate)) {
+    trendByDate.get(resolvedDate)!.resolved += 1;
+   }
   });
+
   const openTickets = list.filter((t) => !['resolved', 'closed'].includes(t.status)).length;
   return {
    totalTickets: list.length,
@@ -244,7 +268,7 @@ useEffect(() => {
    byPriority,
    byCategory: {} as TicketDashboardStats['byCategory'],
    staffMetrics: [],
-   ticketTrend: [],
+   ticketTrend,
    slaMetrics: { onTime: 0, breached: 0, atRisk: 0 },
    responseMetrics: { avgFirstResponseTime: 0, avgResponseTime: 0, avgResolutionTime: 0 },
   };
