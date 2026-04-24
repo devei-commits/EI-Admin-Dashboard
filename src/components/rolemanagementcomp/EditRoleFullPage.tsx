@@ -65,6 +65,17 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
      setPermissions(mods);
      setGlobalSettings(gs);
     }
+    if (Array.isArray(r.assignedUsers)) {
+     setRoleUsers(
+      r.assignedUsers.map((u) => ({
+       id: String(u.user_id),
+       email: u.email || '',
+       password: '',
+       name: u.name || u.email || `User ${u.user_id}`,
+       addedAt: u.assigned_at ? String(u.assigned_at).slice(0, 10) : '',
+      }))
+     );
+    }
    })
    .catch(() => { if (!cancelled) setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS))); })
    .finally(() => { if (!cancelled) setPermissionsLoading(false); });
@@ -72,35 +83,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
  }, [role.id, role.roleLevel]);
  
  // Users assigned to this role (loaded from parent/localStorage or fallback to mock data)
- const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => {
-  if (users && users.length > 0) {
-   return users;
-  }
-  // Default sample users when none are stored yet
-  return [
-   {
-    id: 'USR001',
-    email: 'john.doe@eisthetic.com',
-    password: 'SecurePass123!',
-    name: 'John Doe',
-    addedAt: '2024-01-15',
-   },
-   {
-    id: 'USR002',
-    email: 'jane.smith@eisthetic.com',
-    password: 'JaneSecure456@',
-    name: 'Jane Smith',
-    addedAt: '2024-01-20',
-   },
-   {
-    id: 'USR003',
-    email: 'mike.wilson@eisthetic.com',
-    password: 'MikePass789#',
-    name: 'Mike Wilson',
-    addedAt: '2024-02-01',
-   },
-  ];
- });
+ const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => (users && users.length > 0 ? users : []));
 
  const roleLevels = ['admin', 'manager', 'staff', 'client'];
  const statusOptions: ('active' | 'inactive')[] = ['active', 'inactive'];

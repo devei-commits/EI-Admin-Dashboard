@@ -29,6 +29,13 @@ export interface BackendRoleDetail {
  status: string;
  created_at: string;
  updated_at: string;
+ assignedUsers?: Array<{
+  user_id: number;
+  email: string;
+  name: string;
+  status: string;
+  assigned_at: string;
+ }>;
  permissions?: {
   granted: string[];
   globalSettings?: GlobalSettings;

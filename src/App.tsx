@@ -177,7 +177,7 @@ const AppLayout = () => {
                                    <ErrorBoundary>
                                           <Routes>
                                                  <Route path="/procurement" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="procurement">
                                                                <Procurement />
                                                         </ProtectedModuleRoute>
                                                  } />
@@ -195,7 +195,7 @@ const AppLayout = () => {
                                    <ErrorBoundary>
                                           <Routes>
                                                  <Route path="/warehouse/*" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="warehouse-inventory">
                                                                <WarehousePage />
                                                         </ProtectedModuleRoute>
                                                  } />
@@ -214,18 +214,18 @@ const AppLayout = () => {
                                           <Routes>
                                                  <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
                                                  <Route path="/planning/pis-extracted" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
                                                                <Planning />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/planning/items-involved" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
                                                                <Planning />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/planning/availability-summary" element={<Navigate to="/planning/pis-extracted" replace />} />
                                                  <Route path="/planning/batches" element={
-                                                        <ProtectedModuleRoute moduleId="order-management">
+                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
                                                                <Planning />
                                                         </ProtectedModuleRoute>
                                                  } />

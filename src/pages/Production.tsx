@@ -7218,8 +7218,9 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'team', label: 'Team Management', icon: <Users size={15} /> },
 ];
 
-function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose }: {
+function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose, navItems }: {
   active: Section; onChange: (s: Section) => void; mobileOpen: boolean; onMobileClose: () => void;
+  navItems: { id: Section; label: string; icon: React.ReactNode }[];
 }) {
   return (
     <>
@@ -7229,7 +7230,7 @@ function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose }: {
           <img src={eiLogo} alt="EI Logo" className="h-7 w-auto object-contain object-left" />
         </div>
         <nav className="flex-1 py-2 overflow-y-auto">
-          {NAV_ITEMS.map(item => (
+          {navItems.map(item => (
             <button key={item.id} onClick={() => { onChange(item.id); onMobileClose(); }}
               className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-[11px] font-medium transition-all duration-150 ${active === item.id ? 'bg-orange-50 text-orange-600 border-l-2 border-orange-500 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 border-l-2 border-transparent'}`}>
               <span className="shrink-0">{item.icon}</span>
@@ -7286,10 +7287,24 @@ const Production = () => {
   const { addToast } = useToast();
   const { isAdmin, canPerformAction } = usePermissions();
   const canEditTeam = isAdmin || canPerformAction('order-management', 'production-team', 'canEdit');
+  const canViewBmr = isAdmin || canPerformAction('order-management', 'production-bmr', 'canView');
+  const canViewBpr = isAdmin || canPerformAction('order-management', 'production-bpr', 'canView');
+  const canViewTransferYield = isAdmin || canPerformAction('order-management', 'production-transfer-yield', 'canView');
+  const visibleNavItems = useMemo(
+    () =>
+      NAV_ITEMS.filter((item) => {
+        if (item.id === 'bmr') return canViewBmr;
+        if (item.id === 'bpr') return canViewBpr;
+        if (item.id === 'yield-report' || item.id === 'transfers') return canViewTransferYield;
+        return true;
+      }),
+    [canViewBmr, canViewBpr, canViewTransferYield]
+  );
   const [deptList, setDeptList] = useState<string[]>(['Manufacturing', 'Filling', 'Packaging', 'Quality']);
 
   const rawSection = searchParams.get('section') as Section | null;
-  const activeSection: Section = rawSection && NAV_ITEMS.some(n => n.id === rawSection) ? rawSection : 'calendar';
+  const defaultSection = (visibleNavItems[0]?.id ?? 'calendar') as Section;
+  const activeSection: Section = rawSection && visibleNavItems.some(n => n.id === rawSection) ? rawSection : defaultSection;
   const weekOffset = parseInt(searchParams.get('week') ?? '0', 10) || 0;
 
   const setSection = useCallback((s: Section) => {
@@ -7675,10 +7690,13 @@ const Production = () => {
           />
         );
       case 'bmr':
+        if (!canViewBmr) return <div className="p-8 text-sm text-gray-500">You do not have permission to view BMR.</div>;
         return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => { setCreateBatchPreset(null); setShowCreateBatchModal(true); }} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
       case 'bpr':
+        if (!canViewBpr) return <div className="p-8 text-sm text-gray-500">You do not have permission to view BPR.</div>;
         return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
       case 'yield-report':
+        if (!canViewTransferYield) return <div className="p-8 text-sm text-gray-500">You do not have permission to view Yield Report.</div>;
         return (
           <YieldReportView
             batches={state.batches}
@@ -7686,6 +7704,7 @@ const Production = () => {
           />
         );
       case 'transfers':
+        if (!canViewTransferYield) return <div className="p-8 text-sm text-gray-500">You do not have permission to view Transfer Orders.</div>;
         return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshAfterMrnSave} />;
       case 'equipment':
         return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
@@ -7698,7 +7717,7 @@ const Production = () => {
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       <TopHeader batches={state.batches} onMenuClick={() => setMobileSidebarOpen(true)} onSchedule={openScheduleWizard} />
       <div className="flex flex-1 overflow-hidden">
-        <ProductionSidebar active={activeSection} onChange={setSection} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+        <ProductionSidebar active={activeSection} onChange={setSection} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} navItems={visibleNavItems} />
         <main className="flex-1 overflow-hidden flex flex-col bg-white">{renderContent()}</main>
       </div>
 

@@ -118,6 +118,85 @@ function applyModuleFullAccess(
  });
 }
 
+function applySubModuleAction(
+ modules: ModulePermission[],
+ moduleId: string,
+ subModuleId: string,
+ action: ActionKey,
+ enable: boolean
+): ModulePermission[] {
+ return modules.map((mod) => {
+  if (mod.moduleId !== moduleId) return mod;
+  return {
+   ...mod,
+   subModules: mod.subModules.map((sub) => {
+    if (sub.subModuleId !== subModuleId) return sub;
+    const nextActions = { ...sub.actions, [action]: enable };
+    if (enable && action !== 'view') nextActions.view = true;
+    if (!enable && action === 'view') {
+     nextActions.create = false;
+     nextActions.edit = false;
+     nextActions.delete = false;
+     nextActions.approve = false;
+     nextActions.export = false;
+    }
+    const nextColumns = sub.columns.map((col) => {
+      let view = col.view;
+      let edit = col.edit;
+      if (action === 'view') {
+        view = enable;
+        if (!enable) edit = false;
+      }
+      if (action === 'edit') {
+        edit = enable;
+        if (enable) view = true;
+      }
+      return { ...col, view, edit };
+    });
+    return { ...sub, actions: nextActions, columns: nextColumns };
+   }),
+  };
+ });
+}
+
+function applyColumnPermission(
+ modules: ModulePermission[],
+ moduleId: string,
+ subModuleId: string,
+ columnId: string,
+ mode: 'view' | 'edit',
+ enable: boolean
+): ModulePermission[] {
+ return modules.map((mod) => {
+  if (mod.moduleId !== moduleId) return mod;
+  return {
+   ...mod,
+   subModules: mod.subModules.map((sub) => {
+    if (sub.subModuleId !== subModuleId) return sub;
+    const nextColumns = sub.columns.map((col) => {
+      if (col.columnId !== columnId) return col;
+      let view = col.view;
+      let edit = col.edit;
+      if (mode === 'view') {
+        view = enable;
+        if (!enable) edit = false;
+      } else {
+        edit = enable;
+        if (enable) view = true;
+      }
+      return { ...col, view, edit };
+    });
+    const hasAnyView = nextColumns.some((c) => c.view);
+    const hasAnyEdit = nextColumns.some((c) => c.edit);
+    const nextActions = { ...sub.actions };
+    nextActions.view = nextActions.view || hasAnyView;
+    nextActions.edit = nextActions.edit || hasAnyEdit;
+    return { ...sub, columns: nextColumns, actions: nextActions };
+   }),
+  };
+ });
+}
+
 /** Flip ALL modules / all actions for a department (row-level "Full access" shortcut). */
 function applyAllModulesFullAccess(modules: ModulePermission[], enable: boolean): ModulePermission[] {
  return modules.map((mod) => ({
@@ -223,6 +302,32 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
   const tree = permissionsByDept[dept];
   if (!tree) return;
   onDeptPermissionsChange(dept, applyAllModulesFullAccess(tree, enable));
+ };
+
+ const handleSubModuleAction = (dept: string, subModuleId: string, action: ActionKey, enable: boolean) => {
+  if (readOnly) return;
+  const tree = permissionsByDept[dept];
+  if (!tree) return;
+  onDeptPermissionsChange(
+   dept,
+   applySubModuleAction(tree, activeModuleIdSafe, subModuleId, action, enable)
+  );
+ };
+
+ const handleColumnToggle = (
+  dept: string,
+  subModuleId: string,
+  columnId: string,
+  mode: 'view' | 'edit',
+  enable: boolean
+ ) => {
+  if (readOnly) return;
+  const tree = permissionsByDept[dept];
+  if (!tree) return;
+  onDeptPermissionsChange(
+   dept,
+   applyColumnPermission(tree, activeModuleIdSafe, subModuleId, columnId, mode, enable)
+  );
  };
 
  const handleApplyActiveModuleToAll = (action: ActionKey | 'full', enable: boolean) => {
@@ -348,11 +453,12 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
           : ('partial' as const)
         : 'none';
        const rowMuted = showInclude && !included;
+       const spanCols = (showInclude ? 1 : 0) + (showDepartmentColumn ? 1 : 0) + ACTION_KEYS.length + 1 + (!readOnly ? 1 : 0);
        return (
-        <tr
-         key={dept}
-         className={`transition-colors ${rowMuted ? 'bg-gray-50/60 text-gray-400' : 'hover:bg-gray-50/50'}`}
-        >
+        <React.Fragment key={dept}>
+         <tr
+          className={`transition-colors ${rowMuted ? 'bg-gray-50/60 text-gray-400' : 'hover:bg-gray-50/50'}`}
+         >
          {showInclude && (
           <td className="px-3 py-2">
            <input
@@ -402,7 +508,78 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
            />
           </td>
          )}
-        </tr>
+         </tr>
+         {/* Granular submodule + step controls for active module */}
+         <tr className={rowMuted ? 'bg-gray-50/30' : 'bg-white'}>
+          <td colSpan={spanCols} className="px-3 py-3 border-t border-dashed border-gray-100">
+           {activeMod ? (
+            <div className="space-y-3">
+             <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+              Submodule and Step Controls ({activeMod.moduleName}) - {dept}
+             </div>
+             {activeMod.subModules.map((sub) => (
+              <div key={sub.subModuleId} className="rounded-lg border border-gray-100 p-3">
+               <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-gray-700">{sub.subModuleName}</div>
+                <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                 {ACTION_KEYS.map((a) => (
+                  <label key={`${sub.subModuleId}-${a}`} className="inline-flex items-center gap-1 text-gray-600">
+                   <input
+                    type="checkbox"
+                    checked={!!sub.actions[a]}
+                    onChange={(e) => handleSubModuleAction(dept, sub.subModuleId, a, e.target.checked)}
+                    disabled={readOnly || rowMuted}
+                    className="w-3.5 h-3.5 rounded border border-gray-300"
+                   />
+                   {ACTION_LABELS[a]}
+                  </label>
+                 ))}
+                </div>
+               </div>
+               {sub.columns.length > 0 && (
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                 {sub.columns.map((col) => (
+                  <div key={col.columnId} className="flex items-center justify-between rounded bg-gray-50 px-2 py-1.5 text-[11px]">
+                   <span className="text-gray-700 mr-2">{col.columnName}</span>
+                   <span className="flex items-center gap-2">
+                    <label className="inline-flex items-center gap-1 text-gray-600">
+                     <input
+                      type="checkbox"
+                      checked={!!col.view}
+                      onChange={(e) =>
+                       handleColumnToggle(dept, sub.subModuleId, col.columnId, 'view', e.target.checked)
+                      }
+                      disabled={readOnly || rowMuted}
+                      className="w-3.5 h-3.5 rounded border border-gray-300"
+                     />
+                     View
+                    </label>
+                    <label className="inline-flex items-center gap-1 text-gray-600">
+                     <input
+                      type="checkbox"
+                      checked={!!col.edit}
+                      onChange={(e) =>
+                       handleColumnToggle(dept, sub.subModuleId, col.columnId, 'edit', e.target.checked)
+                      }
+                      disabled={readOnly || rowMuted}
+                      className="w-3.5 h-3.5 rounded border border-gray-300"
+                     />
+                     Edit
+                    </label>
+                   </span>
+                  </div>
+                 ))}
+                </div>
+               )}
+              </div>
+             ))}
+            </div>
+           ) : (
+            <span className="text-xs text-gray-500">No submodules found for active module.</span>
+           )}
+          </td>
+         </tr>
+        </React.Fragment>
        );
       })}
      </tbody>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronDown, Search, X } from 'lucide-react';
@@ -326,6 +326,42 @@ function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number;
   return { createdUnits, remainingUnits };
 }
 
+function parseDateSafe(v?: string | null): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function getPlanningSlaMeta(order: SalesOrder, remainingUnits: number): {
+  elapsedHours: number;
+  label: string;
+  sub: string;
+  tone: 'green' | 'amber' | 'red';
+} {
+  const start = parseDateSafe(order.orderDate) ?? new Date();
+  const stopAt = remainingUnits <= 0 ? (parseDateSafe(order.bomConfirmedAt ?? null) ?? new Date()) : new Date();
+  const elapsedHours = Math.max(0, (stopAt.getTime() - start.getTime()) / (1000 * 60 * 60));
+  const hrs = Math.floor(elapsedHours);
+  const mins = Math.floor((elapsedHours - hrs) * 60);
+  const clock = `${hrs}h ${mins}m / 48h`;
+  if (remainingUnits <= 0) {
+    if (elapsedHours < 48) return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed on time', tone: 'green' };
+    return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed late', tone: 'red' };
+  }
+  if (elapsedHours < 36) return { elapsedHours, label: clock, sub: 'Running (< 36h)', tone: 'green' };
+  if (elapsedHours < 48) return { elapsedHours, label: clock, sub: 'Nearing breach (36–48h)', tone: 'amber' };
+  return { elapsedHours, label: clock, sub: `Breached by ${Math.max(0, Math.floor(elapsedHours - 48))}h`, tone: 'red' };
+}
+
+function getBatchLifecycleStatus(row: PlanningBatchAllRow): 'Planned' | 'In Mfg' | 'In QC' | 'Released' | 'On Hold' {
+  const raw = String(row.bomStatus ?? '').toLowerCase();
+  if (raw.includes('hold') || raw.includes('block')) return 'On Hold';
+  if (raw.includes('qc')) return 'In QC';
+  if (raw.includes('release')) return 'Released';
+  if (row.sent) return 'In Mfg';
+  return 'Planned';
+}
+
 function toKg(quantity: number, unit?: string): number {
   const qty = Number(quantity) || 0;
   const normalizedUnit = String(unit ?? '').trim().toUpperCase();
@@ -353,6 +389,7 @@ type PlanningTabStats = {
   shortages?: number;
   batchesRequired?: number;
   batchesConfirmed?: number;
+  notPlanned?: number;
   soValue?: string;
   confirmedProducts?: { value: number; total: number };
   rmItems?: { value: number; ok: number; short: number };
@@ -528,36 +565,101 @@ function PlanningBatchTableRow({
       onClick={handleRowClick}
       className="border-b border-gray-100 hover:bg-emerald-50/80 cursor-pointer transition-colors"
     >
-      <td className="px-4 py-3 text-gray-700 font-mono text-sm">
-        {row.batchCode?.trim() ? row.batchCode : '—'}
+      <td className="px-4 py-3 text-sm">
+        <div className="font-mono font-semibold text-gray-900">{row.batchCode?.trim() ? row.batchCode : '—'}</div>
+        <div className="text-xs text-gray-500 mt-0.5">{row.productName ?? row.productCode ?? '—'}</div>
       </td>
-      <td className="px-4 py-3 text-gray-700">{row.soNumber ?? '—'}</td>
       <td className="px-4 py-3 text-gray-700">{row.customerName ?? '—'}</td>
-      <td className="px-4 py-3 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
-      <td className="px-4 py-2 align-middle text-right" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          value={sizeKgStr}
-          onChange={(e) => setSizeKgStr(e.target.value)}
-          className="w-24 border border-gray-300 rounded-md px-2 py-1 text-sm font-mono text-right text-gray-900"
-          aria-label="Size kg"
-        />
+      <td className="px-4 py-3 text-xs">
+        <div className="flex flex-wrap gap-1.5">
+          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 font-semibold">
+            {sizeKgStr || '0'} KG
+          </span>
+          <span className="px-2 py-0.5 rounded bg-slate-50 text-slate-700 border border-slate-200">
+            SO {row.soNumber ?? '—'}
+          </span>
+        </div>
       </td>
-      <td className="px-4 py-3 text-gray-600">{row.dueDate ?? '—'}</td>
-      <td className="px-4 py-3 text-center">
-        {row.sent ? <span className="text-emerald-600 font-medium">Yes</span> : <span className="text-gray-400">No</span>}
+      <td className="px-4 py-3 text-xs">
+        <div className="space-y-1">
+          <div className="font-medium text-slate-700">
+            RM {(Array.isArray(row.rmLines) ? row.rmLines.length : 0)} · PM {(Array.isArray(row.pmLines) ? row.pmLines.length : 0)}
+          </div>
+          <div className="text-gray-500">BOM {row.bomStatus ?? 'Planned'}</div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDetail(row);
+            }}
+            className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800 underline"
+          >
+            View items →
+          </button>
+        </div>
       </td>
-      <td className="px-4 py-2 align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+      <td className="px-4 py-3 text-xs">
+        {(() => {
+          const stage = getBatchLifecycleStatus(row);
+          const tone =
+            stage === 'Released'
+              ? 'text-emerald-700'
+              : stage === 'In Mfg'
+                ? 'text-blue-700'
+                : stage === 'In QC'
+                  ? 'text-violet-700'
+                  : stage === 'On Hold'
+                    ? 'text-red-700'
+                    : 'text-amber-700';
+          return <div className={`font-semibold uppercase tracking-wide ${tone}`}>{stage}</div>;
+        })()}
+        <div className="text-gray-500 mt-0.5">Stage {row.sequence ? `${row.sequence}` : '—'} of 8</div>
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-600">
+        {row.dueDate ?? '—'}
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-600">
+        {row.sent ? 'Released to Production' : 'Awaiting release'}
+      </td>
+      <td className="px-4 py-3 text-xs">
+        <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-medium">
+          {row.soNumber ?? '—'}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-2">
+          {(() => {
+            const st = getBatchLifecycleStatus(row);
+            const cls =
+              st === 'Released'
+                ? 'bg-emerald-100 text-emerald-700'
+                : st === 'In Mfg'
+                  ? 'bg-blue-100 text-blue-700'
+                  : st === 'In QC'
+                    ? 'bg-violet-100 text-violet-700'
+                    : st === 'On Hold'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-amber-100 text-amber-700';
+            return <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${cls}`}>{st}</span>;
+          })()}
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={sizeKgStr}
+            onChange={(e) => setSizeKgStr(e.target.value)}
+            className="w-20 border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900"
+            aria-label="Size kg"
+          />
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -566,7 +668,7 @@ function PlanningBatchTableRow({
 /** Batches tab: list all planning batches. Row click → batch detail popup (items, stock, PR per shortfall). */
 function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatchAllRow) => void }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'sent' | 'rework'>('all');
+  const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
   const [sortBy, setSortBy] = useState<'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc'>('dueAsc');
   const { data: allBatches = [], isLoading } = useQuery({
     queryKey: ['planning-batches-all'],
@@ -603,9 +705,13 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
   });
   const filteredRows = searchedRows.filter((row) => {
     if (batchTypeFilter === 'all') return true;
-    const isRework = String(row.batchCode ?? '').toLowerCase().includes('-rw-');
-    if (batchTypeFilter === 'rework') return isRework;
-    return row.sent === true;
+    const st = getBatchLifecycleStatus(row);
+    if (batchTypeFilter === 'planned') return st === 'Planned';
+    if (batchTypeFilter === 'in-mfg') return st === 'In Mfg';
+    if (batchTypeFilter === 'in-qc') return st === 'In QC';
+    if (batchTypeFilter === 'released') return st === 'Released';
+    if (batchTypeFilter === 'on-hold') return st === 'On Hold';
+    return true;
   });
   const sortedRows = [...filteredRows].sort((a, b) => {
     const codeA = String(a.batchCode ?? '').toLowerCase();
@@ -651,9 +757,12 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
           onChange={(e) => setBatchTypeFilter(e.target.value as 'all' | 'sent' | 'rework')}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
         >
-          <option value="all">All types</option>
-          <option value="sent">Sent only</option>
-          <option value="rework">Rework only</option>
+          <option value="all">All</option>
+          <option value="planned">Planned</option>
+          <option value="in-mfg">In Mfg</option>
+          <option value="in-qc">In QC</option>
+          <option value="released">Released</option>
+          <option value="on-hold">On Hold</option>
         </select>
         <select
           value={sortBy}
@@ -670,17 +779,18 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
       </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1280px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch code</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">SO</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch / Product</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Size (kg)</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">Sent</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 w-[1%]"> </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch Specs</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Item Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Current Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Timeline</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Latest Comment</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Related Batches</th>
+                <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -1844,6 +1954,7 @@ const Planning = () => {
     const prodReleased = planningExtractedList.filter((r) => (r as { bomStatus?: string }).bomStatus === 'Production Released').length;
     const batchesRequired = planningExtractedList.reduce((s, r) => s + (r.batchesRequired ?? 0), 0);
     const batchesConfirmed = planningExtractedList.filter((r) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null).length;
+    const notPlanned = Math.max(0, totalSOs - batchesConfirmed);
     const itemShortages = itemsInvolvedRows.filter((r) => r.surplusShortage < 0).length;
     const confirmedCount = planningExtractedList.filter((r) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null).length;
     const rmItems = itemsInvolvedRows.filter((r) => r.type === 'RM');
@@ -1861,6 +1972,7 @@ const Planning = () => {
         shortages: itemShortages,
         batchesRequired,
         batchesConfirmed,
+        notPlanned,
         soValue: '—',
       },
       'items-involved': {
@@ -1884,11 +1996,13 @@ const Planning = () => {
 
   const filteredPisOrders = useMemo(() => {
     return pisRows.filter((order) => {
+      const { remainingUnits } = getCreatedAndRemainingUnits(order);
       const matchesStatus =
         statusFilter === 'All' ||
         (statusFilter === 'Prod Released' && order.bomStatus === 'Production Released') ||
         (statusFilter === 'In Progress' && order.bomStatus === 'In Progress') ||
-        (statusFilter === 'Planned' && order.bomStatus === 'Planned');
+        (statusFilter === 'Planned' && order.bomStatus === 'Planned') ||
+        (statusFilter === 'Not Planned' && remainingUnits > 0 && (Number(order.batchCount) || 0) === 0);
 
       const matchesSearch =
         order.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1898,6 +2012,35 @@ const Planning = () => {
       return matchesStatus && matchesSearch;
     });
   }, [pisRows, statusFilter, searchTerm]);
+
+  const handleExportPisCsv = useCallback(() => {
+    const header = ['SO Date', 'SO No', 'Client', 'Product', 'Units Ordered', 'Planned', 'Pending', 'Batch Status', 'SLA'];
+    const rows = filteredPisOrders.map((order) => {
+      const { createdUnits, remainingUnits } = getCreatedAndRemainingUnits(order);
+      const sla = getPlanningSlaMeta(order, remainingUnits);
+      return [
+        order.orderDate || '',
+        order.soNumber || '',
+        order.customerName || '',
+        `${order.productName || ''} (${order.productCode || ''})`,
+        String(Number(order.orderQty) || 0),
+        String(createdUnits),
+        String(remainingUnits),
+        order.bomStatus || '',
+        `${sla.label} - ${sla.sub}`,
+      ];
+    });
+    const csv = [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `planning-pis-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredPisOrders]);
 
   const visiblePisSoNos = useMemo(
     () => Array.from(new Set(filteredPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
@@ -3216,12 +3359,25 @@ const Planning = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#F7F7F9]">
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 px-6 pt-3">
+        <div className="max-w-[1600px] mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-extrabold">EI</div>
+              <div className="text-sm font-semibold text-gray-900">Planning Dashboard</div>
+            </div>
+            <div className="text-xs text-gray-500">Production Planning Hub</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-[1600px] mx-auto px-6 py-5">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Planning</h1>
+            <div className="text-xs text-gray-500 mb-1">Order Management / Planning</div>
+            <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Planning</h1>
             <p className="text-sm text-gray-500">Production Planning Hub</p>
           </div>
           {/* <button
@@ -3244,93 +3400,99 @@ const Planning = () => {
         </div>
 
         {/* Status Badges */}
-        <div className="flex gap-3 mb-6 flex-wrap">
-          <div className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-sm font-medium">
+        <div className="flex gap-2 mb-4 flex-wrap">
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold">
             {pisRows.length} Active SOs
           </div>
-          <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
+          <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['pis-extracted'].shortages} Shortages
           </div>
-          <div className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['items-involved'].prsRaised} PRs Raised
           </div>
-          <div className="text-gray-500 text-sm ml-auto">Planning: Feb 2026</div>
+          <div className="text-gray-500 text-xs ml-auto">Planning: Feb 2026</div>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-6 gap-4 mb-6">
+        <div className={`grid gap-3 mb-5 ${activeMainTab === 'items-involved' ? 'grid-cols-6' : 'grid-cols-7'}`}>
           {activeMainTab === 'items-involved' ? (
             <>
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">CONFIRMED PRODUCTS</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">CONFIRMED PRODUCTS</p>
                 <p className="text-2xl font-bold text-emerald-600">{(currentStats as PlanningTabStats).confirmedProducts.value}</p>
                 <p className="text-xs text-gray-500 mt-1">of {(currentStats as PlanningTabStats).confirmedProducts.total} total</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">RM ITEMS</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM ITEMS</p>
                 <p className="text-2xl font-bold text-cyan-600">{(currentStats as PlanningTabStats).rmItems.value}</p>
                 <p className="text-xs text-gray-500 mt-1">{(currentStats as PlanningTabStats).rmItems.ok} OK, {(currentStats as PlanningTabStats).rmItems.short} short</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">PM ITEMS</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PM ITEMS</p>
                 <p className="text-2xl font-bold text-purple-600">{(currentStats as PlanningTabStats).pmItems.value}</p>
                 <p className="text-xs text-gray-500 mt-1">{(currentStats as PlanningTabStats).pmItems.ok} OK, {(currentStats as PlanningTabStats).pmItems.short} short</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">RM SHORTAGES</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM SHORTAGES</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).rmShortages}</p>
                 <p className="text-xs text-gray-500 mt-1">Items below order req</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">PM SHORTAGES</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PM SHORTAGES</p>
                 <p className="text-2xl font-bold text-red-600">{(currentStats as PlanningTabStats).pmShortages}</p>
                 <p className="text-xs text-gray-500 mt-1">Items below order req</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">PRS RAISED</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PRS RAISED</p>
                 <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).prsRaised}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending procurement</p>
               </div>
             </>
           ) : (
             <>
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">TOTAL SOS</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">TOTAL SOS</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).totalSOs}</p>
                 <p className="text-xs text-gray-500 mt-1">Approved orders</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">PROD. RELEASED</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PROD. RELEASED</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).prodReleased}</p>
                 <p className="text-xs text-gray-500 mt-1">Ready to plan</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">RM/PM SHORTAGES</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM/PM SHORTAGES</p>
                 <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).shortages}</p>
                 <p className="text-xs text-gray-500 mt-1">needs below order req</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">BATCHES REQUIRED</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES REQUIRED</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesRequired}</p>
                 <p className="text-xs text-gray-500 mt-1">Across all products</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">BATCHES CONFIRMED</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES CONFIRMED</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesConfirmed}</p>
                 <p className="text-xs text-gray-500 mt-1">BOM confirmed & planned</p>
               </div>
 
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <p className="text-gray-600 text-xs font-medium mb-1">SO VALUE</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">NOT PLANNED</p>
+                <p className="text-2xl font-bold text-red-600">{(currentStats as PlanningTabStats).notPlanned ?? 0}</p>
+                <p className="text-xs text-gray-500 mt-1">SOs pending planning confirmation</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">SO VALUE</p>
                 <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).soValue}</p>
               </div>
             </>
@@ -3338,11 +3500,11 @@ const Planning = () => {
         </div>
 
         {/* Main Tabs Navigation — each tab is a sub-route */}
-        <div className="flex gap-2 mb-6 border-b border-gray-200">
+        <div className="flex gap-1 mb-5 border-b border-gray-200 bg-white px-2 pt-1 rounded-t-lg">
           <NavLink
             to="/planning/pis-extracted"
             className={({ isActive }) =>
-              `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
+              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
               }`
             }
           >
@@ -3351,7 +3513,7 @@ const Planning = () => {
           <NavLink
             to="/planning/batches"
             className={({ isActive }) =>
-              `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
+              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
               }`
             }
           >
@@ -3360,7 +3522,7 @@ const Planning = () => {
           <NavLink
             to="/planning/items-involved"
             className={({ isActive }) =>
-              `px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-emerald-700 border-emerald-700' : 'text-gray-600 border-transparent hover:text-gray-900'
+              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
               }`
             }
           >
@@ -3382,7 +3544,7 @@ const Planning = () => {
             <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-gray-600 font-medium">STATUS:</span>
-                {['All', 'Prod Released', 'In Progress', 'Planned'].map((status) => (
+                {['All', 'Prod Released', 'In Progress', 'Planned', 'Not Planned'].map((status) => (
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
@@ -3411,6 +3573,13 @@ const Planning = () => {
                     <X className="w-4 h-4 text-gray-400" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleExportPisCsv}
+                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  Export CSV
+                </button>
               </div>
             </div>
 
@@ -3423,22 +3592,22 @@ const Planning = () => {
             )}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[820px]">
+                <table className="w-full text-sm min-w-[1180px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">SO Date</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">SO No</th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Units</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer Status</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">MFG Records</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Units Ordered</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Plan Status</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch Status</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Planning SLA (48h)</th>
                       <th className="px-4 py-3 text-right font-semibold text-gray-700"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredPisOrders.map((order) => {
-                      const todayISO = new Date().toISOString().slice(0, 10);
-                      const dueToday = order.dueDate === todayISO;
                       const orderDateDisplay = (() => {
                         const d = order.orderDate ? new Date(order.orderDate) : null;
                         if (!d || Number.isNaN(d.getTime())) return '—';
@@ -3449,8 +3618,6 @@ const Planning = () => {
                         if (!d || Number.isNaN(d.getTime())) return order.dueDate ?? '—';
                         return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
                       })();
-
-                      const dueTagBg = dueToday ? 'bg-red-100 text-red-700 border-red-200' : 'bg-amber-100 text-amber-800 border-amber-200';
 
                       const customerTag = order.bomStatus === 'Planned'
                         ? { text: 'Planned', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700 border-gray-200' }
@@ -3481,45 +3648,75 @@ const Planning = () => {
                           onClick={() => openDetailModal(order)}
                           className={pisAvailabilityRowClass(availabilityTier)}
                         >
+                          <td className="px-4 py-3 text-gray-700 text-xs">
+                            {orderDateDisplay}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="font-mono font-semibold text-gray-900">{order.soNumber}</div>
-                            <div className="text-xs text-gray-500">{orderDateDisplay}</div>
+                            <div className="text-xs text-gray-500">Due {dueDateDisplay}</div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
-                            <div className="text-xs text-gray-700">{order.productName ?? order.productCode ?? '—'}</div>
                             <div className="text-xs text-gray-500">{order.soStatus ?? '—'}</div>
                           </td>
                           <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{order.productName ?? order.productCode ?? '—'}</div>
+                            <div className="text-xs text-gray-500">{order.productCode ?? '—'}</div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
                             <div className="font-medium text-gray-900">{order.orderQty}</div>
-                            <div className="text-xs text-gray-600">
-                              Created: <span className="font-semibold text-emerald-700">{createdUnits.toLocaleString()}</span>
-                              {' '}· Remaining: <span className="font-semibold text-amber-700">{remainingUnits.toLocaleString()}</span>
-                            </div>
                             <div className="text-xs text-gray-500">{order.totalKg} total</div>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${customerTag.badge}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${customerTag.dot}`} />
-                              {customerTag.text}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {dueToday ? (
-                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${dueTagBg}`}>
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                Today
-                                <span className="text-xs text-gray-500 border-l pl-2 border-gray-200">{dueDateDisplay}</span>
-                              </span>
-                            ) : (
-                              <div className="flex flex-col">
-                                <span className="text-xs text-gray-600">{order.daysLeft}</span>
-                                <span className="text-xs text-gray-500">Due {dueDateDisplay}</span>
+                            <div className="w-44">
+                              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1.5">
+                                <div
+                                  className={`h-full ${remainingUnits <= 0 ? 'bg-emerald-500' : createdUnits > 0 ? 'bg-indigo-500' : 'bg-gray-400'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, (createdUnits / Math.max(1, createdUnits + remainingUnits)) * 100))}%` }}
+                                />
                               </div>
-                            )}
+                              <div className="text-xs text-gray-700">
+                                Planned <span className="font-semibold">{createdUnits.toLocaleString()}</span> · Pending{' '}
+                                <span className="font-semibold">{remainingUnits.toLocaleString()}</span>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-gray-600">
-                            {bmrCount} BMR · {bprCount} BPR
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium">
+                                BMR {bmrCount}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium">
+                                BPR {bprCount}
+                              </span>
+                            </div>
+                            <div className="mt-1">
+                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${customerTag.badge}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${customerTag.dot}`} />
+                                {customerTag.text}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {(() => {
+                              const sla = getPlanningSlaMeta(order, remainingUnits);
+                              const toneCls =
+                                sla.tone === 'green'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : sla.tone === 'amber'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-red-50 text-red-700 border-red-200';
+                              const dotCls = sla.tone === 'green' ? 'bg-emerald-500' : sla.tone === 'amber' ? 'bg-amber-500' : 'bg-red-500';
+                              return (
+                                <>
+                                  <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${toneCls}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
+                                    {sla.label}
+                                  </span>
+                                  <div className="text-xs text-gray-500 mt-1">{sla.sub}</div>
+                                </>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
@@ -3736,60 +3933,17 @@ const Planning = () => {
                 </div>
               )}
               {!itemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length > 0 && (
-                <table className="w-full text-xs border-collapse">
+                <table className="w-full text-xs border-collapse min-w-[1120px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">ITEM / INCI</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CODE</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">CAT</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">USED IN</th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="BOM requirement for confirmed PIs still not covered by planning_batches lines (full snapshot minus batch allocation). Decreases when you add/save batch RM/PM lines — independent of PLANNED QTY (Release to Planning)."
-                      >
-                        <span className="block">TOTAL REQ</span>
-                        <span className="block text-[9px] font-normal text-gray-500">RM · kg · PM · pcs</span>
-                      </th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">STOCK IN HAND</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">RESERVED</th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Only from Release to Planning (PR lines or Planning PE-* draft PO). BOM confirm and planning batches do not increase this. Qty not yet on any PO; moves to PO QTY when a PO includes this item."
-                      >
-                        PLANNED QTY
-                      </th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Stage balance: qty on a PO that has NOT yet been marked In Transit or received. When PO is marked In Transit, this qty flows into IN TRANSIT."
-                      >
-                        PO QTY
-                      </th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Stage balance: qty shipped (PO In Transit / open GRN) but NOT yet GRN Complete. On GRN Complete it flows into WH STOCK."
-                      >
-                        IN TRANSIT
-                      </th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Stage balance: physical warehouse stock in hand (KG) after GRN Complete."
-                      >
-                        WH STOCK
-                      </th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">REORDER PT</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">AVG/MO</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">QC / STATUS</th>
-                      <th
-                        className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap"
-                        title="Release shortfall vs full TOTAL REQ: SIH + PLANNED + PO + IN TRANSIT − TOTAL REQ. Negative = material still needed for production; Release to Planning reduces this. Not batch-split-only."
-                      >
-                        NET
-                      </th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">COVERAGE</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">WH BATCHES</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">EXPIRY</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">BOM FLAG</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">ACTION</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Item</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Category</th>
+                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Linked Batches</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">Qty Balance</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Current Status</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">PO Info</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Latest Comment</th>
+                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3815,12 +3969,9 @@ const Planning = () => {
                         const canReleaseToPlanning = shortageForRelease && gapNeed > 1e-6;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="px-2 py-2">
+                            <td className="px-2 py-2 min-w-[220px]">
                               <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                              {item.itemType === 'PM' && <div className="text-xs text-gray-500">Primary A</div>}
-                            </td>
-                            <td className="px-2 py-2">
-                              <span className="text-blue-600 font-medium text-xs">{item.code}</span>
+                              <div className="text-xs text-gray-500">{item.code}</div>
                             </td>
                             <td className="px-2 py-2">
                               <span className={`text-xs font-semibold px-1 py-0.5 rounded ${item.itemType === 'PM'
@@ -3830,7 +3981,7 @@ const Planning = () => {
                                 {item.itemType}
                               </span>
                             </td>
-                            <td className="px-2 py-2 text-center">
+                            <td className="px-2 py-2 text-center min-w-[110px]">
                               <button
                                 type="button"
                                 onClick={() => setUsedInModalItem(item)}
@@ -3840,42 +3991,47 @@ const Planning = () => {
                                 <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
                               </button>
                             </td>
-                            <td className="px-2 py-2 text-right text-gray-900 text-xs">{item.totalReq}</td>
-                            <td className="px-2 py-2 text-right text-orange-600 font-medium text-xs">{item.sih}</td>
-                            <td className="px-2 py-2 text-right text-amber-700 text-xs">{item.reserved}</td>
-                            <td className="px-2 py-2 text-right text-blue-700 text-xs" title="Release to Planning only (not BOM/batches). Qty not yet on any PO.">{item.plannedQty}</td>
-                            <td className="px-2 py-2 text-right text-indigo-700 text-xs" title="On a PO, not yet shipped or received">{item.poQtyStr}</td>
-                            <td className="px-2 py-2 text-right text-rose-600 text-xs" title="Shipped (in transit), not yet GRN Complete">{item.inTransitQtyStr}</td>
-                            <td className="px-2 py-2 text-right text-emerald-700 text-xs" title="In warehouse (received via GRN Complete)">{item.whQtyStr}</td>
-                            <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.reorderPt}</td>
-                            <td className="px-2 py-2 text-right text-gray-600 text-xs">{item.avgMo}</td>
-                            <td className="px-2 py-2 text-center">
-                              {item.status === 'In Stock' && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">In Stock</span>}
-                              {item.status === 'Low Stock' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Low Stock</span>}
-                              {item.status === 'Critical' && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">Critical</span>}
-                              {item.status === 'Out of Stock' && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>}
-                              {item.status && !['In Stock', 'Low Stock', 'Critical', 'Out of Stock'].includes(item.status) && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">{item.status}</span>}
-                            </td>
-                            <td
-                              className={`px-2 py-2 text-right font-semibold text-xs ${item.netNum < 0 ? 'text-red-600' : 'text-green-600'
-                                }`}
-                              title={`NET = supply (SIH + planned + PO + in-transit) − full TOTAL REQ. Batch remainder (supply − unallocated to batches): ${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                ? Number(item.netPipelineNum).toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                : Math.round(item.netPipelineNum).toLocaleString()}.`}
-                            >
-                              {item.net}
-                            </td>
-                            <td className="px-2 py-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <div className={`h-1.5 rounded-sm w-10 ${item.coverage === '100%' ? 'bg-green-500' : 'bg-orange-400'
-                                  }`}></div>
-                                <span className="text-xs font-semibold text-gray-700">{item.coverage}</span>
+                            <td className="px-2 py-2 text-right min-w-[160px]">
+                              <div className="text-gray-900 text-xs font-semibold">Required {item.totalReq}</div>
+                              <div className="text-[11px] text-gray-600 mt-0.5">SIH {item.sih} · Reserved {item.reserved}</div>
+                              <div className="text-[11px] text-blue-700 mt-0.5">In process {item.inTransitQtyStr} · PO {item.poQtyStr}</div>
+                              <div className={`text-[11px] font-semibold mt-0.5 ${item.netNum < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                                Short {item.netNum < 0 ? Math.abs(item.netNum).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'}
                               </div>
                             </td>
-                            <td className="px-2 py-2 text-gray-900 text-xs">{item.whBatches}</td>
-                            <td className="px-2 py-2 text-center text-gray-600 text-xs">{item.expiry}</td>
-                            <td className="px-2 py-2 text-center text-gray-500 text-xs">{item.bomFlag}</td>
-                            <td className="px-2 py-2 text-center">
+                            <td className="px-2 py-2 min-w-[170px]">
+                              {(() => {
+                                const stage = item.poQtyNum <= 0 ? 'Request' : item.inTransitQtyNum <= 0 ? 'PO Raised' : item.whQtyNum <= 0 ? 'Dispatched' : 'GRN';
+                                const elapsed = item.poQtyNum <= 0 ? '18h in stage' : item.inTransitQtyNum <= 0 ? '32h in stage' : item.whQtyNum <= 0 ? '2d in stage' : 'Completed';
+                                const badge = item.netNum < 0 ? 'Overdue' : 'On time';
+                                const badgeCls = item.netNum < 0 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                                return (
+                                  <>
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">{stage}</div>
+                                    <div className="text-[11px] text-gray-500 mt-0.5">{elapsed} · SLA 48h</div>
+                                    <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${badgeCls}`}>{badge}</span>
+                                    <div className="text-[10px] text-gray-400 mt-1">Request · PO Raised · Dispatched · GRN</div>
+                                  </>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-2 py-2 min-w-[170px]">
+                              <div className="text-[11px] text-gray-700 font-medium">
+                                {item.poQtyNum > 0 ? `PO active · ${item.poQtyStr}` : 'PO not raised'}
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">
+                                In transit {item.inTransitQtyStr} · WH {item.whQtyStr}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 min-w-[220px]">
+                              <div className="text-[11px] text-gray-700">
+                                {item.status === 'In Stock' ? 'Stocks healthy' : item.status === 'Low Stock' ? 'Low stock warning' : item.status === 'Critical' ? 'Critical shortage' : item.status}
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">
+                                WH {item.whBatches} · Exp {item.expiry}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-center min-w-[170px]">
                               <div className="flex flex-col items-center gap-1 min-w-[7rem]">
                                 {shortageForRelease && releasedTowardGap > 1e-6 && (
                                   <span
