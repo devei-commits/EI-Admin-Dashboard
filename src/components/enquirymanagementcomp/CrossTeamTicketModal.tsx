@@ -46,6 +46,8 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
  const [selectedAreaIds, setSelectedAreaIds] = useState<Set<string>>(new Set(['pis']));
  const [staffOptions, setStaffOptions] = useState<UserSearchRow[]>([]);
+ /** Primary owner — required before ticket is created */
+ const [primaryAssigneeId, setPrimaryAssigneeId] = useState('');
  const [memberSearch, setMemberSearch] = useState('');
  const [selectedMembers, setSelectedMembers] = useState<UserSearchRow[]>([]);
  const [submitting, setSubmitting] = useState(false);
@@ -132,6 +134,17 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
    setError('Subject is required.');
    return;
   }
+  if (!primaryAssigneeId) {
+   setError('Please select who this ticket is assigned to before creating it.');
+   return;
+  }
+  const primary = staffOptions.find((u) => String(u.userid) === primaryAssigneeId);
+  if (!primary) {
+   setError('Selected assignee is no longer in the list. Refresh and try again.');
+   return;
+  }
+  const actor =
+   (user.name && user.name.trim()) || (user.email && user.email.trim()) || `user:${user.id}`;
   setSubmitting(true);
   setError(null);
   try {
@@ -164,6 +177,15 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
       phone: '',
       isRegistered: true,
      },
+     current_assignee: {
+      staffId: String(primary.userid),
+      staffName: (primary.display_name || primary.email || `User ${primary.userid}`).trim(),
+      staffEmail: primary.email || '',
+      department: primary.role_name || 'Internal',
+      assignedAt: new Date().toISOString(),
+      assignedBy: actor,
+      isActive: true,
+     },
     }
    );
 
@@ -176,6 +198,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
     setSelectedTeamIds(new Set());
     setSelectedAreaIds(new Set(['pis']));
     setSelectedMembers([]);
+    setPrimaryAssigneeId('');
     onClose();
    } else {
     setError(typeof res?.message === 'string' ? res.message : 'Could not create ticket');
@@ -239,6 +262,26 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
        placeholder="Context, links, SKU/PIS codes, what you need from which team…"
       />
+     </div>
+
+     <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">Assign to *</label>
+      <select
+       value={primaryAssigneeId}
+       onChange={(e) => setPrimaryAssigneeId(e.target.value)}
+       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+       required
+      >
+       <option value="">Select primary assignee…</option>
+       {staffOptions.map((u) => (
+        <option key={u.userid} value={String(u.userid)}>
+         {(u.display_name || u.email || `User ${u.userid}`) + (u.role_name ? ` — ${u.role_name}` : '')}
+        </option>
+       ))}
+      </select>
+      <p className="text-xs text-gray-500 mt-1">
+       Required at creation. You can reassign later; previous assignees are kept in history.
+      </p>
      </div>
 
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

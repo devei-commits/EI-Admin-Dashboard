@@ -18,6 +18,7 @@ import {
 } from './TicketComponents';
 import { fetchAvailableStaff } from '../../services/ticket.service';
 import api from '../../lib/apiClient';
+import { useAuth } from '../../context/AuthContext';
 
 // ==================== Activity Timeline ====================
 interface ActivityTimelineProps {
@@ -336,6 +337,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
  onClose,
  onUpdate,
 }) => {
+ const { user } = useAuth();
  const [activeTab, setActiveTab] = useState<'messages' | 'activity' | 'orders'>('messages');
  const [availableStaff, setAvailableStaff] = useState<StaffMember[]>([]);
  const [activities, setActivities] = useState<TicketActivity[]>(ticket.activities);
@@ -384,6 +386,8 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
  const handleAssign = useCallback(async (staffId: string) => {
   const staff = availableStaff.find((s) => s.id === staffId);
   if (!staff) return;
+  const assignedBy =
+   (user?.name && user.name.trim()) || (user?.email && user.email.trim()) || `user:${user?.id ?? 'unknown'}`;
   try {
    const res = await api.patch<{ success?: boolean; data?: Ticket }>(`/api/v1/enquiries/${ticket.id}`, {
     current_assignee: {
@@ -392,7 +396,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
      staffEmail: staff.email || '',
      department: staff.department || '',
      assignedAt: new Date().toISOString(),
-     assignedBy: '',
+     assignedBy,
      isActive: true,
     },
    });
@@ -400,7 +404,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
   } catch (e) {
    console.error(e);
   }
- }, [ticket.id, onUpdate, availableStaff]);
+ }, [ticket.id, onUpdate, availableStaff, user?.id, user?.name, user?.email]);
 
  const handleUnassign = useCallback(async () => {
   try {
@@ -631,7 +635,44 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
         onUnassign={handleUnassign}
         disabled={loading.staff}
        />
+       <p className="text-xs text-gray-500 mt-2">
+        Use the menu above to change assignee after creation. Past assignees appear below.
+       </p>
       </div>
+
+      {ticket.assignmentHistory && ticket.assignmentHistory.length > 0 && (
+       <div className="mb-6">
+        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+         Assignment history
+        </h4>
+        <ul className="space-y-2 text-sm">
+         {[...ticket.assignmentHistory].reverse().map((entry, idx) => (
+          <li
+           key={`${entry.staffId}-${entry.endedAt || idx}`}
+           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-700"
+          >
+           <span className="font-medium text-gray-900">{entry.staffName}</span>
+           {entry.department ? (
+            <span className="text-gray-500"> · {entry.department}</span>
+           ) : null}
+           <div className="text-xs text-gray-500 mt-1">
+            {entry.endedAt
+             ? `Until ${new Date(entry.endedAt).toLocaleString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+               })}`
+             : '—'}
+            {entry.reason ? ` · ${entry.reason.replace(/-/g, ' ')}` : ''}
+            {entry.endedBy ? ` · by ${entry.endedBy}` : ''}
+           </div>
+          </li>
+         ))}
+        </ul>
+       </div>
+      )}
 
       {/* Status & Priority */}
       <div className="mb-6">

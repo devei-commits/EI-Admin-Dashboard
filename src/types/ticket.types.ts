@@ -30,7 +30,17 @@ export type TicketCategory =
  | 'pis-issue'
  | 'other';
 
-export type TicketSource = 'website' | 'email' | 'phone' | 'whatsapp' | 'walk-in' | 'referral' | 'chat' | 'internal-cross-team' | 'other';
+export type TicketSource =
+ | 'website'
+ | 'email'
+ | 'phone'
+ | 'whatsapp'
+ | 'walk-in'
+ | 'referral'
+ | 'chat'
+ | 'internal-cross-team'
+ | 'admin-dashboard'
+ | 'other';
 
 export type TicketScope = 'customer' | 'internal';
 
@@ -64,6 +74,10 @@ export interface StaffAssignment {
  assignedBy: string;
  isActive: boolean;
  notes?: string;
+ /** Set when this assignee was replaced or cleared (history rows only) */
+ endedAt?: string;
+ endedBy?: string;
+ reason?: 'initial' | 'reassigned' | 'unassigned';
 }
 
 // ==================== Activity & Timeline ====================

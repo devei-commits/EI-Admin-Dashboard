@@ -10,6 +10,7 @@ import type {
 import TicketDashboard from './TicketDashboard';
 import TicketDetailPopup from './TicketDetailPopup';
 import CrossTeamTicketModal from './CrossTeamTicketModal';
+import CreateCustomerTicketModal from './CreateCustomerTicketModal';
 import { 
  FilterPanel, 
  TicketRow, 
@@ -90,6 +91,7 @@ const EnquiryManagementEnhanced: React.FC = () => {
  const [currentPage, setCurrentPage] = useState(1);
  const recordsPerPage = 10;
  const [crossTeamModalOpen, setCrossTeamModalOpen] = useState(false);
+ const [createCustomerModalOpen, setCreateCustomerModalOpen] = useState(false);
 
  useEffect(() => {
   setCurrentPage(1);
@@ -387,6 +389,13 @@ useEffect(() => {
   setCurrentPage(1);
  }, []);
 
+ const handleCustomerTicketCreated = useCallback((created: Ticket) => {
+  setTickets((prev) => [created, ...prev]);
+  setCreateCustomerModalOpen(false);
+  setActiveView('tickets');
+  setCurrentPage(1);
+ }, []);
+
  return (
   <div className="w-full space-y-6">
    {/* View Toggle */}
@@ -493,7 +502,11 @@ useEffect(() => {
         </svg>
         Export
        </button>
-       <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-800 transition-colors">
+       <button
+        type="button"
+        onClick={() => setCreateCustomerModalOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors"
+       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
@@ -898,6 +911,12 @@ useEffect(() => {
     open={crossTeamModalOpen}
     onClose={() => setCrossTeamModalOpen(false)}
     onCreated={handleInternalTicketCreated}
+   />
+
+   <CreateCustomerTicketModal
+    open={createCustomerModalOpen}
+    onClose={() => setCreateCustomerModalOpen(false)}
+    onCreated={handleCustomerTicketCreated}
    />
   </div>
  );
