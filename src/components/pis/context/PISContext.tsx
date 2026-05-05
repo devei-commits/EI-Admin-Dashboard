@@ -1005,16 +1005,8 @@ export function PISProvider({ children }: { children: ReactNode }) {
   if (!isAuthenticated || !currentUser) return;
   fetchData();
 
-  const intervalMs = 60000; // 60 seconds - reduced frequency to minimize unwanted updates
-  const id = window.setInterval(() => {
-   if (isAutoRefreshEnabled) {
-    void fetchData();
-   }
-  }, intervalMs);
-
-  return () => {
-   window.clearInterval(id);
-  };
+    // Polling disabled intentionally. Refresh via explicit user actions / navigation.
+    return undefined;
  }, [isAuthenticated, currentUser, fetchData, isAutoRefreshEnabled]);
 
  // Initialize with mock data on first load if empty (for demo/offline mode)

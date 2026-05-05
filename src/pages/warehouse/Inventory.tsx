@@ -991,13 +991,10 @@ const WarehouseInventory = () => {
 
   // After BMR dispensing / MTR / GRN / procurement PO release on another tab, refresh when user returns.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void refetchWarehouseInventory();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    // Intentionally disabled: this can trigger repeated refetches of
+    // `/api/v1/warehouse-inventory` which in turn recomputes warehouse reserved.
+    // Use explicit refresh actions instead of automatic visibility polling.
+    return undefined;
   }, [refetchWarehouseInventory]);
 
   useEffect(() => {

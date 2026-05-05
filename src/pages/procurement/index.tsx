@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query';
+import type { Query } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import logoFull from '../../assets/logo/eilogofull.svg';
@@ -79,7 +80,7 @@ import type {
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
-import { Search, X, ShoppingCart, DollarSign, Factory, Package, FileText, Truck, CheckCircle, TrendingUp } from 'lucide-react';
+import { Search, X, ShoppingCart, DollarSign, Factory, Package, FileText, Truck, CheckCircle, TrendingUp, Loader2 } from 'lucide-react';
 import { KPICard } from '../../components/orders/KPICard';
 import { PipelineStrip } from '../../components/orders/PipelineStrip';
 import { formatLakhs } from '../../utils/orderFulfillmentUtils';
@@ -134,6 +135,26 @@ const ENABLE_PROCUREMENT_LOCAL_PERSISTENCE =
   typeof import.meta.env?.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === 'string'
     && import.meta.env.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === '1';
 const DEBUG_PROC_RELEASE = import.meta.env.DEV;
+
+/** Query roots used on this screen — `useIsFetching` predicate so the global loader tracks refetches too. */
+const PROCUREMENT_PAGE_QUERY_ROOTS = new Set<string>([
+  'procurement-requests',
+  'procurement-quotations',
+  'vendor-client',
+  'purchase-orders',
+  'grn-list',
+  'warehouse-inventory',
+  'raw-materials-list',
+  'pack-materials-list',
+  'po-tracking-released-map',
+  'po-tracking',
+  'items-list-page',
+]);
+
+function procurementPageQueryPredicate(query: Query): boolean {
+  const key0 = query.queryKey[0];
+  return typeof key0 === 'string' && PROCUREMENT_PAGE_QUERY_ROOTS.has(key0);
+}
 
 /** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
 function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
@@ -855,6 +876,8 @@ const Procurement: React.FC = () => {
   const queryClient = useQueryClient();
   const { dispatch: globalDispatch } = useGlobalState();
 
+  const procurementQueriesFetching = useIsFetching({ predicate: procurementPageQueryPredicate }) > 0;
+
   // Prevent double-click / race conditions from creating multiple GRNs for the same PO.
   // Keyed by `record.poNumber`.
   const receiveGrnLockRef = useRef<Record<string, boolean>>({});
@@ -919,8 +942,9 @@ const Procurement: React.FC = () => {
     // Needed for Stock Summary in PR View modal as well.
     enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest || !!selectedRequest,
     staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    // Avoid repeated GETs when users switch tabs/windows.
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const openStockCheckModal = useCallback(
@@ -2636,6 +2660,9 @@ const Procurement: React.FC = () => {
         for (const g of poGrns) {
           const lines = Array.isArray(g.lineItems) ? g.lineItems : [];
           if (lines.length <= 1) continue;
+          // Splitting a multi-line GRN that is already GRN Complete would clone "Complete" rows without
+          // running warehouse inventory apply (only the PUT transition does). Skip — warehouse owns that case.
+          if (String(g.status || '').trim() === 'GRN Complete') continue;
           const first = lines[0];
           await updateGRN(String(g.id), { lineItems: [first] });
           for (let i = 1; i < lines.length; i += 1) {
@@ -4112,8 +4139,29 @@ const Procurement: React.FC = () => {
     [addToast, editingQuoteLine, queryClient]
   );
 
+  const showProcurementGlobalLoader =
+    procurementQueriesFetching ||
+    isProcurementDataLoading ||
+    savingQuoteLine ||
+    stockCheckSaving ||
+    editItemsListLineSaving ||
+    recordingAdvancePayment;
+
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-yellow-50 text-slate-900">
+      {showProcurementGlobalLoader && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-white/55 backdrop-blur-[2px]"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200/80 bg-white px-8 py-6 shadow-xl">
+            <Loader2 className="h-10 w-10 shrink-0 animate-spin text-amber-600" aria-hidden />
+            <p className="text-sm font-medium text-slate-700">Loading…</p>
+          </div>
+        </div>
+      )}
       <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
         <div className="px-5 md:px-8 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">

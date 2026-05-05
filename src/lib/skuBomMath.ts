@@ -1,5 +1,15 @@
 /** Keep in sync with ei-website-backend/src/bom/skuBomMath.js */
 
+/** First positive number in a bulk SG field (e.g. "0.95-1.02" → 0.95). Default 1. */
+export function parseBulkSpecificGravity(raw: string | undefined | null): number {
+  const s = String(raw ?? '').trim();
+  if (!s) return 1;
+  const m = s.match(/[\d.]+/);
+  if (!m) return 1;
+  const n = parseFloat(m[0]);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 export function normUom(u: string | undefined | null): string {
   const x = String(u ?? '')
     .trim()
@@ -56,6 +66,33 @@ function formatVolumeFromMicroL(microL: number, displayUom: string): number {
   const u = normUom(displayUom);
   if (u === 'L') return microL / 1_000_000;
   return microL / 1000;
+}
+
+/** Line amount in limit-dimension base (mg if limit mass, µL if limit volume). Uses bulk SG when dimensions differ (same as planning fill → kg). */
+function lineQtyToLimitBase(
+  qty: number,
+  lu: string,
+  lineDim: 'mass' | 'volume',
+  limitDim: 'mass' | 'volume',
+  sg: number
+): number {
+  const safeSg = Number.isFinite(sg) && sg > 0 ? sg : 1;
+  if (lineDim === limitDim) {
+    return limitDim === 'mass' ? toMg(qty, lu) : toMicroL(qty, lu);
+  }
+  if (limitDim === 'volume' && lineDim === 'mass') {
+    const mg = toMg(qty, lu);
+    const kg = mg / 1_000_000;
+    const L = kg / safeSg;
+    return L * 1_000_000;
+  }
+  if (limitDim === 'mass' && lineDim === 'volume') {
+    const microL = toMicroL(qty, lu);
+    const L = microL / 1_000_000;
+    const kg = L * safeSg;
+    return kg * 1_000_000;
+  }
+  throw new Error('Invalid line vs limit dimensions');
 }
 
 export type SkuBomLineInput = {
@@ -131,9 +168,9 @@ export function validateSkuBomTotals(args: {
     };
   }
 
-  let limitBase: number;
   try {
-    limitBase = dim === 'mass' ? toMg(limQ, limU!) : toMicroL(limQ, limU!);
+    if (dim === 'mass') toMg(limQ, limU!);
+    else toMicroL(limQ, limU!);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Invalid limit UOM';
     return { ok: false, code: 'SKU_BOM_LIMIT_UOM', error: msg };
@@ -141,6 +178,7 @@ export function validateSkuBomTotals(args: {
 
   const arr = Array.isArray(lines) ? lines : [];
   let sumBase = 0;
+  let hasCrossDimensionLine = false;
   for (let i = 0; i < arr.length; i += 1) {
     const line = (arr[i] || {}) as SkuBomLineInput;
     const qtyRaw = line.qty_per_unit ?? line.qtyPerUnit;
@@ -157,12 +195,23 @@ export function validateSkuBomTotals(args: {
           error: `SKU BOM line ${i + 1}: PCS/count units cannot be mixed with a weight/volume limit. Use G, KG, or ML.`,
         };
       }
-      if (lineDim !== dim) {
+      if (lineDim !== 'mass' && lineDim !== 'volume') {
         return {
           ok: false,
           code: 'SKU_BOM_LINE_UOM',
-          error: `SKU BOM line ${i + 1}: UOM "${lu}" does not match limit kind (${dim === 'mass' ? 'mass (G/KG)' : 'volume (ML/L)'}).`,
+          error: `SKU BOM line ${i + 1}: UOM "${lu}" must be G, GM, KG, ML, or L.`,
         };
+      }
+      if (lineDim !== dim) {
+        hasCrossDimensionLine = true;
+        try {
+          if (lineDim === 'mass') toMg(qty, lu);
+          else toMicroL(qty, lu);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : `Invalid quantity on SKU BOM line ${i + 1}`;
+          return { ok: false, code: 'SKU_BOM_LINE_QTY', error: msg };
+        }
+        continue;
       }
       try {
         sumBase += dim === 'mass' ? toMg(qty, lu) : toMicroL(qty, lu);
@@ -177,13 +226,21 @@ export function validateSkuBomTotals(args: {
     }
   }
 
-  const sumInDisplay = dim === 'mass' ? formatMassFromMg(sumBase, limU!) : formatVolumeFromMicroL(sumBase, limU!);
-  const limitInDisplay = limQ!;
-  if (Math.abs(sumInDisplay - limitInDisplay) > 0.001) {
+  if (!hasCrossDimensionLine) {
+    const sumInDisplay = dim === 'mass' ? formatMassFromMg(sumBase, limU!) : formatVolumeFromMicroL(sumBase, limU!);
+    const limitInDisplay = limQ!;
+    if (Math.abs(sumInDisplay - limitInDisplay) > 0.001) {
+      return {
+        ok: false,
+        code: 'SKU_BOM_SUM_MISMATCH',
+        error: `SKU BOM quantities must equal the net per-unit limit exactly (tolerance 0.001 ${normUom(limU!)}). Current total ${sumInDisplay.toFixed(6)} ${normUom(limU!)} vs limit ${limitInDisplay} ${normUom(limU!)}.`,
+        sumInDisplay,
+        limitInDisplay,
+        displayUom: normUom(limU!),
+      };
+    }
     return {
-      ok: false,
-      code: 'SKU_BOM_SUM_MISMATCH',
-      error: `SKU BOM quantities must equal the net per-unit limit exactly (tolerance 0.001 ${normUom(limU!)}). Current total ${sumInDisplay.toFixed(6)} ${normUom(limU!)} vs limit ${limitInDisplay} ${normUom(limU!)}.`,
+      ok: true,
       sumInDisplay,
       limitInDisplay,
       displayUom: normUom(limU!),
@@ -192,8 +249,6 @@ export function validateSkuBomTotals(args: {
 
   return {
     ok: true,
-    sumInDisplay,
-    limitInDisplay,
     displayUom: normUom(limU!),
   };
 }
@@ -264,7 +319,8 @@ type MeaningfulSkuLine = {
 
 function collectMeaningfulSkuLinesForFormula(
   lines: unknown[] | null | undefined,
-  dim: 'mass' | 'volume'
+  dim: 'mass' | 'volume',
+  specificGravity: number
 ): MeaningfulSkuLine[] | { error: string } {
   const arr = Array.isArray(lines) ? lines : [];
   const out: MeaningfulSkuLine[] = [];
@@ -280,14 +336,12 @@ function collectMeaningfulSkuLinesForFormula(
       if (lineDim === 'count') {
         return { error: `SKU BOM line ${i + 1}: PCS/count units cannot be converted to formula % w/w.` };
       }
-      if (lineDim !== dim) {
-        return {
-          error: `SKU BOM line ${i + 1}: UOM "${lu}" does not match net kind (${dim === 'mass' ? 'mass (G/KG)' : 'volume (ML/L)'}).`,
-        };
+      if (lineDim !== 'mass' && lineDim !== 'volume') {
+        return { error: `SKU BOM line ${i + 1}: UOM "${lu}" must be G, GM, KG, ML, or L for formula import.` };
       }
       let lineBase: number;
       try {
-        lineBase = dim === 'mass' ? toMg(qty, lu) : toMicroL(qty, lu);
+        lineBase = lineQtyToLimitBase(qty, lu, lineDim, dim, specificGravity);
       } catch (e) {
         const msg = e instanceof Error ? e.message : `Invalid quantity on SKU BOM line ${i + 1}`;
         return { error: msg };
@@ -314,6 +368,8 @@ export function skuBomLinesToFormulaRows(args: {
   limitUom: string;
   /** Phase assigned to every imported line (default: "Bulk"). */
   defaultPhase?: string;
+  /** Bulk specific gravity when converting mass ↔ volume for % split (default 1). */
+  specificGravity?: number;
 }): { ok: true; rows: SkuBomToFormulaRow[] } | { ok: false; error: string } {
   const v = validateSkuBomTotals({
     lines: args.lines,
@@ -326,7 +382,8 @@ export function skuBomLinesToFormulaRows(args: {
   const dim = dimensionOfLimitUom(limU);
   if (!dim) return { ok: false, error: 'Limit UOM must be G, GM, KG, ML, or L.' };
 
-  const collected = collectMeaningfulSkuLinesForFormula(args.lines, dim);
+  const sg = args.specificGravity != null && Number.isFinite(args.specificGravity) ? args.specificGravity : 1;
+  const collected = collectMeaningfulSkuLinesForFormula(args.lines, dim, sg > 0 ? sg : 1);
   if ('error' in collected) return { ok: false, error: collected.error };
   if (collected.length === 0) return { ok: false, error: 'No SKU BOM lines with quantity and INCI/RM code to import.' };
 

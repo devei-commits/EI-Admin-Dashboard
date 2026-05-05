@@ -19,7 +19,6 @@ import {
   Box,
   Layers,
   Building2,
-  TrendingUp,
   CheckSquare,
   Clock,
   AlertCircle,
@@ -411,17 +410,9 @@ const Dashboard = () => {
       }
     };
     void loadWebsiteRequestStats();
-    const pollId = window.setInterval(() => {
-      void loadWebsiteRequestStats();
-    }, 30000);
-    const handleWindowFocus = () => {
-      void loadWebsiteRequestStats();
-    };
-    window.addEventListener('focus', handleWindowFocus);
+    // Polling disabled intentionally to prevent repeated dashboard-summary GETs.
     return () => {
       cancelled = true;
-      window.clearInterval(pollId);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 

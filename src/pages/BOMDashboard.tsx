@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Trash2, Plus, ArrowDownToLine, CloudDownload, Upload } from 'lucide-react';
+import { PlusCircle, Trash2, Plus, ArrowDownToLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, fetchZohoCompositeSkuBomSuggestion, uploadSkuBomExcel, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, fetchZohoCompositeSkuBomSuggestion, uploadSkuBomExcel, clearSkuBomForReimport, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
 import { parseFormulaBomWorkbook, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
-import { validateSkuBomTotals, parseFillSizeToSkuNet, getEffectiveSkuBomLimitFields, skuBomLinesToFormulaRows } from '../lib/skuBomMath';
+import {
+  validateSkuBomTotals,
+  parseFillSizeToSkuNet,
+  getEffectiveSkuBomLimitFields,
+  skuBomLinesToFormulaRows,
+  parseBulkSpecificGravity,
+} from '../lib/skuBomMath';
+import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
 
@@ -36,8 +43,11 @@ const BOMDashboard: React.FC = () => {
   const [zohoSkuFetchId, setZohoSkuFetchId] = useState('');
   const [zohoSkuFetchLoading, setZohoSkuFetchLoading] = useState(false);
   const [skuExcelUploading, setSkuExcelUploading] = useState(false);
+  const [skuBomClearing, setSkuBomClearing] = useState(false);
   const skuExcelFileInputRef = useRef<HTMLInputElement | null>(null);
   const [formulaRmExcelUploading, setFormulaRmExcelUploading] = useState(false);
+  /** Full BOM reset for the product currently open in the side panel (toolbar). */
+  const [prToolbarFullResetting, setPrToolbarFullResetting] = useState(false);
   /** 0–100 while chunked Formula BOM import runs */
   const [formulaBomUploadPercent, setFormulaBomUploadPercent] = useState<number | null>(null);
   const formulaRmFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -169,6 +179,7 @@ const BOMDashboard: React.FC = () => {
       limitQty,
       limitUom,
       defaultPhase: 'Imported from SKU',
+      specificGravity: parseBulkSpecificGravity(editDraft.specific_gravity),
     });
     if (!res.ok) {
       toast.error(res.error);
@@ -266,6 +277,7 @@ const BOMDashboard: React.FC = () => {
           limitQty,
           limitUom,
           defaultPhase: 'Imported from SKU',
+          specificGravity: parseBulkSpecificGravity(editDraft.specific_gravity),
         });
         if (pctRes.ok) {
           updates.formulaBom = [
@@ -360,6 +372,93 @@ const BOMDashboard: React.FC = () => {
     },
     [selectedProduct, isEditMode, loadProducts]
   );
+
+  const handleClearSkuBomForReimport = useCallback(async () => {
+    if (!selectedProduct) return;
+    if (isEditMode) {
+      const okDraft = window.confirm(
+        'Clearing removes SKU BOM and Pack BOM on the server and reloads the product. Unsaved draft edits on other tabs will be lost. Continue?'
+      );
+      if (!okDraft) return;
+    }
+    const ok = window.confirm(
+      'Clear all SKU BOM lines and Pack BOM lines for this product? Formula BOM (% phases) and process steps are kept. Use this before uploading Excel again from scratch.'
+    );
+    if (!ok) return;
+    setSkuBomClearing(true);
+    try {
+      const res = await clearSkuBomForReimport(selectedProduct.product_id);
+      if (!res.success || !res.data) {
+        const err = res.error;
+        const msg =
+          typeof err === 'string'
+            ? err
+            : err && typeof err === 'object' && 'message' in err
+              ? String(err.message)
+              : 'Failed to clear';
+        toast.error(msg);
+        return;
+      }
+      toast.success(res.data.message ?? 'SKU BOM and Pack BOM cleared.');
+      const detail = await fetchPRProductDetail(selectedProduct.product_id);
+      if (detail.success && detail.data) {
+        setSelectedProduct(detail.data);
+        if (isEditMode) setEditDraft({ ...detail.data });
+      }
+      loadProducts();
+    } finally {
+      setSkuBomClearing(false);
+    }
+  }, [selectedProduct, isEditMode, loadProducts]);
+
+  /** Toolbar: wipe BOM line data on every PR (next to Formula BOM Excel). Requires typed confirmation. */
+  const handleToolbarClearAllPrBom = useCallback(async () => {
+    if (isEditMode) {
+      const okDraft = window.confirm(
+        'Global reset updates the server for all products. Any unsaved edits in the side panel will be lost when data reloads. Continue?'
+      );
+      if (!okDraft) return;
+    }
+    const ok = window.confirm(
+      'This clears BOM data for EVERY product:\n' +
+        '• All formula (%), SKU BOM, pack BOM, and process lines\n' +
+        '• Net limits and BOM pack size\n' +
+        '• Fill size and internal product code on every product that has a BOM row\n\n' +
+        'Product and BOM rows are not deleted (Zoho SKU and other fields stay). You will be asked to type a confirmation phrase next.'
+    );
+    if (!ok) return;
+    const phrase = window.prompt(`Type exactly: ${ALL_PR_BOM_RESET_CONFIRM}`);
+    if (phrase !== ALL_PR_BOM_RESET_CONFIRM) {
+      toast.error('Confirmation phrase did not match — no changes made.');
+      return;
+    }
+    setPrToolbarFullResetting(true);
+    try {
+      const res = await clearAllPrBomFullReset(ALL_PR_BOM_RESET_CONFIRM);
+      if (!res.success || !res.data) {
+        const err = res.error;
+        const msg =
+          typeof err === 'string'
+            ? err
+            : err && typeof err === 'object' && 'message' in err
+              ? String(err.message)
+              : 'Failed to reset';
+        toast.error(msg);
+        return;
+      }
+      toast.success(res.data.message ?? 'All PR BOM data cleared.');
+      if (selectedProduct) {
+        const detail = await fetchPRProductDetail(selectedProduct.product_id);
+        if (detail.success && detail.data) {
+          setSelectedProduct(detail.data);
+          if (isEditMode) setEditDraft({ ...detail.data });
+        }
+      }
+      loadProducts();
+    } finally {
+      setPrToolbarFullResetting(false);
+    }
+  }, [selectedProduct, isEditMode, loadProducts]);
 
   const handleFormulaRmBomExcelUpload = useCallback(
     async (file: File) => {
@@ -803,6 +902,18 @@ const BOMDashboard: React.FC = () => {
                     <Upload className="w-4 h-4" />
                     {formulaRmExcelUploading ? 'Importing…' : 'Formula BOM (Excel)'}
                   </button>
+                  <button
+                    type="button"
+                    disabled={
+                      formulaRmExcelUploading || prToolbarFullResetting || skuExcelUploading || skuBomClearing
+                    }
+                    title="Clears BOM lines, fill size, and internal product code for every product that has a BOM row. You must type a confirmation phrase. Use before a full Formula BOM (Excel) re-import."
+                    onClick={() => void handleToolbarClearAllPrBom()}
+                    className="inline-flex items-center px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 text-xs font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap gap-1"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    {prToolbarFullResetting ? 'Resetting…' : 'Reset all PR BOMs'}
+                  </button>
                   {formulaRmExcelUploading && formulaBomUploadPercent != null && (
                     <div className="flex items-center gap-2 min-w-[10rem]">
                       <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[9rem]">
@@ -1228,7 +1339,7 @@ const BOMDashboard: React.FC = () => {
                                 <span className="font-mono">UOM</span>. Raw-material rows populate the SKU BOM below; packaging rows go to the Pack BOM tab. Existing lines are replaced.
                               </p>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                               <input
                                 ref={skuExcelFileInputRef}
                                 type="file"
@@ -1241,7 +1352,17 @@ const BOMDashboard: React.FC = () => {
                               />
                               <button
                                 type="button"
-                                disabled={skuExcelUploading}
+                                disabled={skuExcelUploading || skuBomClearing}
+                                onClick={() => void handleClearSkuBomForReimport()}
+                                title="Removes SKU BOM and Pack BOM lines on the server so you can upload Excel again. Keeps formula % and process steps."
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {skuBomClearing ? 'Clearing…' : 'Clear import'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={skuExcelUploading || skuBomClearing}
                                 onClick={() => skuExcelFileInputRef.current?.click()}
                                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
                               >
@@ -1443,7 +1564,7 @@ const BOMDashboard: React.FC = () => {
                                     </td>
                                     <td className="p-2"><span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-800">{row.pack_type}</span></td>
                                     <td className="p-2 text-right font-mono font-bold text-indigo-600">{row.qty_per_unit}</td>
-                                    <td className="p-2 text-gray-500">{row.uom}</td>
+                                    <td className="p-2 text-gray-500">{toPmDisplayUnit(row.uom)}</td>
                                   </>
                                 )}
                               </tr>

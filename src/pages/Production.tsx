@@ -1145,6 +1145,25 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
   const needLoadRm = type === 'rm' && batchItems.length === 0;
   const needLoadPm = type === 'pm' && batchItems.length === 0;
+  const resolveRmBatchSizeKg = (apiBatchSizeKg?: number | null): number => {
+    const fromApi = Number(apiBatchSizeKg) || 0;
+    if (fromApi > 0) return fromApi;
+    const fromBatch = Number(batch.batchSize) || 0;
+    if (fromBatch > 0) return fromBatch;
+    const orderQty = Number(batch.orderQty) || 0;
+    const batches = Number(batch.totalBatches) || 0;
+    if (orderQty > 0 && batches > 0) return orderQty / batches;
+    return 0;
+  };
+  const flattenBomRmLines = (lines: BOMRmLine[]): BOMRmLine[] => {
+    const out: BOMRmLine[] = [];
+    for (const line of lines) {
+      const nested = (line as { ingredients?: BOMRmLine[] }).ingredients;
+      if (Array.isArray(nested) && nested.length > 0) out.push(...nested);
+      else out.push(line);
+    }
+    return out;
+  };
   // Load RM from batch-specific BOM (planning_batches only). Never show master BOM in Reserve RM.
   useEffect(() => {
     if (!needLoadRm || (!batch.sku && !batch.productName)) return;
@@ -1175,16 +1194,19 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         });
         // Reserve RM must use batch-specific BOM from planning_batches (Planning BOM editor). Never show master BOM when backend says source is product_bom.
         if (batchBomRes.success && batchBomRes.data && batchBomRes.data.source === 'planning_batch') {
-          const batchSizeKg = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
-            ? batchBomRes.data.batchSizeKg
-            : (batch.batchSize || 0);
-          const rmLines = (batchBomRes.data.rmLines ?? []) as BOMRmLine[];
+          const batchSizeKg = resolveRmBatchSizeKg(batchBomRes.data.batchSizeKg);
+          const rmLines = flattenBomRmLines((batchBomRes.data.rmLines ?? []) as BOMRmLine[]);
           const rmItems: DispensingItem[] = rmLines
             .filter((line) => line.rm_code || (line as { code?: string }).code)
             .map((line) => {
               const code = (line.rm_code || (line as { code?: string }).code) as string;
               const pct = Number((line.pct_w_w ?? (line as { pct?: number }).pct ?? 0)) || 0;
-              const required = (batchSizeKg * pct) / 100;
+              // Prefer percentage rows; fall back to direct quantity rows used by some BOM payloads.
+              const directQty = Number((line as { qty_per_unit?: number; quantity?: number; qty?: number }).qty_per_unit
+                ?? (line as { quantity?: number }).quantity
+                ?? (line as { qty?: number }).qty
+                ?? 0) || 0;
+              const required = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
               return { code, inci: (line.inci_name ?? (line as { inci_name?: string }).inci_name) as string, required, dispensed: 0, done: false };
             })
             .filter((x) => x.required > 0);
@@ -1211,14 +1233,18 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
           return;
         }
         const bom = (bomRes as { data: BOMRecord }).data;
-        const batchSizeKg = batch.batchSize || 0;
-        const rmLines = (bom.rmLines ?? []) as BOMRmLine[];
+        const batchSizeKg = resolveRmBatchSizeKg(undefined);
+        const rmLines = flattenBomRmLines((bom.rmLines ?? []) as BOMRmLine[]);
         const rmItems: DispensingItem[] = rmLines
           .filter((line) => line.rm_code || (line as { code?: string }).code)
           .map((line) => {
             const code = (line.rm_code || (line as { code?: string }).code) as string;
             const pct = Number((line.pct_w_w ?? (line as { pct?: number }).pct ?? 0)) || 0;
-            const required = (batchSizeKg * pct) / 100;
+            const directQty = Number((line as { qty_per_unit?: number; quantity?: number; qty?: number }).qty_per_unit
+              ?? (line as { quantity?: number }).quantity
+              ?? (line as { qty?: number }).qty
+              ?? 0) || 0;
+            const required = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
             return { code, inci: (line.inci_name ?? (line as { inci_name?: string }).inci_name) as string, required, dispensed: 0, done: false };
           })
           .filter((x) => x.required > 0);

@@ -42,6 +42,7 @@ import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchItemGroups } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
+import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 
 /** Merge a newly created batch into the planning-batches list cache so selection is not reset before refetch (fixes dropdown + batch label). */
 function mergePlanningBatchIntoListCache(
@@ -370,14 +371,6 @@ function toKg(quantity: number, unit?: string): number {
   }
   if (normalizedUnit === 'MG') return qty / 1_000_000;
   return qty;
-}
-
-/**
- * PM quantity in Planning is "pieces required" (BOM x order qty).
- * Do not show size UoM (ML/GM/L/KG) in PM confirmation popup.
- */
-function toPmDisplayUnit(_unit?: string): 'PCS' {
-  return 'PCS';
 }
 
 function procurementItemMergeKey(item: ProcurementRequestItem): string {

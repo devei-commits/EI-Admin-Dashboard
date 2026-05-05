@@ -18,6 +18,6 @@ export function useWarehouseLocations() {
     queryKey: queryKeys.warehouseLocations,
     queryFn,
     staleTime: 30 * 1000, // 30s so rack/slot data feels up to date
-    refetchOnWindowFocus: true, // refetch when user returns to tab (rack map updates)
+    refetchOnWindowFocus: false, // prevent repeated refresh/polling
   });
 }

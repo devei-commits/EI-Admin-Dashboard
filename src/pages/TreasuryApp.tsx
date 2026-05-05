@@ -58,19 +58,8 @@ const TreasuryApp = () => {
 
   // Auto-refresh effect
   useEffect(() => {
-    if (!settings.autoRefresh) return;
-
-    const interval = setInterval(() => {
-      // Update last refresh time
-      setLastRefreshTime(new Date());
-
-      // Simulate data refresh - in production, this would fetch fresh data from your API
-      setNotifications(prev => {
-        return prev.map(n => ({ ...n }));
-      });
-    }, settings.refreshInterval * 1000);
-
-    return () => clearInterval(interval);
+    // Polling disabled intentionally to reduce background traffic.
+    return undefined;
   }, [settings.autoRefresh, settings.refreshInterval]);
   const [visibleColumns, setVisibleColumns] = useState({
     vendor: true,

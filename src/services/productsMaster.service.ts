@@ -111,7 +111,7 @@ export interface PRProductDetail extends PRProductListItem {
   cruelty_free_vegan?: string;
   formulaBom: FormulaBomPhase[];
   skuBom: SkuBomRow[];
-  /** Net per finished unit; SKU BOM line qtys must sum to this (same dimension as skuBomLimitUom). */
+  /** Net per finished unit; when all SKU lines match the limit UOM kind (mass vs volume), their qtys must sum to this. */
   skuBomLimitQty?: number | null;
   skuBomLimitUom?: string | null;
   packBom: PackBomRow[];
@@ -416,6 +416,89 @@ export async function uploadSkuBomExcel(
     return {
       data: null,
       error: { code: 'UPLOAD_ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
+/** Clear SKU BOM + Pack BOM on server for fresh Excel import. POST /api/v1/products/:id/sku-bom/clear */
+export interface ClearSkuBomForReimportResult {
+  success: boolean;
+  product_id: number;
+  bom_id: number | null;
+  message?: string;
+}
+
+export async function clearSkuBomForReimport(
+  productId: number | string
+): Promise<ServiceResult<ClearSkuBomForReimportResult>> {
+  try {
+    const data = await api.post<ClearSkuBomForReimportResult>(
+      `/api/v1/products/${encodeURIComponent(String(productId))}/sku-bom/clear`,
+      {}
+    );
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to clear SKU BOM';
+    return {
+      data: null,
+      error: { code: 'CLEAR_ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
+/** Full BOM wipe for one PR. POST /api/v1/products/:id/bom/full-reset — also clears fill_size and internal product_code. */
+export interface ClearPrBomFullResetResult {
+  success: boolean;
+  product_id: number;
+  bom_id: number | null;
+  message?: string;
+}
+
+export async function clearPrBomFullReset(
+  productId: number | string
+): Promise<ServiceResult<ClearPrBomFullResetResult>> {
+  try {
+    const data = await api.post<ClearPrBomFullResetResult>(
+      `/api/v1/products/${encodeURIComponent(String(productId))}/bom/full-reset`,
+      {}
+    );
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to reset PR BOM';
+    return {
+      data: null,
+      error: { code: 'FULL_RESET_ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
+/** Must match server — paste this in the confirmation prompt for global BOM reset. */
+export const ALL_PR_BOM_RESET_CONFIRM = 'RESET_ALL_PR_BOM_DATA' as const;
+
+/** Clears BOM lines + fill_size + internal product_code for every product linked to a BOM row. POST /api/v1/products/bom/full-reset-all */
+export interface ClearAllPrBomFullResetResult {
+  success: boolean;
+  boms_updated: number;
+  products_fill_cleared: number;
+  message?: string;
+}
+
+export async function clearAllPrBomFullReset(
+  confirm: string
+): Promise<ServiceResult<ClearAllPrBomFullResetResult>> {
+  try {
+    const data = await api.post<ClearAllPrBomFullResetResult>('/api/v1/products/bom/full-reset-all', {
+      confirm,
+    });
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to reset all PR BOM data';
+    return {
+      data: null,
+      error: { code: 'FULL_RESET_ALL_ERROR', message, timestamp: new Date().toISOString() },
       success: false,
     };
   }

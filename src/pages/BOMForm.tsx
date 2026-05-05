@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2, Pencil, Check, ArrowDownToLine, CloudDownload } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, ArrowDownToLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { fetchNextBomCode } from '../services/bom.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
@@ -11,6 +11,8 @@ import {
   fetchPRProductDetail,
   updatePRProduct,
   fetchZohoCompositeSkuBomSuggestion,
+  uploadSkuBomExcel,
+  clearSkuBomForReimport,
   type PRProductDetail,
 } from '../services/productsMaster.service';
 import {
@@ -19,6 +21,7 @@ import {
   getEffectiveSkuBomLimitFields,
   getEffectiveSkuBomLimitForPersist,
   skuBomLinesToFormulaRows,
+  parseBulkSpecificGravity,
 } from '../lib/skuBomMath';
 
 // ─── PR Category Code Series (finished goods / PR master) ────────────────────
@@ -629,6 +632,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   /** Zoho composite item id for pulling mapped_items into SKU BOM (defaults from saved Zoho Item ID). */
   const [zohoCompositeFetchId, setZohoCompositeFetchId] = useState('');
   const [zohoCompositeLoading, setZohoCompositeLoading] = useState(false);
+  const skuExcelFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [skuExcelUploading, setSkuExcelUploading] = useState(false);
+  const [skuBomClearing, setSkuBomClearing] = useState(false);
 
   const stages = [
     'Primary info (details, code & Books)',
@@ -1040,7 +1046,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       qtyPerUnit: l.qtyPerUnit,
       uom: l.uom,
     }));
-    const res = skuBomLinesToFormulaRows({ lines: mappedLines, limitQty, limitUom });
+    const res = skuBomLinesToFormulaRows({
+      lines: mappedLines,
+      limitQty,
+      limitUom,
+      specificGravity: parseBulkSpecificGravity(formData.specificGravity),
+    });
     if (!res.ok) {
       addToast('error', res.error);
       return;
@@ -1074,6 +1085,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     formData.skuBomLimitQty,
     formData.skuBomLimitUom,
     formData.skuBomLines,
+    formData.specificGravity,
     formData.formulaIngredients.length,
     addToast,
   ]);
@@ -1141,7 +1153,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             qtyPerUnit: l.qtyPerUnit,
             uom: l.uom,
           }));
-          const pctRes = skuBomLinesToFormulaRows({ lines: mappedLines, limitQty, limitUom });
+          const pctRes = skuBomLinesToFormulaRows({
+            lines: mappedLines,
+            limitQty,
+            limitUom,
+            specificGravity: parseBulkSpecificGravity(formData.specificGravity),
+          });
           if (pctRes.ok) {
             formulaIngredients = pctRes.rows.map((r, i) => ({
               id: `${base}-f-${i}`,
@@ -1196,6 +1213,75 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast,
     ]
   );
+
+  const reloadPrFromServer = useCallback(async () => {
+    if (!productIdFromRoute) return;
+    const res = await fetchPRProductDetail(productIdFromRoute);
+    if (res.success && res.data) {
+      setFormData(productDetailToBomForm(res.data));
+    }
+  }, [productIdFromRoute]);
+
+  const handleSkuExcelUploadBomForm = useCallback(
+    async (file: File) => {
+      if (!productIdFromRoute) return;
+      setSkuExcelUploading(true);
+      try {
+        const res = await uploadSkuBomExcel(productIdFromRoute, file);
+        if (!res.success || !res.data) {
+          const err = res.error;
+          const msg =
+            typeof err === 'string'
+              ? err
+              : err && typeof err === 'object' && 'message' in err
+                ? String((err as { message?: string }).message)
+                : 'Failed to import Excel';
+          addToast('error', msg);
+          return;
+        }
+        const { summary, sheet_name } = res.data;
+        await reloadPrFromServer();
+        addToast(
+          'success',
+          `Imported sheet "${sheet_name}" — ${summary.sku_rm_count} SKU RM line(s), ${summary.pm_count} pack line(s).`
+        );
+      } finally {
+        setSkuExcelUploading(false);
+        if (skuExcelFileInputRef.current) skuExcelFileInputRef.current.value = '';
+      }
+    },
+    [productIdFromRoute, reloadPrFromServer, addToast]
+  );
+
+  const handleClearSkuBomForReimportBomForm = useCallback(async () => {
+    if (!productIdFromRoute) return;
+    if (
+      !window.confirm(
+        'Clear all SKU BOM and Pack BOM lines on the server for this PR? Formula BOM (% phases) and process steps are not changed. Use this before uploading Excel again from scratch.'
+      )
+    ) {
+      return;
+    }
+    setSkuBomClearing(true);
+    try {
+      const res = await clearSkuBomForReimport(productIdFromRoute);
+      if (!res.success || !res.data) {
+        const err = res.error;
+        const msg =
+          typeof err === 'string'
+            ? err
+            : err && typeof err === 'object' && 'message' in err
+              ? String((err as { message?: string }).message)
+              : 'Failed to clear';
+        addToast('error', msg);
+        return;
+      }
+      addToast('success', res.data.message ?? 'SKU BOM and Pack BOM cleared.');
+      await reloadPrFromServer();
+    } finally {
+      setSkuBomClearing(false);
+    }
+  }, [productIdFromRoute, reloadPrFromServer, addToast]);
 
   const beginEditSkuLine = (id: string) => {
     const row = formData.skuBomLines.find((r) => r.id === id);
@@ -1887,6 +1973,56 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <p className="text-xs text-slate-600 mb-3">
                 Raw materials by quantity for <strong>one</strong> finished unit. Each line can use G, KG, ML, or L; all lines must match the net type (mass vs volume). The <strong>sum must equal the net per unit exactly</strong> (±0.001).
               </p>
+
+              {productIdFromRoute ? (
+                <div className="mb-4 p-3 rounded-lg border border-emerald-200 bg-emerald-50/80 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Bulk import from Excel</p>
+                      <p className="text-[11px] text-emerald-900/80 mt-0.5">
+                        Same as PR Masters list: <span className="font-mono">Component Name</span>, <span className="font-mono">Type</span>{' '}
+                        (Raw Material / Packaging), <span className="font-mono">Qty per SKU</span>, <span className="font-mono">UOM</span>. Writes to
+                        the server and reloads this form. <strong>Clear import</strong> empties SKU + Pack BOM lines so you can upload fresh.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+                      <input
+                        ref={skuExcelFileInputRef}
+                        type="file"
+                        accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleSkuExcelUploadBomForm(f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={skuExcelUploading || skuBomClearing || zohoCompositeLoading}
+                        onClick={() => void handleClearSkuBomForReimportBomForm()}
+                        title="Clears SKU BOM + Pack BOM on the server; keeps formula % and process steps."
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        {skuBomClearing ? 'Clearing…' : 'Clear import'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={skuExcelUploading || skuBomClearing || zohoCompositeLoading}
+                        onClick={() => skuExcelFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {skuExcelUploading ? 'Uploading…' : 'Upload Excel'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mb-4 text-xs text-slate-500 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2">
+                  Save the PR first (get a product id); then you can use <strong>Upload Excel</strong> and <strong>Clear import</strong> here.
+                </p>
+              )}
 
               <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-slate-50/90 space-y-2">
                 <p className="text-xs font-semibold text-slate-800">Zoho composite (Inventory / Books)</p>

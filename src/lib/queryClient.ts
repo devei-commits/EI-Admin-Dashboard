@@ -14,9 +14,11 @@ export const queryClient = new QueryClient({
     return failureCount < 3;
    },
    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-   refetchOnWindowFocus: true,
-   refetchOnReconnect: true,
-   refetchOnMount: true,
+   // Disable automatic "refresh" triggers (focus/reconnect/mount). These cause repeated GETs
+   // (notably `/api/v1/warehouse-inventory`) during debugging and can look like polling.
+   refetchOnWindowFocus: false,
+   refetchOnReconnect: false,
+   refetchOnMount: false,
    throwOnError: false, // Prevent queries from throwing errors up to React
   },
   mutations: {
