@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { fetchPackMaterialsPage } from '../services/packMaterials.service';
-import { fetchRawMaterialsPage } from '../services/rawMaterials.service';
+import { fetchPackMaterialsList } from '../services/packMaterials.service';
+import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchItemGroupsPage } from '../services/itemGroups.service';
 import { fetchVendorClientsPage, fetchVendorClients } from '../services/vendorClient.service';
 import { fetchPriceListPage } from '../services/itemsList.service';
@@ -29,26 +29,16 @@ export function prefetchCriticalRouteData(path: string, queryClient: QueryClient
   switch (p) {
     case '/raw-material': {
       void queryClient.prefetchQuery({
-        queryKey: ['raw-materials-page', '', DEFAULT_PAGE_LIMIT, 0, 0],
-        queryFn: () =>
-          fetchRawMaterialsPage({
-            search: undefined,
-            limit: DEFAULT_PAGE_LIMIT,
-            offset: 0,
-          }),
+        queryKey: ['raw-materials-full-list', 0],
+        queryFn: () => fetchRawMaterialsList(),
       });
       return;
     }
 
     case '/packaging': {
       void queryClient.prefetchQuery({
-        queryKey: ['pack-materials-page', '', DEFAULT_PAGE_LIMIT, 0, 0],
-        queryFn: () =>
-          fetchPackMaterialsPage({
-            search: undefined,
-            limit: DEFAULT_PAGE_LIMIT,
-            offset: 0,
-          }),
+        queryKey: ['pack-materials-full-list', 0],
+        queryFn: () => fetchPackMaterialsList(),
       });
       return;
     }

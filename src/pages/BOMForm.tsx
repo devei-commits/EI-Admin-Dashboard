@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, ArrowDownToLine, CloudDownload } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { fetchNextBomCode } from '../services/bom.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
@@ -10,8 +10,16 @@ import {
   createPRRegistration,
   fetchPRProductDetail,
   updatePRProduct,
+  fetchZohoCompositeSkuBomSuggestion,
   type PRProductDetail,
 } from '../services/productsMaster.service';
+import {
+  validateSkuBomTotals,
+  parseFillSizeToSkuNet,
+  getEffectiveSkuBomLimitFields,
+  getEffectiveSkuBomLimitForPersist,
+  skuBomLinesToFormulaRows,
+} from '../lib/skuBomMath';
 
 // ─── PR Category Code Series (finished goods / PR master) ────────────────────
 const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -81,6 +89,19 @@ interface BOMFormState {
     uom: string;
   }>;
 
+  /** Per 1 finished SKU unit (separate from formula % w/w). */
+  skuBomLines: Array<{
+    id: string;
+    rawMaterialId?: string;
+    rmCode?: string;
+    inciName: string;
+    qtyPerUnit: string;
+    uom: string;
+  }>;
+  /** Net content per 1 unit (e.g. 50) — SKU RM lines must sum to this in skuBomLimitUom. */
+  skuBomLimitQty: string;
+  skuBomLimitUom: string;
+
   // Pack BOM Tab
   packingComponents: Array<{
     id: string;
@@ -143,6 +164,9 @@ function emptyBomForm(): BOMFormState {
     bomAssociateItems: '',
     bomCompositeItem: '',
     formulaIngredients: [],
+    skuBomLines: [],
+    skuBomLimitQty: '',
+    skuBomLimitUom: 'GM',
     packingComponents: [],
     processSteps: [],
     phRange: '',
@@ -192,6 +216,12 @@ function mockBomForm(): BOMFormState {
       { id: '2', inciName: 'Titanium Dioxide', phase: 'Oil', percentWW: '10', uom: 'GM' },
       { id: '3', inciName: 'Cetyl Alcohol', phase: 'Oil', percentWW: '5', uom: 'GM' },
       { id: '4', inciName: 'Glycerin', phase: 'Water', percentWW: '5', uom: 'GM' },
+    ],
+    skuBomLimitQty: '50',
+    skuBomLimitUom: 'ML',
+    skuBomLines: [
+      { id: 'sku-1', inciName: 'Water phase', rmCode: 'RM-W-01', qtyPerUnit: '30', uom: 'ML' },
+      { id: 'sku-2', inciName: 'Glycerin', rmCode: 'RM-GLY-01', qtyPerUnit: '20', uom: 'ML' },
     ],
     packingComponents: [
       { id: '1', pmDescription: '50ml White Bottle', type: 'Primary Container', qtyUnit: '1', uom: 'PCS' },
@@ -262,6 +292,16 @@ function bomFormToRmLines(fd: BOMFormState) {
   }));
 }
 
+function bomFormToSkuRmLines(fd: BOMFormState) {
+  return fd.skuBomLines.map((row) => ({
+    inci_name: row.inciName,
+    rm_code: row.rmCode || '',
+    raw_material_id: row.rawMaterialId ? parseInt(row.rawMaterialId, 10) : undefined,
+    qty_per_unit: parseFloat(String(row.qtyPerUnit).replace(/[^\d.-]/g, '')) || 0,
+    uom: row.uom || 'GM',
+  }));
+}
+
 function bomFormToPmLines(fd: BOMFormState) {
   return fd.packingComponents.map((c) => ({
     pm_code: c.pmCode || '',
@@ -328,7 +368,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     client: fd.brandClient || null,
     fill_size: fd.fillSize || null,
     packSize: fd.fillSize || null,
-    product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    zoho_sku_code: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
     bomSku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
@@ -337,10 +377,25 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     status: 'Draft',
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
+    pack_configuration: fd.packConfiguration || null,
+    specific_gravity: fd.specificGravity || null,
+    microbial_limits: fd.microbialLimits || null,
+    spf_pa_rating: fd.sppRating || null,
+    photostability: fd.phototability || null,
+    freeze_thaw_cycles: fd.freezeThawCycles || null,
+    cosmos_natural_certification: fd.cosmosNaturalCertification || null,
+    dermatologically_tested: fd.dermatologicallyTested || null,
+    cruelty_free_vegan: fd.crueltyFreeVegan || null,
     storage_conditions: fd.prDefaultStorageType || null,
     mrp: fd.mrp?.trim() || null,
     ...(isValidMrpForPr(fd.mrp) ? { mrp_price: parseMrpNumber(fd.mrp) } : {}),
     rm_lines: bomFormToRmLines(fd),
+    sku_rm_lines: bomFormToSkuRmLines(fd),
+    ...getEffectiveSkuBomLimitForPersist({
+      fillSize: fd.fillSize,
+      skuBomLimitQty: fd.skuBomLimitQty,
+      skuBomLimitUom: fd.skuBomLimitUom,
+    }),
     pm_lines: bomFormToPmLines(fd),
     process_steps: bomFormToProcessSteps(fd),
     ph_range: fd.phRange || null,
@@ -361,11 +416,25 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
   return {
     product_name: fd.productName.trim(),
     product_code: fd.skuCode.trim(),
-    product_sku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    zoho_sku_code: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
     category: fd.category || null,
     form: fd.productForm || null,
     fill_size: fd.fillSize || null,
     storage_conditions: fd.prDefaultStorageType || null,
+    pr_sub_category: fd.prSubCategory || null,
+    pr_qc_group: fd.prQcGroup || null,
+    brand_client: fd.brandClient || null,
+    applicable_regulation: fd.applicableRegulation || null,
+    claims_substantiation: fd.claimsSubstantiation || null,
+    pack_configuration: fd.packConfiguration || null,
+    specific_gravity: fd.specificGravity || null,
+    microbial_limits: fd.microbialLimits || null,
+    spf_pa_rating: fd.sppRating || null,
+    photostability: fd.phototability || null,
+    freeze_thaw_cycles: fd.freezeThawCycles || null,
+    cosmos_natural_certification: fd.cosmosNaturalCertification || null,
+    dermatologically_tested: fd.dermatologicallyTested || null,
+    cruelty_free_vegan: fd.crueltyFreeVegan || null,
     approved_claims: fd.approvedMarketingClaims || null,
     ph_range: fd.phRange || null,
     viscosity_range: fd.viscosity || null,
@@ -376,9 +445,26 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
     ...(mrp !== undefined ? { mrp_price: mrp } : {}),
     bom: {
       rm_lines: bomFormToRmLines(fd),
+      sku_rm_lines: bomFormToSkuRmLines(fd),
+      ...getEffectiveSkuBomLimitForPersist({
+        fillSize: fd.fillSize,
+        skuBomLimitQty: fd.skuBomLimitQty,
+        skuBomLimitUom: fd.skuBomLimitUom,
+      }),
       pm_lines: bomFormToPmLines(fd),
       process_steps: bomFormToProcessSteps(fd),
       ph_range: fd.phRange || null,
+      pack_configuration: fd.packConfiguration || null,
+      specific_gravity: fd.specificGravity || null,
+      pr_sub_category: fd.prSubCategory || null,
+      pr_qc_group: fd.prQcGroup || null,
+      microbial_limits: fd.microbialLimits || null,
+      spf_pa_rating: fd.sppRating || null,
+      photostability: fd.phototability || null,
+      freeze_thaw_cycles: fd.freezeThawCycles || null,
+      cosmos_natural_certification: fd.cosmosNaturalCertification || null,
+      dermatologically_tested: fd.dermatologicallyTested || null,
+      cruelty_free_vegan: fd.crueltyFreeVegan || null,
       stability_summary: fd.longTermStability || null,
       bom_composite_item: fd.bomCompositeItem === 'Yes',
     },
@@ -400,6 +486,25 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
       });
     });
   });
+  const skuBomLines: BOMFormState['skuBomLines'] = (p.skuBom || []).map((row, i) => ({
+    id: `sku-${i}`,
+    rawMaterialId: row.raw_material_id != null ? String(row.raw_material_id) : undefined,
+    rmCode: row.rm_code || '',
+    inciName: row.inci_name || '',
+    qtyPerUnit: row.qty_per_unit != null ? String(row.qty_per_unit) : '',
+    uom: row.uom || 'GM',
+  }));
+  const fromFillSize = parseFillSizeToSkuNet(p.fill_size || '');
+  const skuBomLimitQtyStr = fromFillSize
+    ? fromFillSize.qty
+    : p.skuBomLimitQty != null && !Number.isNaN(Number(p.skuBomLimitQty))
+      ? String(p.skuBomLimitQty)
+      : '';
+  const skuBomLimitUomStr = fromFillSize
+    ? fromFillSize.uom
+    : p.skuBomLimitUom?.trim()
+      ? String(p.skuBomLimitUom)
+      : 'GM';
   const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => ({
     id: `pc-${i}`,
     packMaterialId:
@@ -437,16 +542,40 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     productName: p.product_name || '',
     category: p.category || '',
     productForm: p.form || '',
+    brandClient: p.brand_client || p.brand_name || '',
     fillSize: p.fill_size || '',
+    prDefaultStorageType: p.storage_conditions || '',
+    prQcGroup: (p as unknown as { pr_qc_group?: string | null }).pr_qc_group || '',
     skuCode,
     zohoId: zi != null && String(zi).trim() !== '' ? String(zi) : '',
-    skuForZoho: p.product_sku && p.product_sku !== skuCode ? String(p.product_sku) : '',
+    // Read the new column name first; fall back to legacy `product_sku` for any cached/older payloads.
+    skuForZoho: (() => {
+      const z = (p as unknown as { zoho_sku_code?: string | null }).zoho_sku_code;
+      const legacy = (p as unknown as { product_sku?: string | null }).product_sku;
+      const v = (z && String(z).trim()) || (legacy && String(legacy).trim()) || '';
+      return v && v !== skuCode ? v : '';
+    })(),
     mrp: p.mrp_price != null ? `₹${p.mrp_price}` : '',
     formulaIngredients,
+    skuBomLines,
+    skuBomLimitQty: skuBomLimitQtyStr,
+    skuBomLimitUom: skuBomLimitUomStr,
     packingComponents,
     processSteps,
     phRange: p.ph_range || '',
     viscosity: p.viscosity_range || '',
+    specificGravity: (p as unknown as { specific_gravity?: string | null }).specific_gravity || '',
+    microbialLimits: (p as unknown as { microbial_limits?: string | null }).microbial_limits || '',
+    sppRating: (p as unknown as { spf_pa_rating?: string | null }).spf_pa_rating || '',
+    phototability: (p as unknown as { photostability?: string | null }).photostability || '',
+    freezeThawCycles: (p as unknown as { freeze_thaw_cycles?: string | null }).freeze_thaw_cycles || '',
+    packConfiguration: (p as unknown as { pack_configuration?: string | null }).pack_configuration || '',
+    prSubCategory: (p as unknown as { pr_sub_category?: string | null }).pr_sub_category || '',
+    applicableRegulation: (p as unknown as { applicable_regulation?: string | null }).applicable_regulation || '',
+    claimsSubstantiation: (p as unknown as { claims_substantiation?: string | null }).claims_substantiation || '',
+    cosmosNaturalCertification: (p as unknown as { cosmos_natural_certification?: string | null }).cosmos_natural_certification || '',
+    dermatologicallyTested: (p as unknown as { dermatologically_tested?: string | null }).dermatologically_tested || '',
+    crueltyFreeVegan: (p as unknown as { cruelty_free_vegan?: string | null }).cruelty_free_vegan || '',
     appearance: p.appearance || '',
     odour: p.odour || '',
     fillWeightSpec: p.fill_weight_spec || '',
@@ -482,17 +611,29 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }, 0);
   }, []);
   const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+  const [tempSkuLine, setTempSkuLine] = useState({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+  const [editingSkuLineId, setEditingSkuLineId] = useState<string | null>(null);
+  const [selectedSkuRmId, setSelectedSkuRmId] = useState<string>('');
+  const [skuRmSearchTerm, setSkuRmSearchTerm] = useState('');
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+  const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
+  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
   const [masterLoading, setMasterLoading] = useState(true);
   const [selectedRmId, setSelectedRmId] = useState<string>('');
   const [selectedPmId, setSelectedPmId] = useState<string>('');
+  const [rmSearchTerm, setRmSearchTerm] = useState('');
+  const [pmSearchTerm, setPmSearchTerm] = useState('');
+  /** Zoho composite item id for pulling mapped_items into SKU BOM (defaults from saved Zoho Item ID). */
+  const [zohoCompositeFetchId, setZohoCompositeFetchId] = useState('');
+  const [zohoCompositeLoading, setZohoCompositeLoading] = useState(false);
 
   const stages = [
     'Primary info (details, code & Books)',
     'Formula BOM',
+    'SKU BOM (per unit)',
     'Pack BOM',
     'Process Steps',
     'Specs & Regulatory',
@@ -510,7 +651,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         isValidMrpForPr(formData.mrp) &&
         formData.skuCode.trim()
     );
-  const lockPrimaryFields = !!productIdFromRoute;
+  // Existing products normally keep identity/code fields locked.
+  // Exception: legacy rows that have no BOM payload loaded (all edit arrays empty)
+  // need a bootstrap edit pass to set missing composite/returnable/code metadata.
+  const isBomBootstrapEdit =
+    !!productIdFromRoute &&
+    formData.formulaIngredients.length === 0 &&
+    formData.skuBomLines.length === 0 &&
+    formData.packingComponents.length === 0 &&
+    formData.processSteps.length === 0;
+  const lockPrimaryFields = !!productIdFromRoute && !isBomBootstrapEdit;
 
   // Load RM/PM masters once so the BOM lines can reference actual items (ids/codes/prices).
   useEffect(() => {
@@ -548,12 +698,53 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     () => new Set(formData.formulaIngredients.map((ing) => String(ing.rawMaterialId || '')).filter(Boolean)),
     [formData.formulaIngredients]
   );
+  const selectedSkuRmIds = useMemo(
+    () => new Set(formData.skuBomLines.map((row) => String(row.rawMaterialId || '')).filter(Boolean)),
+    [formData.skuBomLines]
+  );
   const selectedPmIds = useMemo(
     () => new Set(formData.packingComponents.map((c) => String(c.packMaterialId || '')).filter(Boolean)),
     [formData.packingComponents]
   );
+  const filteredRawMaterials = useMemo(() => {
+    const q = rmSearchTerm.trim().toLowerCase();
+    const list = [...rawMaterials].sort((a, b) => {
+      const aText = `${a.code || ''} ${a.inci || a.name || ''}`.toLowerCase();
+      const bText = `${b.code || ''} ${b.inci || b.name || ''}`.toLowerCase();
+      return aText.localeCompare(bText);
+    });
+    if (!q) return list;
+    return list.filter((rm) =>
+      `${rm.code || ''} ${rm.inci || rm.name || ''}`.toLowerCase().includes(q)
+    );
+  }, [rawMaterials, rmSearchTerm]);
+  const filteredSkuRawMaterials = useMemo(() => {
+    const q = skuRmSearchTerm.trim().toLowerCase();
+    const list = [...rawMaterials].sort((a, b) => {
+      const aText = `${a.code || ''} ${a.inci || a.name || ''}`.toLowerCase();
+      const bText = `${b.code || ''} ${b.inci || b.name || ''}`.toLowerCase();
+      return aText.localeCompare(bText);
+    });
+    if (!q) return list;
+    return list.filter((rm) =>
+      `${rm.code || ''} ${rm.inci || rm.name || ''}`.toLowerCase().includes(q)
+    );
+  }, [rawMaterials, skuRmSearchTerm]);
+  const filteredPackMaterials = useMemo(() => {
+    const q = pmSearchTerm.trim().toLowerCase();
+    const list = [...packMaterials].sort((a, b) => {
+      const aText = `${a.code || ''} ${a.description || ''}`.toLowerCase();
+      const bText = `${b.code || ''} ${b.description || ''}`.toLowerCase();
+      return aText.localeCompare(bText);
+    });
+    if (!q) return list;
+    return list.filter((pm) =>
+      `${pm.code || ''} ${pm.description || ''}`.toLowerCase().includes(q)
+    );
+  }, [packMaterials, pmSearchTerm]);
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
+  const skuDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
   const stepDraftRef = useRef<HTMLDivElement>(null);
 
@@ -563,6 +754,29 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return sum + (Number.isNaN(n) ? 0 : n);
     }, 0);
   }, [formData.formulaIngredients]);
+
+  const skuBomValidation = useMemo(() => {
+    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+      fillSize: formData.fillSize,
+      skuBomLimitQty: formData.skuBomLimitQty,
+      skuBomLimitUom: formData.skuBomLimitUom,
+    });
+    return validateSkuBomTotals({
+      lines: formData.skuBomLines.map((row) => ({
+        inci_name: row.inciName,
+        rm_code: row.rmCode,
+        qty_per_unit: row.qtyPerUnit,
+        uom: row.uom,
+      })),
+      limitQty,
+      limitUom,
+    });
+  }, [formData.skuBomLines, formData.skuBomLimitQty, formData.skuBomLimitUom, formData.fillSize]);
+
+  useEffect(() => {
+    const z = formData.zohoId?.trim();
+    if (z) setZohoCompositeFetchId(z);
+  }, [formData.zohoId]);
 
   useEffect(() => {
     if (Math.abs(formulaPercentTotal - 100) > 0.001) return;
@@ -710,9 +924,65 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     addToast('success', 'Form filled with mock data for testing!');
   };
 
+  const beginEditIngredient = (id: string) => {
+    const ing = formData.formulaIngredients.find((i) => i.id === id);
+    if (!ing) return;
+    setEditingIngredientId(id);
+    setTempIngredient({
+      inciName: ing.inciName,
+      phase: ing.phase,
+      percentWW: ing.percentWW,
+      uom: ing.uom || 'GM',
+    });
+    setSelectedRmId(ing.rawMaterialId || '');
+    setRmSearchTerm('');
+    window.setTimeout(() => {
+      ingredientDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  };
+
+  const cancelIngredientEdit = () => {
+    setEditingIngredientId(null);
+    setSelectedRmId('');
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+  };
+
   const flushIngredientDraft = (): boolean => {
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
     if (!rm && !tempIngredient.inciName.trim()) return false;
+
+    if (editingIngredientId) {
+      if (rm) {
+        const conflict = formData.formulaIngredients.some(
+          (ing) => ing.id !== editingIngredientId && String(ing.rawMaterialId) === String(rm.id)
+        );
+        if (conflict) {
+          addToast('error', 'This raw material is already added in Formula BOM');
+          return false;
+        }
+      }
+      setFormData((prev) => ({
+        ...prev,
+        formulaIngredients: prev.formulaIngredients.map((item) =>
+          item.id === editingIngredientId
+            ? {
+                ...item,
+                rawMaterialId: rm ? String(rm.id) : undefined,
+                rmCode: rm ? rm.code : '',
+                inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
+                phase: tempIngredient.phase,
+                percentWW: tempIngredient.percentWW,
+                uom: tempIngredient.uom || rm?.uom || 'GM',
+              }
+            : item
+        ),
+      }));
+      setEditingIngredientId(null);
+      setSelectedRmId('');
+      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+      return true;
+    }
+
     if (rm && selectedRmIds.has(String(rm.id))) {
       addToast('error', 'This raw material is already added in Formula BOM');
       return false;
@@ -743,15 +1013,353 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const removeIngredient = (id: string) => {
-    setFormData(prev => ({
+    setEditingIngredientId((cur) => {
+      if (cur === id) {
+        setSelectedRmId('');
+        setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+        return null;
+      }
+      return cur;
+    });
+    setFormData((prev) => ({
       ...prev,
-      formulaIngredients: prev.formulaIngredients.filter(item => item.id !== id)
+      formulaIngredients: prev.formulaIngredients.filter((item) => item.id !== id),
     }));
+  };
+
+  const importFormulaFromSkuBom = useCallback(() => {
+    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+      fillSize: formData.fillSize,
+      skuBomLimitQty: formData.skuBomLimitQty,
+      skuBomLimitUom: formData.skuBomLimitUom,
+    });
+    const mappedLines = formData.skuBomLines.map((l) => ({
+      inciName: l.inciName,
+      rmCode: l.rmCode,
+      rawMaterialId: l.rawMaterialId,
+      qtyPerUnit: l.qtyPerUnit,
+      uom: l.uom,
+    }));
+    const res = skuBomLinesToFormulaRows({ lines: mappedLines, limitQty, limitUom });
+    if (!res.ok) {
+      addToast('error', res.error);
+      return;
+    }
+    if (formData.formulaIngredients.length > 0) {
+      const ok = window.confirm(
+        'Replace all Formula BOM lines with % w/w derived from the SKU BOM (per-unit quantities)? You can undo only by re-entering lines manually.'
+      );
+      if (!ok) return;
+    }
+    const baseTime = Date.now();
+    setFormData((prev) => ({
+      ...prev,
+      formulaIngredients: res.rows.map((r, i) => ({
+        id: `${baseTime}-${i}`,
+        rawMaterialId: r.rawMaterialId,
+        rmCode: r.rmCode || '',
+        inciName: r.inciName,
+        phase: r.phase,
+        percentWW: r.percentWW,
+        uom: r.uom,
+      })),
+    }));
+    setEditingIngredientId(null);
+    setSelectedRmId('');
+    setRmSearchTerm('');
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+    addToast('success', `Imported ${res.rows.length} line(s) from SKU BOM (% w/w total 100%).`);
+  }, [
+    formData.fillSize,
+    formData.skuBomLimitQty,
+    formData.skuBomLimitUom,
+    formData.skuBomLines,
+    formData.formulaIngredients.length,
+    addToast,
+  ]);
+
+  const loadZohoCompositeIntoBom = useCallback(
+    async (syncFormula: boolean) => {
+      const rawId = zohoCompositeFetchId.trim() || formData.zohoId.trim();
+      if (!rawId) {
+        addToast(
+          'error',
+          'Enter the Zoho composite item id (same as in Inventory / Books), or save the product so Zoho Item ID is populated.'
+        );
+        return;
+      }
+      let applyFormula = syncFormula;
+      if (applyFormula && formData.formulaIngredients.length > 0) {
+        if (
+          !window.confirm(
+            'Replace Formula BOM % w/w from the imported SKU lines? Existing formula lines will be removed.'
+          )
+        ) {
+          applyFormula = false;
+        }
+      }
+      if (formData.skuBomLines.length > 0 && !window.confirm('Replace current SKU BOM lines with Zoho mapped items?')) {
+        return;
+      }
+
+      setZohoCompositeLoading(true);
+      try {
+        const res = await fetchZohoCompositeSkuBomSuggestion(rawId);
+        if (!res.success || !res.data) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to load Zoho composite');
+          return;
+        }
+        const data = res.data;
+        const base = Date.now();
+        const skuBomLines = data.sku_bom.map((r, i) => ({
+          id: `${base}-${i}`,
+          rawMaterialId: r.raw_material_id != null ? String(r.raw_material_id) : undefined,
+          rmCode: r.rm_code ?? '',
+          inciName: r.inci_name ?? '',
+          qtyPerUnit: String(r.qty_per_unit ?? ''),
+          uom: r.uom || 'G',
+        }));
+        let skuBomLimitQty = formData.skuBomLimitQty;
+        let skuBomLimitUom = formData.skuBomLimitUom;
+        const fillNet = parseFillSizeToSkuNet(formData.fillSize);
+        if (!fillNet && data.sku_bom_limit_qty != null && data.sku_bom_limit_uom) {
+          skuBomLimitQty = String(data.sku_bom_limit_qty);
+          skuBomLimitUom = data.sku_bom_limit_uom;
+        }
+        const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+          fillSize: formData.fillSize,
+          skuBomLimitQty,
+          skuBomLimitUom,
+        });
+        let formulaIngredients = formData.formulaIngredients;
+        let formulaNote = '';
+        if (applyFormula) {
+          const mappedLines = skuBomLines.map((l) => ({
+            inciName: l.inciName,
+            rmCode: l.rmCode,
+            rawMaterialId: l.rawMaterialId,
+            qtyPerUnit: l.qtyPerUnit,
+            uom: l.uom,
+          }));
+          const pctRes = skuBomLinesToFormulaRows({ lines: mappedLines, limitQty, limitUom });
+          if (pctRes.ok) {
+            formulaIngredients = pctRes.rows.map((r, i) => ({
+              id: `${base}-f-${i}`,
+              rawMaterialId: r.rawMaterialId,
+              rmCode: r.rmCode || '',
+              inciName: r.inciName,
+              phase: r.phase,
+              percentWW: r.percentWW,
+              uom: r.uom,
+            }));
+            formulaNote = ' Formula % w/w updated from SKU BOM.';
+          } else {
+            addToast('error', `SKU lines loaded; formula not updated: ${pctRes.error}`);
+          }
+        }
+        setFormData((prev) => ({
+          ...prev,
+          skuBomLines,
+          skuBomLimitQty,
+          skuBomLimitUom,
+          formulaIngredients,
+        }));
+        setEditingSkuLineId(null);
+        setSelectedSkuRmId('');
+        setSkuRmSearchTerm('');
+        setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+        if (applyFormula) {
+          setEditingIngredientId(null);
+          setSelectedRmId('');
+          setRmSearchTerm('');
+          setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+        }
+        let msg = `Loaded ${data.sku_bom.length} line(s) from Zoho${data.composite_name ? `: ${data.composite_name}` : ''}.`;
+        if (data.warnings?.length) msg += ` ${data.warnings.join(' ')}`;
+        if (data.unmatched_components?.length) {
+          msg += ` ${data.unmatched_components.length} line(s) are not linked to an RM master — link them in the row editor.`;
+        }
+        msg += formulaNote;
+        addToast('success', msg);
+      } finally {
+        setZohoCompositeLoading(false);
+      }
+    },
+    [
+      zohoCompositeFetchId,
+      formData.zohoId,
+      formData.skuBomLines.length,
+      formData.formulaIngredients.length,
+      formData.fillSize,
+      formData.skuBomLimitQty,
+      formData.skuBomLimitUom,
+      addToast,
+    ]
+  );
+
+  const beginEditSkuLine = (id: string) => {
+    const row = formData.skuBomLines.find((r) => r.id === id);
+    if (!row) return;
+    setEditingSkuLineId(id);
+    setTempSkuLine({
+      inciName: row.inciName,
+      qtyPerUnit: row.qtyPerUnit,
+      uom: row.uom || 'KG',
+    });
+    setSelectedSkuRmId(row.rawMaterialId || '');
+    setSkuRmSearchTerm('');
+    window.setTimeout(() => {
+      skuDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  };
+
+  const cancelSkuLineEdit = () => {
+    setEditingSkuLineId(null);
+    setSelectedSkuRmId('');
+    setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+  };
+
+  const flushSkuLineDraft = (): boolean => {
+    const rm = selectedSkuRmId ? rawMaterialById.get(String(selectedSkuRmId)) : undefined;
+    if (!rm && !tempSkuLine.inciName.trim()) return false;
+    const qtyNum = parseFloat(String(tempSkuLine.qtyPerUnit).replace(/[^\d.-]/g, ''));
+    if (Number.isNaN(qtyNum) || qtyNum <= 0) {
+      addToast('error', 'Enter a positive quantity per unit for SKU BOM');
+      return false;
+    }
+
+    if (editingSkuLineId) {
+      if (rm) {
+        const conflict = formData.skuBomLines.some(
+          (r) => r.id !== editingSkuLineId && String(r.rawMaterialId) === String(rm.id)
+        );
+        if (conflict) {
+          addToast('error', 'This raw material is already added in SKU BOM');
+          return false;
+        }
+      }
+      setFormData((prev) => ({
+        ...prev,
+        skuBomLines: prev.skuBomLines.map((item) =>
+          item.id === editingSkuLineId
+            ? {
+                ...item,
+                rawMaterialId: rm ? String(rm.id) : undefined,
+                rmCode: rm ? rm.code : item.rmCode,
+                inciName: rm ? (rm.inci || rm.name || tempSkuLine.inciName) : tempSkuLine.inciName,
+                qtyPerUnit: tempSkuLine.qtyPerUnit,
+                uom: tempSkuLine.uom || rm?.uom || 'GM',
+              }
+            : item
+        ),
+      }));
+      setEditingSkuLineId(null);
+      setSelectedSkuRmId('');
+      setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+      return true;
+    }
+
+    if (rm && selectedSkuRmIds.has(String(rm.id))) {
+      addToast('error', 'This raw material is already added in SKU BOM');
+      return false;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      skuBomLines: [
+        ...prev.skuBomLines,
+        {
+          id: Date.now().toString(),
+          rawMaterialId: rm ? String(rm.id) : undefined,
+          rmCode: rm ? rm.code : '',
+          inciName: rm ? (rm.inci || rm.name || tempSkuLine.inciName) : tempSkuLine.inciName,
+          qtyPerUnit: tempSkuLine.qtyPerUnit,
+          uom: tempSkuLine.uom || rm?.uom || 'GM',
+        },
+      ],
+    }));
+    setSelectedSkuRmId('');
+    setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+    return true;
+  };
+
+  const addSkuLine = () => {
+    flushSkuLineDraft();
+  };
+
+  const removeSkuLine = (id: string) => {
+    setEditingSkuLineId((cur) => {
+      if (cur === id) {
+        setSelectedSkuRmId('');
+        setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+        return null;
+      }
+      return cur;
+    });
+    setFormData((prev) => ({
+      ...prev,
+      skuBomLines: prev.skuBomLines.filter((item) => item.id !== id),
+    }));
+  };
+
+  const beginEditComponent = (id: string) => {
+    const c = formData.packingComponents.find((x) => x.id === id);
+    if (!c) return;
+    setEditingComponentId(id);
+    setTempComponent({
+      pmDescription: c.pmDescription,
+      type: c.type,
+      qtyUnit: c.qtyUnit,
+      uom: c.uom || '',
+    });
+    setSelectedPmId(c.packMaterialId || '');
+    setPmSearchTerm('');
+    window.setTimeout(() => {
+      packDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  };
+
+  const cancelComponentEdit = () => {
+    setEditingComponentId(null);
+    setSelectedPmId('');
+    setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   };
 
   const flushComponentDraft = (): boolean => {
     const pm = selectedPmId ? packMaterialById.get(String(selectedPmId)) : undefined;
     if (!pm && !tempComponent.pmDescription.trim()) return false;
+
+    if (editingComponentId) {
+      if (pm) {
+        const conflict = formData.packingComponents.some(
+          (c) => c.id !== editingComponentId && String(c.packMaterialId) === String(pm.id)
+        );
+        if (conflict) {
+          addToast('error', 'This pack material is already added in Pack BOM');
+          return false;
+        }
+      }
+      setFormData((prev) => ({
+        ...prev,
+        packingComponents: prev.packingComponents.map((item) =>
+          item.id === editingComponentId
+            ? {
+                ...item,
+                packMaterialId: pm ? String(pm.id) : undefined,
+                pmCode: pm ? pm.code : '',
+                pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
+                type: tempComponent.type || pm?.level || pm?.type || '',
+                qtyUnit: tempComponent.qtyUnit,
+                uom: tempComponent.uom || pm?.unit || 'PCS',
+              }
+            : item
+        ),
+      }));
+      setEditingComponentId(null);
+      setSelectedPmId('');
+      setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+      return true;
+    }
+
     if (pm && selectedPmIds.has(String(pm.id))) {
       addToast('error', 'This pack material is already added in Pack BOM');
       return false;
@@ -781,9 +1389,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const removeComponent = (id: string) => {
-    setFormData(prev => ({
+    setEditingComponentId((cur) => {
+      if (cur === id) {
+        setSelectedPmId('');
+        setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+        return null;
+      }
+      return cur;
+    });
+    setFormData((prev) => ({
       ...prev,
-      packingComponents: prev.packingComponents.filter(item => item.id !== id)
+      packingComponents: prev.packingComponents.filter((item) => item.id !== id),
     }));
   };
 
@@ -877,11 +1493,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
       setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
       addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml) — see Step 5 (Specs & Regulatory)');
-      setCurrentStage(4);
+      setCurrentStage(5);
       window.setTimeout(() => {
         const el = document.getElementById('fillSize');
         if (el instanceof HTMLElement) el.focus();
       }, 0);
+      return;
+    }
+
+    if (!skuBomValidation.ok) {
+      addToast('error', skuBomValidation.error);
+      setCurrentStage(2);
       return;
     }
 
@@ -1109,9 +1731,23 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
-                <p className="text-xs text-slate-600 mb-3">
+                <p className="text-xs text-slate-600 mb-2">
                   Add ingredients in phase order. Rows are added only when you click the Add button (total should equal 100%).
                 </p>
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <button
+                    type="button"
+                    onClick={importFormulaFromSkuBom}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100"
+                    title="Uses SKU BOM per-unit quantities and net limit; each line becomes % w/w = (line qty ÷ net) × 100."
+                  >
+                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                    Import from SKU BOM
+                  </button>
+                  <span className="text-[11px] text-slate-500 max-w-xl">
+                    Fill the <strong>SKU BOM</strong> step first (lines must sum to net per unit). Imports replace formula lines with the same RMs and phases set to <span className="font-mono">Bulk</span>.
+                  </span>
+                </div>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
                   <div className="grid min-w-[520px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
@@ -1122,13 +1758,33 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                   <div className="space-y-2">
                     {formData.formulaIngredients.map(ing => (
-                      <div key={ing.id} className="grid min-w-[520px] grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded sm:min-w-0">
+                      <div
+                        key={ing.id}
+                        className={`grid min-w-[520px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                          ing.id === editingIngredientId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
+                        }`}
+                      >
                         <div className="text-slate-900">{ing.inciName}</div>
                         <div className="text-slate-600">{ing.phase}</div>
                         <div className="text-slate-600">{ing.percentWW}</div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-600">{ing.uom}</span>
-                          <button type="button" onClick={() => removeIngredient(ing.id)} className="text-red-600 hover:text-red-800">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-slate-600 mr-auto">{ing.uom}</span>
+                          <button
+                            type="button"
+                            onClick={() => beginEditIngredient(ing.id)}
+                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
+                            title="Edit line"
+                            aria-label="Edit line"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeIngredient(ing.id)}
+                            className="text-red-600 hover:text-red-800 p-1 rounded"
+                            title="Remove line"
+                            aria-label="Remove line"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -1141,8 +1797,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   ref={ingredientDraftRef}
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                 >
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {editingIngredientId ? 'Edit line' : 'New line'}
+                    </p>
+                    {editingIngredientId ? (
+                      <button type="button" onClick={cancelIngredientEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
+                        Cancel edit
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      type="text"
+                      placeholder="Search Raw Material by code/name"
+                      value={rmSearchTerm}
+                      onChange={(e) => setRmSearchTerm(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
+                    />
                     <select
                       value={selectedRmId}
                       onChange={(e) => setSelectedRmId(e.target.value)}
@@ -1150,7 +1822,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
                       <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
-                      {rawMaterials.map((rm) => (
+                      {filteredRawMaterials.map((rm) => (
                         <option key={rm.id} value={rm.id} disabled={selectedRmIds.has(String(rm.id)) && String(selectedRmId) !== String(rm.id)}>
                           {rm.code} — {rm.inci || rm.name}
                         </option>
@@ -1200,13 +1872,238 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     onClick={addIngredient}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
                   >
-                    <Plus className="w-4 h-4" /> Add ingredient to list
+                    {editingIngredientId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {editingIngredientId ? 'Update ingredient' : 'Add ingredient to list'}
                   </button>
                 </div>
               </div>
             </div>
         );
-      case 2:
+      case 2: {
+        const fillNet = parseFillSizeToSkuNet(formData.fillSize);
+        return (
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-violet-800 mb-2">SKU BOM — RAW MATERIALS (PER UNIT)</label>
+              <p className="text-xs text-slate-600 mb-3">
+                Raw materials by quantity for <strong>one</strong> finished unit. Each line can use G, KG, ML, or L; all lines must match the net type (mass vs volume). The <strong>sum must equal the net per unit exactly</strong> (±0.001).
+              </p>
+
+              <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-slate-50/90 space-y-2">
+                <p className="text-xs font-semibold text-slate-800">Zoho composite (Inventory / Books)</p>
+                <p className="text-[11px] text-slate-600">
+                  Paste the composite item id from Zoho (e.g. <span className="font-mono">1252231000017972949</span>). The server loads <strong>mapped_items</strong> into SKU BOM and optionally derives Formula % w/w. OAuth + org id are configured on the API; Inventory is tried first, then Books.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">
+                      Composite item ID
+                    </label>
+                    <input
+                      type="text"
+                      value={zohoCompositeFetchId}
+                      onChange={(e) => setZohoCompositeFetchId(e.target.value)}
+                      placeholder="Numeric id from Zoho"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={zohoCompositeLoading}
+                    onClick={() => void loadZohoCompositeIntoBom(false)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <CloudDownload className="w-3.5 h-3.5" />
+                    {zohoCompositeLoading ? 'Loading…' : 'Load into SKU BOM'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={zohoCompositeLoading}
+                    onClick={() => void loadZohoCompositeIntoBom(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    <CloudDownload className="w-3.5 h-3.5" />
+                    {zohoCompositeLoading ? 'Loading…' : 'Load SKU + Formula %'}
+                  </button>
+                </div>
+              </div>
+
+              {fillNet ? (
+                <div className="mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100 space-y-1">
+                  <p className="text-xs font-semibold text-violet-900 uppercase tracking-wide">Net per 1 product unit</p>
+                  <p className="text-lg font-mono font-bold text-violet-900">
+                    {fillNet.qty} <span className="text-base font-semibold text-violet-700">{fillNet.uom}</span>
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    Pulled from product <strong>Fill Size</strong> ({formData.fillSize.trim() || '—'}). Change it on the <strong>Specs & Regulatory</strong> step; SKU totals validate against that value.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-amber-50/80 border border-amber-100">
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-900 mb-1">Net per 1 product unit — quantity (manual)</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      min="0"
+                      placeholder="e.g. 50"
+                      value={formData.skuBomLimitQty}
+                      onChange={(e) => handleInputChange('skuBomLimitQty', e.target.value)}
+                      className="w-full px-2 py-1.5 border border-amber-200 rounded text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-900 mb-1">UOM</label>
+                    <select
+                      value={formData.skuBomLimitUom}
+                      onChange={(e) => handleInputChange('skuBomLimitUom', e.target.value)}
+                      className="w-full px-2 py-1.5 border border-amber-200 rounded text-sm"
+                    >
+                      <option value="GM">G / GM (grams)</option>
+                      <option value="KG">KG (kilograms)</option>
+                      <option value="ML">ML (millilitres)</option>
+                      <option value="L">L (litres)</option>
+                    </select>
+                  </div>
+                  <p className="sm:col-span-2 text-xs text-amber-800">
+                    Add <strong>Fill Size</strong> as <span className="font-mono">50g</span> or <span className="font-mono">50ml</span> on Specs & Regulatory to auto-fill net here next time.
+                  </p>
+                </div>
+              )}
+
+              {skuBomValidation.ok && skuBomValidation.sumInDisplay != null ? (
+                <p className="text-xs font-medium text-emerald-700 mb-3">
+                  SKU BOM total {skuBomValidation.sumInDisplay.toFixed(4)} {skuBomValidation.displayUom} — matches limit.
+                </p>
+              ) : !skuBomValidation.ok ? (
+                <p className="text-xs font-medium text-red-600 mb-3">{skuBomValidation.error}</p>
+              ) : (
+                <p className="text-xs text-slate-500 mb-3">Leave lines empty if you do not use SKU-level RM.</p>
+              )}
+
+              <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                <div className="grid min-w-[480px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div>INCI / Raw Material</div>
+                  <div>Qty / unit</div>
+                  <div>UOM</div>
+                  <div className="text-right">Actions</div>
+                </div>
+                <div className="space-y-2">
+                  {formData.skuBomLines.map((row) => (
+                    <div
+                      key={row.id}
+                      className={`grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                        row.id === editingSkuLineId ? 'bg-violet-50 ring-2 ring-violet-200' : 'bg-slate-50'
+                      }`}
+                    >
+                      <div className="text-slate-900">
+                        {row.inciName}
+                        {row.rmCode ? <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span> : null}
+                      </div>
+                      <div className="text-slate-800 font-mono">{row.qtyPerUnit}</div>
+                      <div className="text-slate-600">{row.uom}</div>
+                      <div className="flex justify-end items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => beginEditSkuLine(row.id)}
+                          className="text-violet-700 hover:text-violet-900 p-1 rounded"
+                          title="Edit line"
+                          aria-label="Edit line"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeSkuLine(row.id)}
+                          className="text-red-600 hover:text-red-800 p-1 rounded"
+                          title="Remove line"
+                          aria-label="Remove line"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div ref={skuDraftRef} className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    {editingSkuLineId ? 'Edit SKU BOM line' : 'New SKU BOM line'}
+                  </p>
+                  {editingSkuLineId ? (
+                    <button type="button" onClick={cancelSkuLineEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    placeholder="Search Raw Material by code/name"
+                    value={skuRmSearchTerm}
+                    onChange={(e) => setSkuRmSearchTerm(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
+                  />
+                  <select
+                    value={selectedSkuRmId}
+                    onChange={(e) => setSelectedSkuRmId(e.target.value)}
+                    disabled={masterLoading}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                  >
+                    <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
+                    {filteredSkuRawMaterials.map((rm) => (
+                      <option key={rm.id} value={rm.id} disabled={selectedSkuRmIds.has(String(rm.id)) && String(selectedSkuRmId) !== String(rm.id)}>
+                        {rm.code} — {rm.inci || rm.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Or type INCI / name (manual)"
+                    value={tempSkuLine.inciName}
+                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, inciName: e.target.value }))}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="Qty per 1 unit of product"
+                    value={tempSkuLine.qtyPerUnit}
+                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, qtyPerUnit: e.target.value }))}
+                    className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                  />
+                  <select
+                    value={tempSkuLine.uom}
+                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, uom: e.target.value }))}
+                    className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                  >
+                    <option value="GM">GM / G</option>
+                    <option value="KG">KG</option>
+                    <option value="ML">ML</option>
+                    <option value="L">L</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-3">
+                <button
+                  type="button"
+                  onClick={addSkuLine}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-violet-200 text-violet-800 rounded-lg text-sm font-semibold hover:bg-violet-50"
+                >
+                  {editingSkuLineId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {editingSkuLineId ? 'Update SKU BOM line' : 'Add to SKU BOM'}
+                </button>
+              </div>
+            </div>
+        );
+      }
+      case 3:
         return (
             <div className="space-y-4">
               <div>
@@ -1223,12 +2120,32 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                   <div className="space-y-2">
                     {formData.packingComponents.map(comp => (
-                      <div key={comp.id} className="grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center bg-slate-50 p-2 rounded sm:min-w-0">
+                      <div
+                        key={comp.id}
+                        className={`grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                          comp.id === editingComponentId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
+                        }`}
+                      >
                         <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
                         <div className="text-slate-600">{comp.type}</div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-600">{comp.qtyUnit}</span>
-                          <button type="button" onClick={() => removeComponent(comp.id)} className="text-red-600 hover:text-red-800">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-slate-600 mr-auto">{comp.qtyUnit}</span>
+                          <button
+                            type="button"
+                            onClick={() => beginEditComponent(comp.id)}
+                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
+                            title="Edit line"
+                            aria-label="Edit line"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeComponent(comp.id)}
+                            className="text-red-600 hover:text-red-800 p-1 rounded"
+                            title="Remove line"
+                            aria-label="Remove line"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -1241,8 +2158,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   ref={packDraftRef}
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                 >
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {editingComponentId ? 'Edit line' : 'New line'}
+                    </p>
+                    {editingComponentId ? (
+                      <button type="button" onClick={cancelComponentEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
+                        Cancel edit
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      type="text"
+                      placeholder="Search Pack Material by code/description"
+                      value={pmSearchTerm}
+                      onChange={(e) => setPmSearchTerm(e.target.value)}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
+                    />
                     <select
                       value={selectedPmId}
                       onChange={(e) => setSelectedPmId(e.target.value)}
@@ -1250,7 +2183,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     >
                       <option value="">{masterLoading ? 'Loading pack materials…' : 'Select Pack Material (PM master)'}</option>
-                      {packMaterials.map((pm) => (
+                      {filteredPackMaterials.map((pm) => (
                         <option key={pm.id} value={pm.id} disabled={selectedPmIds.has(String(pm.id)) && String(selectedPmId) !== String(pm.id)}>
                           {pm.code} — {pm.description}
                         </option>
@@ -1264,7 +2197,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                   </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <input
                       type="text"
                       placeholder="Type"
@@ -1279,6 +2212,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       onChange={(e) => setTempComponent(prev => ({ ...prev, qtyUnit: e.target.value }))}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
+                    <input
+                      type="text"
+                      placeholder="UOM"
+                      value={tempComponent.uom}
+                      onChange={(e) => setTempComponent(prev => ({ ...prev, uom: e.target.value }))}
+                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    />
                   </div>
                 </div>
 
@@ -1288,13 +2228,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     onClick={addComponent}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
                   >
-                    <Plus className="w-4 h-4" /> Add component to list
+                    {editingComponentId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {editingComponentId ? 'Update component' : 'Add component to list'}
                   </button>
                 </div>
               </div>
             </div>
         );
-      case 3:
+      case 4:
         return (
             <div className="space-y-4">
               <div>
@@ -1381,7 +2322,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </div>
             </div>
         );
-      case 4:
+      case 5:
         return (
             <div className="space-y-6">
               <div className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
@@ -1497,12 +2438,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
-                    <div className={`flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg ${lockPrimaryFields ? 'bg-slate-100' : ''}`}>
+                    <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
                       <input
                         type="checkbox"
                         checked={formData.bomReturnable}
                         onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
-                        disabled={lockPrimaryFields}
                       />
                       <span className="text-sm font-medium text-slate-700">Returnable Item</span>
                     </div>
@@ -1534,54 +2474,93 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   <p className="text-xs text-slate-500 mt-1">Read-only — returned after a successful save.</p>
                 </div>
               </div>
-              <div>
+              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FINISHED PRODUCT SPECIFICATIONS</label>
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input type="text" placeholder="e.g. 6.0-7.0" value={formData.phRange} onChange={(e) => handleInputChange('phRange', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
-                    <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
-                    <input type="text" placeholder="e.g. 0.98-1.02" value={formData.specificGravity} onChange={(e) => handleInputChange('specificGravity', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
-                    <input type="text" placeholder="e.g. White smooth lotion" value={formData.appearance} onChange={(e) => handleInputChange('appearance', e.target.value)} className="px-3 py-2 border border-slate-200 rounded text-sm" />
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">pH Range</label>
+                      <input type="text" placeholder="e.g. 6.0-7.0" value={formData.phRange} onChange={(e) => handleInputChange('phRange', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Viscosity</label>
+                      <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Specific Gravity</label>
+                      <input type="text" placeholder="e.g. 0.98-1.02" value={formData.specificGravity} onChange={(e) => handleInputChange('specificGravity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Appearance</label>
+                      <input type="text" placeholder="e.g. White smooth lotion" value={formData.appearance} onChange={(e) => handleInputChange('appearance', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div>
+              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
                 <label className="block text-sm font-semibold text-blue-700 mb-3">STABILITY PROTOCOL</label>
                 <div className="space-y-3">
-                  <input type="text" placeholder="e.g. 6M completed PASS" value={formData.acceleratedStability} onChange={(e) => handleInputChange('acceleratedStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm" />
-                  <input type="text" placeholder="e.g. 12M ongoing" value={formData.intermediateStability} onChange={(e) => handleInputChange('intermediateStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm" />
-                  <input type="text" placeholder="e.g. 24M ongoing" value={formData.longTermStability} onChange={(e) => handleInputChange('longTermStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm" />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Accelerated Stability</label>
+                    <input type="text" placeholder="e.g. 6M completed PASS" value={formData.acceleratedStability} onChange={(e) => handleInputChange('acceleratedStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Intermediate Stability</label>
+                    <input type="text" placeholder="e.g. 12M ongoing" value={formData.intermediateStability} onChange={(e) => handleInputChange('intermediateStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Long-term Stability</label>
+                    <input type="text" placeholder="e.g. 24M ongoing" value={formData.longTermStability} onChange={(e) => handleInputChange('longTermStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
                 </div>
               </div>
 
-              <div>
+              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
                 <label className="block text-sm font-semibold text-blue-700 mb-3">REGULATORY & CLAIMS</label>
                 <div className="space-y-3">
-                  <select value={formData.applicableRegulation} onChange={(e) => handleInputChange('applicableRegulation', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm">
-                    <option value="">APPLICABLE REGULATION</option>
-                    <option value="India - BIS / CDSCO">India - BIS / CDSCO</option>
-                    <option value="EU">EU</option>
-                    <option value="USA - FDA">USA - FDA</option>
-                  </select>
-                  <select value={formData.cosmosNaturalCertification} onChange={(e) => handleInputChange('cosmosNaturalCertification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm">
-                    <option value="">COSMOS / NATURAL CERTIFICATION</option>
-                    <option value="Not applicable">Not applicable</option>
-                    <option value="COSMOS Organic">COSMOS Organic</option>
-                    <option value="COSMOS Natural">COSMOS Natural</option>
-                  </select>
-                  <select value={formData.dermatologicallyTested} onChange={(e) => handleInputChange('dermatologicallyTested', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm">
-                    <option value="">DERMATOLOGICALLY TESTED</option>
-                    <option value="Yes - certified">Yes - certified</option>
-                    <option value="No">No</option>
-                  </select>
-                  <select value={formData.crueltyFreeVegan} onChange={(e) => handleInputChange('crueltyFreeVegan', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm">
-                    <option value="">CRUELTY FREE / VEGAN</option>
-                    <option value="Yes - certified">Yes - certified</option>
-                    <option value="No">No</option>
-                  </select>
-                  <textarea placeholder="e.g. Broad spectrum UVA+UVB, Niacinamide brightening..." value={formData.approvedMarketingClaims} onChange={(e) => handleInputChange('approvedMarketingClaims', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm" />
-                  <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm" />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Applicable Regulation</label>
+                    <select value={formData.applicableRegulation} onChange={(e) => handleInputChange('applicableRegulation', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="">APPLICABLE REGULATION</option>
+                      <option value="India - BIS / CDSCO">India - BIS / CDSCO</option>
+                      <option value="EU">EU</option>
+                      <option value="USA - FDA">USA - FDA</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">COSMOS / Natural Certification</label>
+                    <select value={formData.cosmosNaturalCertification} onChange={(e) => handleInputChange('cosmosNaturalCertification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="">COSMOS / NATURAL CERTIFICATION</option>
+                      <option value="Not applicable">Not applicable</option>
+                      <option value="COSMOS Organic">COSMOS Organic</option>
+                      <option value="COSMOS Natural">COSMOS Natural</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Dermatologically Tested</label>
+                    <select value={formData.dermatologicallyTested} onChange={(e) => handleInputChange('dermatologicallyTested', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="">DERMATOLOGICALLY TESTED</option>
+                      <option value="Yes - certified">Yes - certified</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Cruelty Free / Vegan</label>
+                    <select value={formData.crueltyFreeVegan} onChange={(e) => handleInputChange('crueltyFreeVegan', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="">CRUELTY FREE / VEGAN</option>
+                      <option value="Yes - certified">Yes - certified</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Approved Marketing Claims</label>
+                    <textarea placeholder="e.g. Broad spectrum UVA+UVB, Niacinamide brightening..." value={formData.approvedMarketingClaims} onChange={(e) => handleInputChange('approvedMarketingClaims', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Claims Substantiation</label>
+                    <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
                 </div>
               </div>
             </div>

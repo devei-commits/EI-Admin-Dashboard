@@ -1199,7 +1199,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         }
         return fetchPRProducts().then((res) => {
           if (!res.success || !res.data?.length) return null;
-          const product = res.data.find((p: { product_sku?: string; product_name?: string }) => p.product_sku === batch.sku || p.product_name === batch.productName);
+          const product = res.data.find((p: { zoho_sku_code?: string; product_sku?: string; product_name?: string }) => (p.zoho_sku_code ?? p.product_sku) === batch.sku || p.product_name === batch.productName);
           return product ? fetchBOMByProductId(product.product_id) : null;
         });
       })
@@ -1267,7 +1267,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         }
         return fetchPRProducts().then((res) => {
           if (!res.success || !res.data?.length) return null;
-          const product = res.data.find((p: { product_sku?: string; product_name?: string }) => p.product_sku === batch.sku || p.product_name === batch.productName);
+          const product = res.data.find((p: { zoho_sku_code?: string; product_sku?: string; product_name?: string }) => (p.zoho_sku_code ?? p.product_sku) === batch.sku || p.product_name === batch.productName);
           return product ? fetchBOMByProductId(product.product_id) : null;
         });
       })
@@ -1956,7 +1956,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
         }
         return fetchPRProducts().then((res) => {
           if (!res.success || !res.data?.length) return null;
-          const product = res.data.find((p: { product_sku?: string; product_name?: string }) => p.product_sku === batch!.sku || p.product_name === batch!.productName);
+          const product = res.data.find((p: { zoho_sku_code?: string; product_sku?: string; product_name?: string }) => (p.zoho_sku_code ?? p.product_sku) === batch!.sku || p.product_name === batch!.productName);
           return product ? fetchBOMByProductId(product.product_id) : null;
         });
       })
@@ -5010,7 +5010,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
         }
         return fetchPRProducts().then((res) => {
           if (!res.success || !res.data?.length) return null;
-          const product = res.data.find((p) => p.product_sku === batch.sku || p.product_name === batch.productName);
+          const product = res.data.find((p) => ((p as unknown as { zoho_sku_code?: string }).zoho_sku_code ?? (p as unknown as { product_sku?: string }).product_sku) === batch.sku || p.product_name === batch.productName);
           return product ? fetchBOMByProductId(product.product_id) : null;
         });
       })

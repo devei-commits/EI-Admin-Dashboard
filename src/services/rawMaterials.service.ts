@@ -24,7 +24,8 @@ export interface RawMaterialFromApi {
   zoho_id?: string | null;
   /** Present when Zoho Books item sync ran on create */
   zoho_sync?: { synced: boolean; item_id?: string; error?: string };
-  sku?: string | null;
+  /** Zoho-mirrored SKU code (RM/PM/PR all share this column name as of May 2026). */
+  zoho_sku_code?: string | null;
   hsn_code?: string | null;
   tax_pref?: string | null;
   sales_purchase_account?: string | null;
@@ -48,7 +49,7 @@ export interface RawMaterialRecord {
   products: string[];
   group: string | null;
   zohoId: string | null;
-  sku: string | null;
+  zohoSkuCode: string | null;
   hsnCode: string | null;
   taxPref: string | null;
   salesPurchaseAccount: string | null;
@@ -78,7 +79,7 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     products: Array.isArray(row.products) ? row.products : [],
     group: row.group || null,
     zohoId: row.zoho_id ?? null,
-    sku: row.sku ?? null,
+    zohoSkuCode: row.zoho_sku_code ?? null,
     hsnCode: row.hsn_code ?? null,
     taxPref: row.tax_pref ?? null,
     salesPurchaseAccount: row.sales_purchase_account ?? null,
@@ -224,4 +225,36 @@ export interface ReservedStockResponse {
  */
 export async function fetchReservedStock(id: string): Promise<ReservedStockResponse> {
   return api.get<ReservedStockResponse>(`/api/v1/raw-materials/${id}/reserved-stock`);
+}
+
+/** Same workbook sheet as pack materials — POST /api/v1/raw-materials/item-reference-bulk-chunk */
+export interface ItemReferenceBulkChunkRow {
+  excel_row: number;
+  line_type: 'Packaging' | 'Raw Material';
+  zoho_sku_code: string;
+  description: string;
+}
+
+export interface ItemReferenceBulkChunkResponse {
+  chunk_index: number;
+  chunk_total: number;
+  percent_complete: number;
+  summary: {
+    packaging_created: number;
+    packaging_updated: number;
+    raw_material_created: number;
+    raw_material_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postItemReferenceBulkChunk(payload: {
+  rows: ItemReferenceBulkChunkRow[];
+  chunk_index: number;
+  chunk_total: number;
+  details?: boolean;
+}): Promise<ItemReferenceBulkChunkResponse> {
+  return api.post<ItemReferenceBulkChunkResponse>('/api/v1/raw-materials/item-reference-bulk-chunk', payload);
 }

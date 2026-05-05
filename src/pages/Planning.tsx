@@ -372,6 +372,14 @@ function toKg(quantity: number, unit?: string): number {
   return qty;
 }
 
+/**
+ * PM quantity in Planning is "pieces required" (BOM x order qty).
+ * Do not show size UoM (ML/GM/L/KG) in PM confirmation popup.
+ */
+function toPmDisplayUnit(_unit?: string): 'PCS' {
+  return 'PCS';
+}
+
 function procurementItemMergeKey(item: ProcurementRequestItem): string {
   if (item.type === 'RM' && item.raw_material_id != null && Number(item.raw_material_id) > 0) {
     return `rm:${Number(item.raw_material_id)}`;
@@ -1014,7 +1022,7 @@ const Planning = () => {
         id: String((line as { pack_material_id?: number }).pack_material_id ?? line.pm_code ?? i),
         name: line.description ?? (line as { name?: string }).name ?? String(line.pm_code ?? ''),
         quantity: totalQty,
-        unit: line.uom ?? 'PCS',
+        unit: toPmDisplayUnit(line.uom),
       };
     });
     return { detailRmItems: rmItems, detailPmItems: pmItems };
@@ -3824,7 +3832,7 @@ const Planning = () => {
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
                                 <span className="text-sm text-orange-600 font-semibold shrink-0">
-                                  {typeof item.quantity === 'number' ? Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : item.quantity} {item.unit}
+                                  {typeof item.quantity === 'number' ? Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : item.quantity} {toPmDisplayUnit(item.unit)}
                                 </span>
                               </div>
                               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -5122,6 +5130,22 @@ const Planning = () => {
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-bold text-gray-900">BOM / Material Status</h3>
                     </div>
+                    {(() => {
+                      const orderQtyNum = parseInt(
+                        String(selectedSOForBatch?.orderQty ?? '').replace(/\D/g, ''),
+                        10
+                      ) || 0;
+                      return (
+                        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-900">
+                          Calculation basis: <span className="font-semibold">Req this order = BOM qty_per_unit x order qty</span>
+                          {orderQtyNum > 0 && (
+                            <span>
+                              {' '}| Order qty used: <span className="font-mono font-semibold">{orderQtyNum.toLocaleString()} units</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* RM Feasibility Table */}
                     <div>

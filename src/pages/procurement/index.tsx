@@ -742,6 +742,7 @@ const Procurement: React.FC = () => {
       itemType?: 'RM' | 'PM';
     }[]
   >([]);
+  const [recordQuoteLineSearch, setRecordQuoteLineSearch] = useState<Record<number, string>>({});
 
   const [editItemsListLineTarget, setEditItemsListLineTarget] = useState<{
     itemsListId: number;
@@ -931,16 +932,95 @@ const Procurement: React.FC = () => {
     [queryClient]
   );
 
-  const { data: rawMaterialsListForQuote = [] } = useQuery({
+  const { data: rawMaterialsListForQuote = [], isError: rawMaterialsListForQuoteError } = useQuery({
     queryKey: ['raw-materials-list'],
     queryFn: () => fetchRawMaterialsList(),
     enabled: showRecordQuoteModal,
   });
-  const { data: packMaterialsListForQuote = [] } = useQuery({
+  const { data: packMaterialsListForQuote = [], isError: packMaterialsListForQuoteError } = useQuery({
     queryKey: ['pack-materials-list'],
     queryFn: () => fetchPackMaterialsList(),
     enabled: showRecordQuoteModal,
   });
+
+  const MAX_QUOTE_LINE_RM_PM_SUGGESTIONS = 100;
+
+  const quoteLineItemOptions = useMemo(() => {
+    const rmOptions = (rawMaterialsListForQuote as RawMaterialRecord[]).map((r) => {
+      const code = String(r.code ?? '').trim();
+      const name = String(r.name ?? '').trim();
+      const inci = String(r.inci ?? '').trim();
+      const sku = String(r.zohoSkuCode ?? '').trim();
+      const zoho = String(r.zohoId ?? '').trim();
+      const uom = String(r.uom ?? 'KG').trim() || 'KG';
+      const searchText = ['rm', String(r.id), code, name, inci, sku, zoho].filter(Boolean).join(' ').toLowerCase();
+      return {
+        key: `rm-${r.id}`,
+        label: `RM - ${code || String(r.id)} - ${name || code || String(r.id)}`,
+        searchText,
+        itemType: 'RM' as const,
+        itemId: code,
+        name: name || code || `RM ${r.id}`,
+        uom,
+      };
+    });
+    const pmOptions = (packMaterialsListForQuote as PackMaterialRecord[]).map((p) => {
+      const code = String(p.code ?? '').trim();
+      const name = String(p.description ?? p.code ?? '').trim();
+      const sku = String(p.zohoSkuCode ?? '').trim();
+      const zoho = String(p.zohoId ?? '').trim();
+      const material = String(p.material ?? '').trim();
+      const uom = String(p.unit ?? 'PCS').trim() || 'PCS';
+      const searchText = ['pm', String(p.id), code, name, sku, material, zoho].filter(Boolean).join(' ').toLowerCase();
+      return {
+        key: `pm-${p.id}`,
+        label: `PM - ${code || String(p.id)} - ${name || code || String(p.id)}`,
+        searchText,
+        itemType: 'PM' as const,
+        itemId: code,
+        name: name || code || `PM ${p.id}`,
+        uom,
+      };
+    });
+    return [...rmOptions, ...pmOptions];
+  }, [packMaterialsListForQuote, rawMaterialsListForQuote]);
+
+  const quoteLineOptionByKey = useMemo(
+    () => new Map(quoteLineItemOptions.map((opt) => [opt.key, opt])),
+    [quoteLineItemOptions]
+  );
+  const quoteLineOptionByLabelLower = useMemo(
+    () => new Map(quoteLineItemOptions.map((opt) => [opt.label.toLowerCase(), opt])),
+    [quoteLineItemOptions]
+  );
+
+  const filterQuoteLineOptionsForDatalist = useCallback(
+    (query: string) => {
+      const q = query.trim().toLowerCase();
+      const list = !q ? quoteLineItemOptions : quoteLineItemOptions.filter((o) => o.searchText.includes(q));
+      return list.slice(0, MAX_QUOTE_LINE_RM_PM_SUGGESTIONS);
+    },
+    [quoteLineItemOptions]
+  );
+
+  const resolveRecordQuoteLineOption = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const lower = trimmed.toLowerCase();
+      const exactLabel = quoteLineOptionByLabelLower.get(lower);
+      if (exactLabel) return exactLabel;
+      const idMatch = /^(rm|pm)-(\d+)$/i.exec(trimmed.replace(/\s+/g, ''));
+      if (idMatch) {
+        const key = `${idMatch[1].toLowerCase()}-${idMatch[2]}`;
+        return quoteLineOptionByKey.get(key) ?? null;
+      }
+      const cands = quoteLineItemOptions.filter((o) => o.searchText.includes(lower));
+      if (cands.length === 1) return cands[0];
+      return null;
+    },
+    [quoteLineItemOptions, quoteLineOptionByKey, quoteLineOptionByLabelLower]
+  );
 
   const requestsMapped = useMemo(
     () => backendPrArray.map(mapBackendPrToRequest),
@@ -3934,6 +4014,36 @@ const Procurement: React.FC = () => {
           )
         );
       }
+    }
+  };
+
+  const handleRecordQuoteLineSearchChange = (idx: number, lineIndex: number, value: string) => {
+    setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: value }));
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      handleRecordQuoteLineSelectItem(idx, '');
+      return;
+    }
+    const matched = resolveRecordQuoteLineOption(value);
+    if (matched) {
+      handleRecordQuoteLineSelectItem(idx, matched.key);
+      setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: matched.label }));
+      return;
+    }
+    setRecordQuoteLines((prev) =>
+      prev.map((line, i) =>
+        i !== idx
+          ? line
+          : { ...line, itemType: undefined, raw_material_id: null, pack_material_id: null, itemId: '', name: '', uom: 'KG' }
+      )
+    );
+  };
+
+  const handleRecordQuoteLineItemBlur = (idx: number, lineIndex: number, raw: string) => {
+    const matched = resolveRecordQuoteLineOption(raw);
+    if (matched) {
+      handleRecordQuoteLineSelectItem(idx, matched.key);
+      setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: matched.label }));
     }
   };
 
@@ -9944,6 +10054,15 @@ const Procurement: React.FC = () => {
               </button>
             </div>
 
+            {(rawMaterialsListForQuoteError || packMaterialsListForQuoteError) && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <p className="font-semibold">Could not load RM/PM master lists</p>
+                <p className="mt-1 text-amber-900/90">
+                  Your role must allow reading Raw Materials and Pack Materials (or Sales / Purchase / Order Management). Ask an admin to add the right module to your role, then reopen this modal.
+                </p>
+              </div>
+            )}
+
             <div>
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2 flex items-center justify-between">
                 <span>Quote lines</span>
@@ -9966,6 +10085,7 @@ const Procurement: React.FC = () => {
                         itemType: undefined,
                       },
                     ]);
+                    setRecordQuoteLineSearch((prev) => ({ ...prev, [nextIndex]: '' }));
                   }}
                   className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200"
                 >
@@ -9987,30 +10107,25 @@ const Procurement: React.FC = () => {
                         : line.pack_material_id != null
                           ? `pm-${line.pack_material_id}`
                           : '';
+                    const selectedOption = lineItemValue ? quoteLineOptionByKey.get(lineItemValue) : undefined;
+                    const inputValue = recordQuoteLineSearch[line.index] ?? selectedOption?.label ?? '';
+                    const datalistOptions = filterQuoteLineOptionsForDatalist(inputValue);
                     return (
                       <div key={line.index} className="px-4 py-2 flex items-center text-xs gap-2">
                         <div className="flex-1 min-w-0">
-                          <select
-                            value={lineItemValue}
-                            onChange={(e) => handleRecordQuoteLineSelectItem(idx, e.target.value)}
+                          <input
+                            list={`quote-line-item-options-${line.index}`}
+                            value={inputValue}
+                            onChange={(e) => handleRecordQuoteLineSearchChange(idx, line.index, e.target.value)}
+                            onBlur={(e) => handleRecordQuoteLineItemBlur(idx, line.index, e.target.value)}
+                            placeholder="Type code, INCI, name, SKU, or rm-12 / pm-34"
                             className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white"
-                          >
-                            <option value="">— Select RM or PM —</option>
-                            <optgroup label="Raw materials">
-                              {(rawMaterialsListForQuote as RawMaterialRecord[]).map((r) => (
-                                <option key={`rm-${r.id}`} value={`rm-${r.id}`}>
-                                  {r.code} — {r.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Pack materials">
-                              {(packMaterialsListForQuote as PackMaterialRecord[]).map((p) => (
-                                <option key={`pm-${p.id}`} value={`pm-${p.id}`}>
-                                  {p.code} — {p.description || p.code}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
+                          />
+                          <datalist id={`quote-line-item-options-${line.index}`}>
+                            {datalistOptions.map((opt) => (
+                              <option key={opt.key} value={opt.label} />
+                            ))}
+                          </datalist>
                           {line.name && (
                             <p className="text-[10px] text-slate-500 mt-0.5 truncate">
                               {line.itemId && `${line.itemId} · `}{line.name} ({line.uom})
@@ -10036,7 +10151,14 @@ const Procurement: React.FC = () => {
                         <div className="w-16 shrink-0">
                           <button
                             type="button"
-                            onClick={() => setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx))}
+                            onClick={() => {
+                              setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx));
+                              setRecordQuoteLineSearch((prev) => {
+                                const next = { ...prev };
+                                delete next[line.index];
+                                return next;
+                              });
+                            }}
                             className="text-slate-400 hover:text-red-600 text-sm"
                             title="Remove line"
                           >

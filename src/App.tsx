@@ -177,7 +177,7 @@ const AppLayout = () => {
                                    <ErrorBoundary>
                                           <Routes>
                                                  <Route path="/procurement" element={
-                                                        <ProtectedModuleRoute moduleId="order-management" subModuleId="procurement">
+                                                        <ProtectedModuleRoute moduleId="order-management" anySubModuleIds={["procurement", "sales-orders"]}>
                                                                <Procurement />
                                                         </ProtectedModuleRoute>
                                                  } />

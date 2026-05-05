@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
@@ -13,7 +14,7 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchRawMaterialsPage, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, postItemReferenceBulkChunk, type ItemReferenceBulkChunkRow, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -32,6 +33,15 @@ const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 
 const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+
+const ITEM_REFERENCE_SHEET_NAME = 'Item Reference';
+const ITEM_REFERENCE_CHUNK_SIZE = 40;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 function inferRmCategoryKeyFromCode(code: string): string {
   if (!code) return '';
@@ -617,7 +627,7 @@ const RawMaterialRefactored: React.FC = () => {
      addToast('success', syncCreated > 0 ? `${base} ${syncCreated} vendor rate(s) synced to Items List.` : base);
     }
    }
-   queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
+   queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
    resetRmFormToEmpty();
    setPageTab('dashboard');
   } catch (err) {
@@ -1480,7 +1490,7 @@ const RawMaterialRefactored: React.FC = () => {
      gst: String(r.gst ?? ''),
      shelfLife: r.shelf ?? '',
      zohoId: r.zohoId ?? '',
-     sku: r.sku ?? '',
+     sku: r.zohoSkuCode ?? '',
      hsnCode: r.hsnCode ?? '',
      rmTaxPreference: r.taxPref ?? '',
      accountingCategory: r.salesPurchaseAccount ?? '',
@@ -1548,7 +1558,7 @@ const RawMaterialRefactored: React.FC = () => {
         try {
           await deleteRawMaterial(rm.id);
           addToast('success', 'Raw material deleted');
-          queryClient.invalidateQueries({ queryKey: ['raw-materials-page'] });
+          queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
         } catch (e) {
           addToast('error', e instanceof Error ? e.message : 'Failed to delete');
         }
@@ -1678,42 +1688,139 @@ function GroupChip({ group }: { group: string }) {
 
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
  const [search, setSearch] = useState('');
-  const [pageSize, setPageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
+ const [pageSize, setPageSize] = useState(25);
+ const [currentPage, setCurrentPage] = useState(1);
+ const queryClient = useQueryClient();
+ const { addToast } = useToast();
+ const itemRefFileInputRef = useRef<HTMLInputElement>(null);
+ const [bulkUploadPct, setBulkUploadPct] = useState(0);
+ const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
 
-  const offset = (currentPage - 1) * pageSize;
-  const searchTrim = search.trim();
+ const onPickItemReferenceExcel = useCallback(() => {
+   itemRefFileInputRef.current?.click();
+ }, []);
 
-  const {
-    data: pageData,
+ const onItemReferenceFileChange = useCallback(
+   async (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     e.target.value = '';
+     if (!file) return;
+     const lower = file.name.toLowerCase();
+     if (!lower.endsWith('.xlsx') && !lower.endsWith('.xlsm')) {
+       addToast('error', 'Please choose an Excel file (.xlsx or .xlsm).');
+       return;
+     }
+     try {
+       const buf = await file.arrayBuffer();
+       const wb = XLSX.read(buf, { type: 'array' });
+       if (!wb.SheetNames.includes(ITEM_REFERENCE_SHEET_NAME)) {
+         addToast('error', `Workbook must contain a sheet named "${ITEM_REFERENCE_SHEET_NAME}".`);
+         return;
+       }
+       const sheet = wb.Sheets[ITEM_REFERENCE_SHEET_NAME];
+       const aoas = XLSX.utils.sheet_to_json<(string | number | undefined)[]>(sheet, { header: 1, defval: '' });
+       const rows: ItemReferenceBulkChunkRow[] = [];
+       let packagingRowsSkipped = 0;
+       for (let i = 1; i < aoas.length; i++) {
+         const row = aoas[i];
+         if (!Array.isArray(row)) continue;
+         const sku = row[0] != null ? String(row[0]).trim() : '';
+         const itemName = row[1] != null ? String(row[1]).trim() : '';
+         const typeCell = row[2] != null ? String(row[2]).trim() : '';
+         if (!sku && !itemName && !typeCell) continue;
+         const tNorm = typeCell.toLowerCase().replace(/\s+/g, ' ');
+         if (tNorm === 'packaging') {
+           packagingRowsSkipped += 1;
+           continue;
+         }
+         if (tNorm !== 'raw material') continue;
+         rows.push({
+           excel_row: i + 1,
+           line_type: 'Raw Material',
+           zoho_sku_code: sku,
+           description: itemName,
+         });
+       }
+       if (rows.length === 0) {
+         addToast(
+           'error',
+           packagingRowsSkipped > 0
+             ? `No Raw Material rows to import. Skipped ${packagingRowsSkipped} packaging row(s) — use Pack Materials for those.`
+             : 'No rows with Type "Raw Material" (columns A–C, from row 2).'
+         );
+         return;
+       }
+       const chunks = chunkArray(rows, ITEM_REFERENCE_CHUNK_SIZE);
+       setBulkUploadRunning(true);
+       setBulkUploadPct(0);
+       const agg = { raw_created: 0, raw_updated: 0, skipped: 0, errors: 0 };
+       for (let ci = 0; ci < chunks.length; ci++) {
+         const res = await postItemReferenceBulkChunk({
+           rows: chunks[ci],
+           chunk_index: ci,
+           chunk_total: chunks.length,
+         });
+         setBulkUploadPct(res.percent_complete);
+         agg.raw_created += res.summary.raw_material_created;
+         agg.raw_updated += res.summary.raw_material_updated;
+         agg.skipped += res.summary.skipped;
+         agg.errors += res.summary.errors;
+       }
+       const pmNote =
+         packagingRowsSkipped > 0 ? ` (${packagingRowsSkipped} packaging row(s) ignored.)` : '';
+       addToast(
+         'success',
+         `Raw materials: ${agg.raw_created} created, ${agg.raw_updated} updated (Zoho SKU), ${agg.skipped} skipped, ${agg.errors} errors.${pmNote}`
+       );
+       void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+     } catch (err) {
+       const msg = err instanceof Error ? err.message : 'Upload failed';
+       addToast('error', msg);
+     } finally {
+       setBulkUploadRunning(false);
+       setBulkUploadPct(0);
+     }
+   },
+   [addToast, queryClient]
+ );
+
+ const {
+    data: allRows = [],
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['raw-materials-page', searchTrim, pageSize, offset, refreshKey],
-    queryFn: () => fetchRawMaterialsPage({ search: searchTrim || undefined, limit: pageSize, offset }),
+    queryKey: ['raw-materials-full-list', refreshKey],
+    queryFn: () => fetchRawMaterialsList(),
     staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
 
-  const rows = pageData?.rows ?? [];
-  const totalFiltered = pageData?.total ?? 0;
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter((r) =>
+      [r.code, r.name, r.inci, r.category, r.rmType, r.zohoSkuCode].some((s) => (s ?? '').toLowerCase().includes(q))
+    );
+  }, [allRows, search]);
+
+  const totalFiltered = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
+  const rows = filteredRows.slice(startIndex, startIndex + pageSize);
 
-  // Reset to page 1 whenever search/page size changes.
+  // Reset to page 1 when search or page size changes (same pattern as Products PR page).
   useEffect(() => {
     setCurrentPage(1);
   }, [search, pageSize, refreshKey]);
 
   const stats = {
-    total: totalFiltered,
-    // Best-effort stats based on the current page.
-    active: rows.filter((r) => String(r.status).toLowerCase() === 'active').length,
-    uvFilters: rows.filter((r) => (r.category || '') === 'UV FILTER').length,
-    surfactants: rows.filter((r) => (r.category || '') === 'SURFACTANT').length,
-    categories: new Set(rows.map((r) => r.category).filter(Boolean)).size,
+    total: allRows.length,
+    active: allRows.filter((r) => String(r.status).toLowerCase() === 'active').length,
+    uvFilters: allRows.filter((r) => (r.category || '') === 'UV FILTER').length,
+    surfactants: allRows.filter((r) => (r.category || '') === 'SURFACTANT').length,
+    categories: new Set(allRows.map((r) => r.category).filter(Boolean)).size,
   };
 
  const statCards = [
@@ -1780,6 +1887,22 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{rows.length} / {totalFiltered}</span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
+       <input
+        ref={itemRefFileInputRef}
+        type="file"
+        accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="hidden"
+        onChange={(ev) => { void onItemReferenceFileChange(ev); }}
+       />
+       <button
+        type="button"
+        onClick={onPickItemReferenceExcel}
+        disabled={bulkUploadRunning}
+        title='Worksheet "Item Reference": A = Zoho SKU, B = Item Name. New names create RM; existing name updates Zoho SKU only (price/kg unchanged). Only "Raw Material" rows are imported here.'
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-700 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+       >
+        {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
+       </button>
        {/* search */}
        <div className="relative group">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-teal-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1802,6 +1925,21 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        </button>
       </div>
      </div>
+
+     {bulkUploadRunning && (
+      <div className="px-6 py-3 border-b border-gray-100 bg-teal-50/40">
+       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
+        <span className="font-medium">Uploading Item Reference (raw materials)…</span>
+        <span className="font-mono font-semibold text-teal-700 tabular-nums">{bulkUploadPct}%</span>
+       </div>
+       <div className="h-2.5 rounded-full bg-teal-100 overflow-hidden shadow-inner">
+        <div
+         className="h-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 transition-[width] duration-300 ease-out"
+         style={{ width: `${Math.min(100, Math.max(0, bulkUploadPct))}%` }}
+        />
+       </div>
+      </div>
+     )}
 
      {/* table */}
      <div className="overflow-x-auto">

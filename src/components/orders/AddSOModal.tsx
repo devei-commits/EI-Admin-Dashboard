@@ -3,7 +3,8 @@
  * Modal for creating a new sale order — fetches SO number, customers, and products from DB
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Loader2 } from 'lucide-react';
 
 /** Default calendar days from order date to due date (business rule). */
@@ -26,6 +27,18 @@ import {
 } from '../../services/fulfillment.service';
 
 const DEFAULT_STAGED = { advance_pct: 0, pre_shipment_pct: 100, post_shipment_pct: 0, credit_days: 30 };
+const MAX_PRODUCT_SUGGESTIONS = 100;
+const MAX_CUSTOMER_SUGGESTIONS = 100;
+
+/** Themed suggestion panel (native <datalist> cannot be styled in most browsers). */
+const SUGGEST_LIST_BOX_CLASS =
+  'fixed z-[10000] max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5';
+const SUGGEST_ITEM_CLASS =
+  'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-slate-100 focus:bg-slate-100 focus:outline-none border-b border-gray-50 last:border-0';
+const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-gray-900';
+const SUGGEST_ITEM_META_CLASS = 'text-xs text-gray-500';
+
+type AutocompleteTarget = null | { kind: 'customer' } | { kind: 'product'; index: number };
 
 export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -69,6 +82,79 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+
+  const [autocompleteTarget, setAutocompleteTarget] = useState<AutocompleteTarget>(null);
+  const [suggestPanelRect, setSuggestPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const customerInputRef = useRef<HTMLInputElement | null>(null);
+  const suggestPanelRef = useRef<HTMLDivElement | null>(null);
+  const productInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+
+  const updateSuggestPanelPosition = useCallback(() => {
+    if (!autocompleteTarget) {
+      setSuggestPanelRect(null);
+      return;
+    }
+    const el =
+      autocompleteTarget.kind === 'customer'
+        ? customerInputRef.current
+        : productInputRefs.current[autocompleteTarget.index];
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setSuggestPanelRect({
+      top: r.bottom + 4,
+      left: r.left,
+      width: Math.max(r.width, 220),
+    });
+  }, [autocompleteTarget]);
+
+  useLayoutEffect(() => {
+    updateSuggestPanelPosition();
+    if (!autocompleteTarget) return;
+    window.addEventListener('scroll', updateSuggestPanelPosition, true);
+    window.addEventListener('resize', updateSuggestPanelPosition);
+    return () => {
+      window.removeEventListener('scroll', updateSuggestPanelPosition, true);
+      window.removeEventListener('resize', updateSuggestPanelPosition);
+    };
+  }, [autocompleteTarget, updateSuggestPanelPosition, customer, items]);
+
+  useEffect(() => {
+    if (!autocompleteTarget) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAutocompleteTarget(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [autocompleteTarget]);
+
+  useEffect(() => {
+    if (!autocompleteTarget) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (suggestPanelRef.current?.contains(t)) return;
+      if (customerInputRef.current?.contains(t)) return;
+      if (autocompleteTarget.kind === 'product') {
+        const inp = productInputRefs.current[autocompleteTarget.index];
+        if (inp?.contains(t)) return;
+      }
+      setAutocompleteTarget(null);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [autocompleteTarget]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setAutocompleteTarget(null);
+      setSuggestPanelRect(null);
+    }
+  }, [isOpen]);
+
+  const productsByName = useMemo(() => {
+    const map = new Map<string, ProductOption>();
+    products.forEach((product) => map.set(product.name, product));
+    return map;
+  }, [products]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -153,11 +239,14 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     newItems[index] = { ...newItems[index], [field]: value };
 
     if (field === 'productName') {
-      const selected = products.find(p => p.name === value);
+      const selected = productsByName.get(value);
       if (selected) {
         newItems[index].sku = selected.sku;
         newItems[index].pack = selected.pack;
         if (selected.price > 0) newItems[index].unitPrice = selected.price;
+      } else {
+        newItems[index].sku = '';
+        newItems[index].pack = '';
       }
     }
     setItems(newItems);
@@ -179,6 +268,9 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     const newErrors: string[] = [];
     if (!soNo.trim()) newErrors.push('SO Number is required.');
     if (!customer.trim()) newErrors.push('Customer is required.');
+    else if (!customers.some((c) => c.name === customer.trim())) {
+      newErrors.push('Select a valid customer from the list (search by name, code, or city).');
+    }
     if (!items.some((item) => item.productName && item.productName.trim())) {
       newErrors.push('At least one product must be added.');
     }
@@ -189,7 +281,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       newErrors.push('Duplicate products are not allowed in order items.');
     }
     items.forEach((item, index) => {
-      if (!item.productName) newErrors.push(`Product for item #${index + 1} is required.`);
+      if (!item.productName) {
+        newErrors.push(`Product for item #${index + 1} is required.`);
+      } else if (!productsByName.has(item.productName)) {
+        newErrors.push(`Select a valid product for item #${index + 1}.`);
+      }
       if (item.orderedQty <= 0) newErrors.push(`Quantity for item #${index + 1} must be positive.`);
       if (item.unitPrice <= 0) newErrors.push(`Unit price for item #${index + 1} must be positive.`);
     });
@@ -256,22 +352,111 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setNotes('');
     setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
     setErrors([]);
+    setAutocompleteTarget(null);
+    setSuggestPanelRect(null);
     onClose();
   };
 
-  /* Only Finished Goods (FG) in dropdown; RMs and PMs are materials used to build FGs. */
-  const productOptions = [
-    { value: '', label: 'Select Product (FG)' },
-    ...products.map(p => ({ value: p.name, label: `${p.name} (${p.sku})` })),
-  ];
-  const getProductOptionsForIndex = (index: number) => {
+  /* Only Finished Goods (FG) in suggestions; RMs and PMs are materials used to build FGs. */
+  const getProductSuggestionsForIndex = (index: number) => {
+    const currentValue = (items[index]?.productName || '').trim().toLowerCase();
     const takenByOtherRows = new Set(
       items
         .map((it, idx) => (idx !== index ? it.productName : ''))
         .filter(Boolean)
     );
-    return productOptions.filter((opt) => !opt.value || !takenByOtherRows.has(opt.value) || opt.value === items[index]?.productName);
+    return products
+      .filter((p) => !takenByOtherRows.has(p.name) || p.name === items[index]?.productName)
+      .filter((p) => {
+        if (!currentValue) return true;
+        return p.name.toLowerCase().includes(currentValue) || p.sku.toLowerCase().includes(currentValue);
+      })
+      .slice(0, MAX_PRODUCT_SUGGESTIONS);
   };
+
+  const customerSuggestList = useMemo(() => {
+    const q = customer.trim().toLowerCase();
+    return customers
+      .filter((c) => {
+        if (!q) return true;
+        const hay = `${c.name} ${c.code || ''} ${c.city || ''} ${c.state || ''} ${c.location || ''} ${c.country || ''}`
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, MAX_CUSTOMER_SUGGESTIONS);
+  }, [customer, customers]);
+
+  const productSuggestLists = useMemo(
+    () => items.map((_, index) => getProductSuggestionsForIndex(index)),
+    [items, products]
+  );
+
+  const suggestPortal =
+    autocompleteTarget && suggestPanelRect && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={suggestPanelRef}
+            role="listbox"
+            className={SUGGEST_LIST_BOX_CLASS}
+            style={{
+              top: suggestPanelRect.top,
+              left: suggestPanelRect.left,
+              width: suggestPanelRect.width,
+            }}
+          >
+            {autocompleteTarget.kind === 'customer' ? (
+              customerSuggestList.length === 0 ? (
+                <div className={`${SUGGEST_ITEM_CLASS} cursor-default hover:bg-transparent`}>
+                  <span className={SUGGEST_ITEM_META_CLASS}>No matching customers. Try another search.</span>
+                </div>
+              ) : (
+                customerSuggestList.map((c) => {
+                  const geo = [c.city, c.state || c.location].filter(Boolean).join(', ');
+                  const meta = [c.code && `Code ${c.code}`, geo || undefined].filter(Boolean).join(' · ');
+                  return (
+                    <button
+                      key={`${c.id}-${c.name}`}
+                      type="button"
+                      role="option"
+                      className={SUGGEST_ITEM_CLASS}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleCustomerChange(c.name);
+                        setAutocompleteTarget(null);
+                      }}
+                    >
+                      <span className={SUGGEST_ITEM_PRIMARY_CLASS}>{c.name}</span>
+                      {meta ? <span className={SUGGEST_ITEM_META_CLASS}>{meta}</span> : null}
+                    </button>
+                  );
+                })
+              )
+            ) : productSuggestLists[autocompleteTarget.index]?.length === 0 ? (
+              <div className={`${SUGGEST_ITEM_CLASS} cursor-default hover:bg-transparent`}>
+                <span className={SUGGEST_ITEM_META_CLASS}>No matching products. Try name or SKU.</span>
+              </div>
+            ) : (
+              (productSuggestLists[autocompleteTarget.index] ?? []).map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  role="option"
+                  className={SUGGEST_ITEM_CLASS}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleItemChange(autocompleteTarget.index, 'productName', p.name);
+                    setAutocompleteTarget(null);
+                  }}
+                >
+                  <span className={SUGGEST_ITEM_PRIMARY_CLASS}>{p.name}</span>
+                  <span className={SUGGEST_ITEM_META_CLASS}>SKU {p.sku}{p.pack ? ` · ${p.pack}` : ''}</span>
+                </button>
+              ))
+            )}
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
@@ -298,19 +483,22 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   <Input label="SO Number" value={soNo} readOnly disabled />
                   <p className="text-xs text-gray-400 mt-1">Auto-generated</p>
                 </div>
-                <Select
-                  label="Customer"
-                  value={customer}
-                  onChange={(e) => handleCustomerChange(e.target.value)}
-                  required
-                  options={[
-                    { value: '', label: 'Select Customer' },
-                    ...customers.map((c) => {
-                      const geo = [c.city, c.state || c.location].filter(Boolean).join(', ');
-                      return { value: c.name, label: geo ? `${c.name} — ${geo}` : c.name };
-                    })
-                  ]}
-                />
+                <div className="relative">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    Customer<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    ref={customerInputRef}
+                    value={customer}
+                    onChange={(e) => handleCustomerChange(e.target.value)}
+                    onFocus={() => setAutocompleteTarget({ kind: 'customer' })}
+                    required
+                    placeholder="Search customer by name, code, or city"
+                    autoComplete="off"
+                    className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide border-gray-200"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Type to filter, then choose from the themed list below the field.</p>
+                </div>
                 <Input label="Customer code" value={customerCode} readOnly disabled />
               </div>
 
@@ -380,13 +568,21 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                 <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Order Items</h3>
                 {items.map((item, index) => (
                   <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-gray-50 relative">
-                    <div className="col-span-12 md:col-span-3">
-                      <Select
-                        label="Product"
+                    <div className="col-span-12 md:col-span-3 space-y-2">
+                      <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                        Product<span className="text-red-500 ml-0.5">*</span>
+                      </label>
+                      <input
+                        ref={(el) => {
+                          productInputRefs.current[index] = el;
+                        }}
                         value={item.productName}
                         onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+                        onFocus={() => setAutocompleteTarget({ kind: 'product', index })}
                         required
-                        options={getProductOptionsForIndex(index)}
+                        placeholder="Search Product (FG) by name or SKU"
+                        autoComplete="off"
+                        className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide border-gray-200"
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2">
@@ -422,6 +618,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         <Button variant="ghost" onClick={handleClose}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={loadingData}><Plus className="mr-2 h-4 w-4" /> Create Sale Order</Button>
       </div>
+      {suggestPortal}
     </Modal>
   );
 };

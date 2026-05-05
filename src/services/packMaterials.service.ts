@@ -21,7 +21,8 @@ export interface PackMaterialFromApi {
   products: string[];
   /** Primary info for Zoho sync (TODO: implement Zoho integration) */
   zoho_id?: string | null;
-  sku?: string | null;
+  /** Zoho-mirrored SKU code (RM/PM/PR all share this column name as of May 2026). */
+  zoho_sku_code?: string | null;
   hsn_code?: string | null;
   unit?: string | null;
   tax_pref?: string | null;
@@ -49,7 +50,7 @@ export interface PackMaterialRecord {
   printStatus: string;
   products: string[];
   zohoId: string | null;
-  sku: string | null;
+  zohoSkuCode: string | null;
   hsnCode: string | null;
   unit: string | null;
   taxPref: string | null;
@@ -82,7 +83,7 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     printStatus: row.print_status ?? '',
     products: Array.isArray(row.products) ? row.products : [],
     zohoId: row.zoho_id ?? null,
-    sku: row.sku ?? null,
+    zohoSkuCode: row.zoho_sku_code ?? null,
     hsnCode: row.hsn_code ?? null,
     unit: row.unit ?? null,
     taxPref: row.tax_pref ?? null,
@@ -165,6 +166,10 @@ export interface CreatePackMaterialPayload {
   /** Primary info for Zoho sync (TODO: implement Zoho integration) */
   zohoId?: string | null;
   zoho_id?: string | null;
+  /** Zoho-mirrored SKU code (snake_case for API; camelCase variant `zohoSkuCode` also accepted). */
+  zoho_sku_code?: string | null;
+  zohoSkuCode?: string | null;
+  /** @deprecated kept for backward-compat — backend now stores zoho_sku_code. */
   sku?: string | null;
   hsnCode?: string | null;
   hsn_code?: string | null;
@@ -266,4 +271,36 @@ export interface ReservedStockResponse {
  */
 export async function fetchReservedStock(id: string): Promise<ReservedStockResponse> {
   return api.get<ReservedStockResponse>(`/api/v1/pack-materials/${id}/reserved-stock`);
+}
+
+/** Chunked upsert from workbook sheet "Item Reference" (SKU / name / type). POST /api/v1/pack-materials/item-reference-bulk-chunk */
+export interface ItemReferenceBulkChunkRow {
+  excel_row: number;
+  line_type: 'Packaging' | 'Raw Material';
+  zoho_sku_code: string;
+  description: string;
+}
+
+export interface ItemReferenceBulkChunkResponse {
+  chunk_index: number;
+  chunk_total: number;
+  percent_complete: number;
+  summary: {
+    packaging_created: number;
+    packaging_updated: number;
+    raw_material_created: number;
+    raw_material_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postItemReferenceBulkChunk(payload: {
+  rows: ItemReferenceBulkChunkRow[];
+  chunk_index: number;
+  chunk_total: number;
+  details?: boolean;
+}): Promise<ItemReferenceBulkChunkResponse> {
+  return api.post<ItemReferenceBulkChunkResponse>('/api/v1/pack-materials/item-reference-bulk-chunk', payload);
 }

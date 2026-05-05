@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
@@ -11,11 +12,10 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchPackMaterialsPage, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, postItemReferenceBulkChunk, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload, type ItemReferenceBulkChunkRow } from '../services/packMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
-
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   PRI: { label: 'Primary Container (Bottle/Jar/Tube)', prefix: 'EI-PM-PRI' },
@@ -55,6 +55,15 @@ const PM_REQUIRED_FIELDS: Array<{
   { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 1 — Level is required' },
   { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
 ];
+
+const ITEM_REFERENCE_SHEET_NAME = 'Item Reference';
+const ITEM_REFERENCE_CHUNK_SIZE = 40;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
   if (input == null) return null;
@@ -541,7 +550,7 @@ const PackagingRefactored: React.FC = () => {
       lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
       print_status: formData.deco || undefined,
       zohoId: formData.zohoId?.trim() ? formData.zohoId.trim() : undefined,
-      sku: skuForZoho,
+      zoho_sku_code: skuForZoho,
       hsnCode: formData.pkgHsn?.trim() ? formData.pkgHsn.trim() : undefined,
       unit: formData.pkgUnit?.trim() ? formData.pkgUnit.trim() : undefined,
       taxPref: formData.pkgTaxPreference ?? undefined,
@@ -622,7 +631,7 @@ const PackagingRefactored: React.FC = () => {
         );
       }
       localStorage.removeItem('packaging_draft_new');
-      queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+      queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
       resetPmFormToEmpty();
       setPageTab('bpr');
     } catch (e) {
@@ -1350,7 +1359,7 @@ const PackagingRefactored: React.FC = () => {
         specNominal: pm.sizeSpec || '',
         deco: pm.printStatus || '',
         zohoId: pm.zohoId ?? '',
-        pkgSku: pm.sku ?? '',
+        pkgSku: pm.zohoSkuCode ?? '',
         pkgHsn: pm.hsnCode ?? '',
         pkgUnit: pm.unit ?? 'PCS',
         pkgTaxPreference: pm.taxPref ?? '',
@@ -1431,7 +1440,7 @@ const PackagingRefactored: React.FC = () => {
             try {
               await deletePackMaterial(pm.id);
               addToast('success', 'Pack material deleted');
-              queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+              queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
             } catch (e) {
               addToast('error', e instanceof Error ? e.message : 'Failed to delete');
             }
@@ -1477,7 +1486,7 @@ const PackagingRefactored: React.FC = () => {
         try {
           await deletePackMaterial(pm.id);
           addToast('success', 'Pack material deleted');
-          queryClient.invalidateQueries({ queryKey: ['pack-materials-page'] });
+          queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
         } catch (e) {
           addToast('error', e instanceof Error ? e.message : 'Failed to delete');
         }
@@ -1799,44 +1808,146 @@ const BprDashboard: React.FC<{
   const [reservedLoading, setReservedLoading] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
+  const itemRefFileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkUploadPct, setBulkUploadPct] = useState(0);
+  const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
+
+  const onPickItemReferenceExcel = useCallback(() => {
+    itemRefFileInputRef.current?.click();
+  }, []);
+
+  const onItemReferenceFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      const lower = file.name.toLowerCase();
+      if (!lower.endsWith('.xlsx') && !lower.endsWith('.xlsm')) {
+        addToast('error', 'Please choose an Excel file (.xlsx or .xlsm).');
+        return;
+      }
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        if (!wb.SheetNames.includes(ITEM_REFERENCE_SHEET_NAME)) {
+          addToast('error', `Workbook must contain a sheet named "${ITEM_REFERENCE_SHEET_NAME}".`);
+          return;
+        }
+        const sheet = wb.Sheets[ITEM_REFERENCE_SHEET_NAME];
+        const aoas = XLSX.utils.sheet_to_json<(string | number | undefined)[]>(sheet, { header: 1, defval: '' });
+        const rows: ItemReferenceBulkChunkRow[] = [];
+        let rawMaterialRowsSkipped = 0;
+        for (let i = 1; i < aoas.length; i++) {
+          const row = aoas[i];
+          if (!Array.isArray(row)) continue;
+          const sku = row[0] != null ? String(row[0]).trim() : '';
+          const itemName = row[1] != null ? String(row[1]).trim() : '';
+          const typeCell = row[2] != null ? String(row[2]).trim() : '';
+          if (!sku && !itemName && !typeCell) continue;
+          const tNorm = typeCell.toLowerCase().replace(/\s+/g, ' ');
+          if (tNorm === 'raw material') {
+            rawMaterialRowsSkipped += 1;
+            continue;
+          }
+          if (tNorm !== 'packaging') continue;
+          rows.push({
+            excel_row: i + 1,
+            line_type: 'Packaging',
+            zoho_sku_code: sku,
+            description: itemName,
+          });
+        }
+        if (rows.length === 0) {
+          addToast(
+            'error',
+            rawMaterialRowsSkipped > 0
+              ? `No Packaging rows to import. Skipped ${rawMaterialRowsSkipped} raw material row(s) — this upload only updates pack materials.`
+              : 'No rows with Type "Packaging" (columns A–C, from row 2).'
+          );
+          return;
+        }
+        const chunks = chunkArray(rows, ITEM_REFERENCE_CHUNK_SIZE);
+        setBulkUploadRunning(true);
+        setBulkUploadPct(0);
+        const agg = {
+          packaging_updated: 0,
+          skipped: 0,
+          errors: 0,
+        };
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const res = await postItemReferenceBulkChunk({
+            rows: chunks[ci],
+            chunk_index: ci,
+            chunk_total: chunks.length,
+          });
+          setBulkUploadPct(res.percent_complete);
+          agg.packaging_updated += res.summary.packaging_updated;
+          agg.skipped += res.summary.skipped;
+          agg.errors += res.summary.errors;
+        }
+        const rmNote =
+          rawMaterialRowsSkipped > 0 ? ` (${rawMaterialRowsSkipped} raw material row(s) ignored.)` : '';
+        addToast(
+          'success',
+          `Pack materials: ${agg.packaging_updated} updated, ${agg.skipped} skipped, ${agg.errors} errors.${rmNote}`
+        );
+        void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        addToast('error', msg);
+      } finally {
+        setBulkUploadRunning(false);
+        setBulkUploadPct(0);
+      }
+    },
+    [addToast, queryClient]
+  );
 
   useEffect(() => {
     if (pmFromQuery) setSearch(pmFromQuery);
   }, [pmFromQuery]);
 
-  const offset = (currentPage - 1) * pageSize;
-  const searchTrim = search.trim();
-
   const {
-    data: pageData,
+    data: allRows = [],
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['pack-materials-page', searchTrim, pageSize, offset, refreshKey],
-    queryFn: () => fetchPackMaterialsPage({ search: searchTrim || undefined, limit: pageSize, offset }),
+    queryKey: ['pack-materials-full-list', refreshKey],
+    queryFn: () => fetchPackMaterialsList(),
     staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
 
-  const rows = pageData?.rows ?? [];
-  const totalFiltered = pageData?.total ?? 0;
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter((p) =>
+      [p.code, p.description, p.type, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode].some((s) =>
+        (s ?? '').toLowerCase().includes(q)
+      )
+    );
+  }, [allRows, search]);
+
+  const totalFiltered = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
+  const rows = filteredRows.slice(startIndex, startIndex + pageSize);
 
-  // Reset to page 1 whenever search/page size changes.
+  // Reset to page 1 when search or page size changes (same pattern as Products PR page).
   useEffect(() => {
     setCurrentPage(1);
   }, [search, pageSize, refreshKey]);
 
   const stats = {
-    total: totalFiltered,
-    // Best-effort stats based on the current page.
-    primary: rows.filter((p) => (p.level || '') === 'Primary').length,
-    secondary: rows.filter((p) => (p.level || '') === 'Secondary').length,
-    groups: rows.filter((p) => p.group).length,
-    types: new Set(rows.map((p) => p.type).filter(Boolean)).size,
+    total: allRows.length,
+    primary: allRows.filter((p) => (p.level || '') === 'Primary').length,
+    secondary: allRows.filter((p) => (p.level || '') === 'Secondary').length,
+    groups: allRows.filter((p) => p.group).length,
+    types: new Set(allRows.map((p) => p.type).filter(Boolean)).size,
   };
 
   const statCards = [
@@ -1916,6 +2027,22 @@ const BprDashboard: React.FC<{
                   <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{rows.length} / {totalFiltered}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    ref={itemRefFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={(ev) => { void onItemReferenceFileChange(ev); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={onPickItemReferenceExcel}
+                    disabled={bulkUploadRunning}
+                    title='Worksheet "Item Reference": A = Zoho SKU, B = Item Name (must match existing PM description). C = Type — only "Packaging" rows are imported here; "Raw Material" rows are skipped.'
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-white text-violet-700 text-xs font-semibold hover:bg-violet-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
+                  </button>
                   {/* search */}
                   <div className="relative group">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1938,6 +2065,21 @@ const BprDashboard: React.FC<{
                   </button>
                 </div>
               </div>
+
+              {bulkUploadRunning && (
+                <div className="px-6 py-3 border-b border-gray-100 bg-violet-50/40">
+                  <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
+                    <span className="font-medium">Uploading Item Reference data (chunked)…</span>
+                    <span className="font-mono font-semibold text-violet-700 tabular-nums">{bulkUploadPct}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-violet-100 overflow-hidden shadow-inner">
+                    <div
+                      className="h-full rounded-full bg-linear-to-r from-violet-500 to-violet-600 transition-[width] duration-300 ease-out"
+                      style={{ width: `${Math.min(100, Math.max(0, bulkUploadPct))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* table */}
               <div className="overflow-x-auto">

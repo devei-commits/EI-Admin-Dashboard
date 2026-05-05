@@ -127,7 +127,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
 
    {/* Body: Sidebar + Content, similar to Packaging layout */}
    <div className="flex-1 min-w-0">
-    <div className="flex w-full min-w-0 flex-col gap-4 px-4 py-4 md:px-6 lg:flex-row lg:items-stretch lg:px-8">
+    <div className="flex w-full min-w-0 flex-col gap-4 px-4 py-4 md:px-6 lg:h-[calc(100vh-5.25rem)] lg:flex-row lg:items-stretch lg:px-8 lg:overflow-hidden">
      {/* Left sidebar with stages */}
      <aside className="flex w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm lg:w-60">
       <div className="px-4 pt-4 pb-3 border-b border-gray-100">
@@ -194,7 +194,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
      </div>
 
       {/* Body */}
-      <div className="px-3 py-4 sm:px-4 sm:py-6">
+      <div className="px-3 py-4 pb-24 sm:px-4 sm:py-6 sm:pb-24">
        <div className="mx-auto max-w-4xl min-w-0 space-y-4">
         {/* Primary Fields Notice */}
         {primaryFields.length > 0 && currentStage === 0 && (
@@ -218,6 +218,40 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           ))}
          </div>
         )}
+       </div>
+      </div>
+
+      {/* Bottom sticky actions for long sections */}
+      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white/95 backdrop-blur">
+       <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
+        <button
+         type="button"
+         onClick={() => onStageChange(Math.max(0, currentStage - 1))}
+         disabled={currentStage === 0}
+         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+         Previous
+        </button>
+        <div className="flex items-center gap-2">
+         {onSubmit && currentStage === stages.length - 1 && (
+          <button
+           type="button"
+           onClick={onSubmit}
+           className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition"
+          >
+           Submit
+          </button>
+         )}
+         <button
+          type="button"
+          title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
+          onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
+          disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+         >
+          Next
+         </button>
+        </div>
        </div>
       </div>
      </main>

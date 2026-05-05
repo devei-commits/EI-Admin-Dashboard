@@ -46,6 +46,9 @@ type ProductCustomizationRow = {
  updated_at?: string | null;
  product?: {
   product_name?: string | null;
+  /** Zoho-mirrored SKU code (renamed from product_sku May 2026). */
+  zoho_sku_code?: string | null;
+  /** @deprecated kept for backward compat with cached payloads. */
   product_sku?: string | null;
  } | null;
  user?: {
@@ -701,7 +704,7 @@ useEffect(() => {
            </td>
            <td className="px-4 py-3">
             <div className="font-medium text-gray-900">{productName}</div>
-            <div className="text-xs text-gray-500">{row.product?.product_sku || '-'}</div>
+            <div className="text-xs text-gray-500">{row.product?.zoho_sku_code ?? row.product?.product_sku ?? '-'}</div>
            </td>
            <td className="px-4 py-3">
             <div className="text-gray-900">{row.care || '-'}</div>
@@ -769,7 +772,7 @@ useEffect(() => {
        <p className="text-sm text-gray-900">
         {selectedCustomization.product?.product_name || (selectedCustomization.product_id ? `Product #${selectedCustomization.product_id}` : '-')}
        </p>
-       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.product?.product_sku || '-'}</p>
+       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.product?.zoho_sku_code ?? selectedCustomization.product?.product_sku ?? '-'}</p>
       </div>
       <div className="rounded-lg border border-gray-200 p-3">
        <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Care / Category</p>

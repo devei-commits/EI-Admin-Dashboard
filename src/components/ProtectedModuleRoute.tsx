@@ -11,6 +11,7 @@ interface ProtectedModuleRouteProps {
  children: React.ReactNode;
  moduleId?: string;
  subModuleId?: string;
+ anySubModuleIds?: string[];
  requiredAction?: 'canView' | 'canCreate' | 'canEdit' | 'canDelete' | 'canApprove' | 'canExport';
  fallbackPath?: string;
 }
@@ -27,6 +28,7 @@ export const ProtectedModuleRoute: React.FC<ProtectedModuleRouteProps> = ({
  children,
  moduleId,
  subModuleId,
+ anySubModuleIds,
  requiredAction = 'canView',
  fallbackPath = '/'
 }) => {
@@ -56,7 +58,11 @@ export const ProtectedModuleRoute: React.FC<ProtectedModuleRouteProps> = ({
  // Check if user has access
  let hasAccess = false;
 
- if (subModuleId) {
+ if (Array.isArray(anySubModuleIds) && anySubModuleIds.length > 0) {
+  hasAccess = anySubModuleIds.some((id) =>
+   canPerformAction(effectiveModuleId, id, requiredAction)
+  );
+ } else if (subModuleId) {
   // Check specific sub-module and action
   hasAccess = canPerformAction(effectiveModuleId, subModuleId, requiredAction);
  } else {
