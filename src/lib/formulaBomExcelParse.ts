@@ -76,7 +76,11 @@ function detectFormulaHeaders(headerRow: unknown[]): {
       (norm === 'qty per unit' ||
         norm === 'qty per sku kg nos' ||
         norm === 'qty per sku' ||
-        norm === 'quantity per unit') &&
+        norm === 'quantity per unit' ||
+        norm === 'qty kg ltr' ||
+        norm === 'qty in kg ltr' ||
+        norm === 'qty kg litre' ||
+        norm === 'qty kg liter') &&
       map.qty == null
     ) {
       map.qty = idx;
