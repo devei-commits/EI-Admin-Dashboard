@@ -478,11 +478,11 @@ export async function clearPrBomFullReset(
 /** Must match server — paste this in the confirmation prompt for global BOM reset. */
 export const ALL_PR_BOM_RESET_CONFIRM = 'RESET_ALL_PR_BOM_DATA' as const;
 
-/** Clears BOM lines + fill_size + internal product_code for every product linked to a BOM row. POST /api/v1/products/bom/full-reset-all */
+/** Deletes all PR products linked from `boms`, all BOM rows, and related dependents (server). POST /api/v1/products/bom/full-reset-all */
 export interface ClearAllPrBomFullResetResult {
   success: boolean;
-  boms_updated: number;
-  products_fill_cleared: number;
+  products_deleted: number;
+  boms_removed: number;
   message?: string;
 }
 

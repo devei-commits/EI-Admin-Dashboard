@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
@@ -12,7 +11,7 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, postItemReferenceBulkChunk, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload, type ItemReferenceBulkChunkRow } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
@@ -34,14 +33,6 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
-function toCodeToken(input: string): string {
-  return String(input || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 16);
-}
 const PM_REQUIRED_FIELDS: Array<{
   id: string;
   label: string;
@@ -55,15 +46,6 @@ const PM_REQUIRED_FIELDS: Array<{
   { id: 'level', label: 'Level', section: 0, toastMessage: 'Step 1 — Level is required' },
   { id: 'itemCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
 ];
-
-const ITEM_REFERENCE_SHEET_NAME = 'Item Reference';
-const ITEM_REFERENCE_CHUNK_SIZE = 40;
-
-function chunkArray<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
   if (input == null) return null;
@@ -345,15 +327,8 @@ const PackagingRefactored: React.FC = () => {
 
   // Code generation (next code comes from backend)
   const getCodePreview = () => {
-    const cat = PM_CATEGORIES[formData.pmCategory];
-    if (!cat) return { prefix: '—', next: '—' };
-    const subToken = toCodeToken(formData.subCategory);
-    const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
-    if (generatedCode && generatedCode.startsWith(seriesPrefix)) {
-      const suffix = generatedCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
-      return { prefix: seriesPrefix, next: suffix };
-    }
-    return { prefix: seriesPrefix, next: '…' };
+    if (generatedCode?.trim()) return { preview: generatedCode.trim() };
+    return { preview: '—' };
   };
 
   const generateCode = async (confirm = false) => {
@@ -361,23 +336,12 @@ const PackagingRefactored: React.FC = () => {
       addToast('error', 'Code cannot be changed while editing an existing pack material.');
       return;
     }
-    if (!formData.pmCategory) {
-      addToast('error', 'Select a PM Category first');
-      return;
-    }
-    if (!formData.subCategory?.trim()) {
-      addToast('error', 'Enter PM Sub-Category first');
-      return;
-    }
     if (generatedCode && !confirm) {
       const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
       if (!ok) return;
     }
-    const cat = PM_CATEGORIES[formData.pmCategory];
     try {
-      const subToken = toCodeToken(formData.subCategory);
-      const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
-      const code = await fetchNextPackMaterialCode(seriesPrefix);
+      const code = await fetchNextPackMaterialCode();
       setGeneratedCode(code);
       setFormData(prev => ({ ...prev, itemCode: code }));
       addToast('success', `Code generated: ${code}`);
@@ -641,7 +605,7 @@ const PackagingRefactored: React.FC = () => {
 
   // ── Section Content ──────────────────────────────────────────────────────────
   const renderSection = () => {
-    const { prefix, next } = getCodePreview();
+    const { preview } = getCodePreview();
 
     switch (currentSection) {
       case 0:
@@ -688,19 +652,13 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
-            {/* Code Series Preview */}
+            {/* Numeric PM code */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Numeric PM code</h3>
               <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
-                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
-                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
-                  </div>
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 mb-1">Current / preview</p>
+                  <p className="font-mono font-bold text-gray-800 text-sm">{preview}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -718,7 +676,7 @@ const PackagingRefactored: React.FC = () => {
                       disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      Regenerate (change category / sub-category)
+                      Regenerate
                     </button>
                   )}
                   <button
@@ -729,6 +687,7 @@ const PackagingRefactored: React.FC = () => {
                     Fill mock values
                   </button>
                 </div>
+                <p className="text-xs text-gray-500 mt-3">Codes are numeric only (global sequence). You can still edit the item code manually.</p>
               </div>
             </div>
 
@@ -775,10 +734,10 @@ const PackagingRefactored: React.FC = () => {
                   id="itemCode"
                   value={formData.itemCode}
                   onChange={handleInputChange}
-                  placeholder="Internal code used in ERP (e.g. EI-PM-PRI-000123)"
+                  placeholder="Numeric code (e.g. 00042)"
                   requiredMark
                   error={errors.itemCode}
-                  readOnly={lockPrimaryFields}
+                  readOnly={false}
                 />
                 <div>
                   <label htmlFor="pkgTaxPreference" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1811,12 +1770,41 @@ const BprDashboard: React.FC<{
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const itemRefFileInputRef = useRef<HTMLInputElement>(null);
-  const [bulkUploadPct, setBulkUploadPct] = useState(0);
   const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
+  const [resetAllRunning, setResetAllRunning] = useState(false);
 
   const onPickItemReferenceExcel = useCallback(() => {
     itemRefFileInputRef.current?.click();
   }, []);
+
+  const onResetAllMasters = useCallback(async () => {
+    if (
+      !window.confirm(
+        'This permanently deletes ALL pack materials and cleans related data (warehouse PM rows, BOM & planning-batch PM lines, planning packaging snapshots, procurement PM links, items list PM entries). This cannot be undone. Continue?'
+      )
+    ) {
+      return;
+    }
+    const typed = window.prompt('Type RESET_ALL_PACK_MATERIALS to confirm.');
+    if (typed !== 'RESET_ALL_PACK_MATERIALS') {
+      addToast('error', 'Confirmation text did not match. No changes were made.');
+      return;
+    }
+    setResetAllRunning(true);
+    try {
+      const { deletedPackMaterials } = await resetAllPackMaterialsMaster();
+      addToast('success', `Reset complete. Removed ${deletedPackMaterials} pack material(s).`);
+      await queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      await queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'pack-materials-list' });
+      await queryClient.invalidateQueries({
+        predicate: (q) => Array.isArray(q.queryKey) && typeof q.queryKey[0] === 'string' && q.queryKey[0].startsWith('items-list'),
+      });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setResetAllRunning(false);
+    }
+  }, [addToast, queryClient]);
 
   const onItemReferenceFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1828,70 +1816,16 @@ const BprDashboard: React.FC<{
         addToast('error', 'Please choose an Excel file (.xlsx or .xlsm).');
         return;
       }
+      setBulkUploadRunning(true);
       try {
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        if (!wb.SheetNames.includes(ITEM_REFERENCE_SHEET_NAME)) {
-          addToast('error', `Workbook must contain a sheet named "${ITEM_REFERENCE_SHEET_NAME}".`);
-          return;
-        }
-        const sheet = wb.Sheets[ITEM_REFERENCE_SHEET_NAME];
-        const aoas = XLSX.utils.sheet_to_json<(string | number | undefined)[]>(sheet, { header: 1, defval: '' });
-        const rows: ItemReferenceBulkChunkRow[] = [];
-        let rawMaterialRowsSkipped = 0;
-        for (let i = 1; i < aoas.length; i++) {
-          const row = aoas[i];
-          if (!Array.isArray(row)) continue;
-          const sku = row[0] != null ? String(row[0]).trim() : '';
-          const itemName = row[1] != null ? String(row[1]).trim() : '';
-          const typeCell = row[2] != null ? String(row[2]).trim() : '';
-          if (!sku && !itemName && !typeCell) continue;
-          const tNorm = typeCell.toLowerCase().replace(/\s+/g, ' ');
-          if (tNorm === 'raw material') {
-            rawMaterialRowsSkipped += 1;
-            continue;
-          }
-          if (tNorm !== 'packaging') continue;
-          rows.push({
-            excel_row: i + 1,
-            line_type: 'Packaging',
-            zoho_sku_code: sku,
-            description: itemName,
-          });
-        }
-        if (rows.length === 0) {
-          addToast(
-            'error',
-            rawMaterialRowsSkipped > 0
-              ? `No Packaging rows to import. Skipped ${rawMaterialRowsSkipped} raw material row(s) — this upload only updates pack materials.`
-              : 'No rows with Type "Packaging" (columns A–C, from row 2).'
-          );
-          return;
-        }
-        const chunks = chunkArray(rows, ITEM_REFERENCE_CHUNK_SIZE);
-        setBulkUploadRunning(true);
-        setBulkUploadPct(0);
-        const agg = {
-          packaging_updated: 0,
-          skipped: 0,
-          errors: 0,
-        };
-        for (let ci = 0; ci < chunks.length; ci++) {
-          const res = await postItemReferenceBulkChunk({
-            rows: chunks[ci],
-            chunk_index: ci,
-            chunk_total: chunks.length,
-          });
-          setBulkUploadPct(res.percent_complete);
-          agg.packaging_updated += res.summary.packaging_updated;
-          agg.skipped += res.summary.skipped;
-          agg.errors += res.summary.errors;
-        }
-        const rmNote =
-          rawMaterialRowsSkipped > 0 ? ` (${rawMaterialRowsSkipped} raw material row(s) ignored.)` : '';
+        const res = await postPackMaterialsMasterExcel(file);
+        const s = res.summary;
+        const rmSkip = res.raw_material_rows_skipped ?? 0;
+        const rmNote = rmSkip > 0 ? ` (${rmSkip} raw material row(s) ignored.)` : '';
+        const label = res.format === 'multi_sheet' ? 'Pack materials (multi-sheet)' : 'Pack materials (Item Reference)';
         addToast(
           'success',
-          `Pack materials: ${agg.packaging_updated} updated, ${agg.skipped} skipped, ${agg.errors} errors.${rmNote}`
+          `${label}: ${s.packaging_created} created, ${s.packaging_updated} updated, ${s.skipped} skipped, ${s.errors} errors.${rmNote}`
         );
         void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
       } catch (err) {
@@ -1899,7 +1833,6 @@ const BprDashboard: React.FC<{
         addToast('error', msg);
       } finally {
         setBulkUploadRunning(false);
-        setBulkUploadPct(0);
       }
     },
     [addToast, queryClient]
@@ -2036,12 +1969,21 @@ const BprDashboard: React.FC<{
                   />
                   <button
                     type="button"
+                    onClick={() => { void onResetAllMasters(); }}
+                    disabled={bulkUploadRunning || resetAllRunning || isLoading}
+                    title="Deletes all pack material master rows and scrubs linked warehouse, BOM, planning, and procurement data."
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-white text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    {resetAllRunning ? 'Resetting…' : 'Reset all masters'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={onPickItemReferenceExcel}
                     disabled={bulkUploadRunning}
-                    title='Worksheet "Item Reference": A = Zoho SKU, B = Item Name (must match existing PM description). C = Type — only "Packaging" rows are imported here; "Raw Material" rows are skipped.'
+                    title="Multi-tab PM workbook: Primary Packaging, Labels, Monocartons, Shrink Sleeves, Shippers %CFB, Fitness & Misc — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
                     className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-white text-violet-700 text-xs font-semibold hover:bg-violet-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
-                    {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
+                    {bulkUploadRunning ? 'Uploading…' : 'Import Excel'}
                   </button>
                   {/* search */}
                   <div className="relative group">
@@ -2068,15 +2010,9 @@ const BprDashboard: React.FC<{
 
               {bulkUploadRunning && (
                 <div className="px-6 py-3 border-b border-gray-100 bg-violet-50/40">
-                  <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
-                    <span className="font-medium">Uploading Item Reference data (chunked)…</span>
-                    <span className="font-mono font-semibold text-violet-700 tabular-nums">{bulkUploadPct}%</span>
-                  </div>
+                  <div className="text-xs text-gray-700 mb-1.5 font-medium">Uploading workbook — server is parsing and importing in chunks…</div>
                   <div className="h-2.5 rounded-full bg-violet-100 overflow-hidden shadow-inner">
-                    <div
-                      className="h-full rounded-full bg-linear-to-r from-violet-500 to-violet-600 transition-[width] duration-300 ease-out"
-                      style={{ width: `${Math.min(100, Math.max(0, bulkUploadPct))}%` }}
-                    />
+                    <div className="h-full w-full rounded-full bg-linear-to-r from-violet-500 to-violet-600 animate-pulse" />
                   </div>
                 </div>
               )}

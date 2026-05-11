@@ -28,10 +28,12 @@ export function clearAuthToken(): void {
  localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
-function getHeaders(includeAuth = true): HeadersInit {
- const headers: HeadersInit = {
-  'Content-Type': 'application/json',
- };
+function getHeaders(includeAuth = true, body?: BodyInit | null): HeadersInit {
+ const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+ const headers: HeadersInit = {};
+ if (!isFormData) {
+  (headers as Record<string, string>)['Content-Type'] = 'application/json';
+ }
  if (includeAuth) {
   const token = getAuthToken();
   if (token) {
@@ -68,7 +70,7 @@ export async function apiRequest<T>(
  const response = await fetch(url, {
   ...init,
   credentials: 'include',
-  headers: { ...getHeaders(!skipAuth), ...(init.headers as HeadersInit) },
+  headers: { ...getHeaders(!skipAuth, init.body ?? null), ...(init.headers as HeadersInit) },
  });
  if (!response.ok) {
   // Read the body once to avoid "body stream already read" error
@@ -95,7 +97,16 @@ export const api = {
  get: <T>(path: string, options?: RequestInit & { skipAuth?: boolean }) =>
   apiRequest<T>(path, { ...options, method: 'GET' }),
  post: <T>(path: string, data?: unknown, options?: RequestInit & { skipAuth?: boolean }) =>
-  apiRequest<T>(path, { ...options, method: 'POST', body: data != null ? JSON.stringify(data) : undefined }),
+  apiRequest<T>(path, {
+   ...options,
+   method: 'POST',
+   body:
+    data != null
+     ? typeof FormData !== 'undefined' && data instanceof FormData
+       ? data
+       : JSON.stringify(data)
+     : undefined,
+  }),
  put: <T>(path: string, data?: unknown, options?: RequestInit & { skipAuth?: boolean }) =>
   apiRequest<T>(path, { ...options, method: 'PUT', body: data != null ? JSON.stringify(data) : undefined }),
  patch: <T>(path: string, data?: unknown, options?: RequestInit & { skipAuth?: boolean }) =>

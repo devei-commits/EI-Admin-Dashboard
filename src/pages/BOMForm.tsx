@@ -35,27 +35,11 @@ const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   MISC: { label: 'Miscellaneous (FG)', prefix: 'EI-PR-MISC' },
 };
 
-// Composite Item series: when the PR is flagged as a Composite Item, the
-// generated SKU uses the "EI-CI-<CAT>" prefix instead of "EI-PR-<CAT>".
+/** Legacy alphanumeric PR codes only — used to infer category/composite when editing old rows. */
 const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
-
-function getPrSeriesPrefix(categoryKey: string, isComposite: boolean): string {
-  const cat = PR_CATEGORIES[categoryKey];
-  if (!cat) return '';
-  return isComposite ? `${COMPOSITE_ITEM_PREFIX_BASE}-${categoryKey}` : cat.prefix;
-}
 
 const PR_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const PR_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
-
-function toCodeToken(input: string): string {
-  return String(input || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 16);
-}
 
 interface BOMFormState {
   // Identity & coding (step 0)
@@ -77,8 +61,7 @@ interface BOMFormState {
   bomTaxPreference: string;
   bomReturnable: boolean;
   bomAssociateItems: string;
-  /** Required at Step 1: must be explicitly set to 'Yes' or 'No'. When 'Yes',
-   *  the generated PR / BOM code uses the EI-CI-<CAT> prefix instead of EI-PR-<CAT>. */
+  /** Required at Step 1: must be explicitly set to 'Yes' or 'No' (Zoho / reporting; PR codes are numeric only). */
   bomCompositeItem: '' | 'Yes' | 'No';
 
   // Formula BOM Tab
@@ -206,7 +189,7 @@ function mockBomForm(): BOMFormState {
     brandClient: 'Esthetic Insights',
     fillSize: '50ml',
     packConfiguration: 'Bottle + Cap',
-    skuCode: 'EI-PR-SUN-00001',
+    skuCode: '00001',
     mrp: '₹499',
     zohoId: '',
     skuForZoho: '',
@@ -845,16 +828,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
     if (field === 'prCategoryKey') {
-      // Changing the category invalidates any previously generated PR code
-      // because the series prefix (EI-PR-<CAT> / EI-CI-<CAT>) has changed.
-      setFormData((prev) => ({ ...prev, prCategoryKey: value as string, skuCode: '' }));
-      setGeneratedPrCode('');
+      setFormData((prev) => ({ ...prev, prCategoryKey: value as string }));
       return;
     }
     if (field === 'bomCompositeItem') {
-      // Flipping composite toggles between EI-PR-<CAT> and EI-CI-<CAT>; reset code.
-      setFormData((prev) => ({ ...prev, bomCompositeItem: value as '' | 'Yes' | 'No', skuCode: '' }));
-      setGeneratedPrCode('');
+      setFormData((prev) => ({ ...prev, bomCompositeItem: value as '' | 'Yes' | 'No' }));
       setErrors((prev) => {
         if (!prev.bomCompositeItem) return prev;
         const next = { ...prev };
@@ -875,17 +853,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const getPrCodePreview = () => {
-    if (!formData.prCategoryKey) return { prefix: '—', next: '—' };
-    if (!formData.bomCompositeItem) return { prefix: '—', next: '—' };
-    const base = getPrSeriesPrefix(formData.prCategoryKey, formData.bomCompositeItem === 'Yes');
-    if (!base) return { prefix: '—', next: '—' };
-    const subToken = toCodeToken(formData.prSubCategory);
-    const seriesPrefix = subToken ? `${base}-${subToken}` : base;
-    if (generatedPrCode && generatedPrCode.startsWith(seriesPrefix)) {
-      const suffix = generatedPrCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
-      return { prefix: seriesPrefix, next: suffix };
-    }
-    return { prefix: seriesPrefix, next: '…' };
+    if (generatedPrCode?.trim()) return { preview: generatedPrCode.trim() };
+    return { preview: '—' };
   };
 
   const generatePrCode = async (confirm = false) => {
@@ -893,27 +862,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'PR code cannot be changed while editing an existing product.');
       return;
     }
-    if (!formData.prCategoryKey) {
-      addToast('error', 'Select a PR Category first');
-      return;
-    }
-    if (!formData.bomCompositeItem) {
-      addToast('error', 'Select Composite Item (Yes / No) before generating the code');
-      return;
-    }
-    if (!formData.prSubCategory.trim()) {
-      addToast('error', 'Enter PR Sub-Category first');
-      return;
-    }
     if (generatedPrCode && !confirm) {
       const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
       if (!ok) return;
     }
     try {
-      const base = getPrSeriesPrefix(formData.prCategoryKey, formData.bomCompositeItem === 'Yes');
-      const subToken = toCodeToken(formData.prSubCategory);
-      const seriesPrefix = subToken ? `${base}-${subToken}` : base;
-      const code = await fetchNextBomCode(seriesPrefix);
+      const code = await fetchNextBomCode();
       setGeneratedPrCode(code);
       setFormData((prev) => ({ ...prev, skuCode: code }));
       addToast('success', `Code generated: ${code}`);
@@ -1623,7 +1577,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const renderStageContent = () => {
-    const { prefix, next } = getPrCodePreview();
+    const { preview } = getPrCodePreview();
 
     switch (currentStage) {
       case 0:
@@ -1696,7 +1650,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <p className="mt-1 text-xs text-red-600">{errors.bomCompositeItem}</p>
                   ) : (
                     <p className="text-xs text-gray-500 mt-1">
-                      Composite Items (bundles / kits) use the <span className="font-mono">EI-CI-&lt;CAT&gt;</span> series; regular products use <span className="font-mono">EI-PR-&lt;CAT&gt;</span>.
+                      Local PR / BOM codes are numeric only. Composite flag is used for Books / workflows, not the code format.
                     </p>
                   )}
                 </div>
@@ -1760,17 +1714,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             </div>
 
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Local PR / BOM code</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Local PR / BOM code (numeric)</h3>
               <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
-                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
-                    <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
-                  </div>
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 mb-1">Current / preview</p>
+                  <p className="font-mono font-bold text-gray-800 text-sm">{preview}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -1788,23 +1736,23 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       disabled={lockPrimaryFields}
                       className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Regenerate (change category / sub-category)
+                      Regenerate
                     </button>
                   )}
                 </div>
                 <p className="text-xs text-gray-500 mt-3 mb-4">
-                  Generate the local database code after filling identity fields. The code is locked when editing an existing product.
+                  PR / BOM code and Zoho SKU can be edited anytime. Use &quot;Generate&quot; only when creating a new product (disabled on edit to avoid accidental replacement).
                 </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code <span className="text-red-600">*</span></label>
                   <input
                     id="skuCode"
                     type="text"
-                    readOnly={lockPrimaryFields}
-                    placeholder="Generate or type PR / BOM code"
+                    readOnly={false}
+                    placeholder="e.g. 00042 (numeric)"
                     value={formData.skuCode}
                     onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''}`}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               </div>
@@ -2552,8 +2500,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="Optional — defaults to PR code"
                       value={formData.skuForZoho}
                       onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                      disabled={lockPrimaryFields}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
                   <div>

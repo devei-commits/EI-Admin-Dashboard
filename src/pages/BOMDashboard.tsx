@@ -420,11 +420,11 @@ const BOMDashboard: React.FC = () => {
       if (!okDraft) return;
     }
     const ok = window.confirm(
-      'This clears BOM data for EVERY product:\n' +
-        '• All formula (%), SKU BOM, pack BOM, and process lines\n' +
-        '• Net limits and BOM pack size\n' +
-        '• Fill size and internal product code on every product that has a BOM row\n\n' +
-        'Product and BOM rows are not deleted (Zoho SKU and other fields stay). You will be asked to type a confirmation phrase next.'
+      'This permanently deletes ALL PR master data from the database:\n' +
+        '• Every catalogue product that is linked from a BOM row\n' +
+        '• Every row in the BOM table (including orphan BOMs)\n' +
+        '• Related planning, warehouse FG rows, items-list PR links, and product customizations\n\n' +
+        'Raw material and pack material masters are not deleted. If any ecommerce order lines still reference these products, the reset will be blocked. You will be asked to type a confirmation phrase next.'
     );
     if (!ok) return;
     const phrase = window.prompt(`Type exactly: ${ALL_PR_BOM_RESET_CONFIRM}`);
@@ -907,12 +907,12 @@ const BOMDashboard: React.FC = () => {
                     disabled={
                       formulaRmExcelUploading || prToolbarFullResetting || skuExcelUploading || skuBomClearing
                     }
-                    title="Clears BOM lines, fill size, and internal product code for every product that has a BOM row. You must type a confirmation phrase. Use before a full Formula BOM (Excel) re-import."
+                    title="Permanently deletes all PR-linked catalogue products, every BOM row, and related planning/inventory rows. Raw and pack material masters are kept. Blocked if ecommerce orders still reference these products. Requires typing a confirmation phrase."
                     onClick={() => void handleToolbarClearAllPrBom()}
                     className="inline-flex items-center px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 text-xs font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap gap-1"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    {prToolbarFullResetting ? 'Resetting…' : 'Reset all PR BOMs'}
+                    {prToolbarFullResetting ? 'Deleting…' : 'Delete all PR masters'}
                   </button>
                   {formulaRmExcelUploading && formulaBomUploadPercent != null && (
                     <div className="flex items-center gap-2 min-w-[10rem]">

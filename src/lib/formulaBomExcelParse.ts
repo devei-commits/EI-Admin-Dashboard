@@ -57,8 +57,16 @@ function detectFormulaHeaders(headerRow: unknown[]): {
   headerRow.forEach((h, idx) => {
     if (h === '' || h == null) return;
     const norm = normalizeHeader(h);
-    if (norm === 'composite sku' && map.composite_sku == null) map.composite_sku = idx;
-    else if (norm === 'composite name' && map.composite_name == null) map.composite_name = idx;
+    if (
+      (norm === 'composite sku' ||
+        norm === 'sku code' ||
+        norm === 'product sku' ||
+        norm === 'product sku code' ||
+        norm === 'fg sku') &&
+      map.composite_sku == null
+    ) {
+      map.composite_sku = idx;
+    } else if (norm === 'composite name' && map.composite_name == null) map.composite_name = idx;
     else if (
       (norm === 'volume in kg ltr' || norm === 'volume in kg litre' || norm === 'volume in kg liter') &&
       map.volume_kg_ltr == null
@@ -70,8 +78,15 @@ function detectFormulaHeaders(headerRow: unknown[]): {
       map.uom = idx;
     } else if ((norm === 'sg' || norm === 'specific gravity') && map.sg == null) {
       map.sg = idx;
-    } else if (norm === 'component sku' && map.component_sku == null) map.component_sku = idx;
-    else if (norm === 'component name' && map.component_name == null) map.component_name = idx;
+    } else if (
+      (norm === 'component sku' ||
+        norm === 'component sku code' ||
+        norm === 'item sku' ||
+        norm === 'material sku') &&
+      map.component_sku == null
+    ) {
+      map.component_sku = idx;
+    } else if (norm === 'component name' && map.component_name == null) map.component_name = idx;
     else if (
       (norm === 'qty per unit' ||
         norm === 'qty per sku kg nos' ||
@@ -149,7 +164,7 @@ function parseSheet(
   const headerRow = data[0] as unknown[];
   const { map: m, headers } = detectFormulaHeaders(headerRow);
   const missing: string[] = [];
-  if (m.composite_sku == null) missing.push('Composite SKU');
+  if (m.composite_sku == null) missing.push('Composite SKU (or SKU Code)');
   if (m.component_sku == null) missing.push('Component SKU');
   if (m.component_name == null) missing.push('Component Name');
   if (m.qty == null) missing.push('Qty per Unit');

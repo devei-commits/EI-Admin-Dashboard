@@ -150,11 +150,10 @@ export interface RawMaterialCreateResult {
   zohoSync?: RawMaterialFromApi['zoho_sync'];
 }
 
-/** Next RM code for a series prefix (e.g. EI-RM-ACT → EI-RM-ACT-00001). */
-export async function fetchNextRawMaterialCode(prefix: string): Promise<string> {
-  const p = encodeURIComponent(prefix.trim());
-  const res = await api.get<{ nextCode: string }>(`/api/v1/raw-materials/next-code?prefix=${p}`);
-  return res?.nextCode ?? `${prefix}-00001`;
+/** Next RM code: numeric only (e.g. 00001), global sequence for raw_materials.code. */
+export async function fetchNextRawMaterialCode(): Promise<string> {
+  const res = await api.get<{ nextCode: string }>('/api/v1/raw-materials/next-code');
+  return res?.nextCode ?? '00001';
 }
 
 export interface RmZohoSyncResponse {
@@ -212,6 +211,26 @@ export async function deleteRawMaterial(id: string): Promise<void> {
   }
 }
 
+/** Delete every raw material and scrub dependent DB rows (destructive). Requires typed confirmation on the server. */
+export async function resetAllRawMaterialsMaster(): Promise<{ deletedRawMaterials: number }> {
+  try {
+    const res = await api.post<{ ok?: boolean; deletedRawMaterials?: number; message?: string }>(
+      '/api/v1/raw-materials/reset-all',
+      { confirm: 'RESET_ALL_RAW_MATERIALS' }
+    );
+    return { deletedRawMaterials: res?.deletedRawMaterials ?? 0 };
+  } catch (e) {
+    const body = (e as Error & { body?: unknown }).body;
+    const msg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as { error?: string }).error === 'string'
+        ? String((body as { error: string }).error)
+        : e instanceof Error
+          ? e.message
+          : 'Failed to reset raw materials';
+    throw new Error(msg);
+  }
+}
+
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */
 export interface ReservedStockResponse {
   actual: number;
@@ -233,6 +252,16 @@ export interface ItemReferenceBulkChunkRow {
   line_type: 'Packaging' | 'Raw Material';
   zoho_sku_code: string;
   description: string;
+  /** Multi-worksheet RM template (tabs: Raw Materials, Fragrances, Colors & Pigments, Club Items). */
+  import_profile?: 'rm_multi_sheet';
+  sheet_name?: string;
+  category?: string;
+  sub_category?: string;
+  uom?: string;
+  hsn_code?: string;
+  gst_pct?: string | number;
+  purchase_rate_inr?: string | number;
+  inci_name?: string;
 }
 
 export interface ItemReferenceBulkChunkResponse {
@@ -257,4 +286,28 @@ export async function postItemReferenceBulkChunk(payload: {
   details?: boolean;
 }): Promise<ItemReferenceBulkChunkResponse> {
   return api.post<ItemReferenceBulkChunkResponse>('/api/v1/raw-materials/item-reference-bulk-chunk', payload);
+}
+
+/** Server parses workbook with exceljs; multipart field must be `file`. */
+export interface RmMasterExcelImportResponse {
+  ok: boolean;
+  format?: string;
+  packaging_rows_skipped?: number;
+  /** Server parses full workbook then upserts in batches of chunk_size. */
+  rows_total?: number;
+  chunk_size?: number;
+  chunks_processed?: number;
+  summary: {
+    raw_material_created: number;
+    raw_material_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postRawMaterialsMasterExcel(file: File): Promise<RmMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<RmMasterExcelImportResponse>('/api/v1/raw-materials/import-excel', fd);
 }

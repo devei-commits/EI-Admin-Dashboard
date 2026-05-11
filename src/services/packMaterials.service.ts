@@ -135,10 +135,10 @@ export async function fetchPackMaterialsPage(opts: {
  * Get next code for a series prefix (e.g. EI-PM-PRI -> EI-PM-PRI-00001).
  * Backend counts existing codes with that prefix and returns next.
  */
-export async function fetchNextPackMaterialCode(prefix: string): Promise<string> {
-  const p = encodeURIComponent(prefix.trim());
-  const res = await api.get<{ nextCode: string }>(`/api/v1/pack-materials/next-code?prefix=${p}`);
-  return res?.nextCode ?? `${prefix}-00001`;
+/** Next PM code: numeric only (e.g. 00001), global sequence for pack_materials.code. */
+export async function fetchNextPackMaterialCode(): Promise<string> {
+  const res = await api.get<{ nextCode: string }>('/api/v1/pack-materials/next-code');
+  return res?.nextCode ?? '00001';
 }
 
 /** Payload for creating a pack material (camelCase; backend accepts snake_case too). */
@@ -258,6 +258,26 @@ export async function deletePackMaterial(id: string): Promise<void> {
   }
 }
 
+/** Delete every pack material and scrub dependent DB rows (destructive). Requires typed confirmation on the server. */
+export async function resetAllPackMaterialsMaster(): Promise<{ deletedPackMaterials: number }> {
+  try {
+    const res = await api.post<{ ok?: boolean; deletedPackMaterials?: number; message?: string }>(
+      '/api/v1/pack-materials/reset-all',
+      { confirm: 'RESET_ALL_PACK_MATERIALS' }
+    );
+    return { deletedPackMaterials: res?.deletedPackMaterials ?? 0 };
+  } catch (e) {
+    const body = (e as Error & { body?: unknown }).body;
+    const msg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as { error?: string }).error === 'string'
+        ? String((body as { error: string }).error)
+        : e instanceof Error
+          ? e.message
+          : 'Failed to reset pack materials';
+    throw new Error(msg);
+  }
+}
+
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */
 export interface ReservedStockResponse {
   actual: number;
@@ -279,6 +299,15 @@ export interface ItemReferenceBulkChunkRow {
   line_type: 'Packaging' | 'Raw Material';
   zoho_sku_code: string;
   description: string;
+  /** Multi-worksheet PM template (tabs: Primary Packaging, Labels, …). */
+  import_profile?: 'pm_multi_sheet';
+  sheet_name?: string;
+  category?: string;
+  sub_category?: string;
+  uom?: string;
+  hsn_code?: string;
+  gst_pct?: string | number;
+  purchase_rate_inr?: string | number;
 }
 
 export interface ItemReferenceBulkChunkResponse {
@@ -303,4 +332,27 @@ export async function postItemReferenceBulkChunk(payload: {
   details?: boolean;
 }): Promise<ItemReferenceBulkChunkResponse> {
   return api.post<ItemReferenceBulkChunkResponse>('/api/v1/pack-materials/item-reference-bulk-chunk', payload);
+}
+
+/** Server parses workbook with exceljs; multipart field must be `file`. */
+export interface PmMasterExcelImportResponse {
+  ok: boolean;
+  format?: string;
+  raw_material_rows_skipped?: number;
+  rows_total?: number;
+  chunk_size?: number;
+  chunks_processed?: number;
+  summary: {
+    packaging_created: number;
+    packaging_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postPackMaterialsMasterExcel(file: File): Promise<PmMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<PmMasterExcelImportResponse>('/api/v1/pack-materials/import-excel', fd);
 }

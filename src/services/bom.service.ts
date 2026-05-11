@@ -86,10 +86,10 @@ export async function fetchBOMById(id: string): Promise<ServiceResult<BOMRecord>
   }
 }
 
-export async function fetchNextBomCode(prefix: string): Promise<string> {
-  const p = encodeURIComponent(prefix.trim());
-  const res = await api.get<{ nextCode: string }>(`/api/v1/bom/next-code?prefix=${p}`);
-  return res?.nextCode ?? `${prefix}-00001`;
+/** Next PR/BOM code: numeric only (e.g. 00001), global sequence for boms.bom_code. */
+export async function fetchNextBomCode(): Promise<string> {
+  const res = await api.get<{ nextCode: string }>('/api/v1/bom/next-code');
+  return res?.nextCode ?? '00001';
 }
 
 export interface CreateBOMPayload {

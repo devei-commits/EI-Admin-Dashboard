@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
@@ -14,7 +13,7 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, postItemReferenceBulkChunk, type ItemReferenceBulkChunkRow, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -34,30 +33,12 @@ const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
-const ITEM_REFERENCE_SHEET_NAME = 'Item Reference';
-const ITEM_REFERENCE_CHUNK_SIZE = 40;
-
-function chunkArray<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
 function inferRmCategoryKeyFromCode(code: string): string {
   if (!code) return '';
   for (const [k, v] of Object.entries(RM_CATEGORIES)) {
     if (code.startsWith(`${v.prefix}-`) || code === v.prefix) return k;
   }
   return '';
-}
-
-function toCodeToken(input: string): string {
-  return String(input || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 16);
 }
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -296,7 +277,7 @@ const RawMaterialRefactored: React.FC = () => {
     ...prev,
     rmCategoryKey: value,
     rmCategory: cat ? cat.label : prev.rmCategory,
-    seriesPrefix: cat ? cat.prefix : prev.seriesPrefix,
+    seriesPrefix: '',
    }));
    return;
   }
@@ -307,15 +288,8 @@ const RawMaterialRefactored: React.FC = () => {
  };
 
  const getRmCodePreview = () => {
-  const cat = formData.rmCategoryKey ? RM_CATEGORIES[formData.rmCategoryKey] : null;
-  if (!cat) return { prefix: '—', next: '—' };
-  const subToken = toCodeToken(formData.subCategory);
-  const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
-  if (generatedRmCode && generatedRmCode.startsWith(seriesPrefix)) {
-   const suffix = generatedRmCode.slice(seriesPrefix.length).replace(/^-+/, '') || '—';
-   return { prefix: seriesPrefix, next: suffix };
-  }
-  return { prefix: seriesPrefix, next: '…' };
+  if (generatedRmCode?.trim()) return { preview: generatedRmCode.trim() };
+  return { preview: '—' };
  };
 
  const generateRmCode = async (confirm = false) => {
@@ -323,23 +297,12 @@ const RawMaterialRefactored: React.FC = () => {
    addToast('error', 'RM code cannot be changed while editing an existing record.');
    return;
   }
-  if (!formData.rmCategoryKey) {
-   addToast('error', 'Select an RM Category first');
-   return;
-  }
-  if (!formData.subCategory?.trim()) {
-   addToast('error', 'Enter RM Sub-Category first');
-   return;
-  }
   if (generatedRmCode && !confirm) {
    const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
    if (!ok) return;
   }
-  const cat = RM_CATEGORIES[formData.rmCategoryKey];
-  const subToken = toCodeToken(formData.subCategory);
-  const seriesPrefix = subToken ? `${cat.prefix}-${subToken}` : cat.prefix;
   try {
-   const code = await fetchNextRawMaterialCode(seriesPrefix);
+   const code = await fetchNextRawMaterialCode();
    setGeneratedRmCode(code);
    setFormData(prev => ({ ...prev, rmSku: code }));
    addToast('success', `Code generated: ${code}`);
@@ -641,7 +604,7 @@ const RawMaterialRefactored: React.FC = () => {
   switch (currentStage) {
   case 0: // Primary info — category, code, identity, Zoho
   {
-   const { prefix, next } = getRmCodePreview();
+   const { preview } = getRmCodePreview();
    return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
@@ -717,7 +680,7 @@ const RawMaterialRefactored: React.FC = () => {
       onChange={handleInputChange}
       placeholder="Internal raw material code (e.g. RM-000123)"
       requiredMark
-      readOnly={lockPrimaryFields}
+      readOnly={false}
      />
 
      <div className="border-t border-gray-200 pt-4">
@@ -833,13 +796,6 @@ const RawMaterialRefactored: React.FC = () => {
          onChange={handleInputChange}
          placeholder="e.g. Flammable, Corrosive, General"
         />
-        <InputField
-         label="Series Prefix (derived)"
-         id="seriesPrefix"
-         value={formData.seriesPrefix}
-         onChange={handleInputChange}
-         placeholder="From RM Category; editable if needed"
-        />
        </div>
       </div>
 
@@ -877,7 +833,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.sku}
          onChange={handleInputChange}
          placeholder="Optional; defaults to RM SKU"
-         disabled={lockPrimaryFields}
         />
         <InputField
          label="Zoho Item ID"
@@ -1693,8 +1648,37 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
  const queryClient = useQueryClient();
  const { addToast } = useToast();
  const itemRefFileInputRef = useRef<HTMLInputElement>(null);
- const [bulkUploadPct, setBulkUploadPct] = useState(0);
  const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
+ const [resetAllRunning, setResetAllRunning] = useState(false);
+
+ const onResetAllMasters = useCallback(async () => {
+  if (
+   !window.confirm(
+    'This permanently deletes ALL raw materials and cleans related data (warehouse RM rows, BOM & planning-batch RM lines, planning RM snapshots, procurement RM links, items list RM entries, universal swap history). This cannot be undone. Continue?'
+   )
+  ) {
+   return;
+  }
+  const typed = window.prompt('Type RESET_ALL_RAW_MATERIALS to confirm.');
+  if (typed !== 'RESET_ALL_RAW_MATERIALS') {
+   addToast('error', 'Confirmation text did not match. No changes were made.');
+   return;
+  }
+  setResetAllRunning(true);
+  try {
+   const { deletedRawMaterials } = await resetAllRawMaterialsMaster();
+   addToast('success', `Reset complete. Removed ${deletedRawMaterials} raw material(s).`);
+   await queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+   await queryClient.invalidateQueries({ queryKey: ['raw-materials-list'] });
+   await queryClient.invalidateQueries({
+    predicate: (q) => Array.isArray(q.queryKey) && typeof q.queryKey[0] === 'string' && q.queryKey[0].startsWith('items-list'),
+   });
+  } catch (err) {
+   addToast('error', err instanceof Error ? err.message : 'Reset failed');
+  } finally {
+   setResetAllRunning(false);
+  }
+ }, [addToast, queryClient]);
 
  const onPickItemReferenceExcel = useCallback(() => {
    itemRefFileInputRef.current?.click();
@@ -1710,67 +1694,16 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        addToast('error', 'Please choose an Excel file (.xlsx or .xlsm).');
        return;
      }
+     setBulkUploadRunning(true);
      try {
-       const buf = await file.arrayBuffer();
-       const wb = XLSX.read(buf, { type: 'array' });
-       if (!wb.SheetNames.includes(ITEM_REFERENCE_SHEET_NAME)) {
-         addToast('error', `Workbook must contain a sheet named "${ITEM_REFERENCE_SHEET_NAME}".`);
-         return;
-       }
-       const sheet = wb.Sheets[ITEM_REFERENCE_SHEET_NAME];
-       const aoas = XLSX.utils.sheet_to_json<(string | number | undefined)[]>(sheet, { header: 1, defval: '' });
-       const rows: ItemReferenceBulkChunkRow[] = [];
-       let packagingRowsSkipped = 0;
-       for (let i = 1; i < aoas.length; i++) {
-         const row = aoas[i];
-         if (!Array.isArray(row)) continue;
-         const sku = row[0] != null ? String(row[0]).trim() : '';
-         const itemName = row[1] != null ? String(row[1]).trim() : '';
-         const typeCell = row[2] != null ? String(row[2]).trim() : '';
-         if (!sku && !itemName && !typeCell) continue;
-         const tNorm = typeCell.toLowerCase().replace(/\s+/g, ' ');
-         if (tNorm === 'packaging') {
-           packagingRowsSkipped += 1;
-           continue;
-         }
-         if (tNorm !== 'raw material') continue;
-         rows.push({
-           excel_row: i + 1,
-           line_type: 'Raw Material',
-           zoho_sku_code: sku,
-           description: itemName,
-         });
-       }
-       if (rows.length === 0) {
-         addToast(
-           'error',
-           packagingRowsSkipped > 0
-             ? `No Raw Material rows to import. Skipped ${packagingRowsSkipped} packaging row(s) — use Pack Materials for those.`
-             : 'No rows with Type "Raw Material" (columns A–C, from row 2).'
-         );
-         return;
-       }
-       const chunks = chunkArray(rows, ITEM_REFERENCE_CHUNK_SIZE);
-       setBulkUploadRunning(true);
-       setBulkUploadPct(0);
-       const agg = { raw_created: 0, raw_updated: 0, skipped: 0, errors: 0 };
-       for (let ci = 0; ci < chunks.length; ci++) {
-         const res = await postItemReferenceBulkChunk({
-           rows: chunks[ci],
-           chunk_index: ci,
-           chunk_total: chunks.length,
-         });
-         setBulkUploadPct(res.percent_complete);
-         agg.raw_created += res.summary.raw_material_created;
-         agg.raw_updated += res.summary.raw_material_updated;
-         agg.skipped += res.summary.skipped;
-         agg.errors += res.summary.errors;
-       }
-       const pmNote =
-         packagingRowsSkipped > 0 ? ` (${packagingRowsSkipped} packaging row(s) ignored.)` : '';
+       const res = await postRawMaterialsMasterExcel(file);
+       const s = res.summary;
+       const pmSkip = res.packaging_rows_skipped ?? 0;
+       const pmNote = pmSkip > 0 ? ` (${pmSkip} packaging row(s) ignored.)` : '';
+       const label = res.format === 'multi_sheet' ? 'Raw materials (multi-sheet)' : 'Raw materials (Item Reference)';
        addToast(
          'success',
-         `Raw materials: ${agg.raw_created} created, ${agg.raw_updated} updated (Zoho SKU), ${agg.skipped} skipped, ${agg.errors} errors.${pmNote}`
+         `${label}: ${s.raw_material_created} created, ${s.raw_material_updated} updated, ${s.skipped} skipped, ${s.errors} errors.${pmNote}`
        );
        void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
      } catch (err) {
@@ -1778,7 +1711,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        addToast('error', msg);
      } finally {
        setBulkUploadRunning(false);
-       setBulkUploadPct(0);
      }
    },
    [addToast, queryClient]
@@ -1896,9 +1828,18 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        />
        <button
         type="button"
+        onClick={() => { void onResetAllMasters(); }}
+        disabled={bulkUploadRunning || resetAllRunning || isLoading}
+        title="Deletes all raw material master rows and scrubs linked warehouse, BOM, planning, and procurement data."
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-white text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+       >
+        {resetAllRunning ? 'Resetting…' : 'Reset all masters'}
+       </button>
+       <button
+        type="button"
         onClick={onPickItemReferenceExcel}
         disabled={bulkUploadRunning}
-        title='Worksheet "Item Reference": A = Zoho SKU, B = Item Name. New names create RM; existing name updates Zoho SKU only (price/kg unchanged). Only "Raw Material" rows are imported here.'
+        title="Multi-tab RM workbook: tabs Raw Materials, Fragrances, Colors & Pigments, Club Items — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-700 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
        >
         {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
@@ -1928,15 +1869,9 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
 
      {bulkUploadRunning && (
       <div className="px-6 py-3 border-b border-gray-100 bg-teal-50/40">
-       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
-        <span className="font-medium">Uploading Item Reference (raw materials)…</span>
-        <span className="font-mono font-semibold text-teal-700 tabular-nums">{bulkUploadPct}%</span>
-       </div>
+       <div className="text-xs text-gray-700 mb-1.5 font-medium">Uploading workbook — server is parsing and importing…</div>
        <div className="h-2.5 rounded-full bg-teal-100 overflow-hidden shadow-inner">
-        <div
-         className="h-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 transition-[width] duration-300 ease-out"
-         style={{ width: `${Math.min(100, Math.max(0, bulkUploadPct))}%` }}
-        />
+        <div className="h-full w-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 animate-pulse" />
        </div>
       </div>
      )}
