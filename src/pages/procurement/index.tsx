@@ -764,6 +764,7 @@ const Procurement: React.FC = () => {
     }[]
   >([]);
   const [recordQuoteLineSearch, setRecordQuoteLineSearch] = useState<Record<number, string>>({});
+  const [recordQuoteSaving, setRecordQuoteSaving] = useState(false);
 
   const [editItemsListLineTarget, setEditItemsListLineTarget] = useState<{
     itemsListId: number;
@@ -3828,6 +3829,7 @@ const Procurement: React.FC = () => {
       notes: '',
     });
     setRecordQuoteLines([]);
+    setRecordQuoteSaving(false);
     setShowRecordQuoteModal(true);
   };
 
@@ -7585,23 +7587,27 @@ const Procurement: React.FC = () => {
 
       {/* ── Release PO Modal ── */}
       {releasePOTarget && (() => (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeReleasePOModal}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+          onClick={closeReleasePOModal}
+        >
           <div
-            className="relative w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+            className="relative my-auto flex max-h-[calc(100svh-2rem)] w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
               <h3 className="text-lg font-bold text-slate-900">Release PO — {releasePOTarget.dpoNumber}</h3>
               <button
                 onClick={closeReleasePOModal}
-                className="w-7 h-7 rounded-md border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition"
+                className="h-7 w-7 shrink-0 rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-3 bg-white">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-4 [scrollbar-gutter:stable]">
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                 You are about to release a PO to <span className="font-bold">{releasePOTarget.vendor}</span> for <span className="font-bold">₹{releasePOTarget.grandTotal.toLocaleString('en-IN')}</span>.
               </div>
@@ -7681,20 +7687,26 @@ const Procurement: React.FC = () => {
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                 />
               </div>
+              </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                <p className="font-semibold mb-1">Items in this PO:</p>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  {releasePOTarget.lineItems.map((line, index) => (
-                    <li key={`${line.itemCode}-${index}`}>
-                      {line.item}: {line.qty} @ ₹{line.pricePerUnit}
-                    </li>
-                  ))}
-                </ul>
+              <div className="flex min-h-0 shrink-0 flex-col px-5 pb-4 pt-2">
+                <div className="flex max-h-[min(22rem,42svh)] min-h-[6.5rem] flex-col overflow-hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <p className="mb-1 shrink-0 font-semibold">Items in this PO ({releasePOTarget.lineItems.length})</p>
+                  <ul
+                    className="min-h-0 flex-1 list-disc space-y-0.5 overflow-y-scroll overscroll-y-contain pl-4 pr-2 [scrollbar-gutter:stable]"
+                    aria-label="Line items in this purchase order"
+                  >
+                    {releasePOTarget.lineItems.map((line, index) => (
+                      <li key={`${line.itemCode}-${index}`} className="break-words py-0.5">
+                        {line.item}: {line.qty} @ ₹{line.pricePerUnit}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
               <button
                 onClick={submitReleasePO}
                 disabled={
@@ -10084,9 +10096,9 @@ const Procurement: React.FC = () => {
       )}
 
       {showRecordQuoteModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-xl p-6 space-y-4">
-            <div className="flex items-center justify-between gap-4">
+        <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6">
+          <div className="my-auto flex w-full max-w-5xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Record Vendor Quotation</h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -10095,13 +10107,18 @@ const Procurement: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setShowRecordQuoteModal(false)}
-                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                disabled={recordQuoteSaving}
+                onClick={() => {
+                  if (recordQuoteSaving) return;
+                  setShowRecordQuoteModal(false);
+                }}
+                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Close
               </button>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             {(rawMaterialsListForQuoteError || packMaterialsListForQuoteError) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
                 <p className="font-semibold">Could not load RM/PM master lists</p>
@@ -10116,6 +10133,7 @@ const Procurement: React.FC = () => {
                 <span>Quote lines</span>
                 <button
                   type="button"
+                  disabled={recordQuoteSaving}
                   onClick={() => {
                     const nextIndex = recordQuoteLines.length > 0 ? Math.max(...recordQuoteLines.map((l) => l.index)) + 1 : 0;
                     setRecordQuoteLines((prev) => [
@@ -10135,7 +10153,7 @@ const Procurement: React.FC = () => {
                     ]);
                     setRecordQuoteLineSearch((prev) => ({ ...prev, [nextIndex]: '' }));
                   }}
-                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200"
+                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-100"
                 >
                   + Add line
                 </button>
@@ -10147,7 +10165,7 @@ const Procurement: React.FC = () => {
                   <div className="w-28 text-right">PRICE / UNIT</div>
                   <div className="w-16" />
                 </div>
-                <div className="max-h-64 overflow-auto divide-y divide-slate-100">
+                <div className="max-h-[min(20rem,42vh)] overflow-auto divide-y divide-slate-100">
                   {recordQuoteLines.map((line, idx) => {
                     const lineItemValue =
                       line.raw_material_id != null
@@ -10167,7 +10185,8 @@ const Procurement: React.FC = () => {
                             onChange={(e) => handleRecordQuoteLineSearchChange(idx, line.index, e.target.value)}
                             onBlur={(e) => handleRecordQuoteLineItemBlur(idx, line.index, e.target.value)}
                             placeholder="Type code, INCI, name, SKU, or rm-12 / pm-34"
-                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white disabled:bg-slate-50 disabled:text-slate-500"
                           />
                           <datalist id={`quote-line-item-options-${line.index}`}>
                             {datalistOptions.map((opt) => (
@@ -10185,7 +10204,8 @@ const Procurement: React.FC = () => {
                             type="text"
                             value={line.orderQty}
                             onChange={handleRecordQuoteLineChange(idx, 'orderQty')}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
                           />
                         </div>
                         <div className="w-28 text-right pl-1">
@@ -10193,12 +10213,14 @@ const Procurement: React.FC = () => {
                             type="text"
                             value={line.pricePerUnit}
                             onChange={handleRecordQuoteLineChange(idx, 'pricePerUnit')}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
                           />
                         </div>
                         <div className="w-16 shrink-0">
                           <button
                             type="button"
+                            disabled={recordQuoteSaving}
                             onClick={() => {
                               setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx));
                               setRecordQuoteLineSearch((prev) => {
@@ -10207,7 +10229,7 @@ const Procurement: React.FC = () => {
                                 return next;
                               });
                             }}
-                            className="text-slate-400 hover:text-red-600 text-sm"
+                            className="text-slate-400 hover:text-red-600 text-sm disabled:opacity-40 disabled:pointer-events-none"
                             title="Remove line"
                           >
                             ×
@@ -10232,7 +10254,8 @@ const Procurement: React.FC = () => {
                 onChange={(e) => {
                   setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }));
                 }}
-                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                disabled={recordQuoteSaving}
+                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
               >
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -10250,7 +10273,8 @@ const Procurement: React.FC = () => {
                   type="date"
                   value={recordQuoteForm.quoteDate}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, quoteDate: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
               <div>
@@ -10259,7 +10283,8 @@ const Procurement: React.FC = () => {
                   type="date"
                   value={recordQuoteForm.validTill}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, validTill: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
               <div>
@@ -10269,7 +10294,8 @@ const Procurement: React.FC = () => {
                   min={0}
                   value={recordQuoteForm.leadTimeDays}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, leadTimeDays: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
             </div>
@@ -10289,26 +10315,34 @@ const Procurement: React.FC = () => {
               <textarea
                 value={recordQuoteForm.notes}
                 onChange={(e) => setRecordQuoteForm((f) => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                disabled={recordQuoteSaving}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 rows={2}
               />
             </div>
+            </div>
 
-            <div className="flex justify-between items-center pt-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
               <p className="text-[11px] text-slate-500">
                 New quotes are saved with default status for internal tracking.
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowRecordQuoteModal(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white"
+                  disabled={recordQuoteSaving}
+                  onClick={() => {
+                    if (recordQuoteSaving) return;
+                    setShowRecordQuoteModal(false);
+                  }}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={recordQuoteSaving}
                   onClick={async () => {
+                    if (recordQuoteSaving) return;
                     const vendorId = parseInt(recordQuoteForm.vendorId, 10);
                     if (!vendorId || Number.isNaN(vendorId)) {
                       addToast('error', 'Select a vendor');
@@ -10324,6 +10358,8 @@ const Procurement: React.FC = () => {
                       return;
                     }
 
+                    setRecordQuoteSaving(true);
+                    try {
                     const selectedVendorProc = vendors.find((x) => String(x.id) === String(recordQuoteForm.vendorId));
                     const composedPaymentTerms = selectedVendorProc?.paymentTerms?.trim() || 'As per contract';
 
@@ -10449,10 +10485,20 @@ const Procurement: React.FC = () => {
                     });
                     addToast('success', 'Saved vendor price list (Items List).');
                     setShowRecordQuoteModal(false);
+                    } finally {
+                      setRecordQuoteSaving(false);
+                    }
                   }}
-                  className="px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-yellow-500"
                 >
-                  Save Quote
+                  {recordQuoteSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save Quote'
+                  )}
                 </button>
               </div>
             </div>
