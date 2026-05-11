@@ -340,14 +340,21 @@ export function formatStepFieldMessage(stepIndex0: number, label: string, suffix
  return `Step ${stepIndex0} — ${label} ${suffix}`;
 }
 
+export type ValidatePrimaryFieldsOptions = {
+ /** Primary field ids to skip (e.g. omit `rmSku` for new RM when code is assigned on save). */
+ omitFields?: string[];
+};
+
 /**
  * Validate required primary fields
  */
 export const validatePrimaryFields = (
  formData: any,
- masterType: 'packaging' | 'rawMaterial' | 'bom'
+ masterType: 'packaging' | 'rawMaterial' | 'bom',
+ options?: ValidatePrimaryFieldsOptions
 ): { valid: boolean; errors: Record<string, string> } => {
- const primaryFields = getPrimaryFields(masterType);
+ const omit = new Set(options?.omitFields ?? []);
+ const primaryFields = getPrimaryFields(masterType).filter((f) => !omit.has(f));
  const errors: Record<string, string> = {};
  const stepMap = PRIMARY_FIELD_STEP[masterType];
  const labelMap = PRIMARY_FIELD_LABEL[masterType];

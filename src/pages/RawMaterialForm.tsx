@@ -13,7 +13,8 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, fetchNextRawMaterialCode, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
+import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -149,7 +150,6 @@ const RawMaterialRefactored: React.FC = () => {
  const [pageTab, setPageTab] = useState<'dashboard' | 'form'>('dashboard');
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
  const [editRmLoading, setEditRmLoading] = useState(false);
- const [generatedRmCode, setGeneratedRmCode] = useState('');
  const [formData, setFormData] = useState(createEmptyRmFormData);
 
  // Temp fields separated
@@ -201,7 +201,6 @@ const RawMaterialRefactored: React.FC = () => {
   setTempVendorTiers(defaultTempVendorTiers(4));
   setTempDocument({ type: '', link: '', date: '' });
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
-  setGeneratedRmCode('');
   setErrors({});
   setCurrentStage(0);
  }, []);
@@ -234,7 +233,6 @@ const RawMaterialRefactored: React.FC = () => {
   Boolean(
    formData.rmCategoryKey?.trim() &&
     formData.subCategory?.trim() &&
-    formData.rmSku?.trim() &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
     formData.primaryUom?.trim() &&
@@ -285,31 +283,6 @@ const RawMaterialRefactored: React.FC = () => {
    ...prev,
    [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
   }));
- };
-
- const getRmCodePreview = () => {
-  if (generatedRmCode?.trim()) return { preview: generatedRmCode.trim() };
-  return { preview: '—' };
- };
-
- const generateRmCode = async (confirm = false) => {
-  if (lockPrimaryFields) {
-   addToast('error', 'RM code cannot be changed while editing an existing record.');
-   return;
-  }
-  if (generatedRmCode && !confirm) {
-   const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
-   if (!ok) return;
-  }
-  try {
-   const code = await fetchNextRawMaterialCode();
-   setGeneratedRmCode(code);
-   setFormData(prev => ({ ...prev, rmSku: code }));
-   addToast('success', `Code generated: ${code}`);
-  } catch (err) {
-   console.error(err);
-   addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
-  }
  };
 
  // Vendor operations
@@ -492,12 +465,6 @@ const RawMaterialRefactored: React.FC = () => {
     focusFieldById('subCategory');
     return;
    }
-   if (!formData.rmSku?.trim()) {
-    addToast('error', 'Generate or enter SKU / RM code before submitting');
-    setCurrentStage(0);
-    focusFieldById('rmSku');
-    return;
-   }
   }
   if (!formData.rmReturnable?.trim()) {
    setErrors((prev) => ({
@@ -519,7 +486,9 @@ const RawMaterialRefactored: React.FC = () => {
    focusFieldById('primaryUom');
    return;
   }
-  const validation = validatePrimaryFields(formData, 'rawMaterial');
+  const validation = validatePrimaryFields(formData, 'rawMaterial', {
+   omitFields: isNewRm ? ['rmSku'] : undefined,
+  });
   const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'rawMaterial');
   if (!validation.valid || !taxValidation.valid) {
    setErrors({ ...validation.errors, ...taxValidation.errors });
@@ -585,8 +554,8 @@ const RawMaterialRefactored: React.FC = () => {
     } else {
      const base =
       zohoSync?.synced && zohoSync.item_id
-       ? `Raw Material saved and linked to Zoho (item ${zohoSync.item_id}).`
-       : 'Raw Material saved successfully!';
+       ? `Raw Material ${record.code} saved and linked to Zoho (item ${zohoSync.item_id}).`
+       : `Raw Material ${record.code} saved successfully!`;
      addToast('success', syncCreated > 0 ? `${base} ${syncCreated} vendor rate(s) synced to Items List.` : base);
     }
    }
@@ -604,7 +573,6 @@ const RawMaterialRefactored: React.FC = () => {
   switch (currentStage) {
   case 0: // Primary info — category, code, identity, Zoho
   {
-   const { preview } = getRmCodePreview();
    return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
@@ -636,52 +604,25 @@ const RawMaterialRefactored: React.FC = () => {
       <p className="text-xs text-gray-500 mt-2">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
      </div>
 
-     <div>
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Code Series Preview</h3>
-      <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
-       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-        <div>
-         <p className="text-xs text-gray-500 mb-1">Series Prefix</p>
-         <p className="font-mono font-bold text-gray-800 text-sm">{prefix}</p>
-        </div>
-        <div>
-         <p className="text-xs text-gray-500 mb-1">Next Code (preview)</p>
-         <p className="font-mono font-bold text-gray-800 text-sm">{prefix !== '—' ? `${prefix}-${next}` : '—'}</p>
-        </div>
+     {isNewRm ? (
+      <div>
+       <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
+       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
+        Assigned automatically when you save, using the series for the RM category you selected above (e.g.{' '}
+        <span className="font-mono text-gray-800">EI-RM-ACT-00001</span>).
        </div>
-       <div className="flex flex-wrap gap-2">
-        <button
-         type="button"
-         onClick={() => generateRmCode()}
-         disabled={lockPrimaryFields}
-         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-         Generate Code Now
-        </button>
-        {generatedRmCode && (
-         <button
-          type="button"
-          onClick={() => generateRmCode(true)}
-          disabled={lockPrimaryFields}
-          className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-         >
-          Regenerate (change category)
-         </button>
-        )}
-       </div>
-      <p className="text-xs text-gray-500 mt-3">Generated code is applied to SKU below. You can still edit SKU if needed.</p>
       </div>
-     </div>
-
-     <InputField
-      label="SKU"
-      id="rmSku"
-      value={formData.rmSku}
-      onChange={handleInputChange}
-      placeholder="Internal raw material code (e.g. RM-000123)"
-      requiredMark
-      readOnly={false}
-     />
+     ) : (
+      <InputField
+       label="SKU"
+       id="rmSku"
+       value={formData.rmSku}
+       onChange={handleInputChange}
+       placeholder="Internal raw material code"
+       requiredMark
+       readOnly={lockPrimaryFields}
+      />
+     )}
 
      <div className="border-t border-gray-200 pt-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
@@ -1430,6 +1371,7 @@ const RawMaterialRefactored: React.FC = () => {
    }
 
    // Always seed from the list-view record, because partial/empty `form_data` can override defaults.
+   const productsList = Array.isArray(r.products) ? r.products : [];
    const recordMapped = {
      rmSku: recordCode || '',
      inciName: r.inci ?? '',
@@ -1449,6 +1391,8 @@ const RawMaterialRefactored: React.FC = () => {
      hsnCode: r.hsnCode ?? '',
      rmTaxPreference: r.taxPref ?? '',
      accountingCategory: r.salesPurchaseAccount ?? '',
+     /** Linked PR / product codes from list row when `form_data` is missing (legacy imports). */
+     rmAssociateItems: productsList.length > 0 ? productsList.join('\n') : '',
    };
 
    // Overlay only non-nullish `form_data` keys.
@@ -1457,10 +1401,6 @@ const RawMaterialRefactored: React.FC = () => {
      fdToOverlay && typeof fdToOverlay === 'object'
        ? Object.fromEntries(Object.entries(fdToOverlay).filter(([, v]) => v !== null && v !== undefined))
        : null;
-
-   const skuFromFd = fdCleanOverlay ? String((fdCleanOverlay as any).rmSku ?? (fdCleanOverlay as any).sku ?? '') : '';
-   const finalSku = skuFromFd?.trim() ? skuFromFd.trim() : recordCode;
-   if (finalSku) setGeneratedRmCode(finalSku);
 
   setFormData((prev) => {
     const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
@@ -1578,7 +1518,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category, code, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable) before continuing."
+                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable). For new RMs, internal code is assigned on save."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}
@@ -1598,6 +1538,22 @@ type RawMaterialDashboardProps = {
  onEditRm: (rm: RawMaterialRecord) => void;
  onDeleteRm: (rm: RawMaterialRecord) => void | Promise<void>;
 };
+
+function normalizeSkuKey(s: string): string {
+ return String(s ?? '').trim().toLowerCase();
+}
+
+/** Map product_code and zoho_sku_code (lowercased) → product row for RM “linked products” enrichment. */
+function buildPrProductLookup(products: PRProductListItem[]): Map<string, PRProductListItem> {
+ const m = new Map<string, PRProductListItem>();
+ for (const p of products) {
+  const code = normalizeSkuKey(p.product_code ?? '');
+  const zoho = normalizeSkuKey(p.zoho_sku_code ?? '');
+  if (code) m.set(code, p);
+  if (zoho && zoho !== code) m.set(zoho, p);
+ }
+ return m;
+}
 
 /** Palette of category badge styles; any category (including new ones from API) gets a stable style via hash. */
 const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
@@ -1626,30 +1582,38 @@ function getCategoryStyle(category: string): { bg: string; text: string; border:
  return CATEGORY_STYLE_PALETTE[index];
 }
 
-function GroupChip({ group }: { group: string }) {
- const isPrimary = group.startsWith('Primary');
- const isAlt     = group.startsWith('Alt');
- const dotColor  = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
- const label     = group.replace(' +1','').replace(' +2','');
- const extra     = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
- return (
-  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
-   <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
-   {label}
-   {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
-  </span>
- );
-}
-
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
  const [search, setSearch] = useState('');
  const [pageSize, setPageSize] = useState(25);
  const [currentPage, setCurrentPage] = useState(1);
+ const [linkedSkusModalRm, setLinkedSkusModalRm] = useState<RawMaterialRecord | null>(null);
  const queryClient = useQueryClient();
  const { addToast } = useToast();
  const itemRefFileInputRef = useRef<HTMLInputElement>(null);
  const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
  const [resetAllRunning, setResetAllRunning] = useState(false);
+
+ const { data: prProductsLookupResult, isFetching: prProductsLookupLoading } = useQuery({
+  queryKey: ['pr-products-lookup-for-rm-linked-skus'],
+  queryFn: () => fetchPRProducts(),
+  enabled: linkedSkusModalRm != null,
+  staleTime: 5 * 60 * 1000,
+ });
+
+ const prProductLookup = useMemo(() => {
+  const ok = prProductsLookupResult?.success === true;
+  const rows = ok ? prProductsLookupResult.data ?? [] : [];
+  return buildPrProductLookup(rows);
+ }, [prProductsLookupResult]);
+
+ const linkedSkuRows = useMemo(() => {
+  if (!linkedSkusModalRm) return [];
+  return linkedSkusModalRm.products.map((sku) => {
+   const key = normalizeSkuKey(sku);
+   const product = key ? prProductLookup.get(key) : undefined;
+   return { sku, product };
+  });
+ }, [linkedSkusModalRm, prProductLookup]);
 
  const onResetAllMasters = useCallback(async () => {
   if (
@@ -1886,11 +1850,9 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          </th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Shelf</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
@@ -1899,7 +1861,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        <tbody className="divide-y divide-gray-50">
         {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -1925,18 +1887,12 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              {rm.category}
             </span>
            </td>
-           {/* group */}
-           <td className="px-4 py-3.5">
-            {rm.group ? <GroupChip group={rm.group} /> : <span className="text-gray-300 text-xs">—</span>}
-           </td>
            {/* type */}
            <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.rmType}</td>
            {/* uom */}
            <td className="px-4 py-3.5 text-gray-700 font-semibold">{rm.uom}</td>
            {/* gst */}
            <td className="px-4 py-3.5 text-right text-gray-600 font-medium">{rm.gst}%</td>
-           {/* shelf */}
-           <td className="px-4 py-3.5 text-right text-gray-600">{rm.shelf}</td>
            {/* status */}
            <td className="px-4 py-3.5">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1944,13 +1900,22 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              {rm.status}
             </span>
            </td>
-           {/* products */}
+           {/* products — compact link; full SKU list in modal */}
            <td className="px-4 py-3.5">
-            <div className="flex flex-wrap gap-1">
-             {rm.products.map(p => (
-              <span key={p} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200 group-hover:bg-teal-100 transition-colors">{p}</span>
-             ))}
-            </div>
+            {rm.products.length === 0 ? (
+             <span className="text-gray-300 text-xs">—</span>
+            ) : (
+             <button
+              type="button"
+              onClick={(e) => {
+               e.stopPropagation();
+               setLinkedSkusModalRm(rm);
+              }}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-1 rounded"
+             >
+              View SKU ({rm.products.length})
+             </button>
+            )}
            </td>
            {/* Actions */}
            <td className="px-4 py-3.5 text-right whitespace-nowrap">
@@ -2019,6 +1984,88 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       </div>
      )}
     </div>
+
+    {linkedSkusModalRm && (
+     <div
+      className="fixed inset-0 z-100 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-6"
+      role="presentation"
+      onClick={() => setLinkedSkusModalRm(null)}
+     >
+      <div
+       className="my-auto w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="linked-skus-modal-title"
+       onClick={(e) => e.stopPropagation()}
+      >
+       <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-slate-50 px-5 py-4">
+        <div className="min-w-0">
+         <h2 id="linked-skus-modal-title" className="text-lg font-bold text-gray-900">
+          Linked product SKUs
+         </h2>
+         <p className="mt-1 truncate text-xs text-gray-600 font-mono">{linkedSkusModalRm.code}</p>
+         <p className="mt-0.5 text-sm text-gray-800">{linkedSkusModalRm.name}</p>
+        </div>
+        <button
+         type="button"
+         onClick={() => setLinkedSkusModalRm(null)}
+         className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-500 hover:bg-white hover:text-gray-800"
+         aria-label="Close"
+        >
+         ×
+        </button>
+       </div>
+       <div className="max-h-[min(60vh,28rem)] overflow-y-auto px-5 py-4">
+        {prProductsLookupLoading && (
+         <p className="mb-3 text-xs text-gray-500">Loading product master for names and details…</p>
+        )}
+        {prProductsLookupResult && prProductsLookupResult.success === false && (
+         <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Could not load Products master. SKUs from this raw material are still listed below.
+         </p>
+        )}
+        <p className="mb-3 text-xs text-gray-500">
+         When a linked code matches a product in the master list, the columns below are filled in from that product.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+         <table className="w-full min-w-[420px] text-left text-xs">
+          <thead className="sticky top-0 z-1 border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+           <tr>
+            <th className="px-3 py-2">#</th>
+            <th className="px-3 py-2">Linked SKU / code</th>
+            <th className="px-3 py-2">Product name</th>
+            <th className="px-3 py-2">Category</th>
+            <th className="px-3 py-2">Subcategory</th>
+            <th className="px-3 py-2">Status</th>
+           </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-gray-800">
+           {linkedSkuRows.map(({ sku, product }, i) => (
+            <tr key={`${sku}-${i}`} className="bg-white hover:bg-teal-50/40">
+             <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+             <td className="px-3 py-2 font-mono font-semibold text-teal-800 break-all">{sku}</td>
+             <td className="px-3 py-2 wrap-break-word">{product?.product_name ?? '—'}</td>
+             <td className="px-3 py-2 text-gray-600">{product?.category ?? '—'}</td>
+             <td className="px-3 py-2 text-gray-600 wrap-break-word">{product?.pr_sub_category?.trim() || '—'}</td>
+             <td className="px-3 py-2 text-gray-600">{product?.status ?? '—'}</td>
+            </tr>
+           ))}
+          </tbody>
+         </table>
+        </div>
+       </div>
+       <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 text-right">
+        <button
+         type="button"
+         onClick={() => setLinkedSkusModalRm(null)}
+         className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+        >
+         Close
+        </button>
+       </div>
+      </div>
+     </div>
+    )}
 
      </>
     )}

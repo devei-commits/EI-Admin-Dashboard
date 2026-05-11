@@ -14,6 +14,8 @@ export interface PRProductListItem {
   zoho_sku_code: string;
   product_name: string;
   category: string;
+  /** PR sub-category from BOM notes (list API); optional. */
+  pr_sub_category?: string | null;
   form?: string;
   fill_size?: string;
   batch_size_kg?: number;

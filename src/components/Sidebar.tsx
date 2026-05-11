@@ -1,29 +1,23 @@
 import { useState, useEffect } from "react";
-import { useQueryClient } from '@tanstack/react-query';
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import eilogofull from "../assets/logo/eilogofull.svg";
 import { useAuth } from "../context/AuthContext";
 import { usePermissions } from "../hooks/usePermissions";
 import { preloadRoute } from "../lib/preloadRoutes";
-import { prefetchCriticalRouteData } from "../lib/routeDataPrefetch";
 
-/** NavLink that prefetches the route chunk on hover for faster navigation. */
+/** NavLink that preloads the lazy route chunk on hover (no API prefetch). */
 const PreloadNavLink = ({
   to,
   onMouseEnter,
   ...rest
 }: React.ComponentProps<typeof NavLink>) => {
-  const queryClient = useQueryClient();
   const path = typeof to === "string" ? to : (to as { pathname?: string }).pathname ?? "";
 
   return (
     <NavLink
       to={to}
       onMouseEnter={(e) => {
-        // 1) Start chunk download
         preloadRoute(path);
-        // 2) Start route's critical data prefetch (e.g. page 1 for masters lists)
-        prefetchCriticalRouteData(path, queryClient);
         onMouseEnter?.(e);
       }}
       {...rest}

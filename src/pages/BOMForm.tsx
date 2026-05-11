@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, Pencil, Check, ArrowDownToLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
-import { fetchNextBomCode } from '../services/bom.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 import {
@@ -61,7 +60,7 @@ interface BOMFormState {
   bomTaxPreference: string;
   bomReturnable: boolean;
   bomAssociateItems: string;
-  /** Required at Step 1: must be explicitly set to 'Yes' or 'No' (Zoho / reporting; PR codes are numeric only). */
+  /** Required at Step 1: must be explicitly set to 'Yes' or 'No' (Zoho / reporting). */
   bomCompositeItem: '' | 'Yes' | 'No';
 
   // Formula BOM Tab
@@ -343,19 +342,20 @@ function isValidFillSizeInput(raw: string): boolean {
 
 function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
+  const internalCode = fd.skuCode.trim();
+  const zohoSku = fd.skuForZoho?.trim() || internalCode;
   return {
     product_name: fd.productName.trim(),
     name: fd.productName.trim(),
-    product_code: fd.skuCode.trim(),
-    bomCode: fd.skuCode.trim(),
+    ...(internalCode ? { product_code: internalCode, bomCode: internalCode } : {}),
     category: fd.category || null,
     form: fd.productForm || null,
     type: fd.productForm || null,
     client: fd.brandClient || null,
     fill_size: fd.fillSize || null,
     packSize: fd.fillSize || null,
-    zoho_sku_code: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
-    bomSku: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    zoho_sku_code: zohoSku || undefined,
+    bomSku: zohoSku || undefined,
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
@@ -579,8 +579,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [generatedPrCode, setGeneratedPrCode] = useState('');
-  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'skuCode' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
+  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
     window.setTimeout(() => {
       if (target === 'formula') {
         const el = document.querySelector('input[placeholder="Or type INCI Name (manual)"]');
@@ -620,7 +619,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [skuBomClearing, setSkuBomClearing] = useState(false);
 
   const stages = [
-    'Primary info (details, code & Books)',
+    'Primary info (details & Books)',
     'Formula BOM',
     'SKU BOM (per unit)',
     'Pack BOM',
@@ -637,8 +636,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData.prSubCategory.trim() &&
         formData.productName.trim() &&
         formData.category.trim() &&
-        isValidMrpForPr(formData.mrp) &&
-        formData.skuCode.trim()
+        isValidMrpForPr(formData.mrp)
     );
   // Existing products normally keep identity/code fields locked.
   // Exception: legacy rows that have no BOM payload loaded (all edit arrays empty)
@@ -817,7 +815,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         const next = productDetailToBomForm(d);
         setFormData(next);
-        setGeneratedPrCode(next.skuCode || '');
       }
     }).catch(() => {
       if (!cancelled) setEditLoading(false);
@@ -852,35 +849,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
   };
 
-  const getPrCodePreview = () => {
-    if (generatedPrCode?.trim()) return { preview: generatedPrCode.trim() };
-    return { preview: '—' };
-  };
-
-  const generatePrCode = async (confirm = false) => {
-    if (lockPrimaryFields) {
-      addToast('error', 'PR code cannot be changed while editing an existing product.');
-      return;
-    }
-    if (generatedPrCode && !confirm) {
-      const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
-      if (!ok) return;
-    }
-    try {
-      const code = await fetchNextBomCode();
-      setGeneratedPrCode(code);
-      setFormData((prev) => ({ ...prev, skuCode: code }));
-      addToast('success', `Code generated: ${code}`);
-    } catch (err) {
-      console.error(err);
-      addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
-    }
-  };
-
   const fillMockData = () => {
     const mock = mockBomForm();
     setFormData(mock);
-    setGeneratedPrCode(mock.skuCode);
     addToast('success', 'Form filled with mock data for testing!');
   };
 
@@ -1520,16 +1491,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return;
     }
-    if (!productIdFromRoute) {
-      if (!formData.skuCode.trim()) {
-        setErrors({ skuCode: 'Step 1 — Generate or enter PR / BOM code' });
-        addToast('error', 'Step 1 — Generate or enter PR code before submitting');
-        setCurrentStage(0);
-        focusPrField('skuCode');
-        return;
-      }
-    }
-
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
       setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
       addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml) — see Step 5 (Specs & Regulatory)');
@@ -1541,10 +1502,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return;
     }
 
-    if (!skuBomValidation.ok) {
-      addToast('error', skuBomValidation.error);
-      setCurrentStage(2);
-      return;
+    if (!productIdFromRoute) {
+      if (!skuBomValidation.ok) {
+        addToast('error', skuBomValidation.error);
+        setCurrentStage(2);
+        return;
+      }
     }
 
     try {
@@ -1577,8 +1540,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const renderStageContent = () => {
-    const { preview } = getPrCodePreview();
-
     switch (currentStage) {
       case 0:
         return (
@@ -1650,7 +1611,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <p className="mt-1 text-xs text-red-600">{errors.bomCompositeItem}</p>
                   ) : (
                     <p className="text-xs text-gray-500 mt-1">
-                      Local PR / BOM codes are numeric only. Composite flag is used for Books / workflows, not the code format.
+                      Composite flag is used for Books / workflows.
                     </p>
                   )}
                 </div>
@@ -1710,51 +1671,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
 
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Local PR / BOM code (numeric)</h3>
-              <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
-                <div className="mb-4">
-                  <p className="text-xs text-gray-500 mb-1">Current / preview</p>
-                  <p className="font-mono font-bold text-gray-800 text-sm">{preview}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => generatePrCode()}
-                    disabled={lockPrimaryFields}
-                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Generate Code Now
-                  </button>
-                  {generatedPrCode && (
-                    <button
-                      type="button"
-                      onClick={() => generatePrCode(true)}
-                      disabled={lockPrimaryFields}
-                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Regenerate
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-3 mb-4">
-                  PR / BOM code and Zoho SKU can be edited anytime. Use &quot;Generate&quot; only when creating a new product (disabled on edit to avoid accidental replacement).
-                </p>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">PR / BOM Code <span className="text-red-600">*</span></label>
-                  <input
-                    id="skuCode"
-                    type="text"
-                    readOnly={false}
-                    placeholder="e.g. 00042 (numeric)"
-                    value={formData.skuCode}
-                    onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
               </div>
             </div>
 
@@ -2493,16 +2409,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       ))}
                     </select>
                   </div>
+                  {!lockPrimaryFields ? (
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
                     <input
                       type="text"
-                      placeholder="Optional — defaults to PR code"
+                      placeholder="Optional — defaults to internal PR code after save"
                       value={formData.skuForZoho}
                       onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
+                  ) : null}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
                     <select
@@ -2673,7 +2591,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, composite item, sub-category, product name, category, MRP price, and generated PR code on this step before continuing."
+      nextDisabledTitle="Complete PR category, composite item, sub-category, product name, category, and MRP price on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}

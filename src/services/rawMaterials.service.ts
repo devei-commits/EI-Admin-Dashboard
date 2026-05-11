@@ -150,12 +150,6 @@ export interface RawMaterialCreateResult {
   zohoSync?: RawMaterialFromApi['zoho_sync'];
 }
 
-/** Next RM code: numeric only (e.g. 00001), global sequence for raw_materials.code. */
-export async function fetchNextRawMaterialCode(): Promise<string> {
-  const res = await api.get<{ nextCode: string }>('/api/v1/raw-materials/next-code');
-  return res?.nextCode ?? '00001';
-}
-
 export interface RmZohoSyncResponse {
   raw_material_id: number;
   zoho_id: string | null;
