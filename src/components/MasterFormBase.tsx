@@ -19,7 +19,6 @@ interface MasterFormBaseProps {
  children: ReactNode;
  onSave?: () => void;
  onSubmit?: () => void;
- onFillMock?: () => void;
  onReset?: () => void;
  primaryFields?: string[];
  /** When true, disables the Next button (e.g. Zoho sync gate on step 0). */
@@ -50,7 +49,6 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  children,
  onSave,
  onSubmit,
- onFillMock,
  onReset,
  primaryFields = [],
  nextDisabled = false,
@@ -85,15 +83,6 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       {title}
      </h1>
      <div className="flex items-center gap-2">
-      {onFillMock && (
-       <button
-        type="button"
-        onClick={onFillMock}
-        className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
-       >
-        Fill mock values
-       </button>
-      )}
       {onReset && (
        <button
         type="button"

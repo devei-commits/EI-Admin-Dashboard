@@ -353,43 +353,6 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     }
   };
 
-  const handleFillMockValues = async () => {
-    const res = await fetchNextCode('client');
-    const code = res.success && res.data ? res.data : `EI-CLI-${Date.now().toString(36).toUpperCase()}`;
-    setFormData(prev => ({
-      ...prev,
-      entityCode: code,
-      legalName: 'Mock Client Pvt Ltd',
-      tradeName: 'Mock Client',
-      brandName: 'Mock Brand',
-      primaryEmail: 'client@mock.com',
-      primaryPhone: '+91-9123456789',
-      billingAddress: '456 Client Avenue, Business Park',
-      shippingAddress: '456 Client Avenue, Business Park',
-      state: 'Telangana',
-      country: 'India',
-      website: 'https://mock-client.example.com',
-      segment: 'BUSINESS',
-      industry: 'FMCG',
-      businessType: 'B2B',
-      notes: 'Mock data for testing',
-      gstin: '36AABCM5678B1Z2',
-      pan: 'AABCM5678B',
-      paymentTerms: 'Custom',
-      customTerms: '50% advance + 50% on delivery',
-      paymentCreditType: 'Mixed',
-      payablesAdvancedPct: '50',
-      payablesBeforeDispatchPct: '0',
-      payablesAfterDispatchPct: '50',
-      advanceRequired: '50',
-    }));
-    setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
-    setPocs([{ name: 'Jane Smith', role: 'Account Manager', email: 'jane@mock.com', phone: '+91-9123456789', level: 'Primary', preferred: 'Email', notes: '' }]);
-    setBanks([]);
-    setProductInterests([]);
-    addToast('success', 'Mock values filled. Edit as needed and submit.');
-  };
-
   const addDocument = () => {
     if (!tempDoc.type || !tempDoc.link) { addToast('error', 'Document type and link are required'); return; }
     setDocuments([...documents, tempDoc]);
@@ -503,7 +466,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       const codeRes = await fetchNextCode('client');
       if (codeRes.success && codeRes.data) entityCode = codeRes.data;
       else {
-        addToast('error', 'Entity code is required. Click "Generate" or "Fill mock values" to get one.');
+        addToast('error', 'Entity code is required. Use Generate to get one.');
         setIsSaving(false);
         return;
       }
@@ -568,15 +531,6 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
             <p className="text-sm text-gray-500 mt-1">{stages[currentStage].hint}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {!editingId && (
-              <button
-                type="button"
-                onClick={handleFillMockValues}
-                className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
-              >
-                Fill mock values
-              </button>
-            )}
             <button
               type="button"
               onClick={handlePrevStage}

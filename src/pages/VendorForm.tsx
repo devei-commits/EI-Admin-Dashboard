@@ -625,39 +625,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   }
  };
 
- const handleFillMockValues = async () => {
-  const res = await fetchNextCode('vendor');
-  const code = res.success && res.data ? res.data : `EI-VEN-${Date.now().toString(36).toUpperCase()}`;
-  setFormData(prev => ({
-   ...prev,
-   entityCode: code,
-   legalName: 'Mock Vendor Ltd',
-   tradeName: 'Mock Vendor',
-   primaryEmail: 'vendor@mock.com',
-   primaryPhone: '+91-9876543210',
-   billingAddress: '123 Mock Street, Industrial Area',
-   shippingAddress: '123 Mock Street, Industrial Area',
-   state: 'Maharashtra',
-   country: 'India',
-   website: 'https://mock-vendor.example.com',
-   segment: 'RAW MATERIAL',
-   notes: 'Mock data for testing',
-   gstin: '27AABCM1234A1Z1',
-   pan: 'AABCM1234A',
-   paymentTerms: 'Custom',
-   customTerms: '50% advance + 50% on delivery',
-   paymentCreditType: 'Mixed',
-   payablesAdvancedPct: '50',
-   payablesBeforeDispatchPct: '0',
-   payablesAfterDispatchPct: '50',
-  }));
-  setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
-  setPocs([{ name: 'John Doe', role: 'Manager', email: 'john@mock.com', phone: '+91-9876543210', level: 'Primary', preferred: 'Email', notes: '' }]);
-  setBanks([]);
-  setVendorItems([]);
-  addToast('success', 'Mock values filled. Edit as needed and submit.');
- };
-
  const addDocument = () => {
   if (!tempDoc.type || !tempDoc.link) { addToast('error', 'Document type and link are required'); return; }
   setDocuments([...documents, tempDoc]);
@@ -962,15 +929,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       <p className="text-sm text-gray-500 mt-1">{stages[currentStage].hint}</p>
      </div>
      <div className="flex gap-2 flex-wrap">
-      {!editingId && (
-       <button
-        type="button"
-        onClick={handleFillMockValues}
-        className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
-       >
-        Fill mock values
-       </button>
-      )}
       <button
        type="button"
        onClick={handlePrevStage}

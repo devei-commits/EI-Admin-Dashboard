@@ -180,71 +180,6 @@ function emptyBomForm(): BOMFormState {
   };
 }
 
-function mockBomForm(): BOMFormState {
-  return {
-    prCategoryKey: 'SUN',
-    prQcGroup: 'Chemical QC',
-    prSubCategory: 'Broad spectrum lotion',
-    prDefaultStorageType: 'Ambient – Cool',
-    productName: 'EI Sunscreen Lotion SPF50+ PA++++',
-    category: 'Sunscreen',
-    productForm: 'Lotion',
-    brandClient: 'Esthetic Insights',
-    fillSize: '50ml',
-    packConfiguration: 'Bottle + Cap',
-    skuCode: '00001',
-    prRecordType: 'permanent',
-    mrp: '₹499',
-    zohoId: '',
-    skuForZoho: '',
-    bomTaxPreference: 'Taxable',
-    bomReturnable: false,
-    bomAssociateItems: '',
-    bomCompositeItem: 'No',
-    formulaIngredients: [
-      { id: '1', inciName: 'Zinc Oxide', phase: 'Oil', percentWW: '15', uom: 'GM' },
-      { id: '2', inciName: 'Titanium Dioxide', phase: 'Oil', percentWW: '10', uom: 'GM' },
-      { id: '3', inciName: 'Cetyl Alcohol', phase: 'Oil', percentWW: '5', uom: 'GM' },
-      { id: '4', inciName: 'Glycerin', phase: 'Water', percentWW: '5', uom: 'GM' },
-    ],
-    skuBomLimitQty: '50',
-    skuBomLimitUom: 'ML',
-    skuBomLines: [
-      { id: 'sku-1', inciName: 'Water phase', rmCode: 'RM-W-01', qtyPerUnit: '30', uom: 'ML' },
-      { id: 'sku-2', inciName: 'Glycerin', rmCode: 'RM-GLY-01', qtyPerUnit: '20', uom: 'ML' },
-    ],
-    packingComponents: [
-      { id: '1', pmDescription: '50ml White Bottle', type: 'Primary Container', qtyUnit: '1', uom: 'PCS' },
-      { id: '2', pmDescription: 'White Cap with Pump', type: 'Closure', qtyUnit: '1', uom: 'PCS' },
-      { id: '3', pmDescription: 'Product Label', type: 'Label', qtyUnit: '1', uom: 'PCS' },
-    ],
-    processSteps: [
-      { id: '1', stepNumber: '1', instruction: 'Mix oils in reactor at 60°C', duration: '30 min' },
-      { id: '2', stepNumber: '2', instruction: 'Add water phase slowly with stirring', duration: '15 min' },
-      { id: '3', stepNumber: '3', instruction: 'Cool to 25°C', duration: '45 min' },
-    ],
-    phRange: '6.0-7.0',
-    viscosity: '8000-12000 CPS',
-    specificGravity: '0.95-1.02',
-    appearance: 'White smooth lotion',
-    odour: 'Pleasant fragrance',
-    fillWeightSpec: '50 ± 2g',
-    microbialLimits: 'TVC < 1000 cfu/g',
-    sppRating: 'SPF 50+',
-    acceleratedStability: '6M/40°C/75%RH - PASS',
-    intermediateStability: '9M/30°C/65%RH - PASS',
-    longTermStability: '12M/25°C/60%RH - PASS',
-    phototability: 'ICH Q1B PASS',
-    freezeThawCycles: '3 cycles PASS',
-    applicableRegulation: 'India - BIS / CDSCO',
-    cosmosNaturalCertification: 'Not applicable',
-    dermatologicallyTested: 'Yes - certified',
-    crueltyFreeVegan: 'No',
-    approvedMarketingClaims: 'Broad spectrum UVA+UVB protection, Non-greasy formula, Dermatologist tested',
-    claimsSubstantiation: 'SPF test ref: SPF-2024-001, Clinical report on file',
-  };
-}
-
 interface BOMFormProps {
   /** When provided, used instead of route param `:id` (enables modal editing). */
   productId?: string;
@@ -862,12 +797,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         return next;
       });
     }
-  };
-
-  const fillMockData = () => {
-    const mock = mockBomForm();
-    setFormData(mock);
-    addToast('success', 'Form filled with mock data for testing!');
   };
 
   const beginEditIngredient = (id: string) => {
@@ -2686,7 +2615,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       errors={errors}
       formData={formData as unknown as Record<string, unknown>}
       onInputChange={() => {}}
-      onFillMock={fillMockData}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
       nextDisabledTitle="Complete PR category, composite item, sub-category, product name, category, and MRP price on this step before continuing."

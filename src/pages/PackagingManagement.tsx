@@ -102,28 +102,6 @@ const PackagingManagement = () => {
   bottomWeight: '', capWeight: '', dispenserVolume: '', minimumOrderQuantity: '', budget: '', comments: ''
  });
 
- /** Full mock form for quick testing (all fields filled). */
- const PACKAGING_MOCK_FORM = {
-  packageCode: 'PKG-MOCK-001',
-  packageName: '30ml Amber Dropper Bottle',
-  packageSKU: 'sku1',
-  packageBottom: 'round',
-  bottom: 'round',
-  capType: 'dropper',
-  bottomName: 'Amber Glass',
-  bottomMaterial: 'glass',
-  capName: 'Black Dropper',
-  capMaterial: 'plastic',
-  bottomColor: 'Amber',
-  capColor: 'Black',
-  bottomWeight: '45g',
-  capWeight: '8g',
-  dispenserVolume: '30ml',
-  minimumOrderQuantity: '1000',
-  budget: 'medium',
-  comments: 'Mock data for testing submit. Standard serum bottle, ready to submit.',
- };
-
  const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   try {
@@ -246,13 +224,6 @@ const PackagingManagement = () => {
      <>
      {/* Top-level actions (like Raw Materials) */}
      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/80 flex flex-wrap items-center gap-3">
-      <button
-       type="button"
-       onClick={() => setFormData(PACKAGING_MOCK_FORM)}
-       className="px-4 py-2 bg-amber-100 text-amber-800 font-medium rounded-lg hover:bg-amber-200 transition-colors text-sm"
-      >
-       Fill mock values
-      </button>
       <button
        type="button"
        onClick={() => setFormData(emptyForm())}
