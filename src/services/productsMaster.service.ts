@@ -7,6 +7,9 @@ import type { ServiceResult } from '../types/api.types';
 import type { FormulaBomParsedRow } from '../lib/formulaBomExcelParse';
 import { api, getApiBaseUrl, getAuthToken } from '../lib/apiClient';
 
+export type PrRecordType = 'temporary' | 'permanent';
+export type PrRecordTypeForm = PrRecordType | 'legacy';
+
 export interface PRProductListItem {
   product_id: number;
   product_code: string;
@@ -22,6 +25,8 @@ export interface PRProductListItem {
   shelf_life_months?: number;
   mrp_price?: number;
   status?: string;
+  /** Temporary (TPR…) vs permanent (PR…) internal-code series; null = legacy rows. */
+  pr_record_type?: PrRecordType | null;
   version?: string;
   rm_ingredients_count: number;
   pack_items_count: number;
@@ -251,6 +256,7 @@ export interface UpdatePRProductPayload {
   odour?: string;
   fill_weight_spec?: string;
   stability_summary?: string;
+  pr_record_type?: PrRecordType | null;
   bom?: {
     rm_lines?: unknown[];
     sku_rm_lines?: unknown[];

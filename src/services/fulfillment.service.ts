@@ -148,12 +148,6 @@ export async function fetchTransporters(): Promise<TransporterOption[]> {
 
 /* ── Invoices ── */
 
-export async function fetchNextInvoiceNo(): Promise<string> {
-  const res = await api.get<{ invoiceNo: string }>(`${BASE}/next-invoice-no`);
-  const data = (res as any)?.data ?? res;
-  return data?.invoiceNo ?? '';
-}
-
 /** POST /fulfillment/invoices — matches backend `createInvoice` JSON body. */
 export interface FulfillmentInvoiceCreateResult {
   id: number;

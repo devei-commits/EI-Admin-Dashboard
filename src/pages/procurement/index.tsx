@@ -268,11 +268,31 @@ function extractMasterCodeFromText(value: unknown): string {
   return m && m[0] ? m[0].toUpperCase() : '';
 }
 
+/**
+ * Numeric / alphanumeric RM-PM master codes such as "1000612", "4000640", "5L00471" are the real
+ * primary keys the backend uses to resolve PO -> GRN line items. extractMasterCodeFromText only
+ * matches the synthetic "EI-..." prefix, so anything that needs to survive a round-trip (PO line,
+ * GRN payload, warehouse Inbound display) must keep the original code as-is.
+ */
+function isRealMasterCode(value: unknown): boolean {
+  const s = String(value ?? '').trim();
+  if (!s) return false;
+  if (/^EI-/i.test(s)) return false;
+  return /^[A-Z0-9]+$/i.test(s);
+}
+
 function resolveItemCodeFromSources(
   sources: unknown[],
   fallbackType: RequestType,
   fallbackIndex: number
 ): string {
+  // Prefer real master codes (e.g. "1000612", "4000640", "5L00471") over synthetic "EI-..." codes.
+  // Stripping the real codes here was breaking the procurement -> warehouse GRN flow: the backend
+  // could no longer match the line to its PO row by code, fell back to positional matching, and
+  // ended up labelling PM lines as the first RM of the PO (the "AQUA" bug).
+  for (const src of sources) {
+    if (isRealMasterCode(src)) return String(src).trim();
+  }
   for (const src of sources) {
     const code = extractMasterCodeFromText(src);
     if (code) return code;
@@ -2177,6 +2197,8 @@ const Procurement: React.FC = () => {
                 const subtotal = qty * rate;
                 const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
                 const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
+                const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
                 return {
                   item: i.itemName ?? i.name ?? request.items[idx] ?? '',
                   itemCode: resolveItemCodeFromSources(
@@ -2190,7 +2212,9 @@ const Procurement: React.FC = () => {
                   gstPercent: gstPct,
                   gstAmount,
                   lineTotal,
-                };
+                  ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
+                  ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+                } as DraftPOLineItem;
               })
               : fallbackLineItems,
           );
@@ -2326,6 +2350,8 @@ const Procurement: React.FC = () => {
         const subtotal = qty * rate;
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+        const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
+        const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
         return {
           item: i.itemName ?? i.name ?? '',
           itemCode: resolveItemCodeFromSources(
@@ -2339,7 +2365,9 @@ const Procurement: React.FC = () => {
           gstPercent: gstPct,
           gstAmount,
           lineTotal,
-        };
+          ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
+          ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+        } as DraftPOLineItem;
       });
 
       const grandTotal = Number(po.value ?? 0) || lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -2736,26 +2764,46 @@ const Procurement: React.FC = () => {
         let grnCreated = false;
         try {
           const normalizedLines = record.lineItems.map((line: any, idx: number) => {
+            // Pass the draft line's FK into the matcher so PR lookup is FK-first (matchBackend
+            // falls back to name/code only when no FK is set). Without this, mixed-type POs
+            // routed every PM line through the same name-only path and any subtle mismatch
+            // selected the wrong PR item.
+            const draftRm = line?.raw_material_id != null ? Number(line.raw_material_id) : undefined;
+            const draftPm = line?.pack_material_id != null ? Number(line.pack_material_id) : undefined;
             const prItem =
               matchBackendPrItemForDraftLine(
                 {
                   item: String(line.item ?? ''),
                   itemCode: String(line.itemCode ?? ''),
-                  type: (record.request?.type ?? 'RM') as RequestType,
+                  type: (line?.type ?? record.request?.type ?? 'RM') as RequestType,
                   qty: String(line.qty ?? ''),
                   pricePerUnit: Number(line.pricePerUnit) || 0,
                   gstPercent: Number(line.gstPercent) || 18,
                   gstAmount: Number(line.gstAmount) || 0,
                   lineTotal: Number(line.lineTotal) || 0,
+                  ...(Number.isFinite(draftRm) ? { raw_material_id: draftRm } : {}),
+                  ...(Number.isFinite(draftPm) ? { pack_material_id: draftPm } : {}),
                 },
                 items
               ) ?? items[idx];
+            // Explicit FK from the draft line always wins. PR items only fill in the gap when
+            // the draft PO didn't carry one.
+            const resolvedRmId = Number.isFinite(draftRm)
+              ? draftRm
+              : (prItem?.raw_material_id != null ? Number(prItem.raw_material_id) : undefined);
+            const resolvedPmId = Number.isFinite(draftPm)
+              ? draftPm
+              : (prItem?.pack_material_id != null ? Number(prItem.pack_material_id) : undefined);
+            // PM lines never carry raw_material_id and RM lines never carry pack_material_id —
+            // mutually exclude them so a stale id from the other side cannot reach the GRN.
+            const finalRmId = resolvedPmId != null ? undefined : resolvedRmId;
+            const finalPmId = resolvedRmId != null ? undefined : resolvedPmId;
             return {
               id: `line-${idx}`,
-              item: String(line.item ?? ''),
+              item: String(line.item ?? prItem?.name ?? ''),
               itemCode: resolveItemCodeFromSources(
-                [prItem?.code, line.itemCode, line.item, prItem?.name],
-                record.request.type,
+                [line.itemCode, prItem?.code, line.item, prItem?.name],
+                (line?.type ?? record.request.type) as RequestType,
                 idx
               ),
               poQty: Number(line.qty) || 0,
@@ -2765,8 +2813,8 @@ const Procurement: React.FC = () => {
               diff: 0,
               qcStatus: 'Pending',
               qcBy: '',
-              raw_material_id: prItem?.raw_material_id,
-              pack_material_id: prItem?.pack_material_id,
+              raw_material_id: finalRmId,
+              pack_material_id: finalPmId,
               product_id: prItem?.product_id,
             };
           });
@@ -2869,6 +2917,16 @@ const Procurement: React.FC = () => {
         const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
         const normalizedLines = record.lineItems.map((line: any, idx: number) => {
           const raw = rawItemsForGrn[idx] ?? {};
+          // Prefer the explicit FK from the draft line; fall back to the matching PO raw item
+          // only when the draft didn't carry one. Mutually exclude RM/PM so a PM line cannot
+          // also stamp a raw_material_id (this was the "PM shows as AQUA" contamination).
+          const lineRm = line?.raw_material_id != null ? Number(line.raw_material_id) : NaN;
+          const linePm = line?.pack_material_id != null ? Number(line.pack_material_id) : NaN;
+          const fromRaw = resolveMasterIdsFromRawItem(raw);
+          const rmId = Number.isFinite(lineRm) && lineRm > 0 ? lineRm : (fromRaw.raw_material_id ?? undefined);
+          const pmId = Number.isFinite(linePm) && linePm > 0 ? linePm : (fromRaw.pack_material_id ?? undefined);
+          const finalRmId = pmId != null ? undefined : rmId;
+          const finalPmId = rmId != null ? undefined : pmId;
           return {
             id: `line-${idx}`,
             item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
@@ -2894,7 +2952,9 @@ const Procurement: React.FC = () => {
             diff: 0,
             qcStatus: 'Pending',
             qcBy: '',
-            ...resolveMasterIdsFromRawItem(raw),
+            ...(finalRmId != null ? { raw_material_id: finalRmId } : {}),
+            ...(finalPmId != null ? { pack_material_id: finalPmId } : {}),
+            ...(fromRaw.product_id != null ? { product_id: fromRaw.product_id } : {}),
           };
         });
         const existingGrns = await fetchGRNList();

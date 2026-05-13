@@ -34,6 +34,17 @@ const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
+/** Canonical RM sub-categories — internal code = leading digit 1 / 2 / 3 + five digits (server assigns on save for new RMs). */
+const RM_SUB_CATEGORY_OPTIONS = ['Raw material', 'Fragrance', 'Colors & Pigments'] as const;
+
+function rmSubCategoryLeadingDigit(sub: string): '1' | '2' | '3' | null {
+  const k = String(sub || '').trim().toLowerCase();
+  if (k === 'raw material') return '1';
+  if (k === 'fragrance') return '2';
+  if (k === 'colors & pigments') return '3';
+  return null;
+}
+
 function inferRmCategoryKeyFromCode(code: string): string {
   if (!code) return '';
   for (const [k, v] of Object.entries(RM_CATEGORIES)) {
@@ -233,6 +244,7 @@ const RawMaterialRefactored: React.FC = () => {
   Boolean(
    formData.rmCategoryKey?.trim() &&
     formData.subCategory?.trim() &&
+    (RM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory) &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
     formData.primaryUom?.trim() &&
@@ -277,6 +289,22 @@ const RawMaterialRefactored: React.FC = () => {
     rmCategory: cat ? cat.label : prev.rmCategory,
     seriesPrefix: '',
    }));
+   return;
+  }
+  if (id === 'subCategory') {
+   const next = value;
+   const sku = String(formData.rmSku || '').trim();
+   if (sku && existingRmId) {
+    const d = rmSubCategoryLeadingDigit(next);
+    if (d && !sku.startsWith(d)) {
+     addToast(
+      'error',
+      `This RM code (${sku}) does not start with "${d}", which is required for "${next}". Keep the current sub-category or change the code via support / DB migration.`
+     );
+     return;
+    }
+   }
+   setFormData((prev) => ({ ...prev, subCategory: next }));
    return;
   }
   setFormData(prev => ({
@@ -460,7 +488,13 @@ const RawMaterialRefactored: React.FC = () => {
     return;
    }
    if (!formData.subCategory?.trim()) {
-    addToast('error', 'Enter RM Sub-Category (Primary info step)');
+    addToast('error', 'Select RM Sub-Category (Primary info step)');
+    setCurrentStage(0);
+    focusFieldById('subCategory');
+    return;
+   }
+   if (!(RM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory)) {
+    addToast('error', 'Choose one of: Raw material, Fragrance, or Colors & Pigments.');
     setCurrentStage(0);
     focusFieldById('subCategory');
     return;
@@ -528,6 +562,16 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return;
   }
+  const digitForSub = rmSubCategoryLeadingDigit(formData.subCategory);
+  if (digitForSub && !String(formData.rmSku || '').trim().startsWith(digitForSub)) {
+   addToast(
+    'error',
+    `Internal RM code must start with "${digitForSub}" for sub-category "${formData.subCategory}".`
+   );
+   setCurrentStage(0);
+   focusFieldById('rmSku');
+   return;
+  }
   try {
    if (existingRmId) {
     const rmIdForSync = parseInt(String(existingRmId), 10);
@@ -592,14 +636,34 @@ const RawMaterialRefactored: React.FC = () => {
          ))}
         </select>
        </div>
-       <InputField
-        label="Sub‑Category"
-        id="subCategory"
-        value={formData.subCategory}
-        onChange={handleInputChange}
-        placeholder="e.g. Silicone emollient / Glycolic acid / Paraben blend"
-        requiredMark
-       />
+       <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
+        <select
+         id="subCategory"
+         value={formData.subCategory}
+         onChange={handleInputChange}
+         className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+          errors.subCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+         }`}
+        >
+         <option value="">Select</option>
+         {formData.subCategory.trim() &&
+         !(RM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory) ? (
+          <option value={formData.subCategory}>{formData.subCategory} (legacy)</option>
+         ) : null}
+         {RM_SUB_CATEGORY_OPTIONS.map((opt) => (
+          <option key={opt} value={opt}>
+           {opt}
+          </option>
+         ))}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+         Internal RM code starts with <span className="font-mono">1</span> (Raw material),{' '}
+         <span className="font-mono">2</span> (Fragrance), or <span className="font-mono">3</span> (Colors & Pigments); new codes are
+         assigned on save (six characters: digit + five digits).
+        </p>
+        {errors.subCategory ? <p className="mt-1 text-xs text-red-600">{errors.subCategory}</p> : null}
+       </div>
       </div>
       <p className="text-xs text-gray-500 mt-2">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
      </div>
@@ -608,8 +672,9 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-        Assigned automatically when you save, using the series for the RM category you selected above (e.g.{' '}
-        <span className="font-mono text-gray-800">EI-RM-ACT-00001</span>).
+        Assigned on save: leading digit from sub-category (<span className="font-mono">1</span>,{' '}
+        <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus five digits (e.g.{' '}
+        <span className="font-mono text-gray-800">100001</span>).
        </div>
       </div>
      ) : (

@@ -11,7 +11,8 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { fetchPackMaterialsList, fetchNextPackMaterialCode, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, fetchReservedStock, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type ReservedStockResponse, type CreatePackMaterialPayload } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
+import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
@@ -30,6 +31,17 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   GIFT: { label: 'Gift Box / Rigid Box / Set', prefix: 'EI-PM-GIFT' },
   MISC: { label: 'Miscellaneous / Others', prefix: 'EI-PM-MISC' },
 };
+
+/** Stored as `group` on API + `subCategory` in form_data. Internal code: Primary → 4…, Monocarton → 5M…, Labels → 5l… */
+const PM_SUB_CATEGORY_OPTIONS = ['Primary', 'Labels', 'Monocarton'] as const;
+
+function pmSubCategorySkuPrefix(sub: string): '4' | '5M' | '5l' | null {
+  const k = String(sub || '').trim().toLowerCase();
+  if (k === 'primary') return '4';
+  if (k === 'monocarton') return '5M';
+  if (k === 'labels') return '5l';
+  return null;
+}
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
@@ -172,6 +184,7 @@ function createEmptyPackagingFormData() {
 const PACKAGING_FORM_MOCK = {
   pmCategory: 'PRI',
   qcGroup: 'Packaging QC',
+  subCategory: 'Primary',
   pkgSku: 'PKG-MOCK-001',
   name: 'Mock 30ml Dropper Bottle',
   level: 'Primary',
@@ -232,7 +245,8 @@ const PackagingRefactored: React.FC = () => {
     Boolean(
       formData.pmCategory?.trim() &&
         formData.subCategory?.trim() &&
-        (formData.itemCode || generatedCode)?.trim() &&
+        ((formData.itemCode || generatedCode)?.trim() ||
+          (PM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory)) &&
         formData.name?.trim() &&
         formData.level?.trim() &&
         formData.itemCategory?.trim() &&
@@ -319,36 +333,40 @@ const PackagingRefactored: React.FC = () => {
         return next;
       });
     }
+    if (id === 'subCategory') {
+      const next = value;
+      const sku = String(formData.itemCode || '').trim();
+      if (sku && existingPmId) {
+        const p = pmSubCategorySkuPrefix(next);
+        if (p === '4' && !sku.startsWith('4')) {
+          addToast(
+            'error',
+            `This PM code (${sku}) must start with "4" for Primary. Keep the current sub-category or change the code via support.`
+          );
+          return;
+        }
+        if (p === '5M' && !sku.startsWith('5M')) {
+          addToast('error', `This PM code (${sku}) must start with "5M" for Monocarton.`);
+          return;
+        }
+        if (p === '5l' && !sku.startsWith('5l')) {
+          addToast('error', `This PM code (${sku}) must start with "5l" (5 + lowercase L) for Labels.`);
+          return;
+        }
+      }
+      setFormData((prev) => ({ ...prev, subCategory: next }));
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
   };
 
-  // Code generation (next code comes from backend)
   const getCodePreview = () => {
-    if (generatedCode?.trim()) return { preview: generatedCode.trim() };
+    const c = (formData.itemCode || generatedCode || '').trim();
+    if (c) return { preview: c };
     return { preview: '—' };
-  };
-
-  const generateCode = async (confirm = false) => {
-    if (lockPrimaryFields) {
-      addToast('error', 'Code cannot be changed while editing an existing pack material.');
-      return;
-    }
-    if (generatedCode && !confirm) {
-      const ok = window.confirm('A code is already generated. Regenerate? This must be controlled after approvals.');
-      if (!ok) return;
-    }
-    try {
-      const code = await fetchNextPackMaterialCode();
-      setGeneratedCode(code);
-      setFormData(prev => ({ ...prev, itemCode: code }));
-      addToast('success', `Code generated: ${code}`);
-    } catch (err) {
-      console.error(err);
-      addToast('error', err instanceof Error ? err.message : 'Failed to generate code');
-    }
   };
 
   // Variant ops
@@ -498,12 +516,13 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const buildPayload = () => {
-    const code = formData.itemCode || generatedCode;
+    const codeTrim = (formData.itemCode || generatedCode || '').trim();
     const firstVendor = formData.vendors[0];
-    const skuForZoho = formData.pkgSku?.trim() ? formData.pkgSku.trim() : code;
+    const skuForZoho = formData.pkgSku?.trim() ? formData.pkgSku.trim() : codeTrim || undefined;
+    const descBase = formData.name?.trim() || (codeTrim ? `PM Item ${codeTrim}` : 'New pack material');
     return {
-      code,
-      description: formData.name || `PM Item ${code}`,
+      ...(codeTrim ? { code: codeTrim } : {}),
+      description: descBase,
       type: formData.itemCategory || formData.pmCategory || undefined,
       level: formData.level || undefined,
       group: formData.subCategory || undefined,
@@ -520,7 +539,7 @@ const PackagingRefactored: React.FC = () => {
       taxPref: formData.pkgTaxPreference ?? undefined,
       pkgReturnable: formData.pkgReturnable,
       pkgAssociateItems: formData.pkgAssociateItems?.trim() ? formData.pkgAssociateItems.trim() : undefined,
-      form_data: { ...formData, itemCode: code },
+      form_data: { ...formData, ...(codeTrim ? { itemCode: codeTrim } : {}) },
     };
   };
 
@@ -532,15 +551,18 @@ const PackagingRefactored: React.FC = () => {
         focusPmField('pmCategory');
         return;
       }
-      const code = formData.itemCode || generatedCode;
-      if (!code?.trim()) {
-        addToast('error', 'Generate or enter SKU before submitting');
+      if (!(PM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory)) {
+        addToast('error', 'Select PM Sub-Category: Primary, Labels, or Monocarton.');
         setCurrentSection(0);
-        focusPmField('itemCode');
+        focusPmField('subCategory');
         return;
       }
     }
-    for (const field of PM_REQUIRED_FIELDS) {
+    const requiredFields = PM_REQUIRED_FIELDS.filter((field) => {
+      if (field.id === 'itemCode' && !existingPmId) return false;
+      return true;
+    });
+    for (const field of requiredFields) {
       const rawValue = formData[field.id as keyof typeof formData];
       const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
       if (!value) {
@@ -554,6 +576,14 @@ const PackagingRefactored: React.FC = () => {
         focusPmField(field.id);
         return;
       }
+    }
+    const codeRule = (formData.itemCode || generatedCode || '').trim();
+    const pfxRule = pmSubCategorySkuPrefix(formData.subCategory);
+    if (pfxRule && codeRule && !codeRule.startsWith(pfxRule)) {
+      addToast('error', `SKU must start with "${pfxRule}" for sub-category "${formData.subCategory}".`);
+      setCurrentSection(0);
+      focusPmField('itemCode');
+      return;
     }
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
     if (!taxValidation.valid) {
@@ -637,48 +667,52 @@ const PackagingRefactored: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
-                  <input
-                    type="text"
+                  <select
                     id="subCategory"
                     value={formData.subCategory}
                     onChange={handleInputChange}
-                    placeholder="e.g. Airless bottle / Flip-top cap / BOPP label / 5-ply shipper"
+                    disabled={lockPrimaryFields}
                     className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       errors.subCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    }`}
-                  />
+                    } ${lockPrimaryFields ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="">Select</option>
+                    {formData.subCategory.trim() &&
+                    !(PM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory) ? (
+                      <option value={formData.subCategory}>{formData.subCategory} (legacy)</option>
+                    ) : null}
+                    {PM_SUB_CATEGORY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Internal PM code: <span className="font-mono">4</span> + five digits (Primary),{' '}
+                    <span className="font-mono">5M</span> + five digits (Monocarton), <span className="font-mono">5l</span> + five digits (Labels — lowercase L).
+                  </p>
                   {errors.subCategory ? <p className="mt-1 text-xs text-red-600">{errors.subCategory}</p> : null}
                 </div>
               </div>
             </div>
 
-            {/* Numeric PM code */}
+            {/* Internal PM code (assigned on save for new items when SKU left blank) */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Numeric PM code</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Internal PM code (SKU)</h3>
               <div className="border border-dashed border-gray-300 rounded-lg p-3 sm:p-4 bg-gray-50">
                 <div className="mb-4">
                   <p className="text-xs text-gray-500 mb-1">Current / preview</p>
                   <p className="font-mono font-bold text-gray-800 text-sm">{preview}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => generateCode()}
-                    disabled={lockPrimaryFields}
-                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Generate Code Now
-                  </button>
-                  {generatedCode && (
-                    <button
-                      type="button"
-                      onClick={() => generateCode(true)}
-                      disabled={lockPrimaryFields}
-                      className="px-4 py-1.5 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Regenerate
-                    </button>
-                  )}
+                {isNewPm ? (
+                  <p className="text-xs text-gray-600">
+                    If you leave SKU blank and choose Primary, Labels, or Monocarton, the server assigns the next code on save.
+                    Otherwise enter a code that matches your sub-category prefix rules.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-600">Editing an existing item — SKU is shown below and locked when appropriate.</p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setFormData(prev => ({ ...prev, ...PACKAGING_FORM_MOCK }))}
@@ -687,7 +721,6 @@ const PackagingRefactored: React.FC = () => {
                     Fill mock values
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-3">Codes are numeric only (global sequence). You can still edit the item code manually.</p>
               </div>
             </div>
 
@@ -734,10 +767,17 @@ const PackagingRefactored: React.FC = () => {
                   id="itemCode"
                   value={formData.itemCode}
                   onChange={handleInputChange}
-                  placeholder="Numeric code (e.g. 00042)"
-                  requiredMark
+                  placeholder={
+                    (PM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory)
+                      ? 'Optional — leave blank to assign on save (4… / 5M… / 5l…)'
+                      : 'e.g. 400001 or legacy code'
+                  }
+                  requiredMark={
+                    !isNewPm ||
+                    !(PM_SUB_CATEGORY_OPTIONS as readonly string[]).includes(formData.subCategory)
+                  }
                   error={errors.itemCode}
-                  readOnly={false}
+                  readOnly={lockPrimaryFields}
                 />
                 <div>
                   <label htmlFor="pkgTaxPreference" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1663,21 +1703,68 @@ const PackagingRefactored: React.FC = () => {
 
 // ─── Pack Materials Dashboard ─────────────────────────────────────────────────
 
-const TYPE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  Monocarton: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  Bottle: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
-  Label: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
-  Closure: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  Pump: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-  Tube: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
-};
+/** Same category badge hashing as Raw Material masters list (`RawMaterialForm`). */
+const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' },
+  { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+  { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+  { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' },
+  { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' },
+];
 
-const PRINT_STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  'Approved': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  'Label awaited': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'Artwork approved': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
-  'N/A': { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200' },
-};
+function normalizeSkuKey(s: string): string {
+  return String(s ?? '').trim().toLowerCase();
+}
+
+function buildPrProductLookup(products: PRProductListItem[]): Map<string, PRProductListItem> {
+  const m = new Map<string, PRProductListItem>();
+  for (const p of products) {
+    const code = normalizeSkuKey(p.product_code ?? '');
+    const zoho = normalizeSkuKey(p.zoho_sku_code ?? '');
+    if (code) m.set(code, p);
+    if (zoho && zoho !== code) m.set(zoho, p);
+  }
+  return m;
+}
+
+function getCategoryStyle(category: string): { bg: string; text: string; border: string } {
+  if (!category) return CATEGORY_STYLE_PALETTE[CATEGORY_STYLE_PALETTE.length - 1];
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) hash = (hash << 5) - hash + category.charCodeAt(i);
+  const index = Math.abs(hash) % CATEGORY_STYLE_PALETTE.length;
+  return CATEGORY_STYLE_PALETTE[index];
+}
+
+function pmSubtitleLine(pm: PackMaterialRecord): string {
+  const parts = [pm.material, pm.sizeSpec].map((s) => String(s ?? '').trim()).filter(Boolean);
+  if (parts.length > 0) return parts.join(' · ');
+  const z = String(pm.zohoSkuCode ?? '').trim();
+  return z || '—';
+}
+
+function pmGstDisplay(pm: PackMaterialRecord): string {
+  const fd = pm.form_data;
+  if (fd && typeof fd === 'object') {
+    const raw = (fd as Record<string, unknown>).pkgGst;
+    if (raw != null && String(raw).trim() !== '') {
+      const s = String(raw).trim().replace(/%/g, '');
+      const n = Number(s);
+      if (Number.isFinite(n)) return `${n}%`;
+      return String(raw).trim();
+    }
+  }
+  return '—';
+}
 
 function removeNullish<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)) as Partial<T>;
@@ -1739,21 +1826,6 @@ function normalizePmTests(input: any): Array<{ name: string; result: string; dat
   }));
 }
 
-function GroupChipPM({ group }: { group: string }) {
-  const isPrimary = group.startsWith('Primary');
-  const isAlt = group.startsWith('Alt');
-  const dotColor = isPrimary ? 'bg-blue-500' : isAlt ? 'bg-emerald-500' : 'bg-gray-400';
-  const label = group.replace(' +1', '').replace(' +2', '');
-  const extra = group.includes('+1') ? '+1' : group.includes('+2') ? '+2' : '';
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
-      <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
-      {label}
-      {extra && <span className="ml-0.5 px-1 py-0.5 text-[10px] font-semibold bg-gray-100 rounded">{extra}</span>}
-    </span>
-  );
-}
-
 const BprDashboard: React.FC<{
   refreshKey?: number;
   onSwitchToForm: () => void;
@@ -1763,8 +1835,7 @@ const BprDashboard: React.FC<{
   const [searchParams] = useSearchParams();
   const pmFromQuery = searchParams.get('pm') ?? '';
   const [search, setSearch] = useState(pmFromQuery);
-  const [reservedModal, setReservedModal] = useState<{ pm: PackMaterialRecord; data: ReservedStockResponse } | null>(null);
-  const [reservedLoading, setReservedLoading] = useState(false);
+  const [linkedSkusModalPm, setLinkedSkusModalPm] = useState<PackMaterialRecord | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const queryClient = useQueryClient();
@@ -1772,6 +1843,28 @@ const BprDashboard: React.FC<{
   const itemRefFileInputRef = useRef<HTMLInputElement>(null);
   const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
   const [resetAllRunning, setResetAllRunning] = useState(false);
+
+  const { data: prProductsLookupResult, isFetching: prProductsLookupLoading } = useQuery({
+    queryKey: ['pr-products-lookup-for-pm-linked-skus'],
+    queryFn: () => fetchPRProducts(),
+    enabled: linkedSkusModalPm != null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const prProductLookup = useMemo(() => {
+    const ok = prProductsLookupResult?.success === true;
+    const rows = ok ? prProductsLookupResult.data ?? [] : [];
+    return buildPrProductLookup(rows);
+  }, [prProductsLookupResult]);
+
+  const linkedSkuRows = useMemo(() => {
+    if (!linkedSkusModalPm) return [];
+    return linkedSkusModalPm.products.map((sku) => {
+      const key = normalizeSkuKey(sku);
+      const product = key ? prProductLookup.get(key) : undefined;
+      return { sku, product };
+    });
+  }, [linkedSkusModalPm, prProductLookup]);
 
   const onPickItemReferenceExcel = useCallback(() => {
     itemRefFileInputRef.current?.click();
@@ -1858,7 +1951,7 @@ const BprDashboard: React.FC<{
     const q = search.trim().toLowerCase();
     if (!q) return allRows;
     return allRows.filter((p) =>
-      [p.code, p.description, p.type, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode].some((s) =>
+      [p.code, p.description, p.type, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode, p.unit].some((s) =>
         (s ?? '').toLowerCase().includes(q)
       )
     );
@@ -1884,37 +1977,24 @@ const BprDashboard: React.FC<{
   };
 
   const statCards = [
-    { label: 'TOTAL PMS', value: stats.total, sub: 'Packaging materials', accent: 'border-l-violet-500', num: 'text-violet-600' },
-    { label: 'PRIMARY', value: stats.primary, sub: 'Direct contact', accent: 'border-l-blue-500', num: 'text-blue-600' },
-    { label: 'SECONDARY', value: stats.secondary, sub: 'Outer packaging', accent: 'border-l-teal-500', num: 'text-teal-600' },
-    { label: 'PM GROUPS', value: stats.groups, sub: 'With affinities', accent: 'border-l-orange-500', num: 'text-orange-600' },
-    { label: 'PACK TYPES', value: stats.types, sub: 'Tube, Bottle...', accent: 'border-l-rose-500', num: 'text-rose-600' },
+    { label: 'TOTAL PMS', value: stats.total, sub: 'Unique pack materials', accent: 'border-l-teal-500', num: 'text-teal-600' },
+    { label: 'PRIMARY', value: stats.primary, sub: 'Direct contact', accent: 'border-l-orange-400', num: 'text-orange-500' },
+    { label: 'SECONDARY', value: stats.secondary, sub: 'Outer packaging', accent: 'border-l-blue-500', num: 'text-blue-600' },
+    { label: 'PM GROUPS', value: stats.groups, sub: 'With affinities', accent: 'border-l-violet-500', num: 'text-violet-600' },
+    { label: 'PACK TYPES', value: stats.types, sub: 'Tube, bottle…', accent: 'border-l-rose-500', num: 'text-rose-600' },
   ];
-
-  const openReservedModal = async (pm: PackMaterialRecord) => {
-    setReservedLoading(true);
-    setReservedModal(null);
-    try {
-      const data = await fetchReservedStock(pm.id);
-      setReservedModal({ pm, data });
-    } catch {
-      setReservedModal({ pm, data: { actual: 0, reserved: 0, available: 0, unit: 'PCS' } });
-    } finally {
-      setReservedLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
-      <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
+      <div className="px-6 md:px-10 py-8 space-y-6 w-full">
 
         {/* ── Page Header ── */}
         <div className="relative">
-          <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+          <div className="absolute inset-0 bg-linear-to-r from-teal-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
               <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">PM Masters</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
             <p className="text-sm text-gray-600">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
@@ -1930,17 +2010,17 @@ const BprDashboard: React.FC<{
         {!isLoading && error && (
           <div className="py-8 text-center">
             <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load pack materials'}</p>
-            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Retry</button>
+            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
           </div>
         )}
 
         {!isLoading && !error && (
           <>
-            {/* ── Stat Cards ── */}
+            {/* ── Stat Cards (same card chrome as Raw Material masters) ── */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {statCards.map(card => (
                 <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
-                  <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
+                  <div className={`h-1 bg-linear-to-r from-teal-400 to-teal-600 ${card.accent}`} />
                   <div className="px-4 py-4">
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
                     <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
@@ -1950,14 +2030,14 @@ const BprDashboard: React.FC<{
               ))}
             </div>
 
-            {/* ── Table Card ── */}
+            {/* ── Table Card (columns aligned with Raw Material masters list) ── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
 
               {/* toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-sm font-semibold text-gray-900">Packaging Material Masters</span>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{rows.length} / {totalFiltered}</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{rows.length} / {totalFiltered}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
@@ -1981,27 +2061,24 @@ const BprDashboard: React.FC<{
                     onClick={onPickItemReferenceExcel}
                     disabled={bulkUploadRunning}
                     title="Multi-tab PM workbook: Primary Packaging, Labels, Monocartons, Shrink Sleeves, Shippers %CFB, Fitness & Misc — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-white text-violet-700 text-xs font-semibold hover:bg-violet-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-700 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
-                    {bulkUploadRunning ? 'Uploading…' : 'Import Excel'}
+                    {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
                   </button>
-                  {/* search */}
                   <div className="relative group">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-teal-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
                     </svg>
                     <input
                       value={search}
                       onChange={e => setSearch(e.target.value)}
-                      placeholder="Search code, type…"
-                      className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-44"
+                      placeholder="Search name, INCI, code…"
+                      className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all w-52"
                     />
                   </div>
-                  {/* type/level filters removed (server-side pagination uses search only) */}
-                  {/* new PM button */}
                   <button
                     onClick={onSwitchToForm}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
                   >
                     <span className="text-base leading-none">+</span> New PM
                   </button>
@@ -2009,40 +2086,35 @@ const BprDashboard: React.FC<{
               </div>
 
               {bulkUploadRunning && (
-                <div className="px-6 py-3 border-b border-gray-100 bg-violet-50/40">
+                <div className="px-6 py-3 border-b border-gray-100 bg-teal-50/40">
                   <div className="text-xs text-gray-700 mb-1.5 font-medium">Uploading workbook — server is parsing and importing in chunks…</div>
-                  <div className="h-2.5 rounded-full bg-violet-100 overflow-hidden shadow-inner">
-                    <div className="h-full w-full rounded-full bg-linear-to-r from-violet-500 to-violet-600 animate-pulse" />
+                  <div className="h-2.5 rounded-full bg-teal-100 overflow-hidden shadow-inner">
+                    <div className="h-full w-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 animate-pulse" />
                   </div>
                 </div>
               )}
 
-              {/* table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors">
-                        CODE <span className="text-violet-500">Asc</span>
+                        CODE <span className="text-teal-500">Asc</span>
                       </th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Description</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Level</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Group</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Material</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Size / Spec</th>
-                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">MOQ</th>
-                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Lead Time</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Print Status</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
+                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
                       <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
-                      {/* <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Reserved</th> */}
                       <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={12} className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
                           <div className="flex flex-col items-center gap-2">
                             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -2051,71 +2123,52 @@ const BprDashboard: React.FC<{
                           </div>
                         </td>
                       </tr>
-                    ) : rows.map((pm, _idx) => {
-                      const typeStyle = TYPE_STYLES[pm.type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
-                      const printStyle = PRINT_STATUS_STYLES[pm.printStatus] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
-                      const levelBg = pm.level === 'Primary' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200';
+                    ) : rows.map((pm) => {
+                      const catStyle = getCategoryStyle(pm.type || pm.level || '');
+                      const uom = (pm.unit || 'PCS').trim() || 'PCS';
+                      const statusLabel = (pm.printStatus || '').trim() || '—';
                       return (
-                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
-                          {/* code */}
-                          <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
-                          {/* description */}
-                          <td className="px-4 py-3.5 font-semibold text-gray-900 whitespace-nowrap group-hover:text-violet-700 transition-colors">{pm.description}</td>
-                          {/* type badge */}
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border} whitespace-nowrap`}>
-                              {pm.type}
+                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+                          <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-teal-700 whitespace-nowrap group-hover:text-teal-900">{pm.code}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">{pm.description}</p>
+                            <p className="text-gray-400 text-[10px] mt-0.5 italic">{pmSubtitleLine(pm)}</p>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all group-hover:shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border} whitespace-nowrap`}>
+                              {pm.type || '—'}
                             </span>
                           </td>
-                          {/* level badge */}
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${levelBg} whitespace-nowrap`}>
-                              {pm.level}
+                          <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.level || '—'}</td>
+                          <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
+                          <td className="px-4 py-3.5 text-right text-gray-600 font-medium">{pmGstDisplay(pm)}</td>
+                          <td className="px-4 py-3.5">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              {statusLabel}
                             </span>
                           </td>
-                          {/* group */}
-                          <td className="px-4 py-3">
-                            {pm.group ? <GroupChipPM group={pm.group} /> : <span className="text-gray-300">—</span>}
+                          <td className="px-4 py-3.5">
+                            {pm.products.length === 0 ? (
+                              <span className="text-gray-300 text-xs">—</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLinkedSkusModalPm(pm);
+                                }}
+                                className="text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-1 rounded"
+                              >
+                                View SKU ({pm.products.length})
+                              </button>
+                            )}
                           </td>
-                          {/* material */}
-                          <td className="px-4 py-3 text-gray-600">{pm.material}</td>
-                          {/* size/spec */}
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{pm.sizeSpec}</td>
-                          {/* moq */}
-                          <td className="px-4 py-3 text-right text-gray-600">{pm.moq.toLocaleString('en-IN')}</td>
-                          {/* lead time */}
-                          <td className="px-4 py-3 text-right text-gray-600">{pm.leadTimeDays} days</td>
-                          {/* print status */}
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${printStyle.bg} ${printStyle.text} ${printStyle.border} whitespace-nowrap`}>
-                              {pm.printStatus}
-                            </span>
-                          </td>
-                          {/* products */}
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {pm.products.map(p => (
-                                <span key={p} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">{p}</span>
-                              ))}
-                            </div>
-                          </td>
-                          {/* Show reserved */}
-                          {/* <td className="px-4 py-3 text-right">
-            <button
-             type="button"
-             onClick={() => openReservedModal(pm)}
-             disabled={reservedLoading}
-             className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline disabled:opacity-50"
-            >
-             {reservedLoading ? '…' : 'Reserved'}
-            </button>
-           </td> */}
-                          {/* Actions */}
-                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); onEditPm(pm); }}
-                              className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline mr-2"
+                              className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline mr-2"
                             >
                               Edit
                             </button>
@@ -2134,7 +2187,6 @@ const BprDashboard: React.FC<{
                 </table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 bg-white">
                   <div className="text-xs text-gray-600">
@@ -2151,7 +2203,7 @@ const BprDashboard: React.FC<{
                         setPageSize(Number(e.target.value));
                         setCurrentPage(1);
                       }}
-                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
                     >
                       <option value={10}>10</option>
                       <option value={25}>25</option>
@@ -2178,39 +2230,84 @@ const BprDashboard: React.FC<{
               )}
             </div>
 
-            {/* Reserved stock modal */}
-            {(reservedModal || reservedLoading) && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !reservedLoading && setReservedModal(null)}>
-                <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 border border-gray-200" onClick={e => e.stopPropagation()}>
-                  {reservedLoading ? (
-                    <p className="text-sm text-gray-500">Loading…</p>
-                  ) : reservedModal ? (
-                    <>
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="font-bold text-gray-900">{reservedModal.pm.code}</p>
-                          <p className="text-xs text-gray-500">{reservedModal.pm.description}</p>
-                        </div>
-                        <button type="button" onClick={() => setReservedModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-                      </div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Actual | Reserved | Available</p>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                          <p className="text-[10px] font-semibold text-gray-500 uppercase">Actual</p>
-                          <p className="text-lg font-bold text-slate-800">{Number(reservedModal.data.actual).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-                        </div>
-                        <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                          <p className="text-[10px] font-semibold text-amber-700 uppercase">Reserved</p>
-                          <p className="text-lg font-bold text-amber-800">{Number(reservedModal.data.reserved).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-                        </div>
-                        <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-                          <p className="text-[10px] font-semibold text-emerald-700 uppercase">Available</p>
-                          <p className="text-lg font-bold text-emerald-800">{Number(reservedModal.data.available).toLocaleString('en-IN')} {reservedModal.data.unit}</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-3">Available = Actual − Reserved (for SO/batches)</p>
-                    </>
-                  ) : null}
+            {linkedSkusModalPm && (
+              <div
+                className="fixed inset-0 z-100 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-6"
+                role="presentation"
+                onClick={() => setLinkedSkusModalPm(null)}
+              >
+                <div
+                  className="my-auto w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="pm-linked-skus-modal-title"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-slate-50 px-5 py-4">
+                    <div className="min-w-0">
+                      <h2 id="pm-linked-skus-modal-title" className="text-lg font-bold text-gray-900">
+                        Linked product SKUs
+                      </h2>
+                      <p className="mt-1 truncate text-xs text-gray-600 font-mono">{linkedSkusModalPm.code}</p>
+                      <p className="mt-0.5 text-sm text-gray-800">{linkedSkusModalPm.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLinkedSkusModalPm(null)}
+                      className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-500 hover:bg-white hover:text-gray-800"
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="max-h-[min(60vh,28rem)] overflow-y-auto px-5 py-4">
+                    {prProductsLookupLoading && (
+                      <p className="mb-3 text-xs text-gray-500">Loading product master for names and details…</p>
+                    )}
+                    {prProductsLookupResult && prProductsLookupResult.success === false && (
+                      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        Could not load Products master. SKUs from this pack material are still listed below.
+                      </p>
+                    )}
+                    <p className="mb-3 text-xs text-gray-500">
+                      When a linked code matches a product in the master list, the columns below are filled in from that product.
+                    </p>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full min-w-[420px] text-left text-xs">
+                        <thead className="sticky top-0 z-1 border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                          <tr>
+                            <th className="px-3 py-2">#</th>
+                            <th className="px-3 py-2">Linked SKU / code</th>
+                            <th className="px-3 py-2">Product name</th>
+                            <th className="px-3 py-2">Category</th>
+                            <th className="px-3 py-2">Subcategory</th>
+                            <th className="px-3 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 text-gray-800">
+                          {linkedSkuRows.map(({ sku, product }, i) => (
+                            <tr key={`${sku}-${i}`} className="bg-white hover:bg-teal-50/40">
+                              <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                              <td className="px-3 py-2 font-mono font-semibold text-teal-800 break-all">{sku}</td>
+                              <td className="px-3 py-2 wrap-break-word">{product?.product_name ?? '—'}</td>
+                              <td className="px-3 py-2 text-gray-600">{product?.category ?? '—'}</td>
+                              <td className="px-3 py-2 text-gray-600 wrap-break-word">{product?.pr_sub_category?.trim() || '—'}</td>
+                              <td className="px-3 py-2 text-gray-600">{product?.status ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setLinkedSkusModalPm(null)}
+                      className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2218,8 +2315,8 @@ const BprDashboard: React.FC<{
           </>
         )}
 
-        </div>
       </div>
+    </div>
   );
 };
 

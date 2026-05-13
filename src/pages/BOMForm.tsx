@@ -13,6 +13,7 @@ import {
   uploadSkuBomExcel,
   clearSkuBomForReimport,
   type PRProductDetail,
+  type PrRecordTypeForm,
 } from '../services/productsMaster.service';
 import {
   validateSkuBomTotals,
@@ -54,6 +55,8 @@ interface BOMFormState {
   fillSize: string;
   packConfiguration: string;
   skuCode: string;
+  /** Permanent vs temporary internal-code series; `legacy` only when editing old DB rows. */
+  prRecordType: PrRecordTypeForm;
   mrp: string;
   zohoId: string;
   skuForZoho: string;
@@ -141,6 +144,7 @@ function emptyBomForm(): BOMFormState {
     fillSize: '',
     packConfiguration: '',
     skuCode: '',
+    prRecordType: 'permanent',
     mrp: '',
     zohoId: '',
     skuForZoho: '',
@@ -189,6 +193,7 @@ function mockBomForm(): BOMFormState {
     fillSize: '50ml',
     packConfiguration: 'Bottle + Cap',
     skuCode: '00001',
+    prRecordType: 'permanent',
     mrp: '₹499',
     zohoId: '',
     skuForZoho: '',
@@ -347,6 +352,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   return {
     product_name: fd.productName.trim(),
     name: fd.productName.trim(),
+    pr_record_type: fd.prRecordType === 'temporary' ? 'temporary' : 'permanent',
     ...(internalCode ? { product_code: internalCode, bomCode: internalCode } : {}),
     category: fd.category || null,
     form: fd.productForm || null,
@@ -403,6 +409,9 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
     product_name: fd.productName.trim(),
     product_code: fd.skuCode.trim(),
     zoho_sku_code: (fd.skuForZoho?.trim() || fd.skuCode).trim(),
+    ...(fd.prRecordType === 'temporary' || fd.prRecordType === 'permanent'
+      ? { pr_record_type: fd.prRecordType }
+      : {}),
     category: fd.category || null,
     form: fd.productForm || null,
     fill_size: fd.fillSize || null,
@@ -533,6 +542,12 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     prDefaultStorageType: p.storage_conditions || '',
     prQcGroup: (p as unknown as { pr_qc_group?: string | null }).pr_qc_group || '',
     skuCode,
+    prRecordType:
+      p.pr_record_type === 'temporary'
+        ? 'temporary'
+        : p.pr_record_type === 'permanent'
+          ? 'permanent'
+          : 'legacy',
     zohoId: zi != null && String(zi).trim() !== '' ? String(zi) : '',
     // Read the new column name first; fall back to legacy `product_sku` for any cached/older payloads.
     skuForZoho: (() => {
@@ -1491,6 +1506,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return;
     }
+    const codeTrim = formData.skuCode.trim();
+    if (formData.prRecordType !== 'legacy') {
+      const rt = formData.prRecordType === 'temporary' ? 'temporary' : 'permanent';
+      if (codeTrim) {
+        const badTemp = rt === 'temporary' && !/^TPR/i.test(codeTrim);
+        const badPerm =
+          rt === 'permanent' && (!/^PR/i.test(codeTrim) || /^TPR/i.test(codeTrim));
+        if (badTemp || badPerm) {
+          addToast(
+            'error',
+            rt === 'temporary'
+              ? 'Internal PR code must start with TPR for a temporary record.'
+              : 'Internal PR code must start with PR (not TPR) for a permanent record.'
+          );
+          setCurrentStage(0);
+          return;
+        }
+      }
+    }
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
       setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
       addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml) — see Step 5 (Specs & Regulatory)');
@@ -1630,6 +1664,70 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     value={formData.productName}
                     onChange={(e) => handleInputChange('productName', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+
+                <div>
+                  <div className="block text-xs font-semibold text-slate-700 mb-2">
+                    PR record type <span className="text-red-600">*</span>
+                  </div>
+                  <div className={`flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-6 text-sm ${lockPrimaryFields ? 'opacity-90' : ''}`}>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="prRecordType"
+                        checked={formData.prRecordType === 'permanent'}
+                        disabled={lockPrimaryFields}
+                        onChange={() => handleInputChange('prRecordType', 'permanent')}
+                        className="text-blue-600"
+                      />
+                      <span>Permanent — internal code <span className="font-mono">PR#####</span></span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="prRecordType"
+                        checked={formData.prRecordType === 'temporary'}
+                        disabled={lockPrimaryFields}
+                        onChange={() => handleInputChange('prRecordType', 'temporary')}
+                        className="text-blue-600"
+                      />
+                      <span>Temporary — internal code <span className="font-mono">TPR#####</span></span>
+                    </label>
+                    {productIdFromRoute ? (
+                      <label className="inline-flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="prRecordType"
+                          checked={formData.prRecordType === 'legacy'}
+                          disabled={lockPrimaryFields}
+                          onChange={() => handleInputChange('prRecordType', 'legacy')}
+                          className="text-blue-600"
+                        />
+                        <span>Legacy / unspecified (existing codes)</span>
+                      </label>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1.5">
+                    Leave internal code blank to auto-assign the next free number. Manual codes must match the series you select.
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="internalPrCode" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Internal PR code <span className="text-slate-400 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    id="internalPrCode"
+                    type="text"
+                    placeholder={formData.prRecordType === 'temporary' ? 'e.g. TPR00042 or leave blank' : 'e.g. PR00042 or leave blank'}
+                    value={formData.skuCode}
+                    onChange={(e) => handleInputChange('skuCode', e.target.value)}
+                    disabled={lockPrimaryFields}
+                    autoComplete="off"
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                      lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''
+                    }`}
                   />
                 </div>
 

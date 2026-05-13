@@ -699,6 +699,8 @@ const BOMDashboard: React.FC = () => {
       odour: editDraft.odour ?? selectedProduct.odour,
       fill_weight_spec: editDraft.fill_weight_spec ?? selectedProduct.fill_weight_spec,
       stability_summary: editDraft.stability_summary ?? selectedProduct.stability_summary,
+      pr_record_type:
+        editDraft.pr_record_type !== undefined ? editDraft.pr_record_type : selectedProduct.pr_record_type,
     };
     const formulaBom = editDraft.formulaBom ?? selectedProduct.formulaBom ?? [];
     const skuBom = editDraft.skuBom ?? selectedProduct.skuBom ?? [];
@@ -948,6 +950,7 @@ const BOMDashboard: React.FC = () => {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CODE</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Record</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PRODUCT</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CATEGORY</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FORM</th>
@@ -965,7 +968,7 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -973,6 +976,19 @@ const BOMDashboard: React.FC = () => {
                     pagedFilteredList.map((p) => (
                       <tr key={p.product_id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewItem(p)}>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">{p.product_code || '—'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {p.pr_record_type === 'temporary' ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+                              Temporary
+                            </span>
+                          ) : p.pr_record_type === 'permanent' ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                              Permanent
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{p.product_name || 'Product'}</p>
@@ -1141,6 +1157,65 @@ const BOMDashboard: React.FC = () => {
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Identity</div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Internal PR code</span>
+                          {isEditMode ? (
+                            <input
+                              value={displayProduct.product_code ?? ''}
+                              onChange={(e) => updateDraft({ product_code: e.target.value })}
+                              className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono text-sm text-gray-900"
+                            />
+                          ) : (
+                            <div className="font-mono mt-1 font-semibold text-gray-900">{displayProduct.product_code ?? '—'}</div>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-500">PR record type</span>
+                          {isEditMode ? (
+                            <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-900">
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={displayProduct.pr_record_type === 'permanent'}
+                                  onChange={() => updateDraft({ pr_record_type: 'permanent' })}
+                                />
+                                Permanent <span className="font-mono text-xs text-gray-500">(PR…)</span>
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={displayProduct.pr_record_type === 'temporary'}
+                                  onChange={() => updateDraft({ pr_record_type: 'temporary' })}
+                                />
+                                Temporary <span className="font-mono text-xs text-gray-500">(TPR…)</span>
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={
+                                    displayProduct.pr_record_type !== 'temporary' &&
+                                    displayProduct.pr_record_type !== 'permanent'
+                                  }
+                                  onChange={() => updateDraft({ pr_record_type: null })}
+                                />
+                                Legacy / unspecified
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="mt-1">
+                              {displayProduct.pr_record_type === 'temporary' ? (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900">Temporary</span>
+                              ) : displayProduct.pr_record_type === 'permanent' ? (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800">Permanent</span>
+                              ) : (
+                                <span className="text-gray-500">Legacy / unspecified</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <div><span className="text-gray-500">Category</span>
                           {isEditMode ? <input value={displayProduct.category ?? ''} onChange={(e) => updateDraft({ category: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded text-gray-900" /> : <div className="font-medium">{displayProduct.category ?? '—'}</div>}
                         </div>

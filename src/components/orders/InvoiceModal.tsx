@@ -1,6 +1,6 @@
 /**
  * InvoiceModal Component  
- * Generate invoice for picked orders — fetches invoice no and transporters from DB
+ * Generate invoice for picked orders — transporters from DB; invoice number assigned on confirm by the API.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,7 +9,6 @@ import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, 
 import type { InvoiceModalProps, OrderItem } from '../../types/orderFulfillment';
 import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
 import {
-  fetchNextInvoiceNo,
   fetchTransporters,
   createInvoice,
   type TransporterOption,
@@ -25,7 +24,6 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   onGenerateInvoice,
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const [invoiceNo, setInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(getTodayISO());
   const [dueDate, setDueDate] = useState('');
   const [transporter, setTransporter] = useState('');
@@ -59,10 +57,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     let cancelled = false;
     setLoadingData(true);
 
-    Promise.all([fetchNextInvoiceNo(), fetchTransporters()])
-      .then(([nextInvNo, transporterList]) => {
+    fetchTransporters()
+      .then((transporterList) => {
         if (cancelled) return;
-        setInvoiceNo(nextInvNo);
         setTransporters(transporterList);
 
         const today = new Date(getTodayISO());
@@ -85,7 +82,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       return;
     }
 
-    if (pickedSplits.length === 0 || !preparedBy || !invoiceNo) return;
+    if (pickedSplits.length === 0 || !preparedBy) return;
 
     const fulfillmentOrderId = saleOrder.id;
     if (fulfillmentOrderId == null) {
@@ -118,7 +115,6 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     try {
       const created = await createInvoice({
         fulfillmentOrderId,
-        invoiceNo,
         invoiceDate,
         dueDate,
         preparedBy,
@@ -133,7 +129,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         ...(selectedBprNos?.length ? { bprNos: selectedBprNos } : {}),
       });
 
-      const no = created.invoiceNo || invoiceNo;
+      const no = created.invoiceNo || '';
       const zohoId = created.zoho_invoice_id != null && String(created.zoho_invoice_id).trim()
         ? String(created.zoho_invoice_id).trim()
         : '';
@@ -152,7 +148,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
       await Promise.resolve(
         onGenerateInvoice({
-          invoiceNo,
+          invoiceNo: no,
           invoiceDate,
           courier: transporter,
           paymentRef: lrNo,
@@ -223,8 +219,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <form ref={formRef} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4" onSubmit={(e) => e.preventDefault()}>
               <div className="space-y-4">
                 <div>
-                  <Input label="Invoice No." value={invoiceNo} readOnly disabled />
-                  <p className="text-xs text-gray-400 mt-1">Auto-generated</p>
+                  <span className="mb-1.5 block text-sm font-medium text-gray-700">Invoice No.</span>
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                    Assigned on the server when you confirm (avoids duplicate numbers if several invoices are created at once).
+                  </div>
                 </div>
                 <Input label="Invoice Date" type="date" required value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
                 <Input label="Due Date" type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
@@ -305,7 +303,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={loadingData || submitting || pickedSplits.length === 0 || !preparedBy || !invoiceNo}
+            disabled={loadingData || submitting || pickedSplits.length === 0 || !preparedBy}
           >
             {submitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
