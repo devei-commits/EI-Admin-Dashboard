@@ -11,6 +11,7 @@ import {
 } from './types/permissions.types';
 import { parseApiPermissions, flattenPermissionsToGranted } from './types/permissionKeys';
 import { getRoleById, updateRole as updateRoleApi } from '../../services/role.service';
+import ClonePermissionsFromUser from './ClonePermissionsFromUser';
 
 interface EditRoleFullPageProps {
  role: Role;
@@ -421,17 +422,16 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
 
          <div>
           <label className="block text-xs sm:text-sm font-medium text-gray-600 mb-1.5 sm:mb-2">Role Name</label>
-          <select
+          <input
+           type="text"
            name="roleName"
            value={editedRole.roleName}
            onChange={handleInputChange}
-           className={selectClassName}
-          >
-           <option value="">Select Role Name</option>
-           {getAvailableRoles().map((roleName) => (
-            <option key={roleName} value={roleName}>{roleName}</option>
-           ))}
-          </select>
+           className={inputClassName}
+           placeholder="Custom role display name"
+           required
+           maxLength={120}
+          />
          </div>
 
          <div>
@@ -501,11 +501,18 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
           </p>
          </div>
          <div className="p-2 sm:p-4 space-y-6">
+         <ClonePermissionsFromUser
+          onApply={(modules, gs) => {
+           setPermissions(modules);
+           setGlobalSettings(gs);
+          }}
+         />
          <DepartmentPermissionMatrix
           departments={[editedRole.roleName]}
           permissionsByDept={{ [editedRole.roleName]: permissions }}
           onDeptPermissionsChange={(_dept, next) => setPermissions(next)}
           readOnly={false}
+          showDepartmentColumn={false}
          />
 
          {/* Global Settings (single-role edit) */}

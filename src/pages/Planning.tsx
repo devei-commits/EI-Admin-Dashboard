@@ -40,7 +40,7 @@ import { fetchBatches, type BatchRow } from '../services/production.service';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
-import { fetchItemGroups } from '../services/itemGroups.service';
+import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 
@@ -157,6 +157,8 @@ interface ItemsInvolvedDisplayRow {
   /** Stage-flow warehouse balance (received, physically in WH). */
   whQtyStr: string;
   whQtyNum: number;
+  /** Abs(shortfall) vs TOTAL REQ when netNum &lt; 0. */
+  shortStr: string;
   reorderPt: string;
   avgMo: string;
   status: string;
@@ -295,6 +297,28 @@ function normalizeMaterialCode(code: string): string {
     .replace(/^pm[-_]?/i, '');
 }
 
+function bomLineMatchesItemGroupMember(
+  line: RawMaterial,
+  member: { id: string; code: string; name: string }
+): boolean {
+  const lineRmId =
+    line.raw_material_id != null && Number.isFinite(Number(line.raw_material_id))
+      ? Number(line.raw_material_id)
+      : Number.isFinite(Number(line.id)) && Number(line.id) > 0
+        ? Number(line.id)
+        : null;
+  const memberId = Number(member.id);
+  if (lineRmId != null && Number.isFinite(memberId) && memberId > 0 && lineRmId === memberId) {
+    return true;
+  }
+  const lineCode = normalizeMaterialCode(String(line.code ?? '').trim().toLowerCase());
+  const memberCode = normalizeMaterialCode(String(member.code ?? '').trim().toLowerCase());
+  if (lineCode && memberCode && lineCode === memberCode) return true;
+  const lineName = String(line.name ?? '').trim().toLowerCase();
+  const memberName = String(member.name ?? '').trim().toLowerCase();
+  return lineName.length > 0 && memberName.length > 0 && lineName === memberName;
+}
+
 function parseUnitCount(value: string | number | null | undefined): number {
   if (typeof value === 'number') return Math.max(0, Math.round(value));
   const n = parseInt(String(value ?? '').replace(/[^\d.-]/g, ''), 10);
@@ -305,6 +329,39 @@ function parseKgCount(value: string | number | null | undefined): number {
   if (typeof value === 'number') return Math.max(0, value);
   const n = parseFloat(String(value ?? '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+/** Items Involved qty display — preserve small decimals for RM/kg (BOM % impact). */
+const ITEMS_INVOLVED_QTY_MAX_DECIMALS = 4;
+
+function itemsInvolvedUsesDecimalQty(itemType: 'RM' | 'PM', unit?: string): boolean {
+  return itemType === 'RM' || String(unit ?? '').toUpperCase() === 'KG';
+}
+
+function formatItemsInvolvedQty(value: number, itemType: 'RM' | 'PM', unit?: string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (itemsInvolvedUsesDecimalQty(itemType, unit)) {
+    return n.toLocaleString('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: ITEMS_INVOLVED_QTY_MAX_DECIMALS,
+    });
+  }
+  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+function itemsInvolvedUnitSuffix(unit?: string, itemType?: 'RM' | 'PM'): string {
+  if (unit === 'KG' || itemType === 'RM') return ' kg';
+  if (unit === 'PCS') return ' pcs';
+  return unit ? ` ${unit}` : '';
+}
+
+function formatItemsInvolvedQtyWithUnit(
+  value: number,
+  itemType: 'RM' | 'PM',
+  unit?: string
+): string {
+  return formatItemsInvolvedQty(value, itemType, unit) + itemsInvolvedUnitSuffix(unit, itemType);
 }
 
 /** For PIs Extracted table: planned units created from saved custom batch kg, else fallback from batch count × batch size. */
@@ -381,6 +438,23 @@ function procurementItemMergeKey(item: ProcurementRequestItem): string {
     return `pm:${Number(item.pack_material_id)}`;
   }
   return `${item.type}:${String(item.code || item.name || '').trim().toLowerCase()}`;
+}
+
+/** Marker in procurement_requests.notes — open quotation asks from Planning (no Items List vendor). */
+const PLANNING_QUOTATION_REQUEST_NOTE_TAG = 'Quotation requested from Planning';
+
+const PLANNING_QUOTATION_REQUEST_LINE_NOTE =
+  'Quotation requested — no vendor rate on Items List; Procurement to add quotation';
+
+function isQuotationRequestProcurementRecord(pr: ProcurementRequest): boolean {
+  return String(pr.notes ?? '').includes(PLANNING_QUOTATION_REQUEST_NOTE_TAG);
+}
+
+function procurementRequestIsOpenForQuotationMerge(pr: ProcurementRequest): boolean {
+  const st = String(pr.status ?? '').trim();
+  if (/cancel/i.test(st) || /reject/i.test(st)) return false;
+  if (['PO Released', 'Delivery Pending', 'Under GRN'].includes(st)) return false;
+  return true;
 }
 
 /** Tab stats — all possible keys so we can access without `any` */
@@ -2283,9 +2357,16 @@ const Planning = () => {
   }, [purchaseOrders]);
 
   const itemsInvolved = useMemo(() => itemsInvolvedRows.map((row): ItemsInvolvedDisplayRow => {
+    const itemType = row.type;
+    const unit = row.unit;
+    const fmt = (n: number) => formatItemsInvolvedQty(n, itemType, unit);
+    const fmtU = (n: number) => formatItemsInvolvedQtyWithUnit(n, itemType, unit);
     const shortage = row.surplusShortage < 0 ? Math.abs(row.surplusShortage) : 0;
-    const surplusShortageStr = row.surplusShortage >= 0 ? `+${Math.round(row.surplusShortage).toLocaleString()}` : `-${Math.round(shortage).toLocaleString()}`;
-    const sihStr = Math.round(row.sih).toLocaleString();
+    const surplusShortageStr =
+      row.surplusShortage >= 0
+        ? `+${fmt(row.surplusShortage)}`
+        : `-${fmt(shortage)}`;
+    const sihStr = fmtU(row.sih);
     const orderedQtyNum = Number(row.inTransit ?? 0) || 0;
     const plannedQtyNum = Number(row.plannedQty ?? 0) || 0;
     const poQtyStage = Number(row.poQty ?? 0) || 0;
@@ -2299,24 +2380,19 @@ const Planning = () => {
       row.unallocatedToBatches != null && !Number.isNaN(Number(row.unallocatedToBatches))
         ? Number(row.unallocatedToBatches) || 0
         : Math.max(0, grossDemand - (Number(row.batchAllocatedQty ?? 0) || 0));
-    const totalReqStr =
-      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${Number(grossDemand).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg`
-        : `${Math.round(grossDemand).toLocaleString()} pcs`;
+    const totalReqStr = fmtU(grossDemand);
     // NET vs full TOTAL REQ (production need): supply − gross. With no stock/pipeline = full shortfall (−TOTAL REQ).
     // Release to Planning increases supply (planned → PO → in-transit) so NET moves toward 0 without double-counting batches.
     const netNum = supplyTowardGrossNum - grossDemand;
+    const shortQty = netNum < -1e-9 ? Math.abs(netNum) : 0;
     // Batch-only remainder (for tooltips): supply vs what is still unallocated to planning_batches — not the main NET column.
     const netPipelineNum = supplyTowardGrossNum - batchUnallocatedNum;
     const coveragePct =
       grossDemand > 0
         ? Math.max(0, Math.min(100, Math.round((supplyTowardGrossNum / grossDemand) * 100)))
         : 100;
-    const unitSuffix = row.unit === 'KG' ? ' KG' : row.unit === 'PCS' ? ' pcs' : '';
     const netDisplay =
-      row.type === 'RM' || String(row.unit ?? '').toUpperCase() === 'KG'
-        ? `${netNum >= 0 ? '+' : ''}${Number(netNum).toLocaleString(undefined, { maximumFractionDigits: 3 })}${unitSuffix}`
-        : `${netNum >= 0 ? '+' : ''}${Math.round(netNum).toLocaleString()}${unitSuffix}`;
+      netNum >= 0 ? `+${fmtU(netNum)}` : `-${fmtU(Math.abs(netNum))}`;
     return {
       id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
       name: row.name,
@@ -2343,26 +2419,27 @@ const Planning = () => {
       raw_material_id: row.raw_material_id ?? undefined,
       pack_material_id: row.pack_material_id ?? undefined,
       unit: row.unit,
-      reserved: (row.reserved ?? 0).toLocaleString() + unitSuffix,
+      reserved: fmtU(Number(row.reserved ?? 0) || 0),
       reservedNum: Number(row.reserved ?? 0) || 0,
-      plannedQty: plannedQtyNum.toLocaleString() + unitSuffix,
+      plannedQty: fmtU(plannedQtyNum),
       plannedQtyNum,
-      orderedQty: orderedQtyNum.toLocaleString() + unitSuffix,
+      orderedQty: fmtU(orderedQtyNum),
       orderedQtyNum,
       supplyTowardGrossNum,
       net: netDisplay,
       netNum,
       netPipelineNum,
       netPipeline: netDisplay,
-      inTransit: (row.inTransit ?? 0).toLocaleString() + unitSuffix,
-      poQtyStr: ((row.poQty ?? 0) as number).toLocaleString() + unitSuffix,
-      poQtyNum: Number(row.poQty ?? 0) || 0,
-      inTransitQtyStr: ((row.inTransitQty ?? 0) as number).toLocaleString() + unitSuffix,
-      inTransitQtyNum: Number(row.inTransitQty ?? 0) || 0,
-      whQtyStr: ((row.whQty ?? 0) as number).toLocaleString() + unitSuffix,
+      inTransit: fmtU(Number(row.inTransit ?? 0) || 0),
+      poQtyStr: fmtU(poQtyStage),
+      poQtyNum: poQtyStage,
+      inTransitQtyStr: fmtU(inTransitStage),
+      inTransitQtyNum: inTransitStage,
+      whQtyStr: fmtU(Number(row.whQty ?? 0) || 0),
       whQtyNum: Number(row.whQty ?? 0) || 0,
-      reorderPt: (row.reorderPt ?? 0).toLocaleString() + unitSuffix,
-      avgMo: (row.avgMo ?? 0).toLocaleString() + unitSuffix,
+      shortStr: fmtU(shortQty),
+      reorderPt: fmtU(Number(row.reorderPt ?? 0) || 0),
+      avgMo: fmtU(Number(row.avgMo ?? 0) || 0),
       status: row.status ?? 'In Stock',
     };
   }), [itemsInvolvedRows]);
@@ -2466,9 +2543,13 @@ const Planning = () => {
     const availForGap = Number(item.supplyTowardGrossNum ?? 0);
     const gapNeed = Math.max(0, Number(item.totalRequired || 0) - availForGap);
     const remainingGap = gapNeed;
-    const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? Math.round(opts.preferSurplusQty) : 0;
+    const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? opts.preferSurplusQty : 0;
     const qtyStr =
-      surplus > 0 ? String(surplus) : remainingGap > 0 ? String(Math.round(remainingGap)) : '';
+      surplus > 0
+        ? formatItemsInvolvedQty(surplus, item.itemType, item.unit)
+        : remainingGap > 0
+          ? formatItemsInvolvedQty(remainingGap, item.itemType, item.unit)
+          : '';
     const parsedTerms = parsePaymentTermsString(first?.paymentTerms ?? 'As per contract');
     setReleaseToPlanningItem(item);
     setReleaseToPlanningForm({
@@ -2630,6 +2711,112 @@ const Planning = () => {
 
     setReleaseToPlanningItem(null);
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
+    return true;
+  };
+
+  const requestQuotationForPlanningItem = async (): Promise<boolean> => {
+    if (!releaseToPlanningItem) return false;
+    const planningRow = releaseToPlanningItem;
+    const qty = Number(releaseToPlanningForm.qty || 0);
+    if (!(qty > 0)) {
+      addToast('warning', 'Enter quantity to request a quotation.');
+      return false;
+    }
+
+    const rmId =
+      planningRow.itemType === 'RM' && Number.isFinite(Number(planningRow.raw_material_id)) && Number(planningRow.raw_material_id) > 0
+        ? Number(planningRow.raw_material_id)
+        : undefined;
+    const pmId =
+      planningRow.itemType === 'PM' && Number.isFinite(Number(planningRow.pack_material_id)) && Number(planningRow.pack_material_id) > 0
+        ? Number(planningRow.pack_material_id)
+        : undefined;
+
+    const newRequestItem: ProcurementRequestItem = {
+      type: planningRow.itemType,
+      code: planningRow.code || planningRow.name,
+      name: planningRow.name,
+      required: qty,
+      sih: Number(planningRow.sihNum ?? 0) || 0,
+      shortage: qty,
+      quantity_requested: qty,
+      unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
+      line_notes: PLANNING_QUOTATION_REQUEST_LINE_NOTE,
+      ...(rmId != null ? { raw_material_id: rmId } : {}),
+      ...(pmId != null ? { pack_material_id: pmId } : {}),
+    };
+
+    const peId = Number(planningRow.planningExtractedId);
+    if (!Number.isFinite(peId) || peId <= 0) {
+      addToast('error', 'Missing planning line context; cannot request quotation.');
+      return false;
+    }
+
+    const reqRes = await fetchProcurementRequests(peId);
+    if (!reqRes.success || !reqRes.data) {
+      addToast('error', typeof reqRes.error === 'string' ? reqRes.error : 'Failed to load procurement requests');
+      return false;
+    }
+
+    const existing = reqRes.data.find(
+      (r) =>
+        isQuotationRequestProcurementRecord(r) && procurementRequestIsOpenForQuotationMerge(r)
+    );
+
+    const notes = `${PLANNING_QUOTATION_REQUEST_NOTE_TAG} · ${planningRow.name} (${planningRow.code})`;
+
+    if (existing) {
+      const existingItems = Array.isArray(existing.items) ? [...existing.items] : [];
+      const mergeKey = procurementItemMergeKey(newRequestItem);
+      const idx = existingItems.findIndex((i) => procurementItemMergeKey(i) === mergeKey);
+      let merged: ProcurementRequestItem[];
+      if (idx >= 0) {
+        const old = existingItems[idx];
+        const qNew = (Number(old.quantity_requested ?? 0) || 0) + qty;
+        merged = [...existingItems];
+        merged[idx] = {
+          ...old,
+          required: (Number(old.required ?? 0) || 0) + qty,
+          shortage: (Number(old.shortage ?? 0) || 0) + qty,
+          quantity_requested: qNew,
+          line_notes: PLANNING_QUOTATION_REQUEST_LINE_NOTE,
+        };
+      } else {
+        merged = [...existingItems, newRequestItem];
+      }
+      const upd = await updateProcurementRequest(existing.id, { items: merged, notes });
+      if (!upd.success) {
+        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update quotation request');
+        return false;
+      }
+    } else {
+      const createRes = await createProcurementRequest({
+        planningExtractedId: peId,
+        planningBatchId: null,
+        priority: 'High',
+        requiredByDate: null,
+        notes,
+        items: [newRequestItem],
+        preferredVendor: null,
+        status: 'Pending',
+      });
+      if (!createRes.success || !createRes.data) {
+        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create quotation request');
+        return false;
+      }
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['procurement-requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] }),
+      queryClient.invalidateQueries({ queryKey: ['planning', 'batches', 'all', 'items-involved'] }),
+    ]);
+
+    setReleaseToPlanningItem(null);
+    addToast(
+      'success',
+      'Quotation request sent to Procurement → Requests. Procurement can add vendor rates under Quotations.'
+    );
     return true;
   };
 
@@ -3259,32 +3446,59 @@ const Planning = () => {
   //   }
   // };
 
+  const swapSourceLine =
+    swapSourceIndex != null && swapSourceIndex >= 0 ? bomFormula[swapSourceIndex] ?? null : null;
+
+  const swapTargetItemGroups = useMemo(() => {
+    if (!swapSourceLine || itemGroupsRm.length === 0) return [];
+    return itemGroupsRm.filter((grp) =>
+      (grp.approvedMembers ?? []).some((m) => bomLineMatchesItemGroupMember(swapSourceLine, m))
+    );
+  }, [swapSourceLine, itemGroupsRm]);
+
   const swapCategories = useMemo(() => {
+    const toSwapItem = (
+      m: { id: string; code: string; name: string },
+      grp: ItemGroupRecord,
+      excludeLine: RawMaterial | null
+    ) => {
+      if (excludeLine && bomLineMatchesItemGroupMember(excludeLine, m)) return null;
+      const inBom = bomFormula.some((f) => f.code === m.code || f.name === m.name);
+      return {
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        description: grp.description || '',
+        status: inBom ? 'IN BOM' : 'AVAILABLE',
+        inBom,
+      };
+    };
+
+    const groupToCategory = (grp: ItemGroupRecord, excludeLine: RawMaterial | null) => ({
+      name: grp.name,
+      code: grp.code,
+      items: (grp.approvedMembers ?? [])
+        .map((m) => toSwapItem(m, grp, excludeLine))
+        .filter((x): x is NonNullable<typeof x> => x != null),
+    });
+
     if (itemGroupsRm.length > 0) {
-      return itemGroupsRm.map((grp) => ({
-        name: grp.name,
-        items: (grp.approvedMembers ?? []).map((m) => ({
-          id: m.id,
-          name: m.name,
-          code: m.code,
-          description: grp.description || '',
-          status: bomFormula.some((f) => f.code === m.code || f.name === m.name) ? 'IN BOM' : 'AVAILABLE',
-          inBom: bomFormula.some((f) => f.code === m.code || f.name === m.name),
-        })),
-      }));
+      if (swapSourceLine) {
+        return swapTargetItemGroups.map((grp) => groupToCategory(grp, swapSourceLine));
+      }
+      return itemGroupsRm.map((grp) => groupToCategory(grp, null));
     }
-    return [{
-      name: 'Raw materials',
-      items: rawMaterialsList.map((r) => ({
-        id: r.id,
-        name: r.name,
-        code: r.code,
-        description: r.inci || '',
-        status: bomFormula.some((f) => f.code === r.code || f.name === r.name) ? 'IN BOM' : 'AVAILABLE',
-        inBom: bomFormula.some((f) => f.code === r.code || f.name === r.name),
-      })),
-    }];
-  }, [itemGroupsRm, rawMaterialsList, bomFormula]);
+
+    const fallbackItems = rawMaterialsList.map((r) => ({
+      id: r.id,
+      name: r.name,
+      code: r.code,
+      description: r.inci || '',
+      status: bomFormula.some((f) => f.code === r.code || f.name === r.name) ? 'IN BOM' : 'AVAILABLE',
+      inBom: bomFormula.some((f) => f.code === r.code || f.name === r.name),
+    }));
+    return [{ name: 'Raw materials', code: '', items: fallbackItems }];
+  }, [itemGroupsRm, rawMaterialsList, bomFormula, swapSourceLine, swapTargetItemGroups]);
 
   const handleQuickAddRM = () => {
     if (!quickAddInciName || !quickAddPercentage) {
@@ -3992,12 +4206,18 @@ const Planning = () => {
                                 <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
                               </button>
                             </td>
-                            <td className="px-2 py-2 text-right min-w-[160px]">
+                            <td className="px-2 py-2 text-right min-w-[220px] tabular-nums">
                               <div className="text-gray-900 text-xs font-semibold">Required {item.totalReq}</div>
                               <div className="text-[11px] text-gray-600 mt-0.5">SIH {item.sih} · Reserved {item.reserved}</div>
-                              <div className="text-[11px] text-blue-700 mt-0.5">In process {item.inTransitQtyStr} · PO {item.poQtyStr}</div>
-                              <div className={`text-[11px] font-semibold mt-0.5 ${item.netNum < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                                Short {item.netNum < 0 ? Math.abs(item.netNum).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0'}
+                              <div className="text-[11px] text-blue-700 mt-0.5">
+                                Planned {item.plannedQty} · PO {item.poQtyStr} · In transit {item.inTransitQtyStr}
+                              </div>
+                              <div
+                                className={`text-[11px] font-semibold mt-0.5 ${
+                                  item.netNum < -1e-9 ? 'text-red-600' : 'text-emerald-700'
+                                }`}
+                              >
+                                Short {item.shortStr}
                               </div>
                             </td>
                             <td className="px-2 py-2 min-w-[170px]">
@@ -4168,15 +4388,14 @@ const Planning = () => {
         const availModal = Number(item.supplyTowardGrossNum ?? 0);
         const gapNeedModal = Math.max(0, Number(item.totalRequired || 0) - availModal);
         const releasedModal = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
-        const qtyFmt = (n: number) =>
-          item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-            ? n.toLocaleString(undefined, { maximumFractionDigits: 3 })
-            : Math.round(n).toLocaleString();
+        const qtyFmt = (n: number) => formatItemsInvolvedQty(n, item.itemType, item.unit);
         const releasePtStages = resolveStagedPaymentTermsForForm(
           releaseToPlanningForm.paymentTermsRaw,
           releaseToPlanningForm.paymentTermsType,
           Number(releaseToPlanningForm.advancePercent)
         );
+        const hasVendorSlabs = slabs.length > 0;
+        const canRequestQuotation = Number(releaseToPlanningForm.qty || 0) > 0;
         return (
           <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
@@ -4243,10 +4462,36 @@ const Planning = () => {
                             </td>
                           </tr>
                         ))}
-                        {slabs.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-500">No vendor rates found for this item in Items List (shown in Procurement &gt; Quotations).</td></tr>}
+                        {slabs.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-4 text-center">
+                              <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
+                              <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto">
+                                Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
+                                so Procurement can quote this material.
+                              </p>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
-                    <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
+                    {hasVendorSlabs ? (
+                      <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-amber-900">No vendor — release is blocked</p>
+                        <p className="text-[11px] text-amber-800 mt-0.5">
+                          Enter quantity on the right, then use <span className="font-semibold">Request quotation</span> to
+                          create a Procurement request (visible under Requests).
+                        </p>
+                      </div>
+                    )}
+                    {hasVendorSlabs && (
+                      <p className="text-[11px] text-slate-500 mt-2">
+                        No suitable vendor? Enter qty and use <span className="font-medium">Request quotation</span> in the
+                        footer instead of Add Planned Line.
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
@@ -4461,25 +4706,63 @@ const Planning = () => {
                 </div>
               </div>
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                <p className="text-xs text-slate-500">Planned stage is the transition stage before Draft POs and splitting/releasing.</p>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setReleaseToPlanningItem(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+                <p className="text-xs text-slate-500">
+                  {hasVendorSlabs
+                    ? 'Planned stage is the transition stage before Draft POs and splitting/releasing.'
+                    : 'No vendor on Items List — request a quotation so Procurement can add rates.'}
+                </p>
+                <div className="flex flex-wrap gap-2 justify-end">
                   <button
                     type="button"
-                    disabled={releaseToPlanningSaving}
+                    onClick={() => setReleaseToPlanningItem(null)}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={releaseToPlanningSaving || !canRequestQuotation}
+                    title={!canRequestQuotation ? 'Enter quantity first' : undefined}
                     onClick={async () => {
                       setReleaseToPlanningSaving(true);
                       try {
-                        const ok = await addPlannedLine();
+                        const ok = await requestQuotationForPlanningItem();
                         if (ok) setReleaseToPlanningItem(null);
                       } finally {
                         setReleaseToPlanningSaving(false);
                       }
                     }}
-                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                    className={`px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 ${
+                      hasVendorSlabs
+                        ? 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                        : 'bg-amber-600 text-white hover:bg-amber-700'
+                    }`}
                   >
-                    Add Planned Line
+                    {releaseToPlanningSaving ? 'Sending…' : 'Request quotation'}
                   </button>
+                  {hasVendorSlabs && (
+                    <button
+                      type="button"
+                      disabled={
+                        releaseToPlanningSaving ||
+                        !releaseToPlanningForm.vendorName ||
+                        !canRequestQuotation ||
+                        !(Number(releaseToPlanningForm.unitPrice || 0) > 0)
+                      }
+                      onClick={async () => {
+                        setReleaseToPlanningSaving(true);
+                        try {
+                          const ok = await addPlannedLine();
+                          if (ok) setReleaseToPlanningItem(null);
+                        } finally {
+                          setReleaseToPlanningSaving(false);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      Add Planned Line
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -5748,13 +6031,47 @@ const Planning = () => {
               {activeBatchTab === 'swap-add' && (
                 <div className="bg-white">
                   <div className="bg-cyan-50 border-y border-cyan-200 px-6 py-3">
-                    <p className="text-xs text-cyan-800 font-semibold">Universal Swap & Add — Click an item to swap it with a BOM ingredient, or use Quick Add to add new items.</p>
+                    <p className="text-xs text-cyan-800 font-semibold">
+                      {swapSourceLine
+                        ? swapTargetItemGroups.length > 0
+                          ? `Swap options — item group${swapTargetItemGroups.length > 1 ? 's' : ''} for ${swapSourceLine.name}: ${swapTargetItemGroups.map((g) => g.name).join(', ')}`
+                          : `${swapSourceLine.name} is not in any item group. Assign it under Masters → Item Groups, or use Quick Add.`
+                        : 'Swap & Add — click Swap on a BOM line (right), then pick a replacement from that line’s item group (left).'}
+                    </p>
                   </div>
                   <div className="flex max-h-[60vh]">
                     <div className="flex-1 border-r border-gray-200 overflow-y-auto p-6 space-y-4">
+                      {swapSourceLine && swapTargetItemGroups.length === 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <p className="font-semibold">No item group for this ingredient</p>
+                          <p className="text-xs mt-1 text-amber-800">
+                            Add <span className="font-mono">{swapSourceLine.code || swapSourceLine.name}</span> to an
+                            item group in Masters → Item Groups so swap alternatives appear here.
+                          </p>
+                        </div>
+                      )}
+                      {swapSourceLine && swapCategories.every((c) => c.items.length === 0) && swapTargetItemGroups.length > 0 && (
+                        <p className="text-sm text-slate-500">No other members in this item group.</p>
+                      )}
+                      {!swapSourceLine && itemGroupsRm.length > 0 && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          Select Swap on a BOM ingredient (right) to filter by its item group. Browse all groups below to
+                          add materials.
+                        </p>
+                      )}
                       {swapCategories.map((category) => (
-                        <div key={category.name}>
-                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">{category.name}</h3>
+                        <div key={`${category.code || category.name}`}>
+                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                            {category.name}
+                            {category.code ? (
+                              <span className="ml-1 font-mono font-normal normal-case text-slate-400">
+                                ({category.code})
+                              </span>
+                            ) : null}
+                          </h3>
+                          {category.items.length === 0 ? (
+                            <p className="text-xs text-slate-400 mb-3">No swap alternatives in this group.</p>
+                          ) : null}
                           <div className="space-y-2">
                             {category.items.map((item) => {
                               const whRow = warehouseRows.find((r) => r.code === item.code);
@@ -5805,7 +6122,7 @@ const Planning = () => {
                       <h3 className="text-sm font-bold text-gray-800 mb-4">CURRENT BOM — {selectedSOForBatch.productName}</h3>
                       {swapSourceIndex !== null && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-                          Select replacement for <strong>{bomFormula[swapSourceIndex]?.name}</strong> below (left panel). Click an available item to swap.
+                          Select replacement for <strong>{bomFormula[swapSourceIndex]?.name}</strong> from its item group on the left. Click &quot;Use as replacement&quot; on a group member.
                           <button type="button" onClick={() => setSwapSourceIndex(null)} className="ml-2 text-amber-700 underline">Cancel</button>
                         </div>
                       )}

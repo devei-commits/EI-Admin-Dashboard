@@ -43,6 +43,16 @@ import {
   type ZoneDTO,
 } from '../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
+import {
+  calcShortageQtyForKind,
+  formatQtyExact,
+  formatQtyShortage,
+  formatQtyWithUnit,
+  isQtyShort,
+  normalizeQtyForCompare,
+  qtyAvailable,
+  scaleQty,
+} from '../utils/formatQty';
 import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
 import {
@@ -841,13 +851,13 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
       if (batch.dispensingRM?.length) {
         updates.dispensingRM = batch.dispensingRM.map((r) => ({
           ...r,
-          required: Math.round(r.required * scale * 100) / 100,
+          required: scaleQty(r.required, scale),
         }));
       }
       if (batch.dispensingPM?.length) {
         updates.dispensingPM = batch.dispensingPM.map((p) => ({
           ...p,
-          required: Math.round(p.required * scale),
+          required: scaleQty(p.required, scale),
         }));
       }
     }
@@ -1039,13 +1049,13 @@ function AdjustBatchSizeModal({ batch, onClose, onSave }: {
       if (batch.dispensingRM?.length) {
         updates.dispensingRM = batch.dispensingRM.map((r) => ({
           ...r,
-          required: Math.round(r.required * scale * 100) / 100,
+          required: scaleQty(r.required, scale),
         }));
       }
       if (batch.dispensingPM?.length) {
         updates.dispensingPM = batch.dispensingPM.map((p) => ({
           ...p,
-          required: Math.round(p.required * scale),
+          required: scaleQty(p.required, scale),
         }));
       }
     }
@@ -1134,6 +1144,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 }) {
   const batchItems = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
   const unit = type === 'rm' ? 'KG' : 'pcs';
+  const qtyKind = type === 'rm' ? ('kg' as const) : ('pcs' as const);
+  const fmtQty = (n: number) => formatQtyExact(n, qtyKind);
+  const fmtQtyU = (n: number) => formatQtyWithUnit(n, qtyKind);
 
   const [derivedRm, setDerivedRm] = useState<DispensingItem[]>([]);
   const [derivedPm, setDerivedPm] = useState<DispensingItem[]>([]);
@@ -1206,7 +1219,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 ?? (line as { quantity?: number }).quantity
                 ?? (line as { qty?: number }).qty
                 ?? 0) || 0;
-              const required = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
+              const requiredRaw = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
+              const required = normalizeQtyForCompare(requiredRaw, 'kg');
               return { code, inci: (line.inci_name ?? (line as { inci_name?: string }).inci_name) as string, required, dispensed: 0, done: false };
             })
             .filter((x) => x.required > 0);
@@ -1244,7 +1258,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
               ?? (line as { quantity?: number }).quantity
               ?? (line as { qty?: number }).qty
               ?? 0) || 0;
-            const required = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
+            const requiredRaw = pct > 0 ? (batchSizeKg * pct) / 100 : directQty;
+            const required = normalizeQtyForCompare(requiredRaw, 'kg');
             return { code, inci: (line.inci_name ?? (line as { inci_name?: string }).inci_name) as string, required, dispensed: 0, done: false };
           })
           .filter((x) => x.required > 0);
@@ -1272,9 +1287,12 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         // Reserve PM must use batch-specific BOM from planning_batches. Never show master when backend says product_bom.
         if (batchBomRes.success && batchBomRes.data && batchBomRes.data.source === 'planning_batch') {
           const pmLines = (batchBomRes.data.pmLines ?? []) as BOMPmLine[];
-          const batchUnits = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
-            ? Math.round(batchBomRes.data.batchSizeKg)
-            : (batch.totalBatches ? Math.ceil((batch.orderQty || 0) / batch.totalBatches) : batch.batchSize || 0);
+          const batchUnits =
+            batchBomRes.data.batchSizeKg != null && Number(batchBomRes.data.batchSizeKg) > 0
+              ? Number(batchBomRes.data.batchSizeKg)
+              : batch.totalBatches
+                ? Math.ceil((batch.orderQty || 0) / batch.totalBatches)
+                : Number(batch.batchSize) || 0;
           const pmItems: DispensingItem[] = pmLines
             .filter((line) => line.pm_code || (line as { code?: string }).code)
             .map((line) => {
@@ -1371,7 +1389,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
       const hasKey = Object.prototype.hasOwnProperty.call(stockMap, code);
       const sih = stockMap[code] ?? 0;
       const reserved = reservedMap?.[code] ?? 0;
-      const available = Math.max(0, sih - reserved);
+      const available = qtyAvailable(sih, reserved);
       const planningCoverage = planningCoverageByCode[code] ?? 0;
       const planningCovered = planningCoverage >= 100;
       const ciKey =
@@ -1442,8 +1460,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
     const code = String(r.code ?? '').trim();
     const sih = stockMap[code] ?? 0;
     const reserved = reservedMap?.[code] ?? 0;
-    const available = Math.max(0, sih - reserved);
-    return available < r.required;
+    const available = qtyAvailable(sih, reserved);
+    return isQtyShort(available, r.required, qtyKind);
   };
   const rmHasShort = type === 'rm' && items.some(itemHasWhShort);
   const pmHasShort = type === 'pm' && items.some(itemHasWhShort);
@@ -1486,9 +1504,13 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 const code = String(r.code ?? '').trim();
                 const sih = stockMap[code] ?? 0;
                 const reserved = reservedMap?.[code] ?? 0;
-                const available = Math.max(0, sih - reserved);
+                const requiredQty = normalizeQtyForCompare(r.required, qtyKind);
+                const available = qtyAvailable(
+                  normalizeQtyForCompare(sih, qtyKind),
+                  normalizeQtyForCompare(reserved, qtyKind),
+                );
                 const planningCoverage = planningCoverageByCode[code] ?? 0;
-                const whOk = available >= r.required;
+                const whOk = !isQtyShort(available, requiredQty, qtyKind);
                 const checked = selected[i] !== false;
                 const stageRows = (inventoryRows ?? []).filter((row) =>
                   row.type === (type === 'rm' ? 'RM' : 'PM') && String(row.code ?? '').trim() === code
@@ -1496,7 +1518,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 const inTransitStage = stageRows.reduce((s, row) => s + (Number(row.inTransit) || 0), 0);
                 const underGrnStage = stageRows.reduce((s, row) => s + (Number((row as WarehouseInventoryRow & { underGrn?: number }).underGrn) || 0), 0);
                 const poOpenStage = stageRows.reduce((s, row) => s + (Number(row.poQuantity) || 0), 0);
-                const shortageQty = Math.max(0, r.required - available);
+                const shortageQty = calcShortageQtyForKind(available, requiredQty, qtyKind);
                 return (
                   <tr key={i} className={!whOk ? 'bg-red-50/50' : ''}>
                     <td className="px-3 py-2.5">
@@ -1506,10 +1528,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                       <div className="font-semibold text-gray-800">{r.inci || r.name || r.code}</div>
                       <div className="text-[9px] text-gray-500">{r.code}</div>
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-semibold">{type === 'rm' ? `${fmt(r.required)} KG` : `${fmt(r.required)} pcs`}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-700">{type === 'rm' ? `${fmt(sih)} KG` : `${fmt(sih)} pcs`}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-600">{type === 'rm' ? `${fmt(reserved)} KG` : `${fmt(reserved)} pcs`}</td>
-                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`}>{type === 'rm' ? `${fmt(available)} KG` : `${fmt(available)} pcs`}</td>
+                    <td className="px-3 py-2.5 font-mono font-semibold">{fmtQtyU(requiredQty)}</td>
+                    <td className="px-3 py-2.5 font-mono text-gray-700">{fmtQtyU(sih)}</td>
+                    <td className="px-3 py-2.5 font-mono text-gray-600">{fmtQtyU(reserved)}</td>
+                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`}>{fmtQtyU(available)}</td>
                     <td className="px-3 py-2.5">
                       {whOk ? (
                         <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
@@ -1520,8 +1542,14 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                           </span>
                           <div className="text-[10px] leading-tight text-red-700">
                             <div>
-                              Short {fmt(shortageQty)} {unit} | Under GRN {fmt(underGrnStage)} | In Transit {fmt(inTransitStage)} | PO open {fmt(poOpenStage)}
+                              Short {formatQtyShortage(shortageQty, qtyKind)} {unit} | Under GRN {fmtQty(underGrnStage)} | In Transit {fmtQty(inTransitStage)} | PO open {fmtQty(poOpenStage)}
                             </div>
+                            {!whOk && (
+                              <div className="text-[9px] text-red-900/90 font-mono">
+                                Need {fmtQtyU(requiredQty)} · Free {fmtQtyU(available)}
+                                {shortageQty > 0 ? ` · Gap ${formatQtyShortage(shortageQty, qtyKind)} ${unit}` : null}
+                              </div>
+                            )}
                             <div className="text-[9px] text-red-800/80">
                               {processOwnerText({ underGrn: underGrnStage, inTransit: inTransitStage, poOpen: poOpenStage })}
                             </div>
@@ -1827,8 +1855,8 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
                   <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
                     <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
-                        const sih = stockRM[r.code] ?? 0; const ok = sih >= r.required;
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{r.required}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        const sih = stockRM[r.code] ?? 0; const ok = !isQtyShort(sih, r.required);
+                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
@@ -1840,8 +1868,8 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
                   <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
                     <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
-                        const sih = stockPM[p.code] ?? 0; const ok = sih >= p.required;
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        const sih = stockPM[p.code] ?? 0; const ok = !isQtyShort(sih, p.required);
+                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
@@ -2403,7 +2431,7 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
             .map((line) => {
               const code = (line.rm_code || (line as { code?: string }).code) as string;
               const pct = Number((line.pct_w_w ?? (line as { pct?: number }).pct ?? 0)) || 0;
-              const required = (batchSizeKg * pct) / 100;
+              const required = normalizeQtyForCompare((batchSizeKg * pct) / 100, 'kg');
               return {
                 code,
                 inci: (line.inci_name ?? (line as { inci_name?: string }).inci_name) as string,
@@ -2418,8 +2446,10 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
           const pmLines = Array.isArray(res.data.pmLines) ? (res.data.pmLines as BOMPmLine[]) : [];
           const batchUnits =
             res.data.batchSizeKg != null && Number.isFinite(res.data.batchSizeKg) && res.data.batchSizeKg > 0
-              ? Math.round(res.data.batchSizeKg)
-              : (batch.totalBatches ? Math.ceil((batch.orderQty || 0) / batch.totalBatches) : (batch.batchSize || 0));
+              ? Number(res.data.batchSizeKg)
+              : batch.totalBatches
+                ? Math.ceil((batch.orderQty || 0) / batch.totalBatches)
+                : Number(batch.batchSize) || 0;
           const pmItems: DispensingItem[] = pmLines
             .filter((line) => line.pm_code || (line as { code?: string }).code)
             .map((line) => {
@@ -2521,7 +2551,7 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-gray-800">{r.inci || r.name || r.code}</div>
-                <div className="text-[10px] text-gray-400">{r.code} - Target: <b>{type === 'rm' ? r.required + ' KG' : fmt(r.required) + ' pcs'}</b></div>
+                <div className="text-[10px] text-gray-400">{r.code} - Target: <b>{type === 'rm' ? formatQtyWithUnit(r.required, 'kg') : formatQtyWithUnit(r.required, 'pcs')}</b></div>
               </div>
               {r.done ? (
                 <div className="inline-flex items-center gap-1 text-xs font-mono text-emerald-600 font-semibold"><Check size={12} /> {r.dispensed} {unit}</div>
@@ -3324,8 +3354,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const [localItems, setLocalItems] = useState<DispensingItem[]>(() => effectiveItems.map(i => ({ ...i })));
   const shortages = localItems.map((it) => {
     const toTransfer = it.required;
-    const availableWH = Math.max(0, (whStockOnlyMap[it.code] ?? 0) - (reservedMap[it.code] ?? 0));
-    return { code: it.code, required: toTransfer, available: availableWH, short: toTransfer > availableWH };
+    const availableWH = qtyAvailable(whStockOnlyMap[it.code] ?? 0, reservedMap[it.code] ?? 0);
+    return { code: it.code, required: toTransfer, available: availableWH, short: isQtyShort(availableWH, toTransfer) };
   }).filter(x => x.short);
   const hasShortage = shortages.length > 0;
 
@@ -3350,9 +3380,12 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         .then((batchBomRes) => {
           if (batchBomRes.success && batchBomRes.data && batchBomRes.data.source === 'planning_batch' && (batchBomRes.data.pmLines?.length ?? 0) > 0) {
             const pmLines = (batchBomRes.data.pmLines ?? []) as BOMPmLine[];
-            const batchUnits = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
-              ? Math.round(batchBomRes.data.batchSizeKg)
-              : (batch.totalBatches ? Math.ceil((batch.orderQty || 0) / batch.totalBatches) : batch.batchSize || 0);
+            const batchUnits =
+              batchBomRes.data.batchSizeKg != null && Number(batchBomRes.data.batchSizeKg) > 0
+                ? Number(batchBomRes.data.batchSizeKg)
+                : batch.totalBatches
+                  ? Math.ceil((batch.orderQty || 0) / batch.totalBatches)
+                  : Number(batch.batchSize) || 0;
             const pmItems: DispensingItem[] = pmLines
               .filter((line) => line.pm_code || (line as { code?: string }).code)
               .map((line) => {
@@ -3559,7 +3592,8 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     }
   };
 
-  const fmt = (n: number) => (type === 'rm' ? (Number.isInteger(n) ? String(n) : n.toFixed(2)) : String(Math.round(n)));
+  const qtyKindMtr = type === 'rm' ? ('kg' as const) : ('pcs' as const);
+  const fmtQtyMtr = (n: number) => formatQtyExact(n, qtyKindMtr);
 
   return (
     <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
@@ -3629,19 +3663,19 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
               const batchNeed = effectiveItems[i]?.required ?? r.required;
               const atFacility = atFacilityMap[r.code] ?? 0;
               const toTransfer = r.required;
-              const availableWH = Math.max(0, (whStockOnlyMap[r.code] ?? 0) - (reservedMap[r.code] ?? 0));
-              const short = toTransfer > availableWH;
+              const availableWH = qtyAvailable(whStockOnlyMap[r.code] ?? 0, reservedMap[r.code] ?? 0);
+              const short = isQtyShort(availableWH, toTransfer);
               return (
                 <tr key={i} className={short ? 'bg-amber-50/60' : ''}>
                   <td className="px-2 py-1.5 font-semibold">{r.inci || r.name}</td>
                   <td className="px-2 py-1.5 text-gray-500 font-mono">{r.code}</td>
-                  <td className="px-2 py-1.5 font-mono text-right">{fmt(batchNeed)}</td>
-                  <td className="px-2 py-1.5 font-mono text-right text-blue-600">{fmt(atFacility)}</td>
+                  <td className="px-2 py-1.5 font-mono text-right">{fmtQtyMtr(batchNeed)}</td>
+                  <td className="px-2 py-1.5 font-mono text-right text-blue-600">{fmtQtyMtr(atFacility)}</td>
                   <td className="px-2 py-1.5">
                     <input type="number" className="w-20 px-1.5 py-0.5 border border-gray-200 rounded font-mono text-right" min={0} step={type === 'rm' ? 0.01 : 1} value={type === 'rm' ? toTransfer : toTransfer} onChange={e => setItemQty(i, type === 'rm' ? parseFloat(e.target.value) || 0 : parseInt(e.target.value, 10) || 0)} />
                   </td>
                   <td className={`px-2 py-1.5 font-mono text-right ${short ? 'text-amber-600' : 'text-gray-700'}`}>
-                    {fmt(availableWH)}{short && <span className="text-red-600 ml-1">(short {fmt(toTransfer - availableWH)})</span>}
+                    {fmtQtyMtr(availableWH)}{short && <span className="text-red-600 ml-1">(short {fmtQtyMtr(calcShortageQtyForKind(availableWH, toTransfer, qtyKindMtr))})</span>}
                   </td>
                   <td className="px-2 py-1.5">{unit}</td>
                 </tr>
@@ -5009,9 +5043,12 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           const batchSizeKg = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
             ? batchBomRes.data.batchSizeKg
             : (batch.batchSize || 0);
-          const batchUnits = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
-            ? Math.round(batchBomRes.data.batchSizeKg)
-            : (batch.totalBatches ? Math.ceil((batch.orderQty || 0) / batch.totalBatches) : batch.batchSize || 0);
+          const batchUnits =
+            batchBomRes.data.batchSizeKg != null && Number(batchBomRes.data.batchSizeKg) > 0
+              ? Number(batchBomRes.data.batchSizeKg)
+              : batch.totalBatches
+                ? Math.ceil((batch.orderQty || 0) / batch.totalBatches)
+                : Number(batch.batchSize) || 0;
           const rmItems: DispensingItem[] = rmLines
             .filter((line) => line.rm_code || (line as any).code)
             .map((line) => {
@@ -5175,8 +5212,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                         <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
                         <tbody className="divide-y divide-gray-50">
                           {(batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems).map((r, i) => {
-                            const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const ok = sih >= r.required;
-                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(r.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
+                            const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, r.required);
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{formatQtyExact(res, 'kg')}</td></tr>;
                           })}
                         </tbody>
                       </table>
@@ -5200,8 +5237,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                         <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
                         <tbody className="divide-y divide-gray-50">
                           {(batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems).map((p, i) => {
-                            const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const ok = sih >= p.required;
-                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{fmt(p.required)}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{fmt(sih)}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{fmt(res)}</td></tr>;
+                            const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, p.required);
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{formatQtyExact(res, 'pcs')}</td></tr>;
                           })}
                         </tbody>
                       </table>
@@ -5285,7 +5322,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                     <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${p.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
                       <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${p.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{p.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
                       <span className="text-xs font-semibold flex-1">{p.name || p.code}</span>
-                      <span className="text-xs font-mono text-gray-500">{fmt(p.required)} pcs</span>
+                      <span className="text-xs font-mono text-gray-500">{formatQtyWithUnit(p.required, 'pcs')}</span>
                       {p.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {fmt(p.dispensed)} pcs</span>}
                     </div>
                   ))}

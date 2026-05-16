@@ -101,14 +101,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     const selectedTransporter = transporters.find(t => t.name === transporter);
 
     const rate = (item: OrderItem) => item.unitPrice ?? item.rate ?? 0;
-    const lineItems = pickedSplits.map(({ item, split }) => ({
-      productName: item.productName,
-      pack: item.pack,
-      bprNo: split.bprNo,
-      pickedQty: split.pickedQty ?? 0,
-      rate: rate(item),
-      amount: (split.pickedQty ?? 0) * rate(item),
-    }));
+    const lineItems = pickedSplits.map(({ item, split }) => {
+      const qty = split.pickedQty ?? 0;
+      const unitRate = rate(item);
+      return {
+        productName: item.productName,
+        pack: item.pack,
+        bprNo: split.bprNo,
+        sku: item.sku,
+        quantity: qty,
+        pickedQty: qty,
+        rate: unitRate,
+        amount: qty * unitRate,
+      };
+    });
 
     setSubmitting(true);
     setSubmitError(null);

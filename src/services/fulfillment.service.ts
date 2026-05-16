@@ -124,10 +124,13 @@ export async function fetchNextSoNo(): Promise<string> {
   return data?.soNo ?? '';
 }
 
+const VENDOR_ENTITY_CODE_PREFIX = /^EI-VEN-/i;
+
 export async function fetchCustomers(): Promise<CustomerOption[]> {
   const res = await api.get<CustomerOption[]>(`${BASE}/customers`);
   const data = (res as any)?.data ?? res;
-  return Array.isArray(data) ? data : [];
+  if (!Array.isArray(data)) return [];
+  return data.filter((row) => !VENDOR_ENTITY_CODE_PREFIX.test(String(row.code || '').trim()));
 }
 
 export async function fetchProducts(): Promise<ProductOption[]> {

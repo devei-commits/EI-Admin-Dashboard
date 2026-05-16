@@ -440,9 +440,7 @@ function issuedPoCardTimelineCompletedIndex(
     if (ov?.underGrn) idx = Math.max(idx, 5);
     if (grnCompleteForPo) idx = Math.max(idx, 6);
   }
-  if (idx > 0) return idx;
-  if (recordStatus === 'In Transit' || recordStatus === 'At Risk') return 3;
-  return 0;
+  return idx;
 }
 
 /**
@@ -2603,65 +2601,123 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const markIssuedPOInTransit = (record: any) => {
+  const resolveIssuedPoBackendId = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+  }): string => {
     const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
     let backendPoId = record?.backendPoId != null ? String(record.backendPoId).replace(/^PO-/, '').trim() : '';
+    if (backendPoId && /^\d+$/.test(backendPoId)) return backendPoId;
+    const fromPo =
+      purchaseOrders.find(
+        (p) =>
+          p.status === 'Released' &&
+          (normPoKey(p.poNumber ?? '') === normPoKey(record.poNumber ?? '') ||
+            normPoKey(String((p as { orderId?: string }).orderId ?? '')) === normPoKey(record.poNumber ?? '')),
+      ) ?? null;
+    if (fromPo) {
+      backendPoId = String(fromPo.id ?? '').replace(/^PO-/, '');
+    }
+    return backendPoId && /^\d+$/.test(backendPoId) ? backendPoId : '';
+  };
 
-    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
-      const fromPo =
-        purchaseOrders.find(
-          (p) =>
-            p.status === 'Released' &&
-            (normPoKey(p.poNumber ?? '') === normPoKey(record.poNumber) ||
-              normPoKey(String((p as { orderId?: string }).orderId ?? '')) === normPoKey(record.poNumber)),
-        ) ?? null;
-      if (fromPo) {
-        backendPoId = String(fromPo.id ?? '').replace(/^PO-/, '');
+  const markIssuedPOVendorConfirmed = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+    request?: { id?: string };
+  }) => {
+    const backendPoId = resolveIssuedPoBackendId(record);
+    if (!backendPoId) {
+      addToast('error', 'Purchase order not found. Cannot mark vendor confirmed.');
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const prId = String(record?.request?.id ?? '').trim();
+    const isUnlinkedPlanning = !prId;
+    void updatePoTracking(backendPoId, {
+      vendorConfirmedAt: today,
+      vendorConfirmedNote: isUnlinkedPlanning
+        ? 'Vendor confirmed (unlinked Planning PO) from Procurement'
+        : 'Vendor confirmed from Procurement',
+    }).then((trackingRes) => {
+      if (!trackingRes.success) {
+        addToast(
+          'error',
+          typeof trackingRes.error === 'string'
+            ? trackingRes.error
+            : (trackingRes.error?.message ?? 'Failed to update PO tracking'),
+        );
+        return;
       }
-    }
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      addToast('success', `${String(record.poNumber ?? 'PO')} — vendor confirmed`);
+    });
+  };
 
-    if (backendPoId && /^\d+$/.test(backendPoId)) {
-      const today = new Date().toISOString().split('T')[0];
-      const prId = String(record?.request?.id ?? '').trim();
-      const isUnlinkedPlanning = !prId;
-      updatePoTracking(backendPoId, {
-        shippedAt: today,
-        shippedNote: isUnlinkedPlanning
-          ? 'Marked In Transit (unlinked Planning PO) from Procurement'
-          : 'Marked In Transit from Procurement',
-      }).then((trackingRes) => {
-        if (!trackingRes.success) {
-          addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
-          return;
-        }
-        queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
-        queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
-        void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
-        if (isUnlinkedPlanning) {
-          setUnlinkedPoTimelineOverrides((prev) => ({
-            ...prev,
-            [backendPoId]: {
-              shipped: true,
-              delivered: prev[backendPoId]?.delivered ?? false,
-              underGrn: prev[backendPoId]?.underGrn ?? false,
-            },
-          }));
-        }
-        addToast('success', `${String(record.poNumber ?? 'PO')} marked In Transit`);
-      });
+  const markIssuedPOShipped = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+    requestCode?: string;
+    request?: { id?: string };
+  }) => {
+    const backendPoId = resolveIssuedPoBackendId(record);
+    if (!backendPoId) {
+      const requestId = record?.request?.id as string | undefined;
+      const requestCode = record?.requestCode as string | undefined;
+      if (requestId) {
+        void updateRequestStatus(requestId, 'Delivery Pending');
+        addToast('info', `${requestCode ?? 'PO'} marked delivery pending — link a released PO to update the timeline.`);
+        return;
+      }
+      addToast('error', 'Purchase order not found. Cannot mark shipped.');
       return;
     }
 
-    const requestId = record?.request?.id as string | undefined;
-    const requestCode = record?.requestCode as string | undefined;
-    if (requestId) {
-      void updateRequestStatus(requestId, 'Delivery Pending');
-      addToast('success', `${requestCode ?? 'PO'} moved to In Transit`);
+    const tracking = releasedPoTrackingByBackendId?.[backendPoId];
+    if (!hasPoTrackingTimestamp(tracking?.vendorConfirmedAt)) {
+      addToast('error', 'Mark vendor confirmed before marking shipped.');
+      return;
+    }
+    if (hasPoTrackingTimestamp(tracking?.shippedAt)) {
+      addToast('info', `${String(record.poNumber ?? 'PO')} is already marked shipped.`);
       return;
     }
 
-    addToast('error', 'Purchase order not found. Cannot mark In Transit.');
+    const today = new Date().toISOString().split('T')[0];
+    const prId = String(record?.request?.id ?? '').trim();
+    const isUnlinkedPlanning = !prId;
+    void updatePoTracking(backendPoId, {
+      shippedAt: today,
+      shippedNote: isUnlinkedPlanning
+        ? 'Marked shipped (unlinked Planning PO) from Procurement'
+        : 'Marked shipped from Procurement',
+    }).then((trackingRes) => {
+      if (!trackingRes.success) {
+        addToast(
+          'error',
+          typeof trackingRes.error === 'string'
+            ? trackingRes.error
+            : (trackingRes.error?.message ?? 'Failed to update PO tracking'),
+        );
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      if (isUnlinkedPlanning) {
+        setUnlinkedPoTimelineOverrides((prev) => ({
+          ...prev,
+          [backendPoId]: {
+            shipped: true,
+            delivered: prev[backendPoId]?.delivered ?? false,
+            underGrn: prev[backendPoId]?.underGrn ?? false,
+          },
+        }));
+      }
+      addToast('success', `${String(record.poNumber ?? 'PO')} marked shipped`);
+    });
   };
 
   const receiveIssuedPOGRN = async (record: any) => {
@@ -4854,6 +4910,15 @@ const Procurement: React.FC = () => {
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusClass[req.status]}`}>
                                       {req.status}
                                     </span>
+                                    {req.notes != null &&
+                                      String(req.notes).includes('Quotation requested from Planning') && (
+                                      <span
+                                        className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                                        title="Planning could not release — vendor rates needed on Items List"
+                                      >
+                                        Needs quotation
+                                      </span>
+                                    )}
                                     {req.stockCheckStatus ? (
                                       <span
                                         className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
@@ -6171,6 +6236,15 @@ const Procurement: React.FC = () => {
                         const lrRef = trCard?.orderTrackingRef?.trim() || '';
                         const shipNote = trCard?.shippedNote?.trim() || '';
                         const etaLabel = (record as { etaDateDisplay?: string }).etaDateDisplay ?? '—';
+                        const backendPoIdCard = resolveIssuedPoBackendId(record);
+                        const trCardResolved =
+                          backendPoIdCard && releasedPoTrackingByBackendId
+                            ? releasedPoTrackingByBackendId[backendPoIdCard]
+                            : trCard;
+                        const ovCard = backendPoIdCard ? unlinkedPoTimelineOverrides[backendPoIdCard] : undefined;
+                        const hasVendorConfirmedCard = hasPoTrackingTimestamp(trCardResolved?.vendorConfirmedAt);
+                        const hasShippedCard =
+                          hasPoTrackingTimestamp(trCardResolved?.shippedAt) || Boolean(ovCard?.shipped);
 
                         return (
                           <div
@@ -6288,13 +6362,39 @@ const Procurement: React.FC = () => {
                               >
                                 Full Timeline
                               </button>
-                              <button
-                                onClick={() => markIssuedPOInTransit(record)}
-                                disabled={record.status === 'In Transit'}
-                                className={`px-3 py-1.5 rounded border text-[11px] font-semibold ${record.status === 'In Transit' ? 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed' : 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
-                              >
-                                Mark In Transit
-                              </button>
+                              {backendPoIdCard && !hasVendorConfirmedCard && (
+                                <button
+                                  type="button"
+                                  onClick={() => markIssuedPOVendorConfirmed(record)}
+                                  className="px-3 py-1.5 rounded border border-cyan-400 text-cyan-800 text-[11px] font-semibold bg-cyan-50 hover:bg-cyan-100"
+                                >
+                                  Mark Vendor Confirmed
+                                </button>
+                              )}
+                              {backendPoIdCard && hasVendorConfirmedCard && !hasShippedCard && (
+                                <button
+                                  type="button"
+                                  onClick={() => markIssuedPOShipped(record)}
+                                  className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
+                                >
+                                  Mark In Transit
+                                </button>
+                              )}
+                              {backendPoIdCard && hasShippedCard && (
+                                <span className="px-3 py-1.5 rounded border border-slate-200 text-slate-500 text-[11px] font-semibold bg-slate-50">
+                                  In Transit
+                                </span>
+                              )}
+                              {!backendPoIdCard && record.status !== 'In Transit' && (
+                                <button
+                                  type="button"
+                                  onClick={() => markIssuedPOShipped(record)}
+                                  className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
+                                  title="No backend PO link — updates request status only"
+                                >
+                                  Mark In Transit
+                                </button>
+                              )}
                               <button
                                 onClick={() => receiveIssuedPOGRN(record)}
                                 className="px-3 py-1.5 rounded border border-emerald-400 text-emerald-700 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100"
@@ -7144,6 +7244,40 @@ const Procurement: React.FC = () => {
                 {po.backendPoId && (
                   <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3">
                     <p className="text-[10px] tracking-[0.14em] text-slate-600 uppercase font-semibold mb-2">Update status</p>
+                    {(() => {
+                      const modalTr = (data ?? poTrackingForm) as PoTrackingRecord | undefined;
+                      const modalHasVendor = hasPoTrackingTimestamp(modalTr?.vendorConfirmedAt);
+                      const modalHasShipped =
+                        hasPoTrackingTimestamp(modalTr?.shippedAt) || Boolean(ovModal?.shipped);
+                      const issuedRecordForActions = {
+                        backendPoId: po.backendPoId,
+                        poNumber: po.poNumber,
+                        requestCode: po.requestCode,
+                        request: po.requestId ? { id: po.requestId } : undefined,
+                      };
+                      return (
+                        <div className="flex flex-wrap gap-2 pb-1">
+                          {!modalHasVendor && (
+                            <button
+                              type="button"
+                              onClick={() => markIssuedPOVendorConfirmed(issuedRecordForActions)}
+                              className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700"
+                            >
+                              Mark Vendor Confirmed
+                            </button>
+                          )}
+                          {modalHasVendor && !modalHasShipped && (
+                            <button
+                              type="button"
+                              onClick={() => markIssuedPOShipped(issuedRecordForActions)}
+                              className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600"
+                            >
+                              Mark In Transit
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {[
                       { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
                       { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },

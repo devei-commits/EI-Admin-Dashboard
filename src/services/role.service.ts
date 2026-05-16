@@ -61,6 +61,11 @@ export async function listRoles(): Promise<BackendRoleListItem[]> {
  return api.get<BackendRoleListItem[]>('/api/v1/roles');
 }
 
+/** Roles for User Management (internal team only — excludes customer/doctor). */
+export async function listStaffRoles(): Promise<BackendRoleListItem[]> {
+ return api.get<BackendRoleListItem[]>('/api/v1/roles?staffOnly=true');
+}
+
 export async function getRoleById(roleId: string | number): Promise<BackendRoleDetail> {
  return api.get<BackendRoleDetail>(`/api/v1/roles/${roleId}`);
 }

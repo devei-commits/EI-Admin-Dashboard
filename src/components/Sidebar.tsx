@@ -158,6 +158,12 @@ const Sidebar = () => {
       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
     }`;
 
+  const submenuLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
+      ? "text-slate-900 font-medium bg-slate-100/50"
+      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+    }`;
+
   const handleLinkClick = () => {
     setIsOpen(false);
   };
@@ -331,106 +337,52 @@ const Sidebar = () => {
                 >
                   <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
                     <li>
-                      <a
-                        href="/procurement"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/procurement" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                         <span>Procurement</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                     <li>
-                      <a
-                        href="/warehouse"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/warehouse" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                         </svg>
                         <span>Warehouse</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                     <li>
-                      <a
-                        href="/planning"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/planning" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         <span>Planning</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                     <li>
-                      <a
-                        href="/production"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/production" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                         </svg>
                         <span>Production</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                     <li>
-                      <a
-                        href="/fulfillment"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/fulfillment" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                         </svg>
                         <span>Fulfillment</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                     <li>
-                      <a
-                        href="/client-hub"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
-                        onClick={handleLinkClick}
-                      >
+                      <PreloadNavLink to="/client-hub" className={submenuLinkClass} onClick={handleLinkClick}>
                         <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM4.318 20H3v-2a6 6 0 018-5.656" />
                         </svg>
                         <span>Client Hub</span>
-                        <svg className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7m0 0v7m0-7L10 14" />
-                        </svg>
-                      </a>
+                      </PreloadNavLink>
                     </li>
                   </ul>
                 </div>
@@ -728,21 +680,12 @@ const Sidebar = () => {
             {/* Customisation link removed */}
             {showTreasury && (
               <li>
-                <button
-                  onClick={() => {
-                    handleLinkClick();
-                    window.open('/treasury', '_blank');
-                  }}
-                  className="flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm w-full text-left"
-                >
+                <PreloadNavLink to="/treasury" className={linkClass} onClick={handleLinkClick}>
                   <svg className="w-5 h-5 mr-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span className="font-medium">Treasury</span>
-                  <svg className="w-4 h-4 ml-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
+                </PreloadNavLink>
               </li>
             )}
             {showEnquirySection && (

@@ -55,6 +55,8 @@ export interface CreateProcurementPayload {
   notes: string | null;
   items: ProcurementRequestItem[];
   preferredVendor?: string | null;
+  /** Defaults to Pending on server (shown as New in Procurement → Requests). */
+  status?: string;
 }
 
 export async function fetchProcurementRequests(planningExtractedId?: number): Promise<ServiceResult<ProcurementRequest[]>> {

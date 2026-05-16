@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
 import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, createStaffUser, type StaffUserFromApi } from '../services/user.service';
-import { listRoles } from '../services/role.service';
+import { listStaffRoles } from '../services/role.service';
 import {
  fetchDepartments,
  createDepartment as apiCreateDepartment,
@@ -228,9 +228,9 @@ const UserManagement = () => {
   setLoading(true);
   setError(null);
   try {
-   const [usersRes, rolesList] = await Promise.all([
+    const [usersRes, rolesList] = await Promise.all([
     fetchStaffUsers(),
-    listRoles(),
+    listStaffRoles(),
     loadDepartments(),
    ]);
    if (usersRes.success && usersRes.data) {
@@ -501,7 +501,7 @@ const UserManagement = () => {
    {/* Header */}
    <PageHeader
     title="User Management"
-    subtitle="Manage users, roles, and access permissions"
+    subtitle="Internal team members — assign roles and edit staff details (customers and doctors are managed elsewhere)"
     icon={<Users className="w-8 h-8" />}
     className="rounded-2xl mb-6"
     actions={
