@@ -64,6 +64,12 @@ const FacilityManagement: React.FC = () => {
 
   useEffect(() => { loadAreas(); }, [loadAreas]);
 
+  useEffect(() => {
+    if (loading || selectedAreaId != null) return;
+    const list = typeFilter === 'all' ? areas : areas.filter((a) => a.areaType === typeFilter);
+    if (list.length > 0) setSelectedAreaId(list[0].id);
+  }, [loading, areas, typeFilter, selectedAreaId]);
+
   const filteredAreas = typeFilter === 'all'
     ? areas
     : areas.filter((a) => a.areaType === typeFilter);
@@ -170,18 +176,27 @@ const FacilityManagement: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
           <p className="text-sm text-gray-500 mt-1">
             {mainTab === 'structure'
-              ? 'Create only. Structure: Location (4) → Zones → Racks.'
+              ? 'Zoho warehouses sync as zones under each location (area). Codes: ZL-… (area), ZW-… (warehouse).'
               : 'Default warehouse and production storage per item for transfer workflows.'}
           </p>
         </div>
         {mainTab === 'structure' && (
-          <button
-            onClick={openCreateArea}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Add Area
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => loadAreas()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Refresh
+            </button>
+            <button
+              onClick={openCreateArea}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Add Area
+            </button>
+          </div>
         )}
       </div>
 
@@ -264,6 +279,11 @@ const FacilityManagement: React.FC = () => {
                       }`}>
                         {area.areaType}
                       </span>
+                      {area.zohoLocationId && (
+                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700">
+                          Zoho
+                        </span>
+                      )}
                     </div>
                   </div>
                   {area.description && (
@@ -311,6 +331,7 @@ const FacilityManagement: React.FC = () => {
                           <th className="px-4 py-3 font-medium">Icon</th>
                           <th className="px-4 py-3 font-medium">Code</th>
                           <th className="px-4 py-3 font-medium">Name</th>
+                          <th className="px-4 py-3 font-medium">Status</th>
                           <th className="px-4 py-3 font-medium">Label</th>
                           <th className="px-4 py-3 font-medium">Area (sqm)</th>
                           <th className="px-4 py-3 font-medium">Description</th>
@@ -322,7 +343,25 @@ const FacilityManagement: React.FC = () => {
                           <tr key={zone.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-4 py-3 text-lg">{zone.icon || ''}</td>
                             <td className="px-4 py-3 font-mono text-xs text-gray-600">{zone.code}</td>
-                            <td className="px-4 py-3 font-medium text-gray-900">{zone.name}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900">
+                              {zone.name}
+                              {zone.zohoWarehouseId && (
+                                <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700">
+                                  Zoho
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                  zone.isActive === false
+                                    ? 'bg-gray-100 text-gray-600'
+                                    : 'bg-emerald-100 text-emerald-700'
+                                }`}
+                              >
+                                {zone.isActive === false ? 'Inactive' : 'Active'}
+                              </span>
+                            </td>
                             <td className="px-4 py-3 text-gray-500">{zone.zoneLabel || '—'}</td>
                             <td className="px-4 py-3 text-gray-500">{zone.areaSqm != null ? zone.areaSqm : '—'}</td>
                             <td className="px-4 py-3 text-gray-400 max-w-[200px] truncate">{zone.description || '—'}</td>

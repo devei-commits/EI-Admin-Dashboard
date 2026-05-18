@@ -21,6 +21,10 @@ export interface ZoneDTO {
   areaSqm: number | null;
   description: string | null;
   utilisationPct: number;
+  zohoWarehouseId?: string | null;
+  zohoLocationId?: string | null;
+  isActive?: boolean;
+  isZohoPrimary?: boolean;
   racks?: RackDTO[];
 }
 
@@ -31,6 +35,7 @@ export interface FacilityAreaDTO {
   areaType: 'warehouse' | 'production';
   icon: string | null;
   description: string | null;
+  zohoLocationId?: string | null;
   zones: ZoneDTO[];
 }
 
