@@ -16,7 +16,12 @@ import { fetchPRProducts, type PRProductListItem } from '../services/productsMas
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
-import { PM_SUB_CATEGORY_SKU_OPTIONS, pmCategoryKeysForSubCategory } from '../constants/materialMasterSkuRules';
+import {
+  PM_SUB_CATEGORY_SKU_OPTIONS,
+  PM_SUB_CATEGORY_SKU_SELECT_OPTIONS,
+  pmCategoryKeysForSubCategory,
+} from '../constants/materialMasterSkuRules';
+import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   PRI: { label: 'Primary Container (Bottle/Jar/Tube)', prefix: 'EI-PM-PRI' },
@@ -33,13 +38,18 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   MISC: { label: 'Miscellaneous / Others', prefix: 'EI-PM-MISC' },
 };
 
-/** Stored as `group` on API + `subCategory` in form_data. Internal code: Primary → 4…, Monocarton → 5M…, Labels → 5l… */
-function pmSubCategorySkuPrefix(sub: string): '4' | '5M' | '5l' | null {
+/** Stored as `group` on API + `subCategory` in form_data. Internal code: Primary → 4…, Monocarton → 5M…, Labels → 5L… */
+function pmSubCategorySkuPrefix(sub: string): '4' | '5M' | '5L' | null {
   const k = String(sub || '').trim().toLowerCase();
   if (k === 'primary') return '4';
   if (k === 'monocarton') return '5M';
-  if (k === 'labels') return '5l';
+  if (k === 'labels') return '5L';
   return null;
+}
+
+function pmSkuMatchesSubCategoryPrefix(sku: string, prefix: '4' | '5M' | '5L'): boolean {
+  if (prefix === '5L') return /^5[Ll]/.test(sku);
+  return sku.startsWith(prefix);
 }
 
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
@@ -227,10 +237,6 @@ const PackagingRefactored: React.FC = () => {
     Boolean(
       formData.pmCategory?.trim() &&
         formData.subCategory?.trim() &&
-        ((formData.itemCode || generatedCode)?.trim() ||
-          (PM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(
-            formData.subCategory as (typeof PM_SUB_CATEGORY_SKU_OPTIONS)[number]
-          )) &&
         formData.name?.trim() &&
         formData.level?.trim() &&
         formData.itemCategory?.trim() &&
@@ -322,27 +328,12 @@ const PackagingRefactored: React.FC = () => {
       const sku = String(formData.itemCode || '').trim();
       if (sku && existingPmId) {
         const p = pmSubCategorySkuPrefix(next);
-        if (p === '4' && !sku.startsWith('4')) {
-          addToast(
-            'error',
-            `This PM code (${sku}) must start with "4" for Primary. Keep the current sub-category or change the code via support.`
-          );
-          return;
-        }
-        if (p === '5M' && !sku.startsWith('5M')) {
-          addToast('error', `This PM code (${sku}) must start with "5M" for Monocarton.`);
-          return;
-        }
-        if (p === '5l' && !sku.startsWith('5l')) {
-          addToast('error', `This PM code (${sku}) must start with "5l" (5 + lowercase L) for Labels.`);
+        if (p && !pmSkuMatchesSubCategoryPrefix(sku, p)) {
+          addToast('error', `This PM code (${sku}) must start with "${p}" for the selected sub-category.`);
           return;
         }
       }
-      setFormData((prev) => {
-        const allowedPm = pmCategoryKeysForSubCategory(next);
-        const keepPm = prev.pmCategory && allowedPm.includes(prev.pmCategory) ? prev.pmCategory : '';
-        return { ...prev, subCategory: next, pmCategory: keepPm };
-      });
+      setFormData((prev) => ({ ...prev, subCategory: next }));
       return;
     }
     setFormData(prev => ({
@@ -508,7 +499,7 @@ const PackagingRefactored: React.FC = () => {
       type: formData.itemCategory || formData.pmCategory || undefined,
       level: formData.level || undefined,
       group: formData.subCategory || undefined,
-      material: formData.matBody || undefined,
+      material: formData.pmCategory || formData.matBody || undefined,
       size_spec: formData.specNominal || undefined,
       price_per_pc: firstVendor?.price != null ? Number(firstVendor.price) : undefined,
       moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
@@ -528,13 +519,13 @@ const PackagingRefactored: React.FC = () => {
   const handleSubmit = async () => {
     if (!existingPmId) {
       if (!formData.pmCategory?.trim()) {
-        addToast('error', 'Select a PM Category (primary section)');
+        addToast('error', 'Category is required (primary section)');
         setCurrentSection(0);
         focusPmField('pmCategory');
         return;
       }
-      if (!(PM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(formData.subCategory as (typeof PM_SUB_CATEGORY_SKU_OPTIONS)[number])) {
-        addToast('error', `Select PM Sub-Category: ${PM_SUB_CATEGORY_SKU_OPTIONS.join(', ')}.`);
+      if (!formData.subCategory?.trim()) {
+        addToast('error', 'Sub-Category is required (primary section)');
         setCurrentSection(0);
         focusPmField('subCategory');
         return;
@@ -561,7 +552,7 @@ const PackagingRefactored: React.FC = () => {
     }
     const codeRule = (formData.itemCode || generatedCode || '').trim();
     const pfxRule = pmSubCategorySkuPrefix(formData.subCategory);
-    if (pfxRule && codeRule && !codeRule.startsWith(pfxRule)) {
+    if (pfxRule && codeRule && !pmSkuMatchesSubCategoryPrefix(codeRule, pfxRule)) {
       addToast('error', `SKU must start with "${pfxRule}" for sub-category "${formData.subCategory}".`);
       setCurrentSection(0);
       focusPmField('itemCode');
@@ -623,70 +614,27 @@ const PackagingRefactored: React.FC = () => {
           <div className="min-w-0 space-y-5 sm:space-y-6">
             {/* PM Category — Industry Buckets */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PM Sub-Category &amp; category (SKU rules)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category (Excel source of truth)</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
-                  <select
-                    id="subCategory"
-                    value={formData.subCategory}
-                    onChange={handleInputChange}
-                    disabled={lockPrimaryFields}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      errors.subCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    } ${lockPrimaryFields ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                  >
-                    <option value="">Select</option>
-                    {formData.subCategory.trim() &&
-                    !(PM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(
-                      formData.subCategory as (typeof PM_SUB_CATEGORY_SKU_OPTIONS)[number]
-                    ) ? (
-                      <option value={formData.subCategory}>{formData.subCategory} (legacy)</option>
-                    ) : null}
-                    {PM_SUB_CATEGORY_SKU_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Internal PM code: <span className="font-mono">4</span> + five digits (Primary),{' '}
-                    <span className="font-mono">5M</span> + five digits (Monocarton), <span className="font-mono">5l</span> + five digits (Labels — lowercase L).
-                    Same buckets as multi-sheet Excel (Primary Packaging, Labels, Monocartons).
-                  </p>
-                  {errors.subCategory ? <p className="mt-1 text-xs text-red-600">{errors.subCategory}</p> : null}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PM Category <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    id="pmCategory"
-                    value={formData.pmCategory}
-                    onChange={handleInputChange}
-                    disabled={lockPrimaryFields || !formData.subCategory?.trim()}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      errors.pmCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    } ${lockPrimaryFields || !formData.subCategory?.trim() ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                  >
-                    <option value="">{formData.subCategory?.trim() ? 'Select' : 'Select sub-category first'}</option>
-                    {formData.pmCategory.trim() &&
-                    !pmCategoryKeysForSubCategory(formData.subCategory).includes(formData.pmCategory) ? (
-                      <option value={formData.pmCategory}>
-                        {PM_CATEGORIES[formData.pmCategory as keyof typeof PM_CATEGORIES]?.label ?? formData.pmCategory} (legacy)
-                      </option>
-                    ) : null}
-                    {pmCategoryKeysForSubCategory(formData.subCategory).map((k) => {
-                      const v = PM_CATEGORIES[k as keyof typeof PM_CATEGORIES];
-                      if (!v) return null;
-                      return (
-                        <option key={k} value={k}>{v.label}</option>
-                      );
-                    })}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">EI-PM-* series prefix. Options depend on the sub-category (internal code rule).</p>
-                  {errors.pmCategory ? <p className="mt-1 text-xs text-red-600">{errors.pmCategory}</p> : null}
-                </div>
+                <InputField
+                  label="Category"
+                  id="pmCategory"
+                  value={formData.pmCategory}
+                  onChange={handleInputChange}
+                  placeholder="From Excel Category column"
+                  requiredMark
+                  error={errors.pmCategory}
+                />
+                <SelectField
+                  label="Sub-Category (SKU prefix)"
+                  id="subCategory"
+                  value={formData.subCategory}
+                  onChange={handleInputChange}
+                  options={[...PM_SUB_CATEGORY_SKU_SELECT_OPTIONS]}
+                  requiredMark
+                  error={errors.subCategory}
+                  disabled={lockPrimaryFields}
+                />
               </div>
             </div>
 
@@ -737,7 +685,7 @@ const PackagingRefactored: React.FC = () => {
                     (PM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(
                       formData.subCategory as (typeof PM_SUB_CATEGORY_SKU_OPTIONS)[number]
                     )
-                      ? 'Optional — leave blank to assign on save (4… / 5M… / 5l…)'
+                      ? 'Optional — leave blank to assign on save (4… / 5M… / 5L…)'
                       : 'e.g. 400001 or legacy code'
                   }
                   requiredMark={
@@ -1317,14 +1265,22 @@ const PackagingRefactored: React.FC = () => {
       setEditPmLoading(false);
       const fdObj = safeParseMaybeJsonObject(pm.form_data);
       const fdNormalizedRaw: any = fdObj ?? null;
+      const resolvedPmCats = resolvePmEditCategories({
+        code: pm.code,
+        group: pm.group,
+        material: pm.material,
+        type: pm.type,
+        form_data: fdObj,
+      });
 
       const baseFromRecord = {
         itemCode: pm.code,
         name: pm.description || '',
         itemCategory: pm.type || '',
         level: pm.level || '',
-        subCategory: pm.group || '',
-        matBody: pm.material || '',
+        subCategory: resolvedPmCats.subCategory,
+        pmCategory: resolvedPmCats.pmCategory,
+        matBody: resolvedPmCats.matBody || pm.material || '',
         specNominal: pm.sizeSpec || '',
         deco: pm.printStatus || '',
         zohoId: pm.zohoId ?? '',
@@ -1375,12 +1331,29 @@ const PackagingRefactored: React.FC = () => {
         );
       }
 
-      setFormData((prev) => ({
-        ...prev,
-        ...baseFromRecord,
-        ...(fdOverlay ? (fdOverlay as typeof prev) : {}),
-        ...(vendorsMerged.length > 0 && !fdOverlay ? { vendors: vendorsMerged } : {}),
-      }));
+      const fdOverlayClean =
+        fdOverlay && typeof fdOverlay === 'object'
+          ? Object.fromEntries(
+              Object.entries(fdOverlay).filter(
+                ([k, v]) =>
+                  v !== null &&
+                  v !== undefined &&
+                  !['subCategory', 'pmCategory', 'excelCategory', 'excelSubCategory', 'matBody'].includes(k)
+              )
+            )
+          : null;
+
+      setFormData((prev) => {
+        const merged = {
+          ...prev,
+          ...baseFromRecord,
+          ...(fdOverlayClean ? (fdOverlayClean as typeof prev) : {}),
+          ...(vendorsMerged.length > 0 && !fdOverlayClean ? { vendors: vendorsMerged } : {}),
+        };
+        merged.subCategory = resolvedPmCats.subCategory;
+        merged.pmCategory = resolvedPmCats.pmCategory;
+        return merged;
+      });
 
       setGeneratedCode(pm.code);
     }).catch(() => {
@@ -2320,18 +2293,45 @@ const InputField: React.FC<{
   </div>
 );
 
-const _SelectField: React.FC<{
-  label: string; id: string; value: any;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  options: string[];
-}> = ({ label, id, value, onChange, options }) => (
+type PmSelectOption = string | { value: string; label: string };
+
+const SelectField: React.FC<{
+  label: string;
+  id: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement>) => void;
+  options: readonly PmSelectOption[];
+  disabled?: boolean;
+  requiredMark?: boolean;
+  error?: string;
+}> = ({ label, id, value, onChange, options, disabled, requiredMark, error }) => (
   <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-    <select id={id} value={value ?? ''} onChange={onChange}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-      <option value="">Select...</option>
-      {options.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+    <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      {label}
+      {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+    </label>
+    <select
+      id={id}
+      value={value ?? ''}
+      onChange={onChange}
+      disabled={disabled}
+      aria-invalid={error ? true : undefined}
+      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+        error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+      } ${disabled ? 'bg-slate-100' : ''}`}
+    >
+      <option value="">Select sub-category…</option>
+      {options.map((opt) => {
+        const v = typeof opt === 'string' ? opt : opt.value;
+        const l = typeof opt === 'string' ? opt : opt.label;
+        return (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        );
+      })}
     </select>
+    {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
   </div>
 );
 

@@ -17,6 +17,9 @@ import {
 } from '../services/productsMaster.service';
 import {
   validateSkuBomTotals,
+  countMeaningfulFormulaRmLines,
+  countMeaningfulPackLines,
+  countMeaningfulSkuRmLines,
   parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
   getEffectiveSkuBomLimitForPersist,
@@ -1465,12 +1468,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return;
     }
 
-    if (!productIdFromRoute) {
-      if (!skuBomValidation.ok) {
-        addToast('error', skuBomValidation.error);
-        setCurrentStage(2);
-        return;
-      }
+    const rmCount = countMeaningfulFormulaRmLines(bomFormToRmLines(formData));
+    if (rmCount < 1) {
+      addToast('error', 'At least one Formula BOM line is required. Add ingredients in Formula BOM.');
+      setCurrentStage(1);
+      return;
+    }
+    const pmCount = countMeaningfulPackLines(bomFormToPmLines(formData));
+    if (pmCount < 1) {
+      addToast('error', 'At least one Pack BOM line is required. Add packaging in Pack BOM.');
+      setCurrentStage(3);
+      return;
+    }
+
+    const meaningfulSku = countMeaningfulSkuRmLines(bomFormToSkuRmLines(formData));
+    if (meaningfulSku > 0 && !skuBomValidation.ok) {
+      addToast('error', skuBomValidation.error);
+      setCurrentStage(2);
+      return;
     }
 
     try {
@@ -1860,7 +1875,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         const fillNet = parseFillSizeToSkuNet(formData.fillSize);
         return (
             <div className="space-y-4">
-              <label className="block text-sm font-semibold text-violet-800 mb-2">SKU BOM — RAW MATERIALS (PER UNIT)</label>
+              <label className="block text-sm font-semibold text-violet-800 mb-2">
+                SKU BOM — RAW MATERIALS (PER UNIT){' '}
+                <span className="font-normal text-violet-600">(optional — Formula BOM and Pack BOM are required)</span>
+              </label>
               <p className="text-xs text-slate-600 mb-3">
                 Raw materials by quantity for <strong>one</strong> finished unit. Each line can use G, KG, ML, or L; all lines must match the net type (mass vs volume). The <strong>sum must equal the net per unit exactly</strong> (±0.001).
               </p>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import {
@@ -10,6 +10,8 @@ import {
   deleteItemListRate,
   updateItemListTier,
   deleteItemListTier,
+  importVendorPricingExcel,
+  importMasterCategoriesExcel,
   type PriceListItemPage,
   type ItemListTierRow,
 } from '../services/itemsList.service';
@@ -62,6 +64,10 @@ const ItemsList: React.FC = () => {
   const [postShipmentPctStr, setPostShipmentPctStr] = useState('');
   const [creditDaysStr, setCreditDaysStr] = useState('');
   const [leadTimeDays, setLeadTimeDays] = useState<string>('');
+  const [importingVendorExcel, setImportingVendorExcel] = useState(false);
+  const [importingCategoriesExcel, setImportingCategoriesExcel] = useState(false);
+  const vendorPricingFileRef = useRef<HTMLInputElement>(null);
+  const masterCategoriesFileRef = useRef<HTMLInputElement>(null);
 
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
@@ -517,14 +523,124 @@ const ItemsList: React.FC = () => {
     return pool.filter((p) => !partyIdsUsed.has(parseInt(p.id, 10)));
   }, [tierTarget?.type, clients, vendors, partyIdsUsed]);
 
+  const handleMasterCategoriesExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (
+      !window.confirm(
+        'Update RM/PM category and sub-category for all SKUs in this file? Existing masters are matched by SKU; vendor rates are not changed.'
+      )
+    ) {
+      return;
+    }
+    setImportingCategoriesExcel(true);
+    try {
+      const res = await importMasterCategoriesExcel(file, { details: true });
+      const s = res.summary;
+      if (!res.ok) {
+        addToast('error', res.error ?? 'Category import failed');
+        return;
+      }
+      addToast(
+        'success',
+        `Categories: ${s?.rm_updated ?? 0} RM, ${s?.pm_updated ?? 0} PM updated · ${s?.skipped ?? 0} skipped · ${s?.errors ?? 0} errors`
+      );
+      if ((s?.skipped ?? 0) > 0 && res.row_log?.length) {
+        const sample = res.row_log
+          .filter((r) => r.action === 'skipped' || r.action === 'error')
+          .slice(0, 3)
+          .map((r) => `${r.sheet ?? ''} row ${r.excel_row}: ${r.reason ?? r.action}`)
+          .join('; ');
+        if (sample) addToast('info', `Sample issues: ${sample}`);
+      }
+      void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+      void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Category import failed');
+    } finally {
+      setImportingCategoriesExcel(false);
+    }
+  };
+
+  const handleVendorPricingExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingVendorExcel(true);
+    try {
+      const res = await importVendorPricingExcel(file, { details: true });
+      const s = res.summary;
+      if (!res.ok) {
+        addToast('error', res.error ?? 'Import failed');
+        return;
+      }
+      addToast(
+        'success',
+        `Vendor pricing: ${s?.rates_synced ?? 0} synced, ${s?.skipped ?? 0} skipped, ${s?.errors ?? 0} errors`
+      );
+      if ((s?.skipped ?? 0) > 0 && res.row_log?.length) {
+        const sample = res.row_log
+          .filter((r) => r.action === 'skipped' || r.action === 'error')
+          .slice(0, 3)
+          .map((r) => `${r.sheet ?? ''} row ${r.excel_row}: ${r.reason ?? r.action}`)
+          .join('; ');
+        if (sample) addToast('info', `Sample issues: ${sample}`);
+      }
+      await refetchPage();
+      void queryClient.invalidateQueries({ queryKey: ['items-list'] });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImportingVendorExcel(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f9fafb] font-['Plus_Jakarta_Sans',sans-serif]">
       <div className="px-6 md:px-10 py-8 max-w-6xl mx-auto space-y-6">
-        <div>
-          <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
-          <p className="text-sm text-gray-500">
-            Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
+            <p className="text-sm text-gray-500">
+              Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <input
+              ref={vendorPricingFileRef}
+              type="file"
+              accept=".xlsx,.xlsm"
+              className="hidden"
+              onChange={handleVendorPricingExcelChange}
+            />
+            <input
+              ref={masterCategoriesFileRef}
+              type="file"
+              accept=".xlsx,.xlsm"
+              className="hidden"
+              onChange={handleMasterCategoriesExcelChange}
+            />
+            <button
+              type="button"
+              disabled={importingCategoriesExcel || importingVendorExcel}
+              onClick={() => masterCategoriesFileRef.current?.click()}
+              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            >
+              {importingCategoriesExcel ? 'Updating…' : 'Update RM/PM categories (Excel)'}
+            </button>
+            <button
+              type="button"
+              disabled={importingVendorExcel || importingCategoriesExcel}
+              onClick={() => vendorPricingFileRef.current?.click()}
+              className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900 disabled:opacity-50"
+            >
+              {importingVendorExcel ? 'Importing…' : 'Import vendor pricing (Excel)'}
+            </button>
+            <p className="text-[11px] text-gray-400 max-w-sm text-right">
+              Same workbook for both. Category update uses SKU + Category / Sub-Category. Pricing import also needs Primary Vendor and Price/Unit.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

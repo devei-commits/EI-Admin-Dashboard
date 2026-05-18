@@ -107,6 +107,34 @@ export type SkuBomLineInput = {
   uom?: string;
 };
 
+/** Formula BOM (% w/w) — at least one line with INCI/code/% before PR register/save. */
+export function countMeaningfulFormulaRmLines(lines: unknown[] | undefined | null): number {
+  if (!Array.isArray(lines)) return 0;
+  return lines.filter((line) => {
+    const L = line as Record<string, unknown>;
+    const inci = String(L?.inci_name ?? L?.inciName ?? '').trim();
+    const code = String(L?.rm_code ?? L?.rmCode ?? '').trim();
+    const pctRaw = L?.pct_w_w ?? L?.pctWw ?? L?.pct;
+    const pct =
+      pctRaw != null && pctRaw !== ''
+        ? parseFloat(String(pctRaw).replace(/[^\d.-]/g, ''))
+        : NaN;
+    const hasPct = !Number.isNaN(pct) && pct > 0;
+    return Boolean(inci || code || hasPct);
+  }).length;
+}
+
+/** Pack BOM — at least one line with description or PM code. */
+export function countMeaningfulPackLines(lines: unknown[] | undefined | null): number {
+  if (!Array.isArray(lines)) return 0;
+  return lines.filter((line) => {
+    const L = line as Record<string, unknown>;
+    const desc = String(L?.description ?? L?.pm_description ?? L?.pmDescription ?? '').trim();
+    const code = String(L?.pm_code ?? L?.pmCode ?? '').trim();
+    return Boolean(desc || code);
+  }).length;
+}
+
 export function countMeaningfulSkuRmLines(lines: unknown[] | undefined | null): number {
   if (!Array.isArray(lines)) return 0;
   return lines.filter((line) => {
@@ -142,7 +170,8 @@ export function validateSkuBomTotals(args: {
   const limU = limitUom != null && String(limitUom).trim() !== '' ? String(limitUom).trim() : null;
   const dim = limU ? dimensionOfLimitUom(limU) : null;
 
-  if (meaningful === 0 && !limQ && !limU) {
+  // SKU BOM is optional: no per-unit RM lines → skip limit/sum checks (fill size alone must not force SKU lines).
+  if (meaningful === 0) {
     return { ok: true };
   }
   if (meaningful > 0 && (!limQ || !limU || !dim)) {
@@ -151,13 +180,6 @@ export function validateSkuBomTotals(args: {
       code: 'SKU_BOM_LIMIT_REQUIRED',
       error:
         'SKU BOM lines are present: set net per-unit limit quantity and UOM (e.g. 50 GM or 50 ML) so the sum of lines can match exactly.',
-    };
-  }
-  if ((limQ || limU) && meaningful === 0) {
-    return {
-      ok: false,
-      code: 'SKU_BOM_LINES_REQUIRED',
-      error: 'SKU BOM net per-unit limit is set: add RM lines whose quantities sum to that limit exactly.',
     };
   }
   if (!dim) {

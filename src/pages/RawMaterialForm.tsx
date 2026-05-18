@@ -16,7 +16,8 @@ import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
-import { RM_SUB_CATEGORY_SKU_OPTIONS, rmCategoryKeysForSubCategory } from '../constants/materialMasterSkuRules';
+import { RM_SUB_CATEGORY_SKU_OPTIONS, RM_SUB_CATEGORY_SKU_SELECT_OPTIONS } from '../constants/materialMasterSkuRules';
+import { resolveRmEditCategories } from '../utils/masterImportCategoryResolve';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
 const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -240,9 +241,8 @@ const RawMaterialRefactored: React.FC = () => {
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
-   formData.rmCategoryKey?.trim() &&
+   formData.rmCategory?.trim() &&
     formData.subCategory?.trim() &&
-    (RM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(formData.subCategory as (typeof RM_SUB_CATEGORY_SKU_OPTIONS)[number]) &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
     formData.primaryUom?.trim() &&
@@ -292,28 +292,15 @@ const RawMaterialRefactored: React.FC = () => {
   if (id === 'subCategory') {
    const next = value;
    const sku = String(formData.rmSku || '').trim();
-   if (sku && existingRmId) {
-    const d = rmSubCategoryLeadingDigit(next);
-    if (d && !sku.startsWith(d)) {
-     addToast(
-      'error',
-      `This RM code (${sku}) does not start with "${d}", which is required for "${next}". Keep the current sub-category or change the code via support / DB migration.`
-     );
-     return;
-    }
+   const d = rmSubCategoryLeadingDigit(next);
+   if (sku && existingRmId && d && !sku.startsWith(d)) {
+    addToast(
+     'error',
+     `This RM code (${sku}) does not start with "${d}", which is required for canonical sub-category "${next}".`
+    );
+    return;
    }
-   setFormData((prev) => {
-    const allowedKeys = rmCategoryKeysForSubCategory(next);
-    const keepKey =
-     prev.rmCategoryKey && allowedKeys.includes(prev.rmCategoryKey) ? prev.rmCategoryKey : '';
-    const cat = keepKey ? RM_CATEGORIES[keepKey] : null;
-    return {
-     ...prev,
-     subCategory: next,
-     rmCategoryKey: keepKey,
-     rmCategory: cat ? cat.label : '',
-    };
-   });
+   setFormData((prev) => ({ ...prev, subCategory: next }));
    return;
   }
   setFormData(prev => ({
@@ -490,20 +477,14 @@ const RawMaterialRefactored: React.FC = () => {
 
  const handleSubmit = async () => {
   if (!existingRmId) {
-   if (!formData.rmCategoryKey?.trim()) {
-    addToast('error', 'Select an RM Category (Primary info step)');
+   if (!formData.rmCategory?.trim()) {
+    addToast('error', 'Category is required (Primary info step)');
     setCurrentStage(0);
-    focusFieldById('rmCategoryKey');
+    focusFieldById('rmCategory');
     return;
    }
    if (!formData.subCategory?.trim()) {
-    addToast('error', 'Select RM Sub-Category (Primary info step)');
-    setCurrentStage(0);
-    focusFieldById('subCategory');
-    return;
-   }
-   if (!(RM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(formData.subCategory as (typeof RM_SUB_CATEGORY_SKU_OPTIONS)[number])) {
-    addToast('error', `Choose one of: ${RM_SUB_CATEGORY_SKU_OPTIONS.join(', ')}.`);
+    addToast('error', 'Sub-Category is required (Primary info step)');
     setCurrentStage(0);
     focusFieldById('subCategory');
     return;
@@ -629,66 +610,31 @@ const RawMaterialRefactored: React.FC = () => {
    return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">RM Sub-Category &amp; category (SKU rules)</h3>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category (Excel source of truth)</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
-        <select
-         id="subCategory"
-         value={formData.subCategory}
-         onChange={handleInputChange}
-         className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-          errors.subCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-         }`}
-        >
-         <option value="">Select</option>
-         {formData.subCategory.trim() &&
-         !(RM_SUB_CATEGORY_SKU_OPTIONS as readonly string[]).includes(
-          formData.subCategory as (typeof RM_SUB_CATEGORY_SKU_OPTIONS)[number]
-         ) ? (
-          <option value={formData.subCategory}>{formData.subCategory} (legacy)</option>
-         ) : null}
-         {RM_SUB_CATEGORY_SKU_OPTIONS.map((opt) => (
-          <option key={opt} value={opt}>
-           {opt}
-          </option>
-         ))}
-        </select>
-        <p className="text-xs text-gray-500 mt-1">
-         Internal RM code starts with <span className="font-mono">1</span> (Raw material / Club items),{' '}
-         <span className="font-mono">2</span> (Fragrance), or <span className="font-mono">3</span> (Colors &amp; Pigments); new codes are
-         assigned on save (six characters: digit + five digits). Same tabs as multi-sheet Excel import.
-        </p>
-        {errors.subCategory ? <p className="mt-1 text-xs text-red-600">{errors.subCategory}</p> : null}
-       </div>
-       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">RM Category <span className="text-red-600">*</span></label>
-        <select
-         id="rmCategoryKey"
-         value={formData.rmCategoryKey}
-         onChange={handleInputChange}
-         disabled={!formData.subCategory?.trim()}
-         className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-        >
-         <option value="">{formData.subCategory?.trim() ? 'Select' : 'Select sub-category first'}</option>
-         {formData.rmCategoryKey.trim() &&
-         !rmCategoryKeysForSubCategory(formData.subCategory).includes(formData.rmCategoryKey) ? (
-          <option value={formData.rmCategoryKey}>
-           {RM_CATEGORIES[formData.rmCategoryKey as keyof typeof RM_CATEGORIES]?.label ?? formData.rmCategoryKey} (legacy)
-          </option>
-         ) : null}
-         {rmCategoryKeysForSubCategory(formData.subCategory).map((k) => {
-          const v = RM_CATEGORIES[k as keyof typeof RM_CATEGORIES];
-          if (!v) return null;
-          return (
-           <option key={k} value={k}>{v.label}</option>
-          );
-         })}
-        </select>
-        <p className="text-xs text-gray-500 mt-1">Industry bucket (EI-RM-* series). Options depend on the sub-category tab.</p>
-       </div>
+       <InputField
+        label="Category"
+        id="rmCategory"
+        value={formData.rmCategory}
+        onChange={handleInputChange}
+        placeholder="From Excel Category column"
+        requiredMark
+        error={errors.rmCategory}
+       />
+       <SelectField
+        label="Sub-Category (SKU prefix)"
+        id="subCategory"
+        value={formData.subCategory}
+        onChange={handleInputChange}
+        options={[...RM_SUB_CATEGORY_SKU_SELECT_OPTIONS]}
+        requiredMark
+        error={errors.subCategory}
+        disabled={lockPrimaryFields}
+       />
       </div>
-      <p className="text-xs text-gray-500 mt-2">Step 1 is required fields only. QC, default storage, grade, compliance, issue UoM, and accounting category are on later steps.</p>
+      <p className="text-xs text-gray-500 mt-2">
+       Stored exactly as in your Excel import. Code digit rules (1/2/3) apply only for: {RM_SUB_CATEGORY_SKU_OPTIONS.join(', ')}.
+      </p>
      </div>
 
      {isNewRm ? (
@@ -1427,6 +1373,13 @@ const RawMaterialRefactored: React.FC = () => {
 
    const r = result.record;
    const recordCode = r.code ?? '';
+   const resolvedCats = resolveRmEditCategories({
+     code: recordCode,
+     category: r.category,
+     rmType: r.rmType,
+     group: r.group,
+     form_data: fdObj,
+   });
 
    const fdDebug = {
      existingRmId,
@@ -1448,15 +1401,7 @@ const RawMaterialRefactored: React.FC = () => {
    };
    console.log('[RM Edit Populate Debug]', JSON.stringify(fdDebug, null, 2));
 
-   if (fdObj && Object.keys(fdObj).length > 0) {
-     const arraysOk = Array.isArray(vendorsVal) || Array.isArray(docsVal) || Array.isArray(testsVal);
-     if (!arraysOk) {
-       window.alert(
-         `RM form_data for id=${existingRmId} did not include vendors/documents/tests arrays.\n` +
-           `See console log [RM Edit Populate Debug] for fd keys.`
-       );
-     }
-   }
+   // Partial imports may persist `vendors` as non-array; normalize below instead of blocking edit.
 
    // Always seed from the list-view record, because partial/empty `form_data` can override defaults.
    const productsList = Array.isArray(r.products) ? r.products : [];
@@ -1464,13 +1409,14 @@ const RawMaterialRefactored: React.FC = () => {
      rmSku: recordCode || '',
      inciName: r.inci ?? '',
      tradeCommercialName: r.name ?? '',
-     rmCategory: r.category ?? '',
-     rmCategoryKey: inferRmCategoryKeyFromCode(recordCode) || '',
+     subCategory: resolvedCats.subCategory,
+     rmCategory: resolvedCats.rmCategory || (r.category ?? ''),
+     rmCategoryKey: resolvedCats.rmCategoryKey || inferRmCategoryKeyFromCode(recordCode) || '',
      seriesPrefix: (() => {
-       const inf = inferRmCategoryKeyFromCode(recordCode);
+       const inf = resolvedCats.rmCategoryKey || inferRmCategoryKeyFromCode(recordCode);
        return inf ? RM_CATEGORIES[inf]?.prefix ?? '' : '';
      })(),
-     rmType: r.rmType ?? '',
+     rmType: resolvedCats.rmType || (r.rmType ?? ''),
      primaryUom: r.uom ?? '',
      gst: String(r.gst ?? ''),
      shelfLife: r.shelf ?? '',
@@ -1487,11 +1433,35 @@ const RawMaterialRefactored: React.FC = () => {
    const fdToOverlay = (fdNormalized ?? fdObj) as Record<string, unknown> | null;
    const fdCleanOverlay =
      fdToOverlay && typeof fdToOverlay === 'object'
-       ? Object.fromEntries(Object.entries(fdToOverlay).filter(([, v]) => v !== null && v !== undefined))
+       ? Object.fromEntries(
+           Object.entries(fdToOverlay).filter(
+             ([k, v]) =>
+               v !== null &&
+               v !== undefined &&
+               ![
+                 'subCategory',
+                 'rmCategoryKey',
+                 'rmCategory',
+                 'excelCategory',
+                 'excelSubCategory',
+                 'rmType',
+                 'rm_type',
+                 'sub_category',
+                 'rm_category_key',
+               ].includes(k)
+           )
+         )
        : null;
 
   setFormData((prev) => {
     const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
+
+    merged.subCategory = resolvedCats.subCategory;
+    merged.rmCategory = resolvedCats.rmCategory || merged.rmCategory;
+    merged.rmType = resolvedCats.rmType;
+    if (!Array.isArray((merged as { vendors?: unknown }).vendors)) {
+      (merged as { vendors: RmCommercialVendor[] }).vendors = mergedVendors;
+    }
 
     // `rmReturnable` is a required Yes/No selector in the UI, but older records may
     // have persisted it as a plain boolean inside form_data. Coerce back to the

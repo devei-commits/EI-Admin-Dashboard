@@ -1,13 +1,23 @@
-/** Max decimals for RM / KG quantities (BOM % and small batch lines). */
-export const QTY_KG_MAX_DECIMALS = 6;
+/** Max decimals for RM/PM material qty through SO lifecycle (planning → production reserve). */
+export const MATERIAL_QTY_MAX_DECIMALS = 16;
 
-/** Max decimals for PM / piece counts when fractional. */
-export const QTY_PCS_MAX_DECIMALS = 4;
+/** @deprecated Use MATERIAL_QTY_MAX_DECIMALS — kept for imports. */
+export const QTY_KG_MAX_DECIMALS = MATERIAL_QTY_MAX_DECIMALS;
+
+/** @deprecated Use MATERIAL_QTY_MAX_DECIMALS — kept for imports. */
+export const QTY_PCS_MAX_DECIMALS = MATERIAL_QTY_MAX_DECIMALS;
 
 export type QtyKind = 'kg' | 'pcs' | 'raw';
 
 function maxDecimalsFor(kind: QtyKind): number {
-  return kind === 'kg' ? QTY_KG_MAX_DECIMALS : kind === 'pcs' ? QTY_PCS_MAX_DECIMALS : QTY_KG_MAX_DECIMALS;
+  return MATERIAL_QTY_MAX_DECIMALS;
+}
+
+/** Persist/compare at lifecycle precision (16 dp). */
+export function roundMaterialQty(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Number(n.toFixed(MATERIAL_QTY_MAX_DECIMALS));
 }
 
 /**
@@ -15,11 +25,7 @@ function maxDecimalsFor(kind: QtyKind): number {
  * Does not change stored values; use before isQtyShort / reserve checks.
  */
 export function normalizeQtyForCompare(value: unknown, kind: QtyKind = 'kg'): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  const decimals = maxDecimalsFor(kind);
-  const factor = 10 ** decimals;
-  return Math.round(n * factor) / factor;
+  return roundMaterialQty(value);
 }
 
 /**
@@ -68,7 +74,7 @@ export function qtyAvailable(sih: number, reserved: number): number {
   return Math.max(0, s - r);
 }
 
-/** Compare at full decimal precision (6 dp KG) so float noise does not false-trigger Short. */
+/** Compare at full decimal precision so float noise does not false-trigger Short. */
 export function isQtyShort(available: number, required: number, kind: QtyKind = 'kg'): boolean {
   return normalizeQtyForCompare(available, kind) < normalizeQtyForCompare(required, kind);
 }
@@ -86,7 +92,7 @@ export function calcShortageQtyForKind(available: number, required: number, kind
   return Math.max(0, req - a);
 }
 
-/** Scale line qty when batch size changes — no rounding. */
+/** Scale line qty when batch size changes — round to lifecycle precision. */
 export function scaleQty(value: number, scale: number): number {
-  return (Number(value) || 0) * (Number(scale) || 1);
+  return roundMaterialQty((Number(value) || 0) * (Number(scale) || 1));
 }

@@ -22,17 +22,27 @@ export function parseStagedPaymentTerms(raw: string | null | undefined): StagedP
   if (raw == null || String(raw).trim() === '') return null;
   const s = String(raw).trim();
   if (!s.startsWith('{')) return null;
-  try {
-    const o = JSON.parse(s) as Record<string, unknown>;
-    return {
-      advance_pct: clampPct(o.advance_pct ?? o.advancePct),
-      pre_shipment_pct: clampPct(o.pre_shipment_pct ?? o.preShipmentPct),
-      post_shipment_pct: clampPct(o.post_shipment_pct ?? o.postShipmentPct),
-      credit_days: o.credit_days != null || o.creditDays != null
+  const fromObject = (o: Record<string, unknown>): StagedPaymentTerms => ({
+    advance_pct: clampPct(o.advance_pct ?? o.advancePct),
+    pre_shipment_pct: clampPct(o.pre_shipment_pct ?? o.preShipmentPct),
+    post_shipment_pct: clampPct(o.post_shipment_pct ?? o.postShipmentPct),
+    credit_days:
+      o.credit_days != null || o.creditDays != null
         ? Math.max(0, Math.floor(Number(o.credit_days ?? o.creditDays)))
         : 0,
-    };
+  });
+
+  try {
+    return fromObject(JSON.parse(s) as Record<string, unknown>);
   } catch {
+    // Some DB rows store staged JSON without a closing brace
+    if (s.startsWith('{') && !s.endsWith('}')) {
+      try {
+        return fromObject(JSON.parse(`${s}}`) as Record<string, unknown>);
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 }

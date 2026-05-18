@@ -267,3 +267,63 @@ export async function deleteItemListTier(
     return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
   }
 }
+
+export interface VendorPricingExcelImportResponse {
+  ok?: boolean;
+  rows_total?: number;
+  sheets_skipped?: string[];
+  create_missing_vendors?: boolean;
+  summary?: {
+    rates_synced?: number;
+    skipped?: number;
+    errors?: number;
+    vendors_created?: number;
+  };
+  row_log?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+/** Import vendor MOQ + price from multi-tab workbook (SKU → RM/PM master → items_list rates). */
+export async function importVendorPricingExcel(
+  file: File,
+  options?: { details?: boolean; createMissingVendors?: boolean }
+): Promise<VendorPricingExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const qs = new URLSearchParams();
+  if (options?.details) qs.set('details', '1');
+  if (options?.createMissingVendors) qs.set('create_missing_vendors', '1');
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return api.post<VendorPricingExcelImportResponse>(
+    `/api/v1/items-list/import-vendor-pricing-excel${suffix}`,
+    fd
+  );
+}
+
+export interface MasterCategoriesExcelImportResponse {
+  ok?: boolean;
+  rows_total?: number;
+  sheets_skipped?: string[];
+  summary?: {
+    rm_updated?: number;
+    pm_updated?: number;
+    skipped?: number;
+    errors?: number;
+  };
+  row_log?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+/** Re-apply RM/PM category + sub-category from vendor pricing workbook (SKU + Category columns). */
+export async function importMasterCategoriesExcel(
+  file: File,
+  options?: { details?: boolean }
+): Promise<MasterCategoriesExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const suffix = options?.details ? '?details=1' : '';
+  return api.post<MasterCategoriesExcelImportResponse>(
+    `/api/v1/items-list/import-master-categories-excel${suffix}`,
+    fd
+  );
+}

@@ -14,7 +14,7 @@ import {
   ClipboardList, Link2, Scale, Microscope, Zap, Info, Factory,
   Settings, Activity, Eye, CheckCircle2, ArrowRight, Send,
   ShieldCheck, Sparkles, Droplets, CircleDot, Layers, Cylinder, Pencil, RotateCcw,
-  Truck, Search,
+  Truck, Search, Loader2,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import {
@@ -324,6 +324,76 @@ const BPR_PIPELINE: PipelineStep[] = [
   { key: 'pack_qc', label: 'Pack QC', icon: <Microscope size={PS} /> },
   { key: 'fg_ready', label: 'FG Ready', icon: <Check size={PS} /> },
 ];
+
+function batchActionLabelFromModalType(modalType: string | null): string {
+  const map: Record<string, string> = {
+    confirm: 'Confirming batch…',
+    adjustBatch: 'Updating batch size…',
+    reserveRM: 'Reserving raw materials…',
+    reservePM: 'Reserving packaging materials…',
+    schedule: 'Saving schedule…',
+    dispenseRM: 'Saving RM dispensing…',
+    dispensePM: 'Saving PM dispensing…',
+    qcBMR: 'Saving bulk QC…',
+    qcFill: 'Saving fill QC…',
+    qcPack: 'Saving pack QC…',
+    mtrRM: 'Updating RM transfer…',
+    mtrPM: 'Updating PM transfer…',
+  };
+  return modalType ? (map[modalType] ?? 'Processing…') : 'Processing…';
+}
+
+function batchActionLabelFromUpdates(updates: Partial<Batch>): string {
+  if (updates.rmReserved) return 'Reserving raw materials…';
+  if (updates.pmReserved) return 'Reserving packaging materials…';
+  if (updates.dispensingRM !== undefined) return 'Saving RM dispensing…';
+  if (updates.dispensingPM !== undefined) return 'Saving PM dispensing…';
+  if (updates.bulkBatchAccepted !== undefined || updates.bmrStatus === 'cleared' || updates.bmrStatus === 'qc_failed') {
+    return 'Saving bulk QC…';
+  }
+  if (updates.fillBatchAccepted !== undefined || updates.fgBatchAccepted !== undefined) {
+    return 'Saving QC results…';
+  }
+  if (updates.bmrStatus === 'batch_confirmed') return 'Confirming batch…';
+  if (updates.mfgDate !== undefined || updates.fillDate !== undefined || updates.packDate !== undefined) {
+    return 'Saving schedule…';
+  }
+  if (updates.rmConnected || updates.pmConnected) return 'Updating material transfer…';
+  return 'Saving batch…';
+}
+
+function BatchProcessLoader({ label, batchNo }: { label: string; batchNo?: string }) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[1px]"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div className="bg-white rounded-xl shadow-xl px-8 py-6 flex flex-col items-center gap-3 max-w-sm mx-4">
+        <Loader2 className="h-10 w-10 text-orange-500 animate-spin" aria-hidden />
+        <p className="text-sm font-semibold text-slate-800 text-center">{label}</p>
+        {batchNo ? <p className="text-xs font-mono text-slate-500">{batchNo}</p> : null}
+        <p className="text-[11px] text-slate-400">Please wait for the server response</p>
+      </div>
+    </div>
+  );
+}
+
+function ModalSavingOverlay({ label }: { label: string }) {
+  return (
+    <div
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <Loader2 className="h-9 w-9 text-orange-500 animate-spin" aria-hidden />
+      <p className="mt-2 text-sm font-semibold text-slate-800">{label}</p>
+      <p className="mt-1 text-[11px] text-slate-500">Please wait for the server response</p>
+    </div>
+  );
+}
 
 /* ─────────────────────── DEFAULT DATA ─────────────────────── */
 
@@ -698,21 +768,41 @@ function Badge({ className, children }: { className: string; children: React.Rea
   return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap leading-none inline-flex items-center gap-1 ${className}`}>{children}</span>;
 }
 
-function Modal({ onClose, title, subtitle, children, size = 'md' }: {
-  onClose: () => void; title: string; subtitle?: string; children: React.ReactNode; size?: 'md' | 'lg' | 'xl';
+function Modal({
+  onClose,
+  title,
+  subtitle,
+  children,
+  size = 'md',
+  disableDismiss = false,
+}: {
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  size?: 'md' | 'lg' | 'xl';
+  disableDismiss?: boolean;
 }) {
   const w = size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-lg';
+  const dismiss = disableDismiss ? undefined : onClose;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={dismiss}>
       <div className={`bg-white rounded-2xl shadow-2xl w-full ${w} my-4 border border-gray-100`} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h2 className="text-sm font-bold text-gray-900 tracking-tight">{title}</h2>
             {subtitle && <p className="text-[11px] text-gray-400 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"><X size={16} /></button>
+          <button
+            type="button"
+            onClick={dismiss}
+            disabled={disableDismiss}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <div className="px-6 py-5 max-h-[75vh] overflow-y-auto">{children}</div>
+        <div className="relative px-6 py-5 max-h-[75vh] overflow-y-auto">{children}</div>
       </div>
     </div>
   );
@@ -861,8 +951,7 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
         }));
       }
     }
-    onSave(updates);
-    onClose();
+    void Promise.resolve(onSave(updates)).then(() => onClose());
   };
 
   return (
@@ -1059,8 +1148,7 @@ function AdjustBatchSizeModal({ batch, onClose, onSave }: {
         }));
       }
     }
-    onSave(updates);
-    onClose();
+    void Promise.resolve(onSave(updates)).then(() => onClose());
   };
 
   return (
@@ -1439,15 +1527,22 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
     setSelected(prev => (Object.keys(next).length ? next : prev));
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSave = () => {
-    if (type === 'rm') {
-      const updates: Partial<Batch> = { rmReserved: true, bmrStatus: batch.bmrStatus === 'batch_confirmed' ? 'rm_reserved' : batch.bmrStatus };
-      if (usedDerived) updates.dispensingRM = derivedRm;
-      onSave(updates);
-    } else {
-      onSave({ pmReserved: true, bprStatus: 'pm_reserved' });
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (type === 'rm') {
+        const updates: Partial<Batch> = { rmReserved: true, bmrStatus: batch.bmrStatus === 'batch_confirmed' ? 'rm_reserved' : batch.bmrStatus };
+        if (usedDerived) updates.dispensingRM = derivedRm;
+        await Promise.resolve(onSave(updates));
+      } else {
+        await Promise.resolve(onSave({ pmReserved: true, bprStatus: 'pm_reserved' }));
+      }
+      onClose();
+    } finally {
+      setSaving(false);
     }
-    onClose();
   };
 
   const title = type === 'rm' ? `Reserve RM — ${batch.bmrNo}` : `Reserve PM — ${batch.bprNo}`;
@@ -1571,9 +1666,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         {type === 'pm' && pmHasShort && (
           <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve PM while free warehouse stock is below required (SIH − Reserved).</span>
         )}
-        <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-        <button onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={reserveDisabled}>
-          Reserve {type === 'rm' ? 'RM' : 'PM'}
+        <button onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">Cancel</button>
+        <button onClick={() => void handleSave()} disabled={reserveDisabled || saving} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving ? <><Loader2 size={13} className="animate-spin" /> Reserving…</> : <>Reserve {type === 'rm' ? 'RM' : 'PM'}</>}
         </button>
       </div>
     </Modal>
@@ -2497,21 +2592,31 @@ function DispensingModal({ batch, type, onClose, onSave, onReschedule }: {
     setLocalItems(prev => prev.map((it, i) => i === idx ? { ...it, done: true, dispensed: val } : it));
   };
 
-  const handleComplete = () => {
-    if (localItems.length === 0) return;
-    if (!localItems.every(r => r.done)) return;
-    if (type === 'rm') onSave({ dispensingRM: localItems, bmrStatus: 'in_production' });
-    else {
-      if (bprBlockedByBmr) return;
-      onSave({ dispensingPM: localItems, bprStatus: 'filling' });
+  const [saving, setSaving] = useState(false);
+
+  const handleComplete = async () => {
+    if (saving || localItems.length === 0 || !localItems.every((r) => r.done)) return;
+    if (type === 'pm' && bprBlockedByBmr) return;
+    setSaving(true);
+    try {
+      if (type === 'rm') await Promise.resolve(onSave({ dispensingRM: localItems, bmrStatus: 'in_production' }));
+      else await Promise.resolve(onSave({ dispensingPM: localItems, bprStatus: 'filling' }));
+      onClose();
+    } finally {
+      setSaving(false);
     }
-    onClose();
   };
 
-  const handleSaveProgress = () => {
-    if (type === 'rm') onSave({ dispensingRM: localItems });
-    else onSave({ dispensingPM: localItems });
-    onClose();
+  const handleSaveProgress = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (type === 'rm') await Promise.resolve(onSave({ dispensingRM: localItems }));
+      else await Promise.resolve(onSave({ dispensingPM: localItems }));
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -2806,8 +2911,10 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
     }));
   };
 
-  const handleApprove = () => {
-    if (!yieldValid || !allResultsFilled) return;
+  const [saving, setSaving] = useState(false);
+
+  const handleApprove = async () => {
+    if (saving || !yieldValid || !allResultsFilled) return;
     const merged = mergeQcSpecsWithRemarks(batch, qcType, specs, remarks);
     const upd: Partial<Batch> = { qcSpecs: merged };
     if (qcType === 'bmr') {
@@ -2819,11 +2926,17 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
     } else {
       upd.fgYield = fillFgYieldNum; upd.fgBatchAccepted = true; upd.bprStatus = 'fg_ready';
     }
-    onSave(upd); onClose();
+    setSaving(true);
+    try {
+      await Promise.resolve(onSave(upd));
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleReject = () => {
-    if (!allResultsFilled) return;
+  const handleReject = async () => {
+    if (saving || !allResultsFilled) return;
     const rejectNote = remarks || 'Rejected - deviation raised';
     const merged = mergeQcSpecsWithRemarks(batch, qcType, specs, rejectNote);
     const upd: Partial<Batch> = { qcSpecs: merged };
@@ -2835,17 +2948,32 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
     } else {
       upd.fgBatchAccepted = false; upd.bprStatus = 'qc_failed';
     }
-    onSave(upd); onClose();
+    setSaving(true);
+    try {
+      await Promise.resolve(onSave(upd));
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const modalW = qcType === 'bmr' || qcType === 'pack' ? 'xl' : 'lg';
   const fgSpecEntries = qcRef?.fgProductSpecs ? Object.entries(qcRef.fgProductSpecs) : [];
   /** BMR bulk QC: show master specs for raw materials only (not packaging). */
   const bmrBulkRmSpecs = (qcRef?.ingredientBulkSpecs ?? []).filter((row) => row.type === 'RM');
+  const savingLabel =
+    qcType === 'bmr' ? 'Saving bulk QC…' : qcType === 'fill' ? 'Saving fill QC…' : 'Saving pack QC…';
 
   return (
-    <Modal onClose={onClose} title={`${titles[qcType]} - ${qcType === 'bmr' ? batch.bmrNo : batch.bprNo}`} size={modalW}>
-      <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{qcType === 'bmr' ? batch.bmrNo : batch.bprNo}</b>. Click each parameter to cycle: pending {'>'} pass {'>'} fail.</Tip>
+    <Modal
+      onClose={onClose}
+      disableDismiss={saving}
+      title={`${titles[qcType]} - ${qcType === 'bmr' ? batch.bmrNo : batch.bprNo}`}
+      size={modalW}
+    >
+      <div className="relative min-h-[8rem]">
+        {saving ? <ModalSavingOverlay label={savingLabel} /> : null}
+        <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{qcType === 'bmr' ? batch.bmrNo : batch.bprNo}</b>. Click each parameter to cycle: pending {'>'} pass {'>'} fail.</Tip>
 
       {qcType === 'bmr' && (
         <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
@@ -2943,14 +3071,17 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
               </div>
               {/* <div className="text-xs text-gray-500 font-mono">{s.spec}</div> */}
               <input
-                className={`border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white ${String(s.result ?? '').trim() ? 'border-gray-200' : 'border-amber-300 ring-1 ring-amber-100'}`}
+                disabled={saving}
+                className={`border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white disabled:bg-gray-50 ${String(s.result ?? '').trim() ? 'border-gray-200' : 'border-amber-300 ring-1 ring-amber-100'}`}
                 value={s.result}
                 placeholder="Required — enter measured result"
                 onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))}
               />
               <button
+                type="button"
+                disabled={saving}
                 onClick={() => toggleResult(i)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${s.passed === true ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' :
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all disabled:opacity-50 ${s.passed === true ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' :
                   s.passed === false ? 'bg-red-100 border-red-300 text-red-700 hover:bg-red-200' :
                     'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                   }`}
@@ -2965,6 +3096,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
         <div>
           <label className={LBL}>{yieldLabels[qcType]} <span className="text-red-500">*</span></label>
           <input
+            disabled={saving}
             className={`${INP} ${allPassed && !yieldValid ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
             type="number"
             min={qcType === 'bmr' ? 0.01 : 1}
@@ -3002,7 +3134,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
             <p className="text-[10px] text-amber-700 mt-1 font-semibold">Enter a yield quantity greater than zero to approve.</p>
           )}
         </div>
-        <div><label className={LBL}>QC Remarks</label><input className={INP} placeholder="Overall remarks..." value={remarks} onChange={e => setRemarks(e.target.value)} /></div>
+        <div><label className={LBL}>QC Remarks</label><input className={INP} placeholder="Overall remarks..." value={remarks} onChange={e => setRemarks(e.target.value)} disabled={saving} /></div>
       </div>
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
         <div className="text-[10px] text-gray-400">
@@ -3014,16 +3146,27 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
           {allPassed && !allResultsFilled && 'Enter a Result for each parameter to approve.'}
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-          <button onClick={handleReject} disabled={!allReviewed || !hasFails || !allResultsFilled}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-            <X size={12} /> Reject ({failed})
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+          <button
+            type="button"
+            onClick={() => void handleReject()}
+            disabled={saving || !allReviewed || !hasFails || !allResultsFilled}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+            {saving ? 'Saving…' : `Reject (${failed})`}
           </button>
-          <button onClick={handleApprove} disabled={!allPassed || !yieldValid || !allResultsFilled}
-            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
-            <ShieldCheck size={13} /> Approve
+          <button
+            type="button"
+            onClick={() => void handleApprove()}
+            disabled={saving || !allPassed || !yieldValid || !allResultsFilled}
+            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+            {saving ? 'Saving…' : 'Approve'}
           </button>
         </div>
+      </div>
       </div>
     </Modal>
   );
@@ -3540,17 +3683,26 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     return updates;
   };
 
-  const handleCompleteStep = () => {
-    if (effectiveItems.length === 0) return;
+  const handleCompleteStep = async () => {
+    if (sending || effectiveItems.length === 0) return;
     setSending(true);
-    onSave(applyStepUpdates());
-    onClose();
-    setSending(false);
+    try {
+      await Promise.resolve(onSave(applyStepUpdates()));
+      onClose();
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleSubmit = async () => {
     // Only include lines with quantity to transfer (required > 0)
     if (linesToSend.length === 0) return;
+    if (!String(transferTo || '').trim()) {
+      addToast('error', allProductionZones.length === 0
+        ? 'No manufacturing zones in Facility Management. Add production areas/zones under Masters first.'
+        : 'Select Transfer To (manufacturing zone) before sending MTR.');
+      return;
+    }
     console.log('[MTRModal] submit payload', {
       type,
       batch: batch.bmrNo,
@@ -7389,7 +7541,19 @@ const Production = () => {
   const [showCreateBatchModal, setShowCreateBatchModal] = useState(false);
   const [createBatchPreset, setCreateBatchPreset] = useState<{ soNo: string; bmrNo: string } | null>(null);
   const [yieldReworkPreflightBatch, setYieldReworkPreflightBatch] = useState<Batch | null>(null);
+  const [batchActionLoading, setBatchActionLoading] = useState<{ bmrNo: string; label: string } | null>(null);
+  const batchActionPendingRef = useRef(0);
   const loadedFromApi = useRef(false);
+
+  const beginBatchAction = useCallback((bmrNo: string, label: string) => {
+    batchActionPendingRef.current += 1;
+    setBatchActionLoading({ bmrNo, label });
+  }, []);
+
+  const endBatchAction = useCallback(() => {
+    batchActionPendingRef.current = Math.max(0, batchActionPendingRef.current - 1);
+    if (batchActionPendingRef.current === 0) setBatchActionLoading(null);
+  }, []);
 
   const whStockRM = useMemo(() => buildStockMap(whInventory, 'RM'), [whInventory]);
   const whStockPM = useMemo(() => buildStockMap(whInventory, 'PM'), [whInventory]);
@@ -7512,8 +7676,9 @@ const Production = () => {
 
   const DISPENDING_MU_ERR_TAG = '[dispending-mu-error]';
 
-  const updateBatch = useCallback((bmrNo: string, updates: Partial<Batch>) => {
+  const updateBatch = useCallback((bmrNo: string, updates: Partial<Batch>, actionLabel?: string): Promise<void> => {
     const batch = state.batches.find(b => b.bmrNo === bmrNo) as (Batch & { _pk?: number }) | undefined;
+    const label = actionLabel ?? batchActionLabelFromUpdates(updates);
     const touchesDispensing =
       updates.dispensingRM !== undefined || updates.dispensingPM !== undefined;
     if (touchesDispensing) {
@@ -7533,10 +7698,15 @@ const Production = () => {
         console.warn(DISPENDING_MU_ERR_TAG, 'updateBatch: NO batch._pk — PATCH will not run; MU stock will not update', { bmrNo });
       }
     }
-    if (batch?._pk) {
-      const rmCodes = Array.isArray(updates.dispensingRM) ? updates.dispensingRM.map((l) => l.code) : [];
-      const pmCodes = Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => l.code) : [];
-      apiBatchUpdate(batch._pk, updates)
+    if (!batch?._pk) {
+      setState((prev) => ({ ...prev, batches: prev.batches.map((b) => (b.bmrNo === bmrNo ? { ...b, ...updates } : b)) }));
+      return Promise.resolve();
+    }
+
+    beginBatchAction(bmrNo, label);
+    const rmCodes = Array.isArray(updates.dispensingRM) ? updates.dispensingRM.map((l) => l.code) : [];
+    const pmCodes = Array.isArray(updates.dispensingPM) ? updates.dispensingPM.map((l) => l.code) : [];
+    return apiBatchUpdate(batch._pk, updates)
         .then((patched: any) => {
           const row = patched as BatchRow;
           if (row?.bmrNo) {
@@ -7641,11 +7811,12 @@ const Production = () => {
               : null;
           addToast('error', apiMsg || (err instanceof Error ? err.message : 'Failed to save batch'));
           refreshBatches();
+          throw err;
+        })
+        .finally(() => {
+          endBatchAction();
         });
-    } else {
-      setState((prev) => ({ ...prev, batches: prev.batches.map((b) => (b.bmrNo === bmrNo ? { ...b, ...updates } : b)) }));
-    }
-  }, [state.batches, addToast, refreshBatches]);
+  }, [state.batches, addToast, refreshBatches, beginBatchAction, endBatchAction]);
 
   const openScheduleWizard = useCallback((slot?: ScheduleSlot) => {
     setScheduleSlot(slot ?? null);
@@ -7657,7 +7828,7 @@ const Production = () => {
     setModalBatch(batch); setModalType(action);
   }, []);
 
-  const handleModalSave = useCallback((updates: Partial<Batch>) => {
+  const handleModalSave = useCallback(async (updates: Partial<Batch>) => {
     if (!modalBatch) return;
     if (modalType === 'dispenseRM' || modalType === 'dispensePM') {
       const pk = (modalBatch as Batch & { _pk?: number })?._pk;
@@ -7694,14 +7865,15 @@ const Production = () => {
       });
       console.log('[RESERVE-DEBUG] Frontend: PATCH /batches (then refetch warehouse-inventory). Available = SIH - reserved; after reserve: reserved_new = R + X, available_new = SIH - reserved_new.');
     }
-    updateBatch(modalBatch.bmrNo, updates);
-    if (modalType === 'confirm' || modalType === 'adjustBatch') {
-      queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
-      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
-    }
-    // Dispensing: warehouse refetch runs after PATCH succeeds inside updateBatch (ML1/ML2 delta applied on server).
-    if (modalType === 'reserveRM' || modalType === 'reservePM' || modalType === 'mtrRM' || modalType === 'mtrPM' || modalType === 'qcPack') {
-      fetchWarehouseInventory().then((invResult) => {
+    try {
+      await updateBatch(modalBatch.bmrNo, updates, batchActionLabelFromModalType(modalType));
+      if (modalType === 'confirm' || modalType === 'adjustBatch') {
+        await queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+        await queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+      }
+      // Dispensing: warehouse refetch runs after PATCH succeeds inside updateBatch (ML1/ML2 delta applied on server).
+      if (modalType === 'reserveRM' || modalType === 'reservePM' || modalType === 'mtrRM' || modalType === 'mtrPM' || modalType === 'qcPack') {
+        const invResult = await fetchWarehouseInventory();
         if (invResult.success && invResult.data?.rows?.length) {
           setWhInventory(invResult.data.rows);
           const rows = invResult.data.rows as WarehouseInventoryRow[];
@@ -7711,18 +7883,20 @@ const Production = () => {
             samplePM: rows.filter((r) => r.type === 'PM').slice(0, 2).map((r) => ({ code: r.code, SIH: r.stockInHand, reserved: r.reserved, available: Math.max(0, (r.stockInHand ?? 0) - (r.reserved ?? 0)) })),
           });
         }
-      });
+      }
+      const msg = modalType === 'confirm' ? `${modalBatch.bmrNo} confirmed`
+        : modalType === 'adjustBatch' ? `${modalBatch.bmrNo} batch size updated`
+          : modalType === 'reserveRM' ? `RM Reserved for ${modalBatch.bmrNo}`
+            : modalType === 'reservePM' ? `PM Reserved for ${modalBatch.bprNo}`
+              : modalType === 'schedule' ? `${modalBatch.bmrNo} scheduled`
+                : modalType === 'dispenseRM' || modalType === 'dispensePM' ? 'Dispensing updated'
+                  : modalType === 'qcBMR' || modalType === 'qcFill' || modalType === 'qcPack' ? 'QC review saved'
+                    : modalType === 'mtrRM' || modalType === 'mtrPM' ? 'Transfer step updated'
+                      : 'Batch updated';
+      addToast('success', msg);
+    } catch {
+      /* error toast shown in updateBatch */
     }
-    const msg = modalType === 'confirm' ? `${modalBatch.bmrNo} confirmed`
-      : modalType === 'adjustBatch' ? `${modalBatch.bmrNo} batch size updated`
-        : modalType === 'reserveRM' ? `RM Reserved for ${modalBatch.bmrNo}`
-          : modalType === 'reservePM' ? `PM Reserved for ${modalBatch.bprNo}`
-            : modalType === 'schedule' ? `${modalBatch.bmrNo} scheduled`
-              : modalType === 'dispenseRM' || modalType === 'dispensePM' ? 'Dispensing updated'
-                : modalType === 'qcBMR' || modalType === 'qcFill' || modalType === 'qcPack' ? 'QC review saved'
-                  : modalType === 'mtrRM' || modalType === 'mtrPM' ? 'MTR sent'
-                    : 'Batch updated';
-    addToast('success', msg);
   }, [modalBatch, modalType, updateBatch, addToast, queryClient]);
 
   const closeModal = useCallback(() => { setModalBatch(null); setModalType(null); setScheduleSlot(null); setPendingMtrItems(null); }, []);
@@ -7731,10 +7905,14 @@ const Production = () => {
     !b.mfgDate && (b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved')
   ), [state.batches]);
 
-  const handleManualSchedule = useCallback((batch: Batch, updates: Partial<Batch>) => {
-    updateBatch(batch.bmrNo, updates);
-    addToast('success', `${batch.bmrNo} scheduled`);
-    if (updates.mfgDate) setWeekOffset(getWeekOffsetForDate(updates.mfgDate));
+  const handleManualSchedule = useCallback(async (batch: Batch, updates: Partial<Batch>) => {
+    try {
+      await updateBatch(batch.bmrNo, updates, 'Saving schedule…');
+      addToast('success', `${batch.bmrNo} scheduled`);
+      if (updates.mfgDate) setWeekOffset(getWeekOffsetForDate(updates.mfgDate));
+    } catch {
+      /* error toast shown in updateBatch */
+    }
   }, [updateBatch, addToast, setWeekOffset]);
 
   function renderContent() {
@@ -7785,11 +7963,15 @@ const Production = () => {
       </div>
 
       {/* MODALS */}
+      {batchActionLoading && (
+        <BatchProcessLoader label={batchActionLoading.label} batchNo={batchActionLoading.bmrNo} />
+      )}
+
       {modalBatch && modalType === 'confirm' && (
-        <ConfirmBatchModal batch={modalBatch} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <ConfirmBatchModal batch={modalBatch} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'adjustBatch' && (
-        <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={updates => { handleModalSave(updates); closeModal(); }} />
+        <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'reserveRM' && (
         <ReserveMaterialModal
@@ -7799,7 +7981,7 @@ const Production = () => {
           reservedMap={whReservedRM}
           inventoryRows={whInventory}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalBatch && modalType === 'reservePM' && (
@@ -7810,15 +7992,15 @@ const Production = () => {
           reservedMap={whReservedPM}
           inventoryRows={whInventory}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalType === 'schedule' && scheduleSlot && (
         <SmartScheduleModal slot={scheduleSlot} batch={modalBatch} equipment={state.equipment} batches={state.batches}
           stockRM={whStockRM} stockPM={whStockPM} sentSummary={sentSummary}
           onClose={closeModal}
-          onSave={updates => {
-            handleModalSave(updates);
+          onSave={async (updates) => {
+            await handleModalSave(updates);
             closeModal();
             if (updates.mfgDate && activeSection === 'calendar') {
               const offset = getWeekOffsetForDate(updates.mfgDate);
@@ -7864,8 +8046,8 @@ const Production = () => {
         <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches}
           stockRM={whStockRM} stockPM={whStockPM} sentSummary={sentSummary}
           onClose={closeModal}
-          onSave={updates => {
-            handleModalSave(updates);
+          onSave={async (updates) => {
+            await handleModalSave(updates);
             closeModal();
             if (updates.mfgDate && activeSection === 'calendar') {
               const offset = getWeekOffsetForDate(updates.mfgDate);
@@ -7879,7 +8061,7 @@ const Production = () => {
           batch={modalBatch}
           type="rm"
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
           onReschedule={canShowRescheduleFooterButton(modalBatch) ? () => { setScheduleSlot(null); setModalType('schedule'); } : undefined}
         />
       )}
@@ -7888,7 +8070,7 @@ const Production = () => {
           batch={modalBatch}
           type="pm"
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
           onReschedule={canShowRescheduleFooterButton(modalBatch) ? () => { setScheduleSlot(null); setModalType('schedule'); } : undefined}
         />
       )}
@@ -7900,7 +8082,7 @@ const Production = () => {
           team={state.team}
           batchPk={(modalBatch as Batch & { _pk?: number })._pk}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalBatch && modalType === 'qcFill' && (
@@ -7911,7 +8093,7 @@ const Production = () => {
           team={state.team}
           batchPk={(modalBatch as Batch & { _pk?: number })._pk}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalBatch && modalType === 'qcPack' && (
@@ -7922,7 +8104,7 @@ const Production = () => {
           team={state.team}
           batchPk={(modalBatch as Batch & { _pk?: number })._pk}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
         />
       )}
       {modalBatch && (modalType === 'mtrRM' || modalType === 'mtrPM') && (
@@ -7939,13 +8121,13 @@ const Production = () => {
           reservedPM={whReservedPM}
           initialRmItems={modalType === 'mtrRM' ? pendingMtrItems : undefined}
           onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); closeModal(); }}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
           onMtrCreated={refreshOutboundMrns}
         />
       )}
       {modalBatch && modalType === 'detail' && (
         <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} outboundMrns={outboundMrns} onClose={closeModal}
-          onSave={updates => { handleModalSave(updates); }}
+          onSave={async (updates) => { await handleModalSave(updates); }}
           onAction={(action, batch, extra) => { closeModal(); if (extra?.mtrRmItems) setPendingMtrItems(extra.mtrRmItems); else if (extra?.mtrPmItems) setPendingMtrItems(extra.mtrPmItems); else setPendingMtrItems(null); setTimeout(() => handleAction(action, batch), 100); }}
           initialTab={activeSection === 'bpr' ? 'bpr' : 'bmr'} />
       )}

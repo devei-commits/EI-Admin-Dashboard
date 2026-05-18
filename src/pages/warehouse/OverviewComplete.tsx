@@ -192,6 +192,9 @@ const OutboundDashboard = () => {
     return zc;
   };
 
+  const allProductionZones = productionAreas.flatMap((a) =>
+    (a.zones || []).map((z) => ({ areaName: a.name, ...z }))
+  );
 
   const selectedMRN = mrnData.find((mrn) => mrn.id === selectedMRNId) ?? null;
   /** Shown read-only for outbound MTR: server `muReceiveZone` (Send MTR) or legacy dedicated fallback in `selectedMlLocation`. */
@@ -798,18 +801,45 @@ const OutboundDashboard = () => {
                         <label className="block text-[9px] text-slate-500 uppercase mb-1">
                           Transfer to (manufacturing / ML) <span className="text-rose-600">*</span>
                         </label>
-                        <div
-                          className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
-                          title="Defined in Production (Send MTR) for RM and BPR/PM. Not editable in Warehouse."
-                        >
-                          {mtrMlDestinationCode
-                            ? zoneLabelInAreas(productionAreas, mtrMlDestinationCode)
-                            : '—'}
-                        </div>
+                        {String(selectedMRN.muReceiveZone || '').trim() ? (
+                          <div
+                            className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                            title="Saved when Production sent the MTR."
+                          >
+                            {zoneLabelInAreas(productionAreas, selectedMRN.muReceiveZone!)}
+                            <span className="block text-[10px] text-slate-500 font-mono mt-0.5">{selectedMRN.muReceiveZone}</span>
+                          </div>
+                        ) : allProductionZones.length > 0 ? (
+                          <select
+                            value={selectedMlLocation}
+                            onChange={(e) => setSelectedMlLocation(e.target.value)}
+                            className="w-full rounded border border-amber-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                          >
+                            <option value="">— Select manufacturing zone —</option>
+                            {productionAreas.map((a) => (
+                              <optgroup key={a.id} label={`${a.name} (manufacturing)`}>
+                                {(a.zones || []).map((z) => (
+                                  <option key={z.code} value={z.code}>
+                                    {z.name}
+                                    {z.zoneLabel ? ` — ${z.zoneLabel}` : ''} ({z.code})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="rounded border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-900">
+                            No manufacturing zones in Facility Management. Add a production area with zones, then refresh.
+                          </div>
+                        )}
                         <p className="mt-1 text-[10px] text-slate-500">
-                          {mtrMlDestinationCode
+                          {String(selectedMRN.muReceiveZone || '').trim()
                             ? 'From Production (Send MTR). Use logistics below when you initiate transfer.'
-                            : 'No destination on this MRN yet — use Send MTR in Production (RM or PM) so the manufacturing zone is saved, or contact an admin for older transfer orders.'}
+                            : selectedMlLocation
+                              ? 'Destination will be saved when you initiate transfer.'
+                              : allProductionZones.length > 0
+                                ? 'Select destination above (MTR was sent without Transfer To), or re-send MTR from Production.'
+                                : 'Set up production zones in Masters → Facility Management first.'}
                         </p>
                       </div>
                     </>

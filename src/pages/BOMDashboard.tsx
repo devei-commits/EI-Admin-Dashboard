@@ -8,6 +8,9 @@ import { parseFormulaBomWorkbook, groupRowsByCompositeSku, chunkCompositeGroups 
 import BOMForm from './BOMForm';
 import {
   validateSkuBomTotals,
+  countMeaningfulFormulaRmLines,
+  countMeaningfulPackLines,
+  countMeaningfulSkuRmLines,
   parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
   skuBomLinesToFormulaRows,
@@ -732,15 +735,27 @@ const BOMDashboard: React.FC = () => {
     const sku_bom_limit_uom = fromFillPanel
       ? fromFillPanel.uom
       : (editDraft.skuBomLimitUom ?? selectedProduct.skuBomLimitUom ?? null);
-    const skuPanelV = validateSkuBomTotals({
-      lines: sku_rm_lines,
-      limitQty: sku_bom_limit_qty,
-      limitUom: sku_bom_limit_uom,
-    });
-    if (!skuPanelV.ok) {
+    if (countMeaningfulFormulaRmLines(rm_lines) < 1) {
       setSaving(false);
-      toast.error(skuPanelV.error);
+      toast.error('At least one Formula BOM line is required.');
       return;
+    }
+    if (countMeaningfulPackLines(pm_lines) < 1) {
+      setSaving(false);
+      toast.error('At least one Pack BOM line is required.');
+      return;
+    }
+    if (countMeaningfulSkuRmLines(sku_rm_lines) > 0) {
+      const skuPanelV = validateSkuBomTotals({
+        lines: sku_rm_lines,
+        limitQty: sku_bom_limit_qty,
+        limitUom: sku_bom_limit_uom,
+      });
+      if (!skuPanelV.ok) {
+        setSaving(false);
+        toast.error(skuPanelV.error);
+        return;
+      }
     }
     const pm_lines = packBom.map((r) => ({ pm_code: r.pm_code, description: r.pm_description, pack_type: r.pack_type, qty_per_unit: r.qty_per_unit, uom: r.uom }));
     const process_steps = processSteps.map((s, i) => ({ step_number: i + 1, description: s.description, duration_minutes: s.duration_minutes }));

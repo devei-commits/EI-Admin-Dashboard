@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Eye, X } from 'lucide-react';
 import logoFull from '../assets/logo/eilogofull.svg';
 import { useGlobalState } from '../context/GlobalStateContext';
+import { fetchTreasuryPurchaseOrders, type TreasuryPurchaseOrderRow } from '../services/treasury.service';
+import { TreasuryPoDetailModal } from '../components/treasury/TreasuryPoDetailModal';
 
 interface Notification {
   id: string;
@@ -70,6 +74,100 @@ const TreasuryApp = () => {
     method: true
   });
   const notificationRef = useRef<HTMLDivElement>(null);
+  const [treasuryPoDetailView, setTreasuryPoDetailView] = useState<TreasuryPurchaseOrderRow | null>(null);
+
+  const {
+    data: treasuryPurchaseOrders = [],
+    isLoading: treasuryPoLoading,
+    refetch: refetchTreasuryPos,
+  } = useQuery({
+    queryKey: ['treasury-purchase-orders'],
+    queryFn: async () => {
+      const res = await fetchTreasuryPurchaseOrders();
+      return res.success ? res.data : [];
+    },
+    staleTime: 30_000,
+  });
+
+  const fmtMoney = (n: number) => '₹' + new Intl.NumberFormat('en-IN').format(Math.round(n));
+
+  const formatTreasuryPoDate = (d: string | null | undefined) => {
+    if (!d || !String(d).trim()) return '—';
+    try {
+      return new Date(String(d).slice(0, 10)).toLocaleDateString('en-IN');
+    } catch {
+      return String(d);
+    }
+  };
+
+  const TreasuryPoPaymentsTable = ({
+    rows,
+    onView,
+  }: {
+    rows: TreasuryPurchaseOrderRow[];
+    onView: (po: TreasuryPurchaseOrderRow) => void;
+  }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[48rem]">
+        <thead>
+          <tr className="border-b border-gray-200 bg-gray-50">
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">PO</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Vendor</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Status</th>
+            <th className="px-3 py-2 text-right font-semibold text-gray-700">PO value</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Txn no.</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Mode</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Payment date</th>
+            <th className="px-3 py-2 text-left font-semibold text-gray-700">Released</th>
+            <th className="px-3 py-2 text-center font-semibold text-gray-700 w-16">View</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="px-3 py-8 text-center text-gray-400 text-sm">
+                No PO payment records yet. Release a PO from Procurement with transaction details.
+              </td>
+            </tr>
+          ) : (
+            rows.map((po) => (
+              <tr key={po.purchaseOrderId} className="border-b border-gray-100 hover:bg-gray-50 align-top">
+                <td className="px-3 py-2 font-mono font-semibold text-gray-900">{po.poNumber}</td>
+                <td className="px-3 py-2 text-gray-800">{po.vendorName || '—'}</td>
+                <td className="px-3 py-2">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                    {po.status || '—'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmtMoney(po.grandTotal)}</td>
+                <td className="px-3 py-2 font-mono text-xs">{po.tracking?.paymentTransactionNo || '—'}</td>
+                <td className="px-3 py-2">{po.tracking?.paymentMode || '—'}</td>
+                <td className="px-3 py-2">{formatTreasuryPoDate(po.tracking?.paymentTransactionDate)}</td>
+                <td className="px-3 py-2">{formatTreasuryPoDate(po.tracking?.poReleasedAt)}</td>
+                <td className="px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => onView(po)}
+                    className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition"
+                    title="View PO & payment details"
+                    aria-label={`View details for ${po.poNumber}`}
+                  >
+                    <Eye className="h-4 w-4" aria-hidden />
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  useEffect(() => {
+    if (currentScreen === 'po-advances' || currentScreen === 'treasury') {
+      void refetchTreasuryPos();
+    }
+  }, [currentScreen, refetchTreasuryPos]);
 
   // Close notifications when clicking outside or navigating screens
   useEffect(() => {
@@ -212,8 +310,10 @@ const TreasuryApp = () => {
               }`}
           >
             PO Advance Requests
-            {(state.po?.treasury?.length || 0) > 0 && (
-              <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{state.po.treasury.length}</span>
+            {(state.po?.treasury?.length || 0) + treasuryPurchaseOrders.length > 0 && (
+              <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
+                {(state.po?.treasury?.length || 0) + treasuryPurchaseOrders.length}
+              </span>
             )}
           </button>
 
@@ -488,6 +588,7 @@ const TreasuryApp = () => {
 
           {/* Treasury Screen */}
           {currentScreen === 'treasury' && (
+            <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-x-auto hover:shadow-lg transition-all">
               <table className="w-full table-fixed min-w-175 text-sm">
                 <thead>
@@ -516,6 +617,30 @@ const TreasuryApp = () => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4 md:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-lg font-bold text-gray-800">Released POs — payment transactions</h3>
+                <button
+                  type="button"
+                  onClick={() => void refetchTreasuryPos()}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  Refresh
+                </button>
+              </div>
+              {treasuryPoLoading ? (
+                <p className="text-sm text-gray-500 py-6 text-center">Loading PO payment records…</p>
+              ) : (
+                <>
+                  <TreasuryPoPaymentsTable
+                    rows={treasuryPurchaseOrders}
+                    onView={setTreasuryPoDetailView}
+                  />
+                </>
+              )}
+            </div>
             </div>
           )}
 
@@ -698,6 +823,32 @@ const TreasuryApp = () => {
 
             return (
               <div className="space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <h3 className="text-lg font-bold text-gray-800">Released POs from Procurement</h3>
+                    <button
+                      type="button"
+                      onClick={() => void refetchTreasuryPos()}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Summary in the table; use the view icon for full payment terms, transaction details, and line items.
+                  </p>
+                  {treasuryPoLoading ? (
+                    <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>
+                  ) : (
+                    <>
+                      <TreasuryPoPaymentsTable
+                        rows={treasuryPurchaseOrders}
+                        onView={setTreasuryPoDetailView}
+                      />
+                    </>
+                  )}
+                </div>
+
                 {/* Treasury POs awaiting advance approval */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">POs Awaiting Advance Approval</h3>
@@ -722,6 +873,11 @@ const TreasuryApp = () => {
                                   {(po.lines || []).map((l: any) => (
                                     <p key={l.itemId}>{l.itemName} — {new Intl.NumberFormat('en-IN').format(l.qty)} {l.uom} @ ₹{l.unit}</p>
                                   ))}
+                                  {po.paymentTransactionNo && (
+                                    <p className="text-xs text-emerald-700 font-medium pt-1">
+                                      Txn {po.paymentTransactionNo} · {po.paymentMode} · {po.paymentTransactionDate}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                               <div className="text-right">
@@ -892,6 +1048,10 @@ const TreasuryApp = () => {
           )}
         </div>
       </main>
+
+      {treasuryPoDetailView ? (
+        <TreasuryPoDetailModal po={treasuryPoDetailView} onClose={() => setTreasuryPoDetailView(null)} />
+      ) : null}
     </div>
   );
 };

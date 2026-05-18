@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
@@ -6,6 +6,7 @@ import {
   fetchAllWarehouseLocationHistory,
   fetchRackLocations,
   fetchUsageStats,
+  importInventorySummaryExcel,
   inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
@@ -960,6 +961,35 @@ const WarehouseInventory = () => {
   const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { plannedQty: number; totalRequired: number; unit: string }>>(
     () => new Map()
   );
+  const inventorySummaryFileRef = useRef<HTMLInputElement>(null);
+  const [importingInventoryExcel, setImportingInventoryExcel] = useState(false);
+
+  const handleInventorySummaryExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingInventoryExcel(true);
+    try {
+      const res = await importInventorySummaryExcel(file, { details: true });
+      const s = res.summary;
+      const msg = [
+        `Processed ${res.rows_total ?? 0} row(s) from "${res.sheet_name ?? 'Inventory Summary'}".`,
+        `RM: ${s?.rm_updated ?? 0}, PM: ${s?.pm_updated ?? 0}, PR: ${s?.pr_updated ?? 0} updated`,
+        s?.created ? `(${s.created} new warehouse rows)` : '',
+        `Skipped: ${s?.skipped ?? 0}, Errors: ${s?.errors ?? 0}`,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      alert(msg);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      refetchWarehouseInventory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Inventory Excel import failed';
+      alert(message);
+    } finally {
+      setImportingInventoryExcel(false);
+    }
+  };
   // Fetch rack locations when user opens WH/ML1/ML2 location popover (click)
   useEffect(() => {
     if (!locationPopover || locationPopover.item.warehouseInventoryId == null) {
@@ -1283,10 +1313,30 @@ const WarehouseInventory = () => {
         <div className="p-6">
           {/* View mode + filter tabs */}
           <div className="mb-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">
                 {viewMode === 'current' ? 'Inventory' : viewMode === 'history' ? 'Inventory History' : 'Usage'}
               </h1>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+              {viewMode === 'current' && (
+                <>
+                  <input
+                    ref={inventorySummaryFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={handleInventorySummaryExcelChange}
+                  />
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel}
+                    onClick={() => inventorySummaryFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {importingInventoryExcel ? 'Importing…' : 'Fix stock from Zoho Excel'}
+                  </button>
+                </>
+              )}
               <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
                 <button
                   type="button"
@@ -1318,6 +1368,7 @@ const WarehouseInventory = () => {
                 >
                   Usage
                 </button>
+              </div>
               </div>
             </div>
 

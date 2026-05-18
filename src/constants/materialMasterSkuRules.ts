@@ -6,8 +6,22 @@
 /** RM workbook tabs / canonical sub-categories — leading digit 1 / 2 / 3 (Club shares 1 with Raw). */
 export const RM_SUB_CATEGORY_SKU_OPTIONS = ['Raw material', 'Fragrance', 'Colors & Pigments', 'Club Items'] as const;
 
-/** PM internal code series — Primary 4…, Monocarton 5M…, Labels 5l… (packMaterials/controller.js). */
+/** PM internal code series — Primary 4…, Monocarton 5M…, Labels 5L… (packMaterials/controller.js). */
 export const PM_SUB_CATEGORY_SKU_OPTIONS = ['Primary', 'Labels', 'Monocarton'] as const;
+
+/** Sub-category dropdown labels (value = stored on master / sent to API). */
+export const RM_SUB_CATEGORY_SKU_SELECT_OPTIONS = [
+  { value: 'Raw material', label: 'Raw material (SKU starts with 1)' },
+  { value: 'Fragrance', label: 'Fragrance (SKU starts with 2)' },
+  { value: 'Colors & Pigments', label: 'Colors & Pigments (SKU starts with 3)' },
+  { value: 'Club Items', label: 'Club Items (SKU starts with 1)' },
+] as const;
+
+export const PM_SUB_CATEGORY_SKU_SELECT_OPTIONS = [
+  { value: 'Primary', label: 'Primary (SKU starts with 4)' },
+  { value: 'Labels', label: 'Labels (SKU starts with 5L)' },
+  { value: 'Monocarton', label: 'Monocarton (SKU starts with 5M)' },
+] as const;
 
 const RM_CAT_GENERAL = ['ACT', 'EMOL', 'SURF', 'PRES', 'THIC', 'BUF', 'SOLV', 'MISC'] as const;
 

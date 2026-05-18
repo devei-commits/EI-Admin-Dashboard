@@ -15,6 +15,7 @@ import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as Api
 import {
   fetchProcurementQuotations,
   fetchQuoteLineDefaults,
+  createProcurementQuotation,
   deleteProcurementQuotation,
   updateProcurementQuotation as updateProcurementQuotationApi,
 } from '../../services/procurementQuotations.service';
@@ -346,6 +347,9 @@ function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null
   return paymentTermsTypeRequiresAdvancePercent(type);
 }
 
+const RELEASE_PAYMENT_MODES = ['NEFT', 'RTGS', 'IMPS', 'UPI', 'Cheque', 'Cash', 'Bank Transfer'] as const;
+type ReleasePaymentMode = (typeof RELEASE_PAYMENT_MODES)[number];
+
 /** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
 function normPoNumberKeyForTimeline(n: string) {
   return String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
@@ -491,6 +495,24 @@ function buildIssuedPoTimelineSteps(
 
 const isMainTab = (value: string | null): value is MainTab => Boolean(value && MAIN_TABS.includes(value as MainTab));
 const isSideSection = (value: string | null): value is SideSection => Boolean(value && SIDE_SECTIONS.includes(value as SideSection));
+
+/** Same tag Planning writes on procurement_requests.notes when requesting vendor rates. */
+const PLANNING_QUOTATION_REQUEST_NOTE_TAG = 'Quotation requested from Planning';
+
+function isPlanningQuotationRequest(req: ProcurementRequest): boolean {
+  return String(req.notes ?? '').includes(PLANNING_QUOTATION_REQUEST_NOTE_TAG);
+}
+
+/** Planning "request quotation" rows belong in Quotations, not the procurement-requests queue. */
+function isProcurementRequestsListRow(req: ProcurementRequest): boolean {
+  return !isPlanningQuotationRequest(req);
+}
+
+function planningQuotationRequestHasRecordedQuote(req: ProcurementRequest, quoteList: VendorQuote[]): boolean {
+  return quoteList.some(
+    (q) => String(q.requestId) === String(req.id) && !String(q.id).startsWith('IL-'),
+  );
+}
 
 const getInitialMainTab = (searchParams: URLSearchParams): MainTab => (isMainTab(searchParams.get('tab')) ? (searchParams.get('tab') as MainTab) : 'Procurement');
 const getInitialSideSection = (searchParams: URLSearchParams): SideSection => (isSideSection(searchParams.get('section')) ? (searchParams.get('section') as SideSection) : 'Overview');
@@ -760,12 +782,15 @@ const Procurement: React.FC = () => {
     validTill: string;
     leadTimeDays: string;
     notes: string;
+    /** When set, save links quotation to this PR and syncs Items List for Planning. */
+    procurementRequestId: string;
   }>({
     vendorId: '',
     quoteDate: '',
     validTill: '',
     leadTimeDays: '',
     notes: '',
+    procurementRequestId: '',
   });
   const [recordQuoteLines, setRecordQuoteLines] = useState<
     {
@@ -845,7 +870,11 @@ const Procurement: React.FC = () => {
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
   const [releaseMethod, setReleaseMethod] = useState<'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email'>('Email + Portal');
   const [releaseNotes, setReleaseNotes] = useState('');
+  const [releasePaymentTransactionNo, setReleasePaymentTransactionNo] = useState('');
+  const [releasePaymentMode, setReleasePaymentMode] = useState<ReleasePaymentMode | ''>('');
+  const [releasePaymentDate, setReleasePaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [recordingAdvancePayment, setRecordingAdvancePayment] = useState(false);
+  const [releasingPO, setReleasingPO] = useState(false);
   const [issuedSearch, setIssuedSearch] = useState('');
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
@@ -1200,6 +1229,21 @@ const Procurement: React.FC = () => {
   const advanceRecordedForReleaseDraft = Boolean(
     releaseDraftTracking?.advancePaidAt != null && String(releaseDraftTracking.advancePaidAt).trim() !== '',
   );
+
+  useEffect(() => {
+    if (!releasePOTarget || !releaseDraftTracking) return;
+    if (releaseDraftTracking.paymentTransactionNo) {
+      setReleasePaymentTransactionNo(releaseDraftTracking.paymentTransactionNo);
+    }
+    if (releaseDraftTracking.paymentMode) {
+      setReleasePaymentMode(releaseDraftTracking.paymentMode as ReleasePaymentMode);
+    }
+    if (releaseDraftTracking.paymentTransactionDate) {
+      setReleasePaymentDate(String(releaseDraftTracking.paymentTransactionDate).slice(0, 10));
+    } else if (releaseDraftTracking.advancePaidAt) {
+      setReleasePaymentDate(String(releaseDraftTracking.advancePaidAt).slice(0, 10));
+    }
+  }, [releasePOTarget?.id, releaseDraftTracking]);
 
   const needItemsListForQuotesOrDraftPO =
     sideSection === 'Quotations' ||
@@ -1559,6 +1603,7 @@ const Procurement: React.FC = () => {
     const rows: ItemTrackerRow[] = [];
 
     requests.forEach((request) => {
+      if (isPlanningQuotationRequest(request)) return;
       const requestQuotes = quotesByRequestId.get(request.id) ?? [];
       const confirmedQuote = requestQuotes.find((q) => q.status === 'Confirmed') ?? null;
       const primaryQuote = confirmedQuote ?? requestQuotes[0] ?? null;
@@ -1907,6 +1952,38 @@ const Procurement: React.FC = () => {
     return [...filteredQuotes, ...filteredItemsListQuotes];
   }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
 
+  const procurementRequestsList = useMemo(
+    () => requests.filter(isProcurementRequestsListRow),
+    [requests],
+  );
+
+  const planningQuotationRequestsAwaitingQuote = useMemo(() => {
+    return requests.filter(
+      (r) => isPlanningQuotationRequest(r) && !planningQuotationRequestHasRecordedQuote(r, quotes),
+    );
+  }, [quotes, requests]);
+
+  const filteredPlanningQuotationRequestsAwaitingQuote = useMemo(() => {
+    return planningQuotationRequestsAwaitingQuote.filter((req) => {
+      if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      const matchesCode = req.code.toLowerCase().includes(query);
+      const matchesItems = req.items.some((item) => item.toLowerCase().includes(query));
+      const matchesPlanning =
+        (req.planningSoNumber != null && String(req.planningSoNumber).toLowerCase().includes(query)) ||
+        (req.planningCustomerName != null && String(req.planningCustomerName).toLowerCase().includes(query)) ||
+        (req.planningProductName != null && String(req.planningProductName).toLowerCase().includes(query)) ||
+        (req.planningProductCode != null && String(req.planningProductCode).toLowerCase().includes(query));
+      const matchesItemDetails = (req.itemDetails ?? []).some(
+        (d) =>
+          (d.itemName != null && String(d.itemName).toLowerCase().includes(query)) ||
+          (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query)),
+      );
+      return matchesCode || matchesItems || matchesPlanning || matchesItemDetails;
+    });
+  }, [categoryFilter, planningQuotationRequestsAwaitingQuote, searchQuery]);
+
   const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
     const meta = line as QuoteLine & {
       __itemsListId?: number;
@@ -2093,17 +2170,17 @@ const Procurement: React.FC = () => {
   /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from PR modal + quotations) */
   const requestsPODraftNoDraftPO = useMemo(() => {
     const linkedRequestIds = new Set(draftPOs.map((d) => d.requestId));
-    return requests.filter(
+    return procurementRequestsList.filter(
       (r) =>
         r.status === 'PO Draft' &&
         !linkedRequestIds.has(r.id) &&
         (categoryFilter === 'All' || r.type === categoryFilter),
     );
-  }, [requests, draftPOs, categoryFilter]);
+  }, [procurementRequestsList, draftPOs, categoryFilter]);
 
   /** Requests sidebar tabs: counts must match list filters (Active = New + Quoted only). */
   const procurementRequestTabCounts = useMemo(() => {
-    const rows = requests;
+    const rows = procurementRequestsList;
     return {
       all: rows.length,
       active: rows.filter((r) => requestStatusIsPreDraftPipeline(r.status)).length,
@@ -2112,11 +2189,13 @@ const Procurement: React.FC = () => {
       poDraft: rows.filter((r) => r.status === 'PO Draft').length,
       poReleased: rows.filter((r) => r.status === 'PO Released').length,
     };
-  }, [requests]);
+  }, [procurementRequestsList]);
 
   const quoteStats = useMemo(() => {
     const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
-    const totalQuotes = list.length;
+    const totalQuotes =
+      list.length +
+      (sideSection === 'Quotations' ? filteredPlanningQuotationRequestsAwaitingQuote.length : 0);
     const confirmed = list.filter((quote) => quote.status === 'Confirmed').length;
     const notSelected = list.filter((quote) => quote.status === 'Not Selected').length;
 
@@ -2124,10 +2203,19 @@ const Procurement: React.FC = () => {
       totalQuotes,
       confirmed,
       notSelected,
-      urgent: requests.filter((request) => request.priority === 'High' && request.status === 'New').length,
-      pendingAction: requests.filter((request) => request.status === 'New' || request.status === 'Quoted').length,
+      urgent: procurementRequestsList.filter((request) => request.priority === 'High' && request.status === 'New')
+        .length,
+      pendingAction: procurementRequestsList.filter((request) => request.status === 'New' || request.status === 'Quoted')
+        .length,
     };
-  }, [filteredQuotes, quotesForQuotationsSection, requests, sideSection]);
+  }, [
+    filteredPlanningQuotationRequestsAwaitingQuote.length,
+    filteredQuotes,
+    procurementRequestsList,
+    quotesForQuotationsSection,
+    requests,
+    sideSection,
+  ]);
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
@@ -2466,15 +2554,24 @@ const Procurement: React.FC = () => {
   /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
   const sideCounts = useMemo(
     () => ({
-      Overview: requests.length,
+      Overview: procurementRequestsList.length,
       Requests: procurementRequestTabCounts.active,
-      Quotations: quotes.length,
+      Quotations: quotes.length + planningQuotationRequestsAwaitingQuote.length,
       'Draft POs': draftPOs.length,
       'Issued POs': issuedPORecords.length,
       'GRN Monitor': (grnListFromApi ?? []).length,
       'Item Tracker': itemTrackerRows.length,
     }),
-    [draftPOs, grnListFromApi, issuedPORecords, itemTrackerRows, procurementRequestTabCounts, quotes, requests],
+    [
+      draftPOs,
+      grnListFromApi,
+      issuedPORecords,
+      itemTrackerRows,
+      planningQuotationRequestsAwaitingQuote.length,
+      procurementRequestTabCounts,
+      procurementRequestsList.length,
+      quotes,
+    ],
   );
 
   const filteredIssuedPORecords = useMemo(() => {
@@ -3444,12 +3541,47 @@ const Procurement: React.FC = () => {
     setReleasePOTarget(target);
     setReleaseMethod('Email + Portal');
     setReleaseNotes('');
+    setReleasePaymentTransactionNo('');
+    setReleasePaymentMode('');
+    setReleasePaymentDate(new Date().toISOString().split('T')[0]);
   };
 
   const closeReleasePOModal = () => {
+    if (releasingPO) return;
     setReleasePOTarget(null);
     setReleaseMethod('Email + Portal');
     setReleaseNotes('');
+    setReleasePaymentTransactionNo('');
+    setReleasePaymentMode('');
+    setReleasePaymentDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const validateReleasePaymentFields = (required: boolean): string | null => {
+    const txn = releasePaymentTransactionNo.trim();
+    const hasAny = Boolean(txn || releasePaymentMode || releasePaymentDate);
+    if (required || releaseDraftRequiresAdvance) {
+      if (!txn) return 'Transaction number is required.';
+      if (!releasePaymentMode) return 'Mode of payment is required.';
+      if (!releasePaymentDate) return 'Payment date is required.';
+      return null;
+    }
+    if (hasAny && (!txn || !releasePaymentMode || !releasePaymentDate)) {
+      return 'Enter transaction no., mode, and date together, or leave all payment fields empty.';
+    }
+    return null;
+  };
+
+  const buildReleasePaymentTrackingPayload = () => {
+    const txn = releasePaymentTransactionNo.trim();
+    if (!txn && !releasePaymentMode && !releasePaymentDate) return {};
+    const note = `Payment: ${txn} via ${releasePaymentMode} on ${releasePaymentDate}`;
+    return {
+      paymentTransactionNo: txn,
+      paymentMode: releasePaymentMode || null,
+      paymentTransactionDate: releasePaymentDate || null,
+      advancePaidAt: releasePaymentDate || new Date().toISOString().split('T')[0],
+      advancePaidNote: note,
+    };
   };
 
   const validateDraftPoQtyAgainstMoqRemainder = (
@@ -3482,13 +3614,14 @@ const Procurement: React.FC = () => {
       addToast('error', 'No server purchase order id on this draft. Refresh or re-save the draft PO.');
       return;
     }
+    const paymentErr = validateReleasePaymentFields(true);
+    if (paymentErr) {
+      addToast('warning', paymentErr);
+      return;
+    }
     setRecordingAdvancePayment(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await updatePoTracking(backendPoId, {
-        advancePaidAt: today,
-        advancePaidNote: 'Required payment received (manual temp mark — treasury transaction pending)',
-      });
+      const res = await updatePoTracking(backendPoId, buildReleasePaymentTrackingPayload());
       if (!res.success) {
         addToast('error', typeof res.error === 'string' ? res.error : 'Failed to mark payment received');
         return;
@@ -3497,6 +3630,7 @@ const Procurement: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', 'release-draft', backendPoId] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      await queryClient.invalidateQueries({ queryKey: ['treasury-purchase-orders'] });
       void refetchReleaseDraftTracking();
     } finally {
       setRecordingAdvancePayment(false);
@@ -3508,11 +3642,19 @@ const Procurement: React.FC = () => {
   };
 
   const submitReleasePO = async () => {
-    if (!releasePOTarget) {
+    if (!releasePOTarget || releasingPO) {
       return;
     }
 
     const draft = releasePOTarget;
+    const paymentErr = validateReleasePaymentFields(draftPaymentTermsRequireAdvance(draft.paymentTerms));
+    if (paymentErr) {
+      addToast('warning', paymentErr);
+      return;
+    }
+
+    setReleasingPO(true);
+    try {
     if (draftPaymentTermsRequireAdvance(draft.paymentTerms)) {
       const bid = draft.backendPoId ? String(draft.backendPoId).replace(/^PO-/, '') : '';
       if (!bid || !/^\d+$/.test(bid)) {
@@ -3619,6 +3761,7 @@ const Procurement: React.FC = () => {
       const trackingResult = await updatePoTracking(backendPoIdNormalized, {
         poReleasedAt,
         poReleasedNote: releaseNote,
+        ...buildReleasePaymentTrackingPayload(),
       });
       if (!trackingResult.success) {
         const err = trackingResult.error;
@@ -3627,6 +3770,7 @@ const Procurement: React.FC = () => {
       }
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoIdNormalized] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      await queryClient.invalidateQueries({ queryKey: ['treasury-purchase-orders'] });
       // PO lines + Released status are persisted — warehouse inventory PO Qty column reads from purchase_orders
       if (import.meta.env.DEV) {
         console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (after PO Released + items saved)');
@@ -3642,9 +3786,13 @@ const Procurement: React.FC = () => {
           stage: 'treasury',
           po: {
             id: draft.dpoNumber,
+            backendPoId: draft.backendPoId,
             vendor: draft.vendor,
             paymentTerms: draft.paymentTerms,
             grandTotal: draft.grandTotal,
+            paymentTransactionNo: releasePaymentTransactionNo.trim(),
+            paymentMode: releasePaymentMode,
+            paymentTransactionDate: releasePaymentDate,
             lines: draft.lineItems.map((l) => ({
               itemId: l.itemCode,
               itemName: l.item,
@@ -3686,6 +3834,9 @@ const Procurement: React.FC = () => {
     }
 
     closeReleasePOModal();
+    } finally {
+      setReleasingPO(false);
+    }
   };
 
   const splitDraftPO = (draftPoId: string) => {
@@ -3930,6 +4081,22 @@ const Procurement: React.FC = () => {
     closeSplitPOModal();
   };
 
+  const closeRecordQuoteModal = () => {
+    if (recordQuoteSaving) return;
+    setShowRecordQuoteModal(false);
+    setRecordQuoteForm({
+      vendorId: '',
+      quoteDate: '',
+      validTill: '',
+      leadTimeDays: '',
+      notes: '',
+      procurementRequestId: '',
+    });
+    setRecordQuoteLines([]);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+  };
+
   const addNewQuote = () => {
     if (!vendors.length) {
       addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
@@ -3943,8 +4110,54 @@ const Procurement: React.FC = () => {
       validTill: '',
       leadTimeDays: '',
       notes: '',
+      procurementRequestId: '',
     });
     setRecordQuoteLines([]);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+    setShowRecordQuoteModal(true);
+  };
+
+  const openRecordQuoteFromRequest = (req: ProcurementRequest) => {
+    if (!vendors.length) {
+      addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
+      return;
+    }
+    const details = req.itemDetails ?? [];
+    if (!details.length) {
+      addToast('error', 'This request has no line items to quote.');
+      return;
+    }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const lines = details.map((d, i) => {
+      const lineType: 'RM' | 'PM' = d.type === 'PM' ? 'PM' : 'RM';
+      const qty = Number(d.reqQty ?? 0) || 0;
+      const price = Number(d.plannedPrice ?? 0) || 0;
+      return {
+        index: i,
+        itemId: String(d.itemCode ?? '').trim(),
+        name: String(d.itemName ?? '').trim(),
+        uom: String(d.unit ?? (lineType === 'PM' ? 'PCS' : 'KG')),
+        orderQty: String(qty > 0 ? qty : ''),
+        pricePerUnit: price > 0 ? String(price) : '',
+        totalValue: qty * price,
+        raw_material_id: d.raw_material_id != null ? Number(d.raw_material_id) : null,
+        pack_material_id: d.pack_material_id != null ? Number(d.pack_material_id) : null,
+        itemType: lineType,
+      };
+    });
+    setRecordQuoteForm({
+      vendorId: vendors[0].id,
+      quoteDate: todayStr,
+      validTill: '',
+      leadTimeDays: '',
+      notes: isPlanningQuotationRequest(req)
+        ? `Vendor quotation for Planning request ${req.code}`
+        : `Quotation for ${req.code}`,
+      procurementRequestId: req.id,
+    });
+    setRecordQuoteLines(lines);
+    setRecordQuoteLineSearch({});
     setRecordQuoteSaving(false);
     setShowRecordQuoteModal(true);
   };
@@ -4450,7 +4663,7 @@ const Procurement: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 px-1 pt-2 border-t border-slate-100 mt-2">
-                  Record vendor quotes and pricing here for reference in Planning and PR. Draft POs are created from the PR / Draft POs flow, not from individual quote cards.
+                  Planning quotation requests appear here (not under Requests). Record vendor quotes for Planning and PR; Draft POs are created from the PR / Draft POs flow.
                 </p>
               </div>
             )}
@@ -4460,9 +4673,9 @@ const Procurement: React.FC = () => {
                 const TODAY = new Date();
                 const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
                 // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
-                const activeRequests = requests.filter((r) => requestStatusIsPreDraftPipeline(r.status));
-                const rmRequests = requests.filter(r => r.type === 'RM');
-                const pmRequests = requests.filter(r => r.type === 'PM');
+                const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
+                const rmRequests = procurementRequestsList.filter(r => r.type === 'RM');
+                const pmRequests = procurementRequestsList.filter(r => r.type === 'PM');
                 const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
                 const poStatusColor: Record<string, string> = {
                   Shipped: 'bg-blue-100 text-blue-700',
@@ -4482,7 +4695,7 @@ const Procurement: React.FC = () => {
                     {/* KPI strip */}
                     <div className="flex flex-wrap gap-3">
                       {[
-                        { label: 'NEW REQUESTS', value: requests.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
+                        { label: 'NEW REQUESTS', value: procurementRequestsList.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
                         { label: 'RM — RAW MATERIALS', value: rmRequests.length, sub: `${rmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-cyan-600', badge: 'RM' },
                         { label: 'PM — PACKAGING MATERIALS', value: pmRequests.length, sub: `${pmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-violet-600', badge: 'PM' },
                         { label: 'ACTIVE POS', value: requests.filter(r => r.status === 'PO Draft' || r.status === 'PO Released').length, sub: 'In pipeline', color: 'text-emerald-600' },
@@ -4656,7 +4869,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Requests</p>
-                      <p className="text-2xl font-bold text-slate-900">{requests.length}</p>
+                      <p className="text-2xl font-bold text-slate-900">{procurementRequestsList.length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-cyan-200 p-4 shadow-sm">
@@ -4666,7 +4879,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">RM Requests</p>
-                      <p className="text-2xl font-bold text-cyan-600">{requests.filter(r => r.type === 'RM').length}</p>
+                      <p className="text-2xl font-bold text-cyan-600">{procurementRequestsList.filter(r => r.type === 'RM').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-violet-200 p-4 shadow-sm">
@@ -4676,7 +4889,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PM Requests</p>
-                      <p className="text-2xl font-bold text-violet-600">{requests.filter(r => r.type === 'PM').length}</p>
+                      <p className="text-2xl font-bold text-violet-600">{procurementRequestsList.filter(r => r.type === 'PM').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-red-200 p-4 shadow-sm">
@@ -4686,7 +4899,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">New / Unactioned</p>
-                      <p className="text-2xl font-bold text-red-600">{requests.filter(r => r.status === 'New').length}</p>
+                      <p className="text-2xl font-bold text-red-600">{procurementRequestsList.filter(r => r.status === 'New').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-yellow-200 p-4 shadow-sm">
@@ -4696,7 +4909,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Draft PO Stage</p>
-                      <p className="text-2xl font-bold text-yellow-600">{requests.filter(r => r.status === 'PO Draft').length}</p>
+                      <p className="text-2xl font-bold text-yellow-600">{procurementRequestsList.filter(r => r.status === 'PO Draft').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-emerald-200 p-4 shadow-sm">
@@ -4706,7 +4919,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PO Released</p>
-                      <p className="text-2xl font-bold text-emerald-600">{requests.filter(r => r.status === 'PO Released').length}</p>
+                      <p className="text-2xl font-bold text-emerald-600">{procurementRequestsList.filter(r => r.status === 'PO Released').length}</p>
                     </div>
                   </div>
 
@@ -4796,7 +5009,7 @@ const Procurement: React.FC = () => {
                     {/* Request Cards */}
                     <div className="p-5 space-y-4 bg-slate-50">
                       {(() => {
-                        const filteredRequests = requests.filter(req => {
+                        const filteredRequests = procurementRequestsList.filter(req => {
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
                           if (requestTab === 'Active') {
                             if (!requestStatusIsPreDraftPipeline(req.status)) return false;
@@ -4910,8 +5123,7 @@ const Procurement: React.FC = () => {
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusClass[req.status]}`}>
                                       {req.status}
                                     </span>
-                                    {req.notes != null &&
-                                      String(req.notes).includes('Quotation requested from Planning') && (
+                                    {isPlanningQuotationRequest(req) && (
                                       <span
                                         className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300"
                                         title="Planning could not release — vendor rates needed on Items List"
@@ -5099,6 +5311,16 @@ const Procurement: React.FC = () => {
                                   >
                                     View
                                   </button>
+                                  {isPlanningQuotationRequest(req) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openRecordQuoteFromRequest(req)}
+                                      className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 transition-all"
+                                      title="Add vendor rates for Planning — saves to Items List"
+                                    >
+                                      Add quotation
+                                    </button>
+                                  )}
                                   <button
                                     onClick={async () => {
                                       if (isStockCheckOneTimeCompleted(req)) {
@@ -5374,7 +5596,91 @@ const Procurement: React.FC = () => {
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       Loading procurement data…
                     </div>
-                  ) : quotesForQuotationsSection.length === 0 ? (
+                  ) : (
+                    <>
+                  {filteredPlanningQuotationRequestsAwaitingQuote.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 px-1">
+                        Awaiting vendor quote from Planning ({filteredPlanningQuotationRequestsAwaitingQuote.length})
+                      </p>
+                      {filteredPlanningQuotationRequestsAwaitingQuote.map((req) => (
+                        <article
+                          key={`planning-quote-pending-${req.id}`}
+                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
+                        >
+                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
+                                    Planning
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
+                                    {req.code}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[req.type]}`}
+                                  >
+                                    {req.type}
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    Awaiting quote
+                                  </span>
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">
+                                  {req.items[0] ?? 'Material line'}
+                                </h3>
+                                <p className="text-xs text-slate-600 mt-1">
+                                  Record vendor rates — same flow as <span className="font-semibold">+ Record Quote</span>
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openRecordQuoteFromRequest(req)}
+                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
+                              >
+                                Record Quote
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4">
+                            {(req.itemDetails ?? []).map((detail, idx) => (
+                              <div key={idx} className="mb-3 last:mb-0">
+                                <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
+                                <p className="font-semibold text-slate-900 text-sm">
+                                  {Number(detail.reqQty ?? 0).toLocaleString('en-IN')}{' '}
+                                  {detail.unit || (req.type === 'PM' ? 'PCS' : 'KG')}
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{detail.itemCode || '—'}</p>
+                              </div>
+                            ))}
+                            {(req.planningSoNumber || req.planningProductName) && (
+                              <p className="text-xs text-slate-600 mt-2">
+                                {req.planningSoNumber ? (
+                                  <>
+                                    <span className="font-semibold">SO</span> {req.planningSoNumber}
+                                    {req.planningCustomerName ? ` · ${req.planningCustomerName}` : ''}
+                                  </>
+                                ) : null}
+                                {req.planningProductName ? (
+                                  <span className={req.planningSoNumber ? ' ml-2' : ''}>
+                                    <span className="font-semibold">Product</span> {req.planningProductName}
+                                  </span>
+                                ) : null}
+                              </p>
+                            )}
+                            {req.notes ? (
+                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
+                                {req.notes}
+                              </p>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {quotesForQuotationsSection.length === 0 &&
+                  filteredPlanningQuotationRequestsAwaitingQuote.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       No quotes match current filters.
                     </div>
@@ -5629,6 +5935,8 @@ const Procurement: React.FC = () => {
                         </article>
                       );
                     })
+                  )}
+                    </>
                   )}
                 </div>
               )}
@@ -7783,17 +8091,33 @@ const Procurement: React.FC = () => {
       {releasePOTarget && (() => (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
-          onClick={closeReleasePOModal}
+          onClick={() => {
+            if (!releasingPO) closeReleasePOModal();
+          }}
         >
           <div
             className="relative my-auto flex max-h-[calc(100svh-2rem)] w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
             onClick={(event) => event.stopPropagation()}
           >
+            {releasingPO ? (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="h-9 w-9 text-emerald-600 animate-spin" aria-hidden />
+                <p className="mt-2 text-sm font-semibold text-slate-800">Releasing PO…</p>
+                <p className="mt-1 text-[11px] text-slate-500">Please wait for the server response</p>
+              </div>
+            ) : null}
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
               <h3 className="text-lg font-bold text-slate-900">Release PO — {releasePOTarget.dpoNumber}</h3>
               <button
+                type="button"
                 onClick={closeReleasePOModal}
-                className="h-7 w-7 shrink-0 rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                disabled={releasingPO}
+                className="h-7 w-7 shrink-0 rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Close"
               >
                 ×
@@ -7811,6 +8135,49 @@ const Procurement: React.FC = () => {
                 <PaymentTermsDisplay value={releasePOTarget.paymentTerms} />
               </div>
 
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                <p className="text-xs font-semibold text-slate-800">Payment transaction</p>
+                <p className="text-[11px] text-slate-600">
+                  Record how this PO was paid (or will be paid). Shown in Treasury with the full PO details.
+                  {releaseDraftRequiresAdvance ? ' Required before recording advance or releasing.' : ''}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Transaction no.</label>
+                    <input
+                      value={releasePaymentTransactionNo}
+                      onChange={(e) => setReleasePaymentTransactionNo(e.target.value)}
+                      placeholder="e.g. UTR / cheque no."
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Mode of payment</label>
+                    <select
+                      value={releasePaymentMode}
+                      onChange={(e) => setReleasePaymentMode(e.target.value as ReleasePaymentMode | '')}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    >
+                      <option value="">Select mode</option>
+                      {RELEASE_PAYMENT_MODES.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment date</label>
+                    <input
+                      type="date"
+                      value={releasePaymentDate}
+                      onChange={(e) => setReleasePaymentDate(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {releaseDraftRequiresAdvance && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
                   <p className="font-semibold">Advance payment required</p>
@@ -7821,13 +8188,23 @@ const Procurement: React.FC = () => {
                   ) : releaseDraftTrackingLoading ? (
                     <p className="text-amber-800">Checking PO tracking…</p>
                   ) : advanceRecordedForReleaseDraft ? (
-                    <p className="text-emerald-800 font-medium">
-                      Advance recorded
-                      {releaseDraftTracking?.advancePaidAt
-                        ? ` (${new Date(releaseDraftTracking.advancePaidAt).toLocaleDateString('en-IN')})`
-                        : ''}
-                      . You may release the PO.
-                    </p>
+                    <div className="text-emerald-800 font-medium space-y-1">
+                      <p>
+                        Advance recorded
+                        {releaseDraftTracking?.advancePaidAt
+                          ? ` (${new Date(releaseDraftTracking.advancePaidAt).toLocaleDateString('en-IN')})`
+                          : ''}
+                        . You may release the PO.
+                      </p>
+                      {releaseDraftTracking?.paymentTransactionNo && (
+                        <p className="text-xs text-emerald-900">
+                          Txn {releaseDraftTracking.paymentTransactionNo} · {releaseDraftTracking.paymentMode} ·{' '}
+                          {releaseDraftTracking.paymentTransactionDate
+                            ? new Date(releaseDraftTracking.paymentTransactionDate).toLocaleDateString('en-IN')
+                            : '—'}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <>
                       <p className="text-amber-900">
@@ -7902,25 +8279,36 @@ const Procurement: React.FC = () => {
 
             <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
               <button
-                onClick={submitReleasePO}
+                type="button"
+                onClick={() => void submitReleasePO()}
                 disabled={
-                  releaseDraftRequiresAdvance &&
-                  (!releaseDraftBackendPoIdNormalized ||
-                    !advanceRecordedForReleaseDraft ||
-                    releaseDraftTrackingLoading)
+                  releasingPO ||
+                  (releaseDraftRequiresAdvance &&
+                    (!releaseDraftBackendPoIdNormalized ||
+                      !advanceRecordedForReleaseDraft ||
+                      releaseDraftTrackingLoading))
                 }
                 title={
                   releaseDraftRequiresAdvance && !advanceRecordedForReleaseDraft && releaseDraftBackendPoIdNormalized
                     ? 'Record advance payment before releasing'
                     : undefined
                 }
-                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-w-[7.5rem]"
               >
-                Release PO
+                {releasingPO ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Releasing…
+                  </>
+                ) : (
+                  'Release PO'
+                )}
               </button>
               <button
+                type="button"
                 onClick={closeReleasePOModal}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                disabled={releasingPO}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -10294,18 +10682,19 @@ const Procurement: React.FC = () => {
           <div className="my-auto flex w-full max-w-5xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Record Vendor Quotation</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {recordQuoteForm.procurementRequestId ? 'Add quotation for request' : 'Record Vendor Quotation'}
+                </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).
+                  {recordQuoteForm.procurementRequestId
+                    ? 'Enter vendor and unit prices for each line. Rates are saved to Items List so Planning can release procurement with those vendors.'
+                    : 'Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).'}
                 </p>
               </div>
               <button
                 type="button"
                 disabled={recordQuoteSaving}
-                onClick={() => {
-                  if (recordQuoteSaving) return;
-                  setShowRecordQuoteModal(false);
-                }}
+                onClick={closeRecordQuoteModal}
                 className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Close
@@ -10524,10 +10913,7 @@ const Procurement: React.FC = () => {
                 <button
                   type="button"
                   disabled={recordQuoteSaving}
-                  onClick={() => {
-                    if (recordQuoteSaving) return;
-                    setShowRecordQuoteModal(false);
-                  }}
+                  onClick={closeRecordQuoteModal}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
@@ -10551,11 +10937,80 @@ const Procurement: React.FC = () => {
                       addToast('error', 'Select an item (RM or PM) from the dropdown for each line.');
                       return;
                     }
+                    const invalidPrice = recordQuoteLines.some((l) => {
+                      const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                      return price <= 0;
+                    });
+                    if (invalidPrice) {
+                      addToast('error', 'Enter a price per unit greater than zero for each line.');
+                      return;
+                    }
 
                     setRecordQuoteSaving(true);
                     try {
                     const selectedVendorProc = vendors.find((x) => String(x.id) === String(recordQuoteForm.vendorId));
                     const composedPaymentTerms = selectedVendorProc?.paymentTerms?.trim() || 'As per contract';
+
+                    const linkedPrId = String(recordQuoteForm.procurementRequestId ?? '').trim();
+                    if (linkedPrId) {
+                      const quotationItems = recordQuoteLines.map((l) => {
+                        const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                        const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                        return {
+                          raw_material_id: l.raw_material_id ?? undefined,
+                          pack_material_id: l.pack_material_id ?? undefined,
+                          itemId: l.itemId || l.name,
+                          name: l.name,
+                          orderQty: qty,
+                          pricePerUnit: price,
+                          uom: l.uom || 'KG',
+                          totalValue: qty * price,
+                        };
+                      });
+                      const createRes = await createProcurementQuotation({
+                        procurementRequestId: parseInt(linkedPrId, 10),
+                        vendorId,
+                        quoteDate: recordQuoteForm.quoteDate || null,
+                        validTill: recordQuoteForm.validTill || null,
+                        leadTimeDays: recordQuoteForm.leadTimeDays
+                          ? Number(recordQuoteForm.leadTimeDays)
+                          : null,
+                        paymentTerms: composedPaymentTerms,
+                        notes: recordQuoteForm.notes || null,
+                        status: 'pending',
+                        items: quotationItems,
+                      });
+                      if (!createRes.success || !createRes.data) {
+                        addToast(
+                          'error',
+                          typeof createRes.error === 'string' ? createRes.error : 'Failed to save quotation'
+                        );
+                        return;
+                      }
+                      const linkedReq = requestsMapped.find((r) => r.id === linkedPrId);
+                      if (linkedReq && isPlanningQuotationRequest(linkedReq)) {
+                        const vendorName = selectedVendorProc?.name?.trim();
+                        await updateProcurementRequestApi(linkedPrId, {
+                          status: 'Quoted',
+                          ...(vendorName ? { preferredVendor: vendorName } : {}),
+                        });
+                      }
+                      await queryClient.invalidateQueries({
+                        predicate: (q) =>
+                          Array.isArray(q.queryKey) &&
+                          typeof q.queryKey[0] === 'string' &&
+                          q.queryKey[0].startsWith('items-list'),
+                        refetchType: 'all',
+                      });
+                      await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+                      await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      addToast(
+                        'success',
+                        'Quotation saved to Items List. Planning can now pick this vendor when releasing procurement.'
+                      );
+                      closeRecordQuoteModal();
+                      return;
+                    }
 
                     // Save into Items List (single source of truth for vendor pricing).
                     const loadPage = async (type: 'RM' | 'PM') => {
@@ -10678,7 +11133,7 @@ const Procurement: React.FC = () => {
                       refetchType: 'all',
                     });
                     addToast('success', 'Saved vendor price list (Items List).');
-                    setShowRecordQuoteModal(false);
+                    closeRecordQuoteModal();
                     } finally {
                       setRecordQuoteSaving(false);
                     }
@@ -10691,7 +11146,7 @@ const Procurement: React.FC = () => {
                       Saving…
                     </>
                   ) : (
-                    'Save Quote'
+                    recordQuoteForm.procurementRequestId ? 'Save quotation' : 'Save Quote'
                   )}
                 </button>
               </div>

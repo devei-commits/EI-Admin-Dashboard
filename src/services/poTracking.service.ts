@@ -13,6 +13,9 @@ export interface PoTrackingRecord {
   poReleasedNote: string | null;
   advancePaidAt: string | null;
   advancePaidNote: string | null;
+  paymentTransactionNo: string | null;
+  paymentMode: string | null;
+  paymentTransactionDate: string | null;
   vendorConfirmedAt: string | null;
   vendorConfirmedNote: string | null;
   shippedAt: string | null;
@@ -33,6 +36,9 @@ export type PoTrackingPayload = Partial<{
   poReleasedNote: string | null;
   advancePaidAt: string | null;
   advancePaidNote: string | null;
+  paymentTransactionNo: string | null;
+  paymentMode: string | null;
+  paymentTransactionDate: string | null;
   vendorConfirmedAt: string | null;
   vendorConfirmedNote: string | null;
   shippedAt: string | null;

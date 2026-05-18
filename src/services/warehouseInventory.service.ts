@@ -506,3 +506,33 @@ export async function fetchUsageStats(): Promise<ServiceResult<{ rows: UsageStat
     return { data: { rows: [] }, error: message, success: false };
   }
 }
+
+export interface InventorySummaryExcelImportResponse {
+  ok?: boolean;
+  sheet_name?: string;
+  rows_total?: number;
+  summary?: {
+    rm_updated?: number;
+    pm_updated?: number;
+    pr_updated?: number;
+    created?: number;
+    skipped?: number;
+    errors?: number;
+  };
+  row_log?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+/** Apply Zoho "Inventory Summary" quantity_available to warehouse stock (RM/PM/PR). */
+export async function importInventorySummaryExcel(
+  file: File,
+  options?: { details?: boolean }
+): Promise<InventorySummaryExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const suffix = options?.details ? '?details=1' : '';
+  return api.post<InventorySummaryExcelImportResponse>(
+    `/api/v1/warehouse-inventory/import-inventory-summary-excel${suffix}`,
+    fd
+  );
+}
