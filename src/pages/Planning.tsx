@@ -50,6 +50,7 @@ import {
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 import { formatQtyExact, MATERIAL_QTY_MAX_DECIMALS, roundMaterialQty } from '../utils/formatQty';
+import AdminMainMenuButton from '../components/AdminMainMenuButton';
 
 /** Merge a newly created batch into the planning-batches list cache so selection is not reset before refetch (fixes dropdown + batch label). */
 function mergePlanningBatchIntoListCache(
@@ -3965,6 +3966,7 @@ const Planning = () => {
         <div className="max-w-[1600px] mx-auto">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2.5">
+              <AdminMainMenuButton />
               <div className="w-7 h-7 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-extrabold">EI</div>
               <div className="text-sm font-semibold text-gray-900">Planning Dashboard</div>
             </div>

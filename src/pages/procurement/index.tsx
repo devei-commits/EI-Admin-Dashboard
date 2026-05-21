@@ -4495,7 +4495,7 @@ const Procurement: React.FC = () => {
       )}
       <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
         <div className="px-5 md:px-8 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 pl-12">
             <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
             <p className="text-xs text-slate-500">Operations Hub</p>
             <div className="hidden md:flex items-center gap-2 ml-4">

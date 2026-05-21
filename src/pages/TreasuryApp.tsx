@@ -5,6 +5,7 @@ import logoFull from '../assets/logo/eilogofull.svg';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { fetchTreasuryPurchaseOrders, type TreasuryPurchaseOrderRow } from '../services/treasury.service';
 import { TreasuryPoDetailModal } from '../components/treasury/TreasuryPoDetailModal';
+import AdminMainMenuButton from '../components/AdminMainMenuButton';
 
 interface Notification {
   id: string;
@@ -233,7 +234,10 @@ const TreasuryApp = () => {
     <div className="flex h-screen bg-gray-50">
       {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
-        <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
+        <div className="flex items-center gap-2">
+          <AdminMainMenuButton className="hover:bg-slate-700 text-white" />
+          <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
+        </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 text-white hover:bg-slate-700 rounded-lg"
@@ -264,8 +268,9 @@ const TreasuryApp = () => {
     ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
     md:flex
    `}>
-        <div className="p-4 border-b border-gray-700 flex items-center justify-center">
-          <img src={logoFull} alt="Esthetic Insights" className="h-12 object-contain" />
+        <div className="p-4 border-b border-gray-700 flex items-center gap-2">
+          <AdminMainMenuButton className="hover:bg-slate-700 text-white shrink-0" />
+          <img src={logoFull} alt="Esthetic Insights" className="h-12 object-contain mx-auto" />
         </div>
         <div className="px-6 py-3 text-center border-b border-gray-700/50">
           <p className="text-xs text-gray-400 font-medium">Payments & Cashflow</p>
@@ -355,7 +360,9 @@ const TreasuryApp = () => {
           {/* Header with Notifications & Search */}
           <div className="mb-6 md:mb-8">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4 md:mb-6">
-              <div>
+              <div className="flex items-start gap-3">
+                <AdminMainMenuButton className="mt-1 md:hidden" />
+                <div>
                 <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2">{screenTitles[currentScreen]}</h1>
                 <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm bg-white px-3 md:px-4 py-2 rounded-xl w-fit border border-gray-200 shadow-sm">
                   <span className="text-gray-500">Treasury</span>
@@ -368,6 +375,7 @@ const TreasuryApp = () => {
                       <span className="text-xs text-gray-500 ml-1">Last: {lastRefreshTime.toLocaleTimeString()}</span>
                     </>
                   )}
+                </div>
                 </div>
               </div>
 

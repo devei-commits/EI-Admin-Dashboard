@@ -25,8 +25,22 @@ const PreloadNavLink = ({
   );
 };
 
-const Sidebar = () => {
-  const [isOpen, setIsOpen] = useState(false);
+type SidebarProps = {
+  /** layout = main dashboard shell; drawer = overlay on standalone module pages */
+  variant?: "layout" | "drawer";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
+
+const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: SidebarProps) => {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isDrawer = variant === "drawer";
+  const isOpen = isDrawer ? (controlledOpen ?? false) : internalOpen;
+  const setIsOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(isOpen) : next;
+    if (isDrawer) onOpenChange?.(value);
+    else setInternalOpen(value);
+  };
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
@@ -170,7 +184,8 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* Mobile Header Bar */}
+      {/* Mobile Header Bar — main dashboard layout only */}
+      {!isDrawer && (
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-background border-b border-gray-200 z-50 flex items-center px-4 shadow-sm">
         <button
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -201,23 +216,30 @@ const Sidebar = () => {
         </button>
         <img src={eilogofull} alt="Logo" className="h-8 ml-3 object-contain" />
       </div>
+      )}
 
-      {/* Overlay - Mobile Only */}
+      {/* Overlay */}
       {isOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-white/60 backdrop-blur-md z-30 mt-14"
+          className={
+            isDrawer
+              ? "fixed inset-0 bg-black/40 backdrop-blur-sm z-[85]"
+              : "md:hidden fixed inset-0 bg-white/60 backdrop-blur-md z-30 mt-14"
+          }
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <div
-        className={`fixed md:sticky md:top-0 h-screen md:h-screen flex flex-col bg-background border-r border-gray-200 z-40 transition-transform duration-300 ease-in-out w-64 shadow-sm
-          ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          mt-14 md:mt-0`}
+        className={`fixed flex flex-col bg-background border-r border-gray-200 transition-transform duration-300 ease-in-out w-64 shadow-sm
+          ${isDrawer
+            ? `top-0 left-0 h-screen z-[90] ${isOpen ? "translate-x-0" : "-translate-x-full"}`
+            : `md:sticky md:top-0 h-screen md:h-screen z-40 ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} mt-14 md:mt-0`
+          }`}
       >
-        {/* Logo Section - Hidden on mobile since it's in the header */}
-        <div className="hidden md:flex p-5 items-center justify-center border-b border-gray-100 bg-transparent">
+        {/* Logo Section */}
+        <div className={`${isDrawer ? "flex" : "hidden md:flex"} p-5 items-center justify-center border-b border-gray-100 bg-transparent`}>
           <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain" />
         </div>
 

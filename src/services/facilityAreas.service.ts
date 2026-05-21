@@ -25,6 +25,7 @@ export interface ZoneDTO {
   zohoLocationId?: string | null;
   isActive?: boolean;
   isZohoPrimary?: boolean;
+  isDefault?: boolean;
   racks?: RackDTO[];
 }
 
@@ -207,6 +208,29 @@ export interface EnsureCustomLocationResult {
  * area type (WH-CUSTOM / PROD-CUSTOM). Called from GRN (warehouse) and Production
  * MU save paths when the user is in custom-location mode.
  */
+export async function setZoneAsDefault(zoneId: number): Promise<ServiceResult<{
+  id: number;
+  isDefault: boolean;
+  defaultRackId: number;
+  defaultRackCode: string;
+}>> {
+  try {
+    const res = await api.post<{
+      id: number;
+      isDefault: boolean;
+      defaultRackId: number;
+      defaultRackCode: string;
+    }>(`${ZONES_BASE}/${zoneId}/set-default`, {});
+    return { data: extractOne(res), error: null, success: true };
+  } catch (e) {
+    return {
+      data: null as unknown as { id: number; isDefault: boolean; defaultRackId: number; defaultRackCode: string },
+      error: e instanceof Error ? e.message : 'Failed to set default location',
+      success: false,
+    };
+  }
+}
+
 export async function ensureCustomZoneAndRack(
   payload: EnsureCustomLocationPayload
 ): Promise<ServiceResult<EnsureCustomLocationResult>> {

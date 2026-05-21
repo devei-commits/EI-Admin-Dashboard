@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Menu, User, LogOut, Bell, Shield, FileText, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import AdminMainMenuButton from '../../../AdminMainMenuButton';
 import { Button } from '../ui/button';
 import { UserRole } from '../../types/pis';
 import { getRoleLabel, getStageLabel } from '../../utils/permissions';
@@ -142,6 +143,7 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
  return (
   <header className="bg-white/95 border-b border-gray-100 text-gray-800 px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-4 shadow-sm sticky top-0 z-50 backdrop-blur-sm\">
    <div className="flex items-center gap-4">
+    <AdminMainMenuButton />
     <Button
      variant="ghost"
      size="icon"

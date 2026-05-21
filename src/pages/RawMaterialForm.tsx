@@ -16,7 +16,11 @@ import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
-import { RM_SUB_CATEGORY_SKU_OPTIONS, RM_SUB_CATEGORY_SKU_SELECT_OPTIONS } from '../constants/materialMasterSkuRules';
+import {
+  RM_SUB_CATEGORY_SKU_OPTIONS,
+  RM_SUB_CATEGORY_SKU_SELECT_OPTIONS,
+  normalizeRmSubCategoryForSelect,
+} from '../constants/materialMasterSkuRules';
 import { resolveRmEditCategories } from '../utils/masterImportCategoryResolve';
 
 // ─── RM Category Code Series (industry buckets) ───────────────────────────────
@@ -37,11 +41,18 @@ const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging Q
 const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
 function rmSubCategoryLeadingDigit(sub: string): '1' | '2' | '3' | null {
+  const canon = normalizeRmSubCategoryForSelect(sub);
+  if (canon === 'Bulk raw materials') return '1';
   const k = String(sub || '').trim().toLowerCase();
-  if (k === 'raw material' || k === 'raw materials' || k === 'club items') return '1';
+  if (k === 'raw material' || k === 'raw materials' || k.includes('bulk raw')) return '1';
   if (k === 'fragrance' || k === 'fragrances') return '2';
   if (k === 'colors & pigments') return '3';
   return null;
+}
+
+function isRmClubItemsSubCategory(sub: string): boolean {
+  const k = String(sub || '').trim().toLowerCase();
+  return k === 'club items' || k === 'club item';
 }
 
 function inferRmCategoryKeyFromCode(code: string): string {
@@ -82,6 +93,7 @@ function createEmptyRmFormData() {
     rmCategory: '',
     qcInspectionGroup: '',
     subCategory: '',
+    optionalRmSubCategory: '',
     hazardHandlingClass: '',
     seriesPrefix: '',
     rmDefaultStorageType: '',
@@ -241,7 +253,6 @@ const RawMaterialRefactored: React.FC = () => {
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
-   formData.rmCategory?.trim() &&
     formData.subCategory?.trim() &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
@@ -292,13 +303,25 @@ const RawMaterialRefactored: React.FC = () => {
   if (id === 'subCategory') {
    const next = value;
    const sku = String(formData.rmSku || '').trim();
-   const d = rmSubCategoryLeadingDigit(next);
-   if (sku && existingRmId && d && !sku.startsWith(d)) {
-    addToast(
-     'error',
-     `This RM code (${sku}) does not start with "${d}", which is required for canonical sub-category "${next}".`
-    );
-    return;
+   if (sku && existingRmId) {
+    if (isRmClubItemsSubCategory(next)) {
+     if (!sku.toUpperCase().startsWith('CLUB')) {
+      addToast(
+       'error',
+       `This RM code (${sku}) must start with "CLUB" for Club items.`
+      );
+      return;
+     }
+    } else {
+     const d = rmSubCategoryLeadingDigit(next);
+     if (d && !sku.startsWith(d)) {
+      addToast(
+       'error',
+       `This RM code (${sku}) does not start with "${d}", which is required for canonical sub-category "${next}".`
+      );
+      return;
+     }
+    }
    }
    setFormData((prev) => ({ ...prev, subCategory: next }));
    return;
@@ -477,14 +500,8 @@ const RawMaterialRefactored: React.FC = () => {
 
  const handleSubmit = async () => {
   if (!existingRmId) {
-   if (!formData.rmCategory?.trim()) {
-    addToast('error', 'Category is required (Primary info step)');
-    setCurrentStage(0);
-    focusFieldById('rmCategory');
-    return;
-   }
    if (!formData.subCategory?.trim()) {
-    addToast('error', 'Sub-Category is required (Primary info step)');
+    addToast('error', 'Sub-category is required (Primary info step)');
     setCurrentStage(0);
     focusFieldById('subCategory');
     return;
@@ -552,20 +569,37 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return;
   }
-  const digitForSub = rmSubCategoryLeadingDigit(formData.subCategory);
-  if (digitForSub && !String(formData.rmSku || '').trim().startsWith(digitForSub)) {
-   addToast(
-    'error',
-    `Internal RM code must start with "${digitForSub}" for sub-category "${formData.subCategory}".`
-   );
-   setCurrentStage(0);
-   focusFieldById('rmSku');
-   return;
+  const skuTrim = String(formData.rmSku || '').trim();
+  if (skuTrim) {
+   if (isRmClubItemsSubCategory(formData.subCategory)) {
+    if (!skuTrim.toUpperCase().startsWith('CLUB')) {
+     addToast('error', 'Internal RM code must start with "CLUB" for Club items.');
+     setCurrentStage(0);
+     focusFieldById('rmSku');
+     return;
+    }
+   } else {
+    const digitForSub = rmSubCategoryLeadingDigit(formData.subCategory);
+    if (digitForSub && !skuTrim.startsWith(digitForSub)) {
+     addToast(
+      'error',
+      `Internal RM code must start with "${digitForSub}" for sub-category "${formData.subCategory}".`
+     );
+     setCurrentStage(0);
+     focusFieldById('rmSku');
+     return;
+    }
+   }
   }
+  const savePayload = {
+   ...(formData as Record<string, unknown>),
+   rmCategory: formData.subCategory?.trim() || formData.rmCategory,
+   category: formData.subCategory?.trim() || formData.rmCategory,
+  };
   try {
    if (existingRmId) {
     const rmIdForSync = parseInt(String(existingRmId), 10);
-    await updateRawMaterial(existingRmId, formData as Record<string, unknown>);
+    await updateRawMaterial(existingRmId, savePayload);
     const syncCreated = Number.isNaN(rmIdForSync) ? 0 : await syncRmVendorsToItemsListAfterSave(rmIdForSync);
     addToast(
      'success',
@@ -575,9 +609,7 @@ const RawMaterialRefactored: React.FC = () => {
     );
     setExistingRmId(null);
    } else {
-    const { record, zohoSync } = await createRawMaterial({
-     ...(formData as Record<string, unknown>),
-    });
+    const { record, zohoSync } = await createRawMaterial(savePayload);
     const newRmId = parseInt(String(record.id), 10);
     const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
     if (zohoSync?.synced === false && zohoSync.error) {
@@ -610,19 +642,10 @@ const RawMaterialRefactored: React.FC = () => {
    return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category (Excel source of truth)</h3>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sub-category (drives internal SKU)</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <InputField
-        label="Category"
-        id="rmCategory"
-        value={formData.rmCategory}
-        onChange={handleInputChange}
-        placeholder="From Excel Category column"
-        requiredMark
-        error={errors.rmCategory}
-       />
        <SelectField
-        label="Sub-Category (SKU prefix)"
+        label="Sub-category"
         id="subCategory"
         value={formData.subCategory}
         onChange={handleInputChange}
@@ -631,9 +654,18 @@ const RawMaterialRefactored: React.FC = () => {
         error={errors.subCategory}
         disabled={lockPrimaryFields}
        />
+       <InputField
+        label="Sub-sub-category (optional)"
+        id="optionalRmSubCategory"
+        value={formData.optionalRmSubCategory}
+        onChange={handleInputChange}
+        placeholder="Finer grouping from Excel Sub-Category, if any"
+        error={errors.optionalRmSubCategory}
+       />
       </div>
       <p className="text-xs text-gray-500 mt-2">
-       Stored exactly as in your Excel import. Code digit rules (1/2/3) apply only for: {RM_SUB_CATEGORY_SKU_OPTIONS.join(', ')}.
+       Pick Bulk raw materials, Fragrance, Colors &amp; pigments, or Club items for sub-category — codes use 1 / 2 / 3 or{' '}
+       <span className="font-mono">CLUB</span>. Sub-sub-category is optional detail only.
       </p>
      </div>
 
@@ -641,9 +673,18 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-        Assigned on save: leading digit from sub-category (<span className="font-mono">1</span>,{' '}
-        <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus five digits (e.g.{' '}
-        <span className="font-mono text-gray-800">100001</span>).
+        {isRmClubItemsSubCategory(formData.subCategory) ? (
+         <>
+          Assigned on save: <span className="font-mono">CLUB</span> plus five digits (e.g.{' '}
+          <span className="font-mono text-gray-800">CLUB00001</span>).
+         </>
+        ) : (
+         <>
+          Assigned on save: leading digit from sub-category (<span className="font-mono">1</span>,{' '}
+          <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus five digits (e.g.{' '}
+          <span className="font-mono text-gray-800">100001</span>).
+         </>
+        )}
        </div>
       </div>
      ) : (
@@ -754,16 +795,8 @@ const RawMaterialRefactored: React.FC = () => {
     return (
      <div className="min-w-0 space-y-5 sm:space-y-6">
       <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Classification (Derived)</h3>
+       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Classification</h3>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Category label (derived)"
-         id="rmCategory"
-         value={formData.rmCategory}
-         onChange={handleInputChange}
-         placeholder="Updates when you pick RM Category above"
-         readOnly={lockPrimaryFields}
-        />
         <InputField
          label="Hazard Handling Class"
          id="hazardHandlingClass"
@@ -1410,6 +1443,7 @@ const RawMaterialRefactored: React.FC = () => {
      inciName: r.inci ?? '',
      tradeCommercialName: r.name ?? '',
      subCategory: resolvedCats.subCategory,
+     optionalRmSubCategory: resolvedCats.optionalRmSubCategory,
      rmCategory: resolvedCats.rmCategory || (r.category ?? ''),
      rmCategoryKey: resolvedCats.rmCategoryKey || inferRmCategoryKeyFromCode(recordCode) || '',
      seriesPrefix: (() => {
@@ -1456,7 +1490,12 @@ const RawMaterialRefactored: React.FC = () => {
   setFormData((prev) => {
     const merged = { ...prev, ...recordMapped, ...(fdCleanOverlay ?? {}) } as typeof prev;
 
-    merged.subCategory = resolvedCats.subCategory;
+    merged.subCategory =
+      normalizeRmSubCategoryForSelect(resolvedCats.subCategory) ||
+      normalizeRmSubCategoryForSelect(r.category ?? '') ||
+      normalizeRmSubCategoryForSelect(r.group ?? '') ||
+      resolvedCats.subCategory;
+    merged.optionalRmSubCategory = resolvedCats.optionalRmSubCategory || merged.optionalRmSubCategory || '';
     merged.rmCategory = resolvedCats.rmCategory || merged.rmCategory;
     merged.rmType = resolvedCats.rmType;
     if (!Array.isArray((merged as { vendors?: unknown }).vendors)) {
@@ -1576,7 +1615,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable). For new RMs, internal code is assigned on save."
+                  nextDisabledTitle="Fill all required step-1 fields (sub-category, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable). For new RMs, internal code is assigned on save."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}
@@ -1782,7 +1821,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   { label: 'ACTIVE',      value: stats.active,      sub: 'Approved status',        accent: 'border-l-orange-400', num: 'text-orange-500' },
   { label: 'UV FILTERS',  value: stats.uvFilters,   sub: 'Sunscreen actives',      accent: 'border-l-blue-500',   num: 'text-blue-600' },
   { label: 'SURFACTANTS', value: stats.surfactants, sub: 'Facewash actives',       accent: 'border-l-violet-500', num: 'text-violet-600' },
-  { label: 'CATEGORIES',  value: stats.categories,  sub: 'Distinct types',         accent: 'border-l-rose-500',   num: 'text-rose-600' },
+  { label: 'SUB-CATEGORIES', value: stats.categories, sub: 'Distinct types', accent: 'border-l-rose-500', num: 'text-rose-600' },
  ];
 
  return (
@@ -1907,7 +1946,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           CODE <span className="text-teal-500">Asc</span>
          </th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Category</th>
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Sub-category</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
          <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
          <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>

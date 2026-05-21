@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Trash2, Plus, ArrowDownToLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
+import { PlusCircle, Trash2, Plus, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, fetchZohoCompositeSkuBomSuggestion, uploadSkuBomExcel, clearSkuBomForReimport, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
@@ -14,6 +14,8 @@ import {
   parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
   skuBomLinesToFormulaRows,
+  formulaRowsToSkuBomLines,
+  flattenFormulaBomPhases,
   parseBulkSpecificGravity,
 } from '../lib/skuBomMath';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
@@ -211,6 +213,50 @@ const BOMDashboard: React.FC = () => {
       ],
     });
     toast.success(`Imported ${res.rows.length} ingredient line(s) from SKU BOM (% total 100%).`);
+  };
+
+  const importFormulaBomIntoSkuBom = () => {
+    if (!editDraft) return;
+    const fillSize = String(editDraft.fill_size ?? '');
+    const limQ = editDraft.skuBomLimitQty != null ? String(editDraft.skuBomLimitQty) : '';
+    const limU = String(editDraft.skuBomLimitUom ?? 'GM');
+    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+      fillSize,
+      skuBomLimitQty: limQ,
+      skuBomLimitUom: limU,
+    });
+    if (!limitQty || !limitUom) {
+      toast.error('Set net per-unit quantity and UOM (Fill Size e.g. 50g/50ml, or manual limit on this tab).');
+      return;
+    }
+    const formulaLines = flattenFormulaBomPhases(editDraft.formulaBom ?? []);
+    const res = formulaRowsToSkuBomLines({ formulaLines, limitQty, limitUom });
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    if ((editDraft.skuBom ?? []).length > 0) {
+      const ok = window.confirm(
+        'Replace all SKU BOM lines with quantities derived from Formula BOM % w/w? Existing SKU lines will be removed from this draft.'
+      );
+      if (!ok) return;
+    }
+    const skuBom: SkuBomRow[] = res.rows.map((r, i) => ({
+      row_number: i + 1,
+      inci_name: r.inciName,
+      rm_code: r.rmCode,
+      raw_material_id: r.rawMaterialId && !Number.isNaN(Number(r.rawMaterialId)) ? Number(r.rawMaterialId) : null,
+      qty_per_unit: r.qtyPerUnit,
+      uom: r.uom,
+    }));
+    updateDraft({
+      skuBom,
+      skuBomLimitQty: res.limitQty,
+      skuBomLimitUom: res.limitUom,
+    });
+    toast.success(
+      `Imported ${skuBom.length} SKU line(s) from Formula BOM for net ${res.limitQty} ${res.limitUom}.`
+    );
   };
 
   useEffect(() => {
@@ -1511,6 +1557,29 @@ const BOMDashboard: React.FC = () => {
                           </span>
                           <span className="block text-xs font-normal text-gray-500 mt-1">Set product Fill Size (e.g. 50g) to auto-fill.</span>
                         </p>
+                      )}
+                      {canEdit && (
+                        <div className="p-3 rounded-lg border border-blue-200 bg-blue-50/80 space-y-2">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">
+                                Import from Formula BOM
+                              </p>
+                              <p className="text-[11px] text-blue-900/80 mt-0.5">
+                                Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> (must total 100%). Uses net per unit from Fill Size or manual limit above. Replaces existing SKU BOM lines.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={importFormulaBomIntoSkuBom}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-blue-300 bg-white text-blue-900 hover:bg-blue-100 shrink-0"
+                              title="Populate SKU BOM from Formula % w/w and net per-unit qty"
+                            >
+                              <ArrowUpFromLine className="w-3.5 h-3.5" />
+                              Import from Formula BOM
+                            </button>
+                          </div>
+                        </div>
                       )}
                       {isEditMode && (
                         <div className="space-y-2">

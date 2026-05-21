@@ -4,10 +4,14 @@ import type { InventoryItem } from '../pages/warehouse/Inventory';
 import {
   updateWarehouseStock,
   fetchWarehouseLocationHistory,
+  fetchStockByLocation,
   deriveWarehouseInventoryDisplayStatus,
   inventoryAdjustChangeLines,
   type WarehouseLocationHistoryEntry,
+  type StockByLocationPayload,
 } from '../services/warehouseInventory.service';
+import StockByLocationPanel, { type RackQtyDraft } from './StockByLocationPanel';
+import { warehouseStoreLabelForItemType } from '../constants/warehouseItemLocations';
 
 interface Props {
   item: InventoryItem | null;
@@ -16,6 +20,8 @@ interface Props {
   onItemUpdated?: (updated: InventoryItem) => void;
   /** When 'modal', render as a centered popup; when 'sidebar' (default), render as a right-side panel. */
   variant?: 'sidebar' | 'modal';
+  /** Open directly in edit/adjust mode (e.g. from WH stock distribution popup). */
+  initialEditMode?: boolean;
 }
 
 const QC_STATUS_PRESETS = [
@@ -37,7 +43,13 @@ function numOr(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdated, variant = 'sidebar' }) => {
+const WarehouseInventorySidebar: React.FC<Props> = ({
+  item,
+  onClose,
+  onItemUpdated,
+  variant = 'sidebar',
+  initialEditMode = false,
+}) => {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(item);
   const [isEditMode, setIsEditMode] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -45,16 +57,62 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
   const [locationHistory, setLocationHistory] = useState<WarehouseLocationHistoryEntry[]>([]);
   const [locationHistoryLoading, setLocationHistoryLoading] = useState(false);
   const [locationHistoryError, setLocationHistoryError] = useState<string | null>(null);
+  const [stockByLocation, setStockByLocation] = useState<StockByLocationPayload | null>(null);
+  const [stockByLocationLoading, setStockByLocationLoading] = useState(false);
+  const [rackQtyDraft, setRackQtyDraft] = useState<RackQtyDraft[] | null>(null);
   const editSnapshotRef = useRef<InventoryItem | null>(null);
+
+  function buildRackDraftFromPayload(payload: StockByLocationPayload): RackQtyDraft[] {
+    const rows: RackQtyDraft[] = [];
+    for (const loc of payload.warehouse) {
+      for (const r of loc.racks) {
+        rows.push({ rackId: r.rackId, qtyWh: r.qtyWh });
+      }
+    }
+    return rows;
+  }
+
+  const handleRackQtyChange = (rackId: number, qtyWh: number) => {
+    setRackQtyDraft((prev) => {
+      const base = prev ?? [];
+      const idx = base.findIndex((d) => d.rackId === rackId);
+      const next =
+        idx >= 0
+          ? base.map((d, i) => (i === idx ? { rackId, qtyWh } : d))
+          : [...base, { rackId, qtyWh }];
+      const whTotal = next.reduce((s, d) => s + d.qtyWh, 0);
+      setSelectedItem((itemPrev) => {
+        if (!itemPrev) return itemPrev;
+        return {
+          ...itemPrev,
+          whStock: whTotal,
+          stockInHand: whTotal + itemPrev.ml1Stock + itemPrev.ml2Stock,
+        };
+      });
+      return next;
+    });
+  };
 
   useEffect(() => {
     setSelectedItem(item);
-    setIsEditMode(false);
     setAdjustNote('');
     setLocationHistory([]);
     setLocationHistoryError(null);
-    editSnapshotRef.current = null;
-  }, [item]);
+    setStockByLocation(null);
+    setStockByLocationLoading(false);
+    setRackQtyDraft(null);
+    if (initialEditMode && item?.warehouseInventoryId != null) {
+      editSnapshotRef.current = {
+        ...item,
+        zone: item.zone === '—' ? '' : item.zone,
+        rack: item.rack === '—' ? '' : item.rack,
+      };
+      setIsEditMode(true);
+    } else {
+      editSnapshotRef.current = null;
+      setIsEditMode(false);
+    }
+  }, [item, initialEditMode]);
 
   useEffect(() => {
     const wid = selectedItem?.warehouseInventoryId;
@@ -96,6 +154,35 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
     };
   }, [selectedItem?.warehouseInventoryId]);
 
+  useEffect(() => {
+    const wid = selectedItem?.warehouseInventoryId;
+    if (!wid) {
+      setStockByLocation(null);
+      setStockByLocationLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStockByLocationLoading(true);
+    setStockByLocation(null);
+    if (isEditMode) setRackQtyDraft(null);
+    fetchStockByLocation(wid)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setStockByLocation(res.data);
+          if (isEditMode) setRackQtyDraft(buildRackDraftFromPayload(res.data));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStockByLocationLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, selectedItem?.warehouseInventoryId]);
+
   const updateInventoryField = (field: keyof InventoryItem, value: number | string) => {
     setSelectedItem((prev) => {
       if (!prev) return prev;
@@ -128,6 +215,8 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
     }
     editSnapshotRef.current = null;
     setAdjustNote('');
+    setRackQtyDraft(null);
+    setStockByLocation(null);
     setIsEditMode(false);
   };
 
@@ -147,14 +236,23 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
     const wid = itemToSave.warehouseInventoryId;
     setSavingEdit(true);
     const noteTrim = adjustNote.trim();
+    const rack_quantities =
+      rackQtyDraft && rackQtyDraft.length > 0
+        ? rackQtyDraft.map((r) => ({ rackId: r.rackId, qtyWh: r.qtyWh }))
+        : undefined;
+    const whFromRacks = rack_quantities
+      ? rack_quantities.reduce((s, r) => s + r.qtyWh, 0)
+      : itemToSave.whStock;
     const res = await updateWarehouseStock(wid, {
-      wh_stock: itemToSave.whStock,
+      wh_stock: whFromRacks,
       ml1_stock: itemToSave.ml1Stock,
       ml2_stock: itemToSave.ml2Stock,
+      ...(rack_quantities ? { rack_quantities } : {}),
       reserved: itemToSave.reserved,
       in_transit: itemToSave.inTransit,
-      zone: itemToSave.zone ?? '',
-      rack: itemToSave.rack ?? '',
+      ...(!(rack_quantities && (itemToSave.type === 'RM' || itemToSave.type === 'PM' || itemToSave.type === 'FG/PR'))
+        ? { zone: itemToSave.zone ?? '', rack: itemToSave.rack ?? '' }
+        : {}),
       qc_status: (itemToSave.qcStatus ?? 'In Stock').trim() || 'In Stock',
       wh_unit: itemToSave.whUnit?.trim() || 'KG',
       reorder_pt: itemToSave.reorderPt,
@@ -197,7 +295,12 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
       editSnapshotRef.current = null;
       setIsEditMode(false);
       setAdjustNote('');
+      setRackQtyDraft(null);
       await refreshHistory(wid);
+      const locRes = await fetchStockByLocation(wid);
+      if (locRes.success && locRes.data) {
+        setStockByLocation(locRes.data);
+      }
     }
   };
 
@@ -208,6 +311,16 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
     const preset = QC_STATUS_PRESETS.find((p) => p === v);
     return preset ?? '__custom__';
   })();
+
+  const warehouseStoreLabel = warehouseStoreLabelForItemType(selectedItem.type);
+  const whLocationHint =
+    selectedItem.type === 'RM'
+      ? 'Adjust stock only in the RM warehouse zone and its racks.'
+      : selectedItem.type === 'PM'
+        ? 'Adjust stock only in the packaging (PM) warehouse zone and its racks.'
+        : selectedItem.type === 'FG/PR'
+          ? 'Adjust stock only in the finished-goods warehouse zone and its racks.'
+          : 'Adjust stock across warehouse zones and racks.';
 
   const isModal = variant === 'modal';
   return (
@@ -259,6 +372,34 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
           </span>
         </div>
 
+        {selectedItem.warehouseInventoryId != null && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700">
+              {isEditMode ? 'Adjust WH stock by rack' : 'WH stock distribution'}
+            </p>
+            {isEditMode ? (
+              <p className="text-[10px] text-slate-500">
+                {whLocationHint} WH total follows the sum of rack quantities in{' '}
+                <span className="font-semibold text-slate-700">{warehouseStoreLabel}</span>.
+              </p>
+            ) : (
+              <p className="text-[10px] text-slate-500">
+                How warehouse stock is split in <span className="font-semibold">{warehouseStoreLabel}</span>. Click a WH
+                stock cell in the table for the same view, or Edit item to adjust.
+              </p>
+            )}
+            <StockByLocationPanel
+              data={stockByLocation}
+              loading={stockByLocationLoading}
+              compact
+              viewMode="both"
+              editable={isEditMode}
+              rackDraft={isEditMode ? rackQtyDraft : undefined}
+              onRackQtyChange={isEditMode ? handleRackQtyChange : undefined}
+            />
+          </div>
+        )}
+
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">Item Details</p>
           <div className="grid grid-cols-3 gap-2">
@@ -290,36 +431,55 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
 
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 mb-2">
-            Location / Zone & Rack
+            {selectedItem.type === 'PM' ? 'Packaging location' : selectedItem.type === 'RM' ? 'RM location' : 'Location / Zone & Rack'}
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-50 border border-slate-200 rounded p-2">
-              <p className="text-[9px] uppercase text-slate-500">Zone / Location</p>
-              {isEditMode ? (
-                <input
-                  type="text"
-                  value={selectedItem.zone}
-                  onChange={(e) => updateInventoryField('zone', e.target.value)}
-                  className="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white"
-                />
-              ) : (
-                <p className="text-[11px] font-semibold text-slate-900">{displayZoneRack(selectedItem.zone)}</p>
-              )}
+          {isEditMode && (selectedItem.type === 'RM' || selectedItem.type === 'PM' || selectedItem.type === 'FG/PR') ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-blue-900">{warehouseStoreLabel}</p>
+              <p className="text-[10px] text-blue-900/80">
+                Zone and rack are set from rack quantities above — not typed manually for {selectedItem.type} items.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-[9px] uppercase text-slate-500 block">Zone (from racks)</span>
+                  <span className="font-medium text-slate-900">{displayZoneRack(selectedItem.zone)}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] uppercase text-slate-500 block">Rack (from racks)</span>
+                  <span className="font-medium text-slate-900">{displayZoneRack(selectedItem.rack)}</span>
+                </div>
+              </div>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded p-2">
-              <p className="text-[9px] uppercase text-slate-500">Rack</p>
-              {isEditMode ? (
-                <input
-                  type="text"
-                  value={selectedItem.rack}
-                  onChange={(e) => updateInventoryField('rack', e.target.value)}
-                  className="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white"
-                />
-              ) : (
-                <p className="text-[11px] font-semibold text-slate-900">{displayZoneRack(selectedItem.rack)}</p>
-              )}
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-50 border border-slate-200 rounded p-2">
+                <p className="text-[9px] uppercase text-slate-500">Zone / Location</p>
+                {isEditMode ? (
+                  <input
+                    type="text"
+                    value={selectedItem.zone}
+                    onChange={(e) => updateInventoryField('zone', e.target.value)}
+                    className="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white"
+                  />
+                ) : (
+                  <p className="text-[11px] font-semibold text-slate-900">{displayZoneRack(selectedItem.zone)}</p>
+                )}
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded p-2">
+                <p className="text-[9px] uppercase text-slate-500">Rack</p>
+                {isEditMode ? (
+                  <input
+                    type="text"
+                    value={selectedItem.rack}
+                    onChange={(e) => updateInventoryField('rack', e.target.value)}
+                    className="mt-0.5 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white"
+                  />
+                ) : (
+                  <p className="text-[11px] font-semibold text-slate-900">{displayZoneRack(selectedItem.rack)}</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div>
@@ -331,8 +491,18 @@ const WarehouseInventorySidebar: React.FC<Props> = ({ item, onClose, onItemUpdat
                 <input
                   type="number"
                   value={selectedItem.whStock}
+                  readOnly={rackQtyDraft != null && rackQtyDraft.length > 0}
+                  title={
+                    rackQtyDraft != null && rackQtyDraft.length > 0
+                      ? 'Derived from rack quantities above'
+                      : undefined
+                  }
                   onChange={(e) => updateInventoryField('whStock', Number(e.target.value) || 0)}
-                  className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-cyan-700"
+                  className={`w-full border border-slate-300 rounded px-2 py-1 text-sm text-cyan-700 ${
+                    rackQtyDraft != null && rackQtyDraft.length > 0
+                      ? 'bg-slate-100 cursor-default'
+                      : 'bg-white'
+                  }`}
                 />
               ) : (
                 <p className="text-base font-bold text-cyan-700">{selectedItem.whStock}</p>

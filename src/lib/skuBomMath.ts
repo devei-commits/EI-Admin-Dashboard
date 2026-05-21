@@ -432,3 +432,157 @@ export function skuBomLinesToFormulaRows(args: {
 
   return { ok: true, rows };
 }
+
+/** Flat formula line for import (phased or flat rm_lines). */
+export type FormulaLineInput = {
+  phase?: string;
+  inci_name?: string;
+  inciName?: string;
+  rm_code?: string;
+  rmCode?: string;
+  raw_material_id?: number | string | null;
+  rawMaterialId?: string;
+  pct_w_w?: number | string;
+  pctWw?: number | string;
+  pct?: number | string;
+  uom?: string;
+};
+
+/** One SKU BOM row derived from Formula BOM % w/w. */
+export type SkuBomFromFormulaRow = {
+  inciName: string;
+  rmCode: string;
+  rawMaterialId?: string;
+  qtyPerUnit: number;
+  uom: string;
+};
+
+type MeaningfulFormulaLine = {
+  inciName: string;
+  rmCode: string;
+  rawMaterialId?: string;
+  pct: number;
+};
+
+/** Display UOM for SKU lines matching the net limit dimension. */
+function skuLineUomForLimit(limitUom: string): string {
+  const u = normUom(limitUom);
+  if (u === 'KG') return 'KG';
+  if (u === 'L') return 'L';
+  if (u === 'ML') return 'ML';
+  return 'GM';
+}
+
+function displayLimitUom(limitUom: string): string {
+  const u = normUom(limitUom);
+  if (u === 'G') return 'GM';
+  if (u === 'KG') return 'KG';
+  if (u === 'ML') return 'ML';
+  if (u === 'L') return 'L';
+  return String(limitUom ?? '').trim().toUpperCase() || 'GM';
+}
+
+function collectMeaningfulFormulaLines(
+  formulaLines: unknown[] | null | undefined
+): MeaningfulFormulaLine[] {
+  const arr = Array.isArray(formulaLines) ? formulaLines : [];
+  const out: MeaningfulFormulaLine[] = [];
+  for (let i = 0; i < arr.length; i += 1) {
+    const line = (arr[i] || {}) as FormulaLineInput;
+    const inci = String(line.inci_name ?? line.inciName ?? '').trim();
+    const code = String(line.rm_code ?? line.rmCode ?? '').trim();
+    const pctRaw = line.pct_w_w ?? line.pctWw ?? line.pct;
+    const pct =
+      pctRaw != null && pctRaw !== ''
+        ? parseFloat(String(pctRaw).replace(/[^\d.-]/g, ''))
+        : NaN;
+    if (!Number.isNaN(pct) && pct > 0 && (inci || code)) {
+      const rid = line.raw_material_id ?? line.rawMaterialId;
+      out.push({
+        inciName: inci,
+        rmCode: code,
+        rawMaterialId: rid != null && String(rid).trim() !== '' ? String(rid) : undefined,
+        pct,
+      });
+    }
+  }
+  return out;
+}
+
+/** Flatten phased Formula BOM (dashboard/API) into flat rm_lines for import. */
+export function flattenFormulaBomPhases(
+  phases: { phase?: string; ingredients?: FormulaLineInput[] }[] | null | undefined
+): FormulaLineInput[] {
+  if (!Array.isArray(phases)) return [];
+  const out: FormulaLineInput[] = [];
+  for (const ph of phases) {
+    const phaseName = String(ph?.phase ?? '').trim();
+    const ings = Array.isArray(ph?.ingredients) ? ph.ingredients : [];
+    for (const ing of ings) {
+      out.push({
+        ...ing,
+        phase: (ing.phase != null && String(ing.phase).trim() !== '' ? ing.phase : phaseName) || undefined,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Convert Formula BOM (% w/w, total must be 100%) into SKU BOM per-unit quantities for a given net limit.
+ * Inverse of skuBomLinesToFormulaRows when formula % totals 100%.
+ */
+export function formulaRowsToSkuBomLines(args: {
+  formulaLines: unknown[] | null | undefined;
+  limitQty: string | number;
+  limitUom: string;
+}): { ok: true; rows: SkuBomFromFormulaRow[]; limitQty: number; limitUom: string } | { ok: false; error: string } {
+  const collected = collectMeaningfulFormulaLines(args.formulaLines);
+  if (collected.length === 0) {
+    return { ok: false, error: 'No Formula BOM lines with % w/w and INCI/RM code to import.' };
+  }
+
+  const pctTotal = collected.reduce((s, x) => s + x.pct, 0);
+  if (Math.abs(pctTotal - 100) > 0.001) {
+    return {
+      ok: false,
+      error: `Formula BOM must total 100% w/w before import (current total ${pctTotal.toFixed(4)}%).`,
+    };
+  }
+
+  const limQ = parseLimitQty(args.limitQty);
+  const limU = args.limitUom != null && String(args.limitUom).trim() !== '' ? String(args.limitUom).trim() : null;
+  const dim = limU ? dimensionOfLimitUom(limU) : null;
+  if (!limQ || !limU || !dim) {
+    return {
+      ok: false,
+      error: 'Set net per-unit quantity and UOM (e.g. 50 GM or 50 ML) before importing from Formula BOM.',
+    };
+  }
+
+  try {
+    if (dim === 'mass') toMg(limQ, limU);
+    else toMicroL(limQ, limU);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid limit UOM';
+    return { ok: false, error: msg };
+  }
+
+  const lineUom = skuLineUomForLimit(limU);
+  const limitInDisplay = limQ;
+  const rawQtys = collected.map((row) => (row.pct / 100) * limitInDisplay);
+  const ROUND = 1e6;
+  const rounded = rawQtys.map((q) => Math.round(q * ROUND) / ROUND);
+  const drift = limitInDisplay - rounded.reduce((a, b) => a + b, 0);
+  rounded[rounded.length - 1] = Math.round((rounded[rounded.length - 1] + drift) * ROUND) / ROUND;
+
+  const rows: SkuBomFromFormulaRow[] = collected.map((row, i) => ({
+    inciName: row.inciName,
+    rmCode: row.rmCode,
+    rawMaterialId: row.rawMaterialId,
+    qtyPerUnit: rounded[i],
+    uom: lineUom,
+  }));
+
+  return { ok: true, rows, limitQty: limitInDisplay, limitUom: displayLimitUom(limU) };
+}

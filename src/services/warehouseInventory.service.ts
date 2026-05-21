@@ -293,6 +293,11 @@ export async function fetchWarehouseInventoryPage(opts: {
   }
 }
 
+export interface RackQuantityUpdate {
+  rackId: number;
+  qtyWh: number;
+}
+
 export interface UpdateWarehouseStockPayload {
   wh_stock?: number;
   ml1_stock?: number;
@@ -307,6 +312,8 @@ export interface UpdateWarehouseStockPayload {
   avg_mo?: number;
   batch_number?: string | null;
   expiry_date?: string | null;
+  /** Absolute qty per warehouse rack; backend recalculates wh_stock from rack rows. */
+  rack_quantities?: RackQuantityUpdate[];
   /** Stored on INVENTORY_ADJUST history row */
   note?: string;
   reason?: string;
@@ -418,8 +425,77 @@ export interface RackLocationEntry {
   locationId: number;
   locationCode: string;
   locationName: string;
+  locationType?: string;
+  isDefaultLocation?: boolean;
   rackId: number;
   rackCode: string;
+  qtyWh?: number;
+}
+
+export interface StockByLocationRack {
+  rackId: number;
+  rackCode: string;
+  rackName?: string;
+  qtyWh: number;
+}
+
+export interface StockByLocationWarehouse {
+  locationId: number;
+  locationCode: string;
+  locationName: string;
+  locationType: string;
+  isDefault: boolean;
+  racks: StockByLocationRack[];
+  totalQtyWh: number;
+}
+
+export interface StockByLocationManufacturing {
+  bucket: string;
+  label: string;
+  qty: number;
+  unit: string;
+  locationId: number | null;
+  locationCode: string | null;
+  locationName: string | null;
+  isDefault?: boolean;
+  racks?: StockByLocationRack[];
+}
+
+export interface StockByLocationPayload {
+  warehouseInventoryId: number;
+  /** RM | PM | PR — used to scope warehouse zones in API response. */
+  itemType?: string;
+  code?: string;
+  whStock: number;
+  whUnit: string;
+  stockInHand: number;
+  warehouse: StockByLocationWarehouse[];
+  manufacturing: StockByLocationManufacturing[];
+  /** All manufacturing zones + racks (MTR transfer targets). */
+  manufacturingZones?: StockByLocationWarehouse[];
+  ml1Stock?: number;
+  ml2Stock?: number;
+  unallocatedWh: number;
+  unallocatedMl?: number;
+  defaultProduction?: { locationId: number; locationCode: string; locationName: string } | null;
+}
+
+export async function fetchStockByLocation(
+  warehouseInventoryId: number
+): Promise<ServiceResult<StockByLocationPayload>> {
+  try {
+    const res = await api.get<StockByLocationPayload>(
+      `/api/v1/warehouse-inventory/${warehouseInventoryId}/stock-by-location`
+    );
+    const data = (res?.data ?? res) as StockByLocationPayload;
+    return { data, error: null, success: true };
+  } catch (e) {
+    return {
+      data: null as unknown as StockByLocationPayload,
+      error: e instanceof Error ? e.message : 'Failed to load stock by location',
+      success: false,
+    };
+  }
 }
 
 /** Fetch where in the warehouse this inventory item is stored (location + rack list). */

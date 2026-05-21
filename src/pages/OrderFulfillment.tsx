@@ -20,6 +20,7 @@ import {
 import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
+import AdminMainMenuButton from '../components/AdminMainMenuButton';
 
 type ViewMode = 'orders' | 'batches';
 type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
@@ -308,6 +309,10 @@ export const OrderFulfillment: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
+      <div className="sticky top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-2 bg-gray-50 border-b border-gray-200 flex items-center">
+        <AdminMainMenuButton />
+        <span className="ml-2 text-sm font-medium text-gray-600">Main menu</span>
+      </div>
       <div className="max-w-screen-2xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200">
         <div className="p-6">
           <div className="flex flex-wrap justify-between items-start gap-4 mb-6">

@@ -17,6 +17,7 @@ import {
   Truck, Search, Loader2,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import {
   fetchEquipment, fetchTeam, fetchBatches, syncBatchesFromPlanning,
   updateBatch as apiBatchUpdate,
@@ -7471,6 +7472,7 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
 
   return (
     <header className="h-13 bg-white border-b border-gray-100 shadow-xs flex items-center px-5 gap-3 shrink-0 z-20">
+      <AdminMainMenuButton />
       <button className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" onClick={onMenuClick}><Menu size={18} /></button>
       <div className="hidden md:flex items-center gap-2">
         <span className="text-[11px] text-gray-400 font-medium tracking-wide">Manufacturing Management</span>

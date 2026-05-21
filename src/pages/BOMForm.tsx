@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2, Pencil, Check, ArrowDownToLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
@@ -24,21 +24,23 @@ import {
   getEffectiveSkuBomLimitFields,
   getEffectiveSkuBomLimitForPersist,
   skuBomLinesToFormulaRows,
+  formulaRowsToSkuBomLines,
   parseBulkSpecificGravity,
 } from '../lib/skuBomMath';
+import {
+  PR_CATEGORY_OPTIONS,
+  PR_SUB_CATEGORY_OPTIONS,
+  inferPrCategoryFromLegacyCode,
+  normalizePrCategoryForSelect,
+  normalizePrSubCategoryForSelect,
+} from '../constants/prMasterCategoryOptions';
+import {
+  PR_PRODUCT_FORM_OPTIONS,
+  isCanonicalPrProductForm,
+  normalizePrProductFormForSelect,
+} from '../constants/prProductFormOptions';
 
-// ─── PR Category Code Series (finished goods / PR master) ────────────────────
-const PR_CATEGORIES: Record<string, { label: string; prefix: string }> = {
-  SKC: { label: 'Skincare (FG)', prefix: 'EI-PR-SKC' },
-  HRC: { label: 'Haircare (FG)', prefix: 'EI-PR-HRC' },
-  BDY: { label: 'Bodycare (FG)', prefix: 'EI-PR-BDY' },
-  SUN: { label: 'Sun care (FG)', prefix: 'EI-PR-SUN' },
-  OTC: { label: 'OTC / Derma (FG)', prefix: 'EI-PR-OTC' },
-  COL: { label: 'Colour cosmetics (FG)', prefix: 'EI-PR-COL' },
-  MISC: { label: 'Miscellaneous (FG)', prefix: 'EI-PR-MISC' },
-};
-
-/** Legacy alphanumeric PR codes only — used to infer category/composite when editing old rows. */
+/** Legacy alphanumeric PR codes only — used to infer composite when editing old rows. */
 const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
 
 const PR_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
@@ -46,7 +48,6 @@ const PR_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (
 
 interface BOMFormState {
   // Identity & coding (step 0)
-  prCategoryKey: string;
   prQcGroup: string;
   prSubCategory: string;
   prDefaultStorageType: string;
@@ -136,7 +137,6 @@ interface BOMFormState {
 
 function emptyBomForm(): BOMFormState {
   return {
-    prCategoryKey: '',
     prQcGroup: '',
     prSubCategory: '',
     prDefaultStorageType: '',
@@ -188,18 +188,6 @@ interface BOMFormProps {
   productId?: string;
   onClose?: () => void;
   onSaved?: () => void;
-}
-
-function inferPrCategoryKeyFromCode(code: string): string {
-  if (!code) return '';
-  for (const [k, v] of Object.entries(PR_CATEGORIES)) {
-    if (code.startsWith(`${v.prefix}-`) || code === v.prefix) return k;
-  }
-  for (const k of Object.keys(PR_CATEGORIES)) {
-    const cp = `${COMPOSITE_ITEM_PREFIX_BASE}-${k}`;
-    if (code.startsWith(`${cp}-`) || code === cp) return k;
-  }
-  return '';
 }
 
 function inferPrCompositeFromCode(code: string): '' | 'Yes' | 'No' {
@@ -457,7 +445,9 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     duration: String(step.duration_minutes ?? ''),
   }));
   const skuCode = p.product_code || '';
-  const inferred = inferPrCategoryKeyFromCode(skuCode);
+  const categoryFromDb = normalizePrCategoryForSelect(p.category || '') || p.category || '';
+  const categoryFromCode = inferPrCategoryFromLegacyCode(skuCode);
+  const category = categoryFromDb || categoryFromCode || '';
   const zi = p.zoho_item_id;
   const rawComposite = (p as unknown as { bom_composite_item?: unknown }).bom_composite_item;
   const compositeFromBackend: '' | 'Yes' | 'No' =
@@ -468,13 +458,15 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
         : '';
   const bomCompositeItem: '' | 'Yes' | 'No' =
     compositeFromBackend || inferPrCompositeFromCode(skuCode);
+  const prSubRaw = (p as unknown as { pr_sub_category?: string | null }).pr_sub_category || '';
   return {
     ...emptyBomForm(),
-    prCategoryKey: inferred,
     bomCompositeItem,
     productName: p.product_name || '',
-    category: p.category || '',
-    productForm: p.form || '',
+    category,
+    productForm:
+      normalizePrProductFormForSelect(p.form || '') ||
+      String(p.form || '').trim(),
     brandClient: p.brand_client || p.brand_name || '',
     fillSize: p.fill_size || '',
     prDefaultStorageType: p.storage_conditions || '',
@@ -509,7 +501,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     phototability: (p as unknown as { photostability?: string | null }).photostability || '',
     freezeThawCycles: (p as unknown as { freeze_thaw_cycles?: string | null }).freeze_thaw_cycles || '',
     packConfiguration: (p as unknown as { pack_configuration?: string | null }).pack_configuration || '',
-    prSubCategory: (p as unknown as { pr_sub_category?: string | null }).pr_sub_category || '',
+    prSubCategory: normalizePrSubCategoryForSelect(prSubRaw) || prSubRaw,
     applicableRegulation: (p as unknown as { applicable_regulation?: string | null }).applicable_regulation || '',
     claimsSubstantiation: (p as unknown as { claims_substantiation?: string | null }).claims_substantiation || '',
     cosmosNaturalCertification: (p as unknown as { cosmos_natural_certification?: string | null }).cosmos_natural_certification || '',
@@ -532,7 +524,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
   const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const focusPrField = useCallback((target: 'prCategoryKey' | 'prSubCategory' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
+  const focusPrField = useCallback((target: 'category' | 'prSubCategory' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
     window.setTimeout(() => {
       if (target === 'formula') {
         const el = document.querySelector('input[placeholder="Or type INCI Name (manual)"]');
@@ -584,11 +576,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const canAdvancePastPrimary =
     !isNewProduct ||
     Boolean(
-      formData.prCategoryKey.trim() &&
+      formData.category.trim() &&
         formData.bomCompositeItem &&
         formData.prSubCategory.trim() &&
         formData.productName.trim() &&
-        formData.category.trim() &&
         isValidMrpForPr(formData.mrp)
     );
   // Existing products normally keep identity/code fields locked.
@@ -777,10 +768,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
-    if (field === 'prCategoryKey') {
-      setFormData((prev) => ({ ...prev, prCategoryKey: value as string }));
-      return;
-    }
     if (field === 'bomCompositeItem') {
       setFormData((prev) => ({ ...prev, bomCompositeItem: value as '' | 'Yes' | 'No' }));
       setErrors((prev) => {
@@ -959,6 +946,62 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     formData.skuBomLines,
     formData.specificGravity,
     formData.formulaIngredients.length,
+    addToast,
+  ]);
+
+  const importSkuBomFromFormulaBom = useCallback(() => {
+    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+      fillSize: formData.fillSize,
+      skuBomLimitQty: formData.skuBomLimitQty,
+      skuBomLimitUom: formData.skuBomLimitUom,
+    });
+    if (!limitQty || !limitUom) {
+      addToast('error', 'Set net per-unit quantity and UOM (Fill Size e.g. 50g/50ml, or manual limit on this step).');
+      return;
+    }
+    const formulaLines = formData.formulaIngredients.map((ing) => ({
+      inciName: ing.inciName,
+      rmCode: ing.rmCode,
+      rawMaterialId: ing.rawMaterialId,
+      pct_w_w: ing.percentWW,
+      uom: ing.uom,
+      phase: ing.phase,
+    }));
+    const res = formulaRowsToSkuBomLines({ formulaLines, limitQty, limitUom });
+    if (!res.ok) {
+      addToast('error', res.error);
+      return;
+    }
+    if (formData.skuBomLines.length > 0) {
+      const ok = window.confirm(
+        'Replace all SKU BOM lines with quantities derived from Formula BOM % w/w? Existing SKU lines will be removed.'
+      );
+      if (!ok) return;
+    }
+    const baseTime = Date.now();
+    setFormData((prev) => ({
+      ...prev,
+      skuBomLines: res.rows.map((r, i) => ({
+        id: `${baseTime}-sku-${i}`,
+        rawMaterialId: r.rawMaterialId ?? '',
+        rmCode: r.rmCode || '',
+        inciName: r.inciName,
+        qtyPerUnit: String(r.qtyPerUnit),
+        uom: r.uom,
+      })),
+      skuBomLimitQty: String(res.limitQty),
+      skuBomLimitUom: res.limitUom,
+    }));
+    addToast(
+      'success',
+      `Imported ${res.rows.length} SKU line(s) from Formula BOM for net ${res.limitQty} ${res.limitUom}.`
+    );
+  }, [
+    formData.fillSize,
+    formData.skuBomLimitQty,
+    formData.skuBomLimitUom,
+    formData.formulaIngredients,
+    formData.skuBomLines.length,
     addToast,
   ]);
 
@@ -1390,11 +1433,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const handleSubmit = async () => {
     setErrors({});
-    if (!formData.prCategoryKey.trim()) {
-      setErrors({ prCategoryKey: 'Step 1 — PR Category is required' });
+    if (!formData.category.trim()) {
+      setErrors({ category: 'Step 1 — PR Category is required' });
       addToast('error', 'Step 1 — Select a PR Category');
       setCurrentStage(0);
-      focusPrField('prCategoryKey');
+      focusPrField('category');
       return;
     }
     if (!formData.bomCompositeItem) {
@@ -1416,16 +1459,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'Step 1 — Sub-Category is required');
       setCurrentStage(0);
       focusPrField('prSubCategory');
-      return;
-    }
-    if (!formData.category.trim()) {
-      setErrors({ category: 'Step 1 — Category is required' });
-      addToast('error', 'Step 1 — Category is required');
-      setCurrentStage(0);
-      window.setTimeout(() => {
-        const el = document.getElementById('category');
-        if (el instanceof HTMLElement) el.focus();
-      }, 0);
       return;
     }
     if (!isValidMrpForPr(formData.mrp)) {
@@ -1536,34 +1569,50 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             </div>
 
             <div className="min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category (Industry Buckets)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">PR Category <span className="text-red-600">*</span></label>
                   <select
-                    id="prCategoryKey"
-                    value={formData.prCategoryKey}
-                    onChange={(e) => handleInputChange('prCategoryKey', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    id="category"
+                    value={formData.category}
+                    onChange={(e) => handleInputChange('category', e.target.value)}
+                    aria-invalid={errors.category ? true : undefined}
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      errors.category ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    }`}
                   >
-                    <option value="">Select</option>
-                    {Object.entries(PR_CATEGORIES).map(([k, v]) => (
-                      <option key={k} value={k}>{v.label}</option>
+                    <option value="">Select category</option>
+                    {PR_CATEGORY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
                     ))}
+                    {formData.category &&
+                    !PR_CATEGORY_OPTIONS.includes(formData.category as (typeof PR_CATEGORY_OPTIONS)[number]) ? (
+                      <option value={formData.category}>{formData.category} (legacy)</option>
+                    ) : null}
                   </select>
+                  {errors.category ? <p className="mt-1 text-xs text-red-600">{errors.category}</p> : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
-                  <input
+                  <select
                     id="prSubCategory"
-                    type="text"
                     value={formData.prSubCategory}
                     onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
-                    placeholder="e.g. Anti‑acne serum / Kids shampoo / SPF 50 lotion"
+                    aria-invalid={errors.prSubCategory ? true : undefined}
                     className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
                     }`}
-                  />
+                  >
+                    <option value="">Select sub-category</option>
+                    {PR_SUB_CATEGORY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                    {formData.prSubCategory &&
+                    !PR_SUB_CATEGORY_OPTIONS.includes(formData.prSubCategory as (typeof PR_SUB_CATEGORY_OPTIONS)[number]) ? (
+                      <option value={formData.prSubCategory}>{formData.prSubCategory} (legacy)</option>
+                    ) : null}
+                  </select>
                   {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
                 </div>
                 <div className="sm:col-span-2">
@@ -1675,42 +1724,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   />
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category (Formulation) <span className="text-red-600">*</span></label>
-                    <select
-                      id="category"
-                      value={formData.category}
-                      onChange={(e) => handleInputChange('category', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">Select category</option>
-                      <option value="Sunscreen">Sunscreen</option>
-                      <option value="Face Wash">Face Wash</option>
-                      <option value="Serum">Serum</option>
-                      <option value="Cream">Cream</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
-                      MRP Price <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      id="mrp"
-                      type="text"
-                      placeholder="e.g. Rs.499"
-                      value={formData.mrp}
-                      onChange={(e) => handleInputChange('mrp', e.target.value)}
-                      aria-invalid={Boolean(errors.mrp)}
-                      aria-describedby={errors.mrp ? 'mrp-error' : undefined}
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
-                    />
-                    {errors.mrp ? (
-                      <p id="mrp-error" className="mt-1 text-xs text-red-600">
-                        {errors.mrp}
-                      </p>
-                    ) : null}
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
+                    MRP Price <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    id="mrp"
+                    type="text"
+                    placeholder="e.g. Rs.499"
+                    value={formData.mrp}
+                    onChange={(e) => handleInputChange('mrp', e.target.value)}
+                    aria-invalid={Boolean(errors.mrp)}
+                    aria-describedby={errors.mrp ? 'mrp-error' : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
+                  />
+                  {errors.mrp ? (
+                    <p id="mrp-error" className="mt-1 text-xs text-red-600">
+                      {errors.mrp}
+                    </p>
+                  ) : null}
                 </div>
 
               </div>
@@ -2015,6 +2047,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </p>
                 </div>
               )}
+
+              <div className="mb-4 p-3 rounded-lg border border-blue-200 bg-blue-50/80 space-y-2">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">
+                      Import from Formula BOM
+                    </p>
+                    <p className="text-[11px] text-blue-900/80 mt-0.5">
+                      Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> on the previous step (must total 100%). Uses net per unit from Fill Size or manual limit above.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={importSkuBomFromFormulaBom}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-blue-300 bg-white text-blue-900 hover:bg-blue-100 shrink-0"
+                    title="Populate SKU BOM from Formula % w/w and net per-unit qty"
+                  >
+                    <ArrowUpFromLine className="w-3.5 h-3.5" />
+                    Import from Formula BOM
+                  </button>
+                </div>
+              </div>
 
               {skuBomValidation.ok && skuBomValidation.sumInDisplay != null ? (
                 <p className="text-xs font-medium text-emerald-700 mb-3">
@@ -2405,10 +2459,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     >
                       <option value="">Select product form</option>
-                      <option value="Lotion/Cream">Lotion/Cream</option>
-                      <option value="Gel">Gel</option>
-                      <option value="Serum">Serum</option>
-                      <option value="Oil">Oil</option>
+                      {PR_PRODUCT_FORM_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                      {formData.productForm && !isCanonicalPrProductForm(formData.productForm) ? (
+                        <option value={formData.productForm}>
+                          {formData.productForm} (legacy)
+                        </option>
+                      ) : null}
                     </select>
                   </div>
                   <div>
@@ -2635,7 +2695,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       onInputChange={() => {}}
       onSubmit={handleSubmit}
       nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, composite item, sub-category, product name, category, and MRP price on this step before continuing."
+      nextDisabledTitle="Complete PR category, sub-category, composite item, product name, and MRP price on this step before continuing."
       isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
     >
       {renderStageContent()}

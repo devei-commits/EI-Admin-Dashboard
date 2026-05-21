@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
 import {
   fetchAllWarehouseLocationHistory,
-  fetchRackLocations,
+  fetchStockByLocation,
+  type StockByLocationPayload,
   fetchUsageStats,
   importInventorySummaryExcel,
   inventoryAdjustChangeLines,
@@ -14,12 +15,12 @@ import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
 import type {
   WarehouseLocationHistoryEntry,
-  RackLocationEntry,
   InTransitBreakdownItem,
   UsageStatsRow,
   WarehouseInventoryRow,
 } from '../../services/warehouseInventory.service';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
+import StockByLocationPanel from '../../components/StockByLocationPanel';
 
 export interface InventoryItem {
   id: string;
@@ -859,7 +860,13 @@ function StockLocationCell({
     <button
       type="button"
       className={className}
-      title={canShow ? 'Click to see location / racks' : undefined}
+      title={
+        canShow
+          ? type === 'wh'
+            ? 'Click to see WH stock distribution by zone and rack'
+            : 'Click to see manufacturing stock by location'
+          : undefined
+      }
       disabled={!canShow}
       onClick={(e) => {
         e.stopPropagation();
@@ -955,8 +962,9 @@ const WarehouseInventory = () => {
     item: InventoryItem;
     type: 'wh' | 'ml1' | 'ml2';
   } | null>(null);
-  const [rackLocations, setRackLocations] = useState<RackLocationEntry[]>([]);
-  const [rackLocationsLoading, setRackLocationsLoading] = useState(false);
+  const [stockByLocation, setStockByLocation] = useState<StockByLocationPayload | null>(null);
+  const [stockByLocationLoading, setStockByLocationLoading] = useState(false);
+  const [openSidebarInEditMode, setOpenSidebarInEditMode] = useState(false);
   /** Planning Items Involved totals keyed as RM-{id} / PM-{id} (matches warehouse sourceId). */
   const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { plannedQty: number; totalRequired: number; unit: string }>>(
     () => new Map()
@@ -990,23 +998,22 @@ const WarehouseInventory = () => {
       setImportingInventoryExcel(false);
     }
   };
-  // Fetch rack locations when user opens WH/ML1/ML2 location popover (click)
   useEffect(() => {
     if (!locationPopover || locationPopover.item.warehouseInventoryId == null) {
-      setRackLocations([]);
-      setRackLocationsLoading(false);
+      setStockByLocation(null);
+      setStockByLocationLoading(false);
       return;
     }
     let cancelled = false;
-    setRackLocationsLoading(true);
-    setRackLocations([]);
-    fetchRackLocations(locationPopover.item.warehouseInventoryId)
+    setStockByLocationLoading(true);
+    setStockByLocation(null);
+    fetchStockByLocation(locationPopover.item.warehouseInventoryId)
       .then((res) => {
         if (cancelled) return;
-        if (res.success && res.data) setRackLocations(res.data.locations || []);
+        if (res.success && res.data) setStockByLocation(res.data);
       })
       .finally(() => {
-        if (!cancelled) setRackLocationsLoading(false);
+        if (!cancelled) setStockByLocationLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1970,41 +1977,73 @@ const WarehouseInventory = () => {
           role="presentation"
         >
           <div
-            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-sm w-full mx-4 overflow-hidden"
+            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-xl w-full mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
-            aria-label="Where in warehouse — location and racks"
+            aria-label={
+              locationPopover.type === 'wh'
+                ? 'Warehouse stock distribution by zone and rack'
+                : 'Manufacturing stock by location'
+            }
           >
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900">
-                Where in warehouse — {locationPopover.item.code}
-              </h3>
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {locationPopover.type === 'wh'
+                    ? `WH stock distribution — ${locationPopover.item.code}`
+                    : locationPopover.type === 'ml1'
+                      ? `ML1 stock — ${locationPopover.item.code}`
+                      : `ML2 stock — ${locationPopover.item.code}`}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">{locationPopover.item.name}</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setLocationPopover(null)}
-                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 shrink-0"
               >
                 <span className="sr-only">Close</span>×
               </button>
             </div>
-            <div className="p-4 max-h-64 overflow-y-auto">
-              {rackLocationsLoading ? (
-                <p className="text-sm text-slate-500">Loading locations &amp; racks…</p>
-              ) : rackLocations.length === 0 ? (
-                <p className="text-sm text-slate-500">No location/rack assignments for this item.</p>
+            <div className="p-4 max-h-[min(28rem,70vh)] overflow-y-auto">
+              {locationPopover.type === 'wh' ? (
+                <StockByLocationPanel
+                  data={stockByLocation}
+                  loading={stockByLocationLoading}
+                  viewMode="distribution"
+                  warehouseOnly
+                />
               ) : (
-                <ul className="space-y-2">
-                  {rackLocations.map((loc, idx) => (
-                    <li key={idx} className="text-sm flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span className="font-medium text-slate-800">{loc.locationName}</span>
-                      <span className="text-slate-500">→</span>
-                      <span className="text-cyan-700 font-mono">{loc.rackCode}</span>
-                    </li>
-                  ))}
-                </ul>
+                <StockByLocationPanel
+                  data={stockByLocation}
+                  loading={stockByLocationLoading}
+                  viewMode="distribution"
+                  manufacturingOnly
+                />
               )}
             </div>
+            {locationPopover.type === 'wh' && locationPopover.item.warehouseInventoryId != null && (
+              <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setLocationPopover(null)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-300 rounded-md hover:bg-white"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenSidebarInEditMode(true);
+                    setSelectedItem(locationPopover.item);
+                    setLocationPopover(null);
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700"
+                >
+                  Adjust stock…
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2021,7 +2060,11 @@ const WarehouseInventory = () => {
           <div onClick={(e) => e.stopPropagation()}>
             <WarehouseInventorySidebar
               item={selectedItem}
-              onClose={() => setSelectedItem(null)}
+              initialEditMode={openSidebarInEditMode}
+              onClose={() => {
+                setSelectedItem(null);
+                setOpenSidebarInEditMode(false);
+              }}
               onItemUpdated={handleItemUpdatedFromSidebar}
               variant="modal"
             />
