@@ -257,6 +257,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: Sid
                 </PreloadNavLink>
               </li>
             )}
+            {/* PIS tab — hidden in sidebar for now
             {showPIS && (
               <li>
                 <button
@@ -279,6 +280,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: Sid
                 </button>
               </li>
             )}
+            */}
             {showRoleManagement && (
               <li>
                 <PreloadNavLink to="/role-management" className={linkClass} onClick={handleLinkClick}>
@@ -299,6 +301,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: Sid
                 </PreloadNavLink>
               </li>
             )}
+            {/* Task Management tab — hidden in sidebar for now
             {showTaskManagement && (
               <li>
                 <PreloadNavLink to="/task-management" className={linkClass} onClick={handleLinkClick}>
@@ -309,6 +312,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: Sid
                 </PreloadNavLink>
               </li>
             )}
+            */}
             {showFacilityManagement && (
               <li>
                 <NavLink to="/facility-management" className={linkClass} onClick={handleLinkClick}>
