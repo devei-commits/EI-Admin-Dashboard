@@ -3,6 +3,8 @@ import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
+import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
 import { fetchSoPlanningAvailability } from '../services/fulfillment.service';
 import {
@@ -38,6 +40,12 @@ import {
 } from '../services/bom.service';
 import { fetchBatches, type BatchRow } from '../services/production.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import {
+  normRmPrimaryUom,
+  parseSpecificGravity,
+  procurementQtyFromKgGap,
+  procurementUnitSuffix,
+} from '../lib/rmUnitConversion';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import {
@@ -268,6 +276,7 @@ function sumProcurementRequestQtyForItem(item: ItemsInvolvedDisplayRow, prs: Pro
   let sum = 0;
   for (const pr of prs) {
     if (!procurementRequestIsActiveForReleaseCount(pr)) continue;
+    if (isQuotationRequestProcurementRecord(pr)) continue;
     const peId = Number(pr.planningExtractedId);
     if (!idSet.has(peId)) continue;
     const items = Array.isArray(pr.items) ? pr.items : [];
@@ -370,6 +379,31 @@ function formatItemsInvolvedQtyWithUnit(
   unit?: string
 ): string {
   return formatItemsInvolvedQty(value, itemType, unit) + itemsInvolvedUnitSuffix(unit, itemType);
+}
+
+function findRmMasterRecord(
+  rawMaterialId: number | undefined,
+  code: string | undefined,
+  list: RawMaterialRecord[]
+): RawMaterialRecord | undefined {
+  if (rawMaterialId != null && Number.isFinite(Number(rawMaterialId))) {
+    const byId = list.find((r) => Number(r.id) === Number(rawMaterialId));
+    if (byId) return byId;
+  }
+  const c = String(code ?? '').trim().toLowerCase();
+  if (c) return list.find((r) => String(r.code ?? '').trim().toLowerCase() === c);
+  return undefined;
+}
+
+/** Planning/SO math is kg; procurement/PO lines use RM primary UoM (L, KG, …). */
+function rmProcurementFieldsFromKg(
+  kgQty: number,
+  master: RawMaterialRecord | undefined,
+  lineSg?: number
+): { quantity_requested: number; unit: string } {
+  const sg = parseSpecificGravity(lineSg ?? master?.specificGravity);
+  const { qty, unit } = procurementQtyFromKgGap(kgQty, master?.uom, sg);
+  return { quantity_requested: qty, unit };
 }
 
 /** For PIs Extracted table: planned units created from saved custom batch kg, else fallback from batch count × batch size. */
@@ -546,8 +580,33 @@ function procurementItemMergeKey(item: ProcurementRequestItem): string {
 /** Marker in procurement_requests.notes — open quotation asks from Planning (no Items List vendor). */
 const PLANNING_QUOTATION_REQUEST_NOTE_TAG = 'Quotation requested from Planning';
 
-const PLANNING_QUOTATION_REQUEST_LINE_NOTE =
-  'Quotation requested — no vendor rate on Items List; Procurement to add quotation';
+function buildPlanningQuotationLineNotes(opts: {
+  vendorName: string;
+  moq: number;
+  hasExistingRates: boolean;
+}): string {
+  const v = opts.vendorName.trim();
+  const moq = Number(opts.moq) || 0;
+  const bits: string[] = ['Quotation requested from Planning'];
+  if (v) bits.push(`Vendor: ${v}`);
+  if (moq > 0) bits.push(`MOQ: ${moq}`);
+  if (opts.hasExistingRates && !v && moq <= 0) {
+    bits.push('Additional vendor or MOQ tier');
+  } else if (!opts.hasExistingRates) {
+    bits.push('No vendor rate on Items List');
+  }
+  bits.push('Procurement to add quotation');
+  return bits.join(' · ');
+}
+
+function quotationRequestLineMergeKey(
+  item: ProcurementRequestItem,
+  vendorName: string,
+  moq: number
+): string {
+  const m = Number(moq) || 0;
+  return `${procurementItemMergeKey(item)}|||${vendorName.trim().toLowerCase()}|||${m > 0 ? m : ''}`;
+}
 
 function isQuotationRequestProcurementRecord(pr: ProcurementRequest): boolean {
   return String(pr.notes ?? '').includes(PLANNING_QUOTATION_REQUEST_NOTE_TAG);
@@ -844,7 +903,13 @@ function PlanningBatchTableRow({
 }
 
 /** Batches tab: list all planning batches. Row click → batch detail popup (items, stock, PR per shortfall). */
-function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatchAllRow) => void }) {
+function PlanningBatchesTab({
+  onBatchClick,
+  dateFilter,
+}: {
+  onBatchClick: (row: PlanningBatchAllRow) => void;
+  dateFilter: { from: string; to: string };
+}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
   const [sortBy, setSortBy] = useState<'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc'>('dueAsc');
@@ -867,7 +932,10 @@ function PlanningBatchesTab({ onBatchClick }: { onBatchClick: (row: PlanningBatc
     const isRework = code.includes('-rw-');
     return row.sent === true || isRework;
   });
-  const searchedRows = rows.filter((row) => {
+  const dateFilteredRows = rows.filter((row) =>
+    matchesDateRangeFilter(row.dueDate, dateFilter.from, dateFilter.to)
+  );
+  const searchedRows = dateFilteredRows.filter((row) => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return true;
     const haystack = [
@@ -998,6 +1066,7 @@ const Planning = () => {
   const [selectedRowForDetail, setSelectedRowForDetail] = useState<SalesOrder | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
   const [prModalOpen, setPrModalOpen] = useState(false);
   const [selectedSO, setSelectedSO] = useState<SalesOrder | null>(null);
   const [prSending, setPrSending] = useState(false);
@@ -1067,6 +1136,8 @@ const Planning = () => {
     paymentTermsRaw: null,
   });
   const [releaseToPlanningSaving, setReleaseToPlanningSaving] = useState(false);
+  /** `release` = Add Planned Line / vendor release (updates Items Involved). `quotation` = Procurement quote ask only. */
+  const [releaseModalIntent, setReleaseModalIntent] = useState<'release' | 'quotation'>('release');
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
   /** Raise PR confirmation popup from batch detail: { batch, row } so user can confirm and edit before sending. */
   const [batchPrModal, setBatchPrModal] = useState<{ batch: PlanningBatchAllRow; row: BatchDetailRowForPr } | null>(null);
@@ -1584,7 +1655,7 @@ const Planning = () => {
       id: String(line.raw_material_id ?? line.rm_code ?? i),
       name: line.inci_name ?? '',
       quantity: 0,
-      unit: line.uom ?? 'KG',
+      unit: 'KG',
       percentage: line.pct_w_w ?? 0,
       code: line.rm_code,
       phase: line.phase ?? 'Phase A',
@@ -1910,15 +1981,16 @@ const Planning = () => {
           continue;
         }
         const shortage = Math.max(0, row.totalReq - row.sih);
+        const proc = rmProcurementFieldsFromKg(shortage, master, row.specificGravity);
         items.push({
           type: 'RM',
           code: master.code ?? row.code,
           name: master.name ?? row.name,
           required: row.totalReq,
           sih: row.sih,
-          shortage,
-          quantity_requested: shortage,
-          unit: 'KG',
+          shortage: proc.quantity_requested,
+          quantity_requested: proc.quantity_requested,
+          unit: proc.unit,
           line_notes: '',
           raw_material_id,
         });
@@ -1976,19 +2048,20 @@ const Planning = () => {
           omitted += 1;
           continue;
         }
-        const required = typeof rm.quantity === 'number' ? rm.quantity : 0;
+        const requiredKg = typeof rm.quantity === 'number' ? rm.quantity : 0;
         const wh = warehouseRows.find((r) => r.type === 'RM' && (r.code === master.code || r.name === master.name || r.sourceId === raw_material_id));
-        const sih = wh?.stockInHand ?? 0;
-        const shortage = Math.max(0, required - sih);
+        const sihKg = wh?.stockInHand ?? 0;
+        const shortageKg = Math.max(0, requiredKg - sihKg);
+        const proc = rmProcurementFieldsFromKg(shortageKg, master);
         items.push({
           type: 'RM',
           code: master.code ?? code,
           name: master.name ?? rm.name,
-          required,
-          sih,
-          shortage,
-          quantity_requested: shortage,
-          unit: rm.unit || 'KG',
+          required: requiredKg,
+          sih: sihKg,
+          shortage: proc.quantity_requested,
+          quantity_requested: proc.quantity_requested,
+          unit: proc.unit,
           line_notes: '',
           raw_material_id,
         });
@@ -2313,8 +2386,18 @@ const Planning = () => {
 
   const [salesOrders] = useState<SalesOrder[]>(initialSalesOrders);
 
+  const planningExtractedIdsInDateRange = useMemo(() => {
+    const ids = new Set<string>();
+    for (const order of pisRows) {
+      if (!matchesDateRangeFilter(order.orderDate, dateFilter.from, dateFilter.to)) continue;
+      if (order.id) ids.add(String(order.id));
+    }
+    return ids;
+  }, [pisRows, dateFilter]);
+
   const filteredPisOrders = useMemo(() => {
     return pisRows.filter((order) => {
+      if (!matchesDateRangeFilter(order.orderDate, dateFilter.from, dateFilter.to)) return false;
       const { remainingUnits } = getCreatedAndRemainingUnits(order);
       const matchesStatus =
         statusFilter === 'All' ||
@@ -2330,7 +2413,7 @@ const Planning = () => {
 
       return matchesStatus && matchesSearch;
     });
-  }, [pisRows, statusFilter, searchTerm]);
+  }, [pisRows, statusFilter, searchTerm, dateFilter]);
 
   const handleExportPisCsv = useCallback(() => {
     const header = ['SO Date', 'SO No', 'Client', 'Product', 'Units Ordered', 'Planned', 'Pending', 'Batch Status', 'SLA'];
@@ -2533,7 +2616,7 @@ const Planning = () => {
             unitPrice: unitPriceNum,
             paymentTerms,
             leadTimeDays: leadTimeDaysFromDates(po.orderDate, expectedShipmentDate),
-            unit: 'KG',
+            unit: String(itemLine?.unit ?? itemLine?.uom ?? 'KG').trim() || 'KG',
           });
         } else if (Number.isFinite(packIdNum) && packIdNum > 0) {
           const qtyNum = Number(itemLine?.quantity ?? itemLine?.qty ?? 0) || 0;
@@ -2696,6 +2779,11 @@ const Planning = () => {
 
   const filteredItemsInvolved = useMemo(() => {
     return itemsInvolved.filter((row) => {
+      if (dateFilter.from || dateFilter.to) {
+        const peIds = row.planningExtractedIds ?? (row.planningExtractedId ? [row.planningExtractedId] : []);
+        const linked = peIds.some((id) => planningExtractedIdsInDateRange.has(String(id)));
+        if (!linked) return false;
+      }
       if (itemsInvolvedCategoryFilter === 'RM' && row.itemType !== 'RM') return false;
       if (itemsInvolvedCategoryFilter === 'PM' && row.itemType !== 'PM') return false;
       if (itemsInvolvedCategoryFilter === 'shortage' && row.netNum >= 0) return false;
@@ -2713,7 +2801,14 @@ const Planning = () => {
       }
       return true;
     });
-  }, [itemsInvolved, itemsInvolvedCategoryFilter, itemsInvolvedProductFilter, itemsInvolvedSearchTerm]);
+  }, [
+    itemsInvolved,
+    itemsInvolvedCategoryFilter,
+    itemsInvolvedProductFilter,
+    itemsInvolvedSearchTerm,
+    dateFilter,
+    planningExtractedIdsInDateRange,
+  ]);
 
   const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) =>
     plannedLinesFromBackend.some((line) => plannedLineCountsTowardItemRelease(line, item));
@@ -2748,7 +2843,11 @@ const Planning = () => {
     return slabs.sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.moq - b.moq || a.unitPrice - b.unitPrice);
   };
 
-  const openReleaseToPlanningModal = (item: ItemsInvolvedDisplayRow, opts?: { preferSurplusQty?: number }) => {
+  const openReleaseToPlanningModal = (
+    item: ItemsInvolvedDisplayRow,
+    opts?: { preferSurplusQty?: number; intent?: 'release' | 'quotation' },
+  ) => {
+    setReleaseModalIntent(opts?.intent ?? 'release');
     const slabs = getQuotationSlabsForItem(item);
     const first = slabs[0];
     const debugRelease =
@@ -2788,20 +2887,26 @@ const Planning = () => {
     const gapNeed = Math.max(0, Number(item.totalRequired || 0) - availForGap);
     const remainingGap = gapNeed;
     const surplus = opts?.preferSurplusQty != null && opts.preferSurplusQty > 0 ? opts.preferSurplusQty : 0;
-    const qtyStr =
-      surplus > 0
-        ? formatItemsInvolvedQty(surplus, item.itemType, item.unit)
-        : remainingGap > 0
-          ? formatItemsInvolvedQty(remainingGap, item.itemType, item.unit)
-          : '';
+    const kgGap = surplus > 0 ? surplus : remainingGap;
+    let qtyStr = '';
+    if (kgGap > 0) {
+      if (item.itemType === 'RM') {
+        const master = findRmMasterRecord(item.raw_material_id, item.code, rawMaterialsList);
+        const proc = rmProcurementFieldsFromKg(kgGap, master);
+        qtyStr = formatItemsInvolvedQty(proc.quantity_requested, 'RM', proc.unit);
+      } else {
+        qtyStr = formatItemsInvolvedQty(kgGap, item.itemType, item.unit);
+      }
+    }
     const parsedTerms = parsePaymentTermsString(first?.paymentTerms ?? 'As per contract');
+    const isQuotationOpen = opts?.intent === 'quotation';
     setReleaseToPlanningItem(item);
     setReleaseToPlanningForm({
-      vendorId: first?.vendorId ?? null,
-      vendorName: first?.vendorName ?? '',
-      moq: first?.moq ?? 0,
+      vendorId: isQuotationOpen ? null : (first?.vendorId ?? null),
+      vendorName: isQuotationOpen ? '' : (first?.vendorName ?? ''),
+      moq: isQuotationOpen ? 0 : (first?.moq ?? 0),
       qty: qtyStr,
-      unitPrice: first ? String(first.unitPrice) : '',
+      unitPrice: isQuotationOpen ? '' : first ? String(first.unitPrice) : '',
       paymentTermsType: parsedTerms.type,
       advancePercent: String(
         parsedTerms.advancePercent ||
@@ -2822,6 +2927,16 @@ const Planning = () => {
       return false;
     }
 
+    const availForGap = Number(planningRow.supplyTowardGrossNum ?? 0);
+    const gapNeed = Math.max(0, Number(planningRow.totalRequired || 0) - availForGap);
+    if (gapNeed <= 1e-6) {
+      addToast(
+        'warning',
+        'No open shortage vs TOTAL REQ — supply (SIH + planned + PO + in-transit) already covers demand.'
+      );
+      return false;
+    }
+
     const advErr = validateAdvancePercentForType(
       releaseToPlanningForm.paymentTermsType,
       Number(releaseToPlanningForm.advancePercent)
@@ -2833,7 +2948,14 @@ const Planning = () => {
 
     const slabMoq = Number(releaseToPlanningForm.moq) || 0;
     if (slabMoq > 0 && qty + 1e-4 < slabMoq) {
-      const u = planningRow.itemType === 'RM' ? 'kg' : 'pcs';
+      const masterRm =
+        planningRow.itemType === 'RM'
+          ? findRmMasterRecord(planningRow.raw_material_id, planningRow.code, rawMaterialsList)
+          : undefined;
+      const u =
+        planningRow.itemType === 'RM'
+          ? procurementUnitSuffix(masterRm?.uom).trim() || 'kg'
+          : 'pcs';
       addToast(
         'error',
         `Order quantity must be at least the selected vendor MOQ (${slabMoq} ${u}). Increase qty or pick another vendor tier.`
@@ -2858,6 +2980,15 @@ const Planning = () => {
         ? Number(planningRow.pack_material_id)
         : undefined;
 
+    const masterRm =
+      planningRow.itemType === 'RM'
+        ? findRmMasterRecord(planningRow.raw_material_id, planningRow.code, rawMaterialsList)
+        : undefined;
+    const procUnit =
+      planningRow.itemType === 'RM'
+        ? normRmPrimaryUom(masterRm?.uom)
+        : planningRow.unit || 'PCS';
+
     const newRequestItem: ProcurementRequestItem = {
       type: planningRow.itemType,
       code: planningRow.code || planningRow.name,
@@ -2866,7 +2997,7 @@ const Planning = () => {
       sih: Number(planningRow.sihNum ?? 0) || 0,
       shortage: qty,
       quantity_requested: qty,
-      unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
+      unit: procUnit,
       line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
       planned_unit_price: unitPrice,
       ...(leadTimeDays > 0 ? { lead_time_days: leadTimeDays } : {}),
@@ -2954,6 +3085,7 @@ const Planning = () => {
     ]);
 
     setReleaseToPlanningItem(null);
+    setReleaseModalIntent('release');
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
     return true;
   };
@@ -2976,16 +3108,36 @@ const Planning = () => {
         ? Number(planningRow.pack_material_id)
         : undefined;
 
+    const masterRmQ =
+      planningRow.itemType === 'RM'
+        ? findRmMasterRecord(planningRow.raw_material_id, planningRow.code, rawMaterialsList)
+        : undefined;
+    const procUnitQ =
+      planningRow.itemType === 'RM'
+        ? normRmPrimaryUom(masterRmQ?.uom)
+        : planningRow.unit || 'PCS';
+
+    const vendorHint = String(releaseToPlanningForm.vendorName ?? '').trim();
+    const moqHint = Number(releaseToPlanningForm.moq) || 0;
+    const slabsForItem = getQuotationSlabsForItem(planningRow);
+    const lineNotes = buildPlanningQuotationLineNotes({
+      vendorName: vendorHint,
+      moq: moqHint,
+      hasExistingRates: slabsForItem.length > 0,
+    });
+
     const newRequestItem: ProcurementRequestItem = {
       type: planningRow.itemType,
       code: planningRow.code || planningRow.name,
       name: planningRow.name,
       required: qty,
       sih: Number(planningRow.sihNum ?? 0) || 0,
-      shortage: qty,
+      /** Quotation ask only — must not count as planning shortage / release (see items-involved + BE filters). */
+      shortage: 0,
       quantity_requested: qty,
-      unit: planningRow.unit || (planningRow.itemType === 'RM' ? 'KG' : 'PCS'),
-      line_notes: PLANNING_QUOTATION_REQUEST_LINE_NOTE,
+      unit: procUnitQ,
+      line_notes: lineNotes,
+      ...(moqHint > 0 ? { moq_min: moqHint } : {}),
       ...(rmId != null ? { raw_material_id: rmId } : {}),
       ...(pmId != null ? { pack_material_id: pmId } : {}),
     };
@@ -3007,12 +3159,16 @@ const Planning = () => {
         isQuotationRequestProcurementRecord(r) && procurementRequestIsOpenForQuotationMerge(r)
     );
 
-    const notes = `${PLANNING_QUOTATION_REQUEST_NOTE_TAG} · ${planningRow.name} (${planningRow.code})`;
+    let notes = `${PLANNING_QUOTATION_REQUEST_NOTE_TAG} · ${planningRow.name} (${planningRow.code})`;
+    if (vendorHint) notes += ` · Vendor: ${vendorHint}`;
+    if (moqHint > 0) notes += ` · MOQ: ${moqHint}`;
 
     if (existing) {
       const existingItems = Array.isArray(existing.items) ? [...existing.items] : [];
-      const mergeKey = procurementItemMergeKey(newRequestItem);
-      const idx = existingItems.findIndex((i) => procurementItemMergeKey(i) === mergeKey);
+      const mergeKey = quotationRequestLineMergeKey(newRequestItem, vendorHint, moqHint);
+      const idx = existingItems.findIndex(
+        (i) => quotationRequestLineMergeKey(i, vendorHint, moqHint) === mergeKey
+      );
       let merged: ProcurementRequestItem[];
       if (idx >= 0) {
         const old = existingItems[idx];
@@ -3021,14 +3177,19 @@ const Planning = () => {
         merged[idx] = {
           ...old,
           required: (Number(old.required ?? 0) || 0) + qty,
-          shortage: (Number(old.shortage ?? 0) || 0) + qty,
+          shortage: 0,
           quantity_requested: qNew,
-          line_notes: PLANNING_QUOTATION_REQUEST_LINE_NOTE,
+          line_notes: lineNotes,
+          ...(moqHint > 0 ? { moq_min: moqHint } : {}),
         };
       } else {
         merged = [...existingItems, newRequestItem];
       }
-      const upd = await updateProcurementRequest(existing.id, { items: merged, notes });
+      const upd = await updateProcurementRequest(existing.id, {
+        items: merged,
+        notes,
+        ...(vendorHint ? { preferredVendor: vendorHint } : {}),
+      });
       if (!upd.success) {
         addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update quotation request');
         return false;
@@ -3041,7 +3202,7 @@ const Planning = () => {
         requiredByDate: null,
         notes,
         items: [newRequestItem],
-        preferredVendor: null,
+        preferredVendor: vendorHint || null,
         status: 'Pending',
       });
       if (!createRes.success || !createRes.data) {
@@ -3050,16 +3211,13 @@ const Planning = () => {
       }
     }
 
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['procurement-requests'] }),
-      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] }),
-      queryClient.invalidateQueries({ queryKey: ['planning', 'batches', 'all', 'items-involved'] }),
-    ]);
+    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
 
     setReleaseToPlanningItem(null);
+    setReleaseModalIntent('release');
     addToast(
       'success',
-      'Quotation request sent to Procurement → Quotations. Use Record Quote to enter vendor rates.'
+      'Quotation request sent to Procurement → Quotations. Planning planned qty and shortages are unchanged until you add a planned line after rates exist.'
     );
     return true;
   };
@@ -3162,17 +3320,18 @@ const Planning = () => {
       if (raw_material_id == null || Number.isNaN(raw_material_id)) { omitted += 1; continue; }
       const wh = warehouseRows.find((r) => r.type === 'RM' && (Number(r.sourceId) === Number(raw_material_id) || r.code === master.code || r.name === master.name));
       const sih = wh?.stockInHand ?? 0;
-      const shortage = Math.max(0, qty - sih);
-      if (shortage <= 0) continue;
+      const shortageKg = Math.max(0, qty - sih);
+      if (shortageKg <= 0) continue;
+      const proc = rmProcurementFieldsFromKg(shortageKg, master);
       items.push({
         type: 'RM',
         code: master.code ?? idStr,
         name: master.name ?? item.name,
         required: qty,
         sih,
-        shortage,
-        quantity_requested: shortage,
-        unit: (item as RawMaterial).unit || 'KG',
+        shortage: proc.quantity_requested,
+        quantity_requested: proc.quantity_requested,
+        unit: proc.unit,
         line_notes: '',
         raw_material_id,
       });
@@ -3258,17 +3417,18 @@ const Planning = () => {
       );
       const sih = wh?.stockInHand ?? item.sih;
       const required = item.required;
-      const shortage = item.shortfall;
-      if (shortage <= 0) continue;
+      const shortageKg = item.shortfall;
+      if (shortageKg <= 0) continue;
+      const proc = rmProcurementFieldsFromKg(shortageKg, master);
       items.push({
         type: 'RM',
         code: master.code ?? idStr,
         name: master.name ?? item.name,
         required,
         sih,
-        shortage,
-        quantity_requested: shortage,
-        unit: item.unit || 'KG',
+        shortage: proc.quantity_requested,
+        quantity_requested: proc.quantity_requested,
+        unit: proc.unit,
         line_notes: '',
         raw_material_id,
       });
@@ -3450,7 +3610,7 @@ const Planning = () => {
       inci_name: item.name,
       rm_code: item.code ?? item.id,
       pct_w_w: item.percentage,
-      uom: item.unit || 'kg',
+      uom: 'KG',
       specific_gravity: effectiveSg,
       ...(typeof item.id === 'string' && /^\d+$/.test(item.id) ? { raw_material_id: parseInt(item.id, 10) } : {}),
     }));
@@ -4133,6 +4293,18 @@ const Planning = () => {
           </NavLink>
         </div>
 
+        <div className="mb-4">
+          <DateRangeFilterInputs
+            value={dateFilter}
+            onChange={setDateFilter}
+            dateFieldLabel={
+              activeMainTab === 'batches'
+                ? 'Due date (batches)'
+                : 'SO order date (PIs / items)'
+            }
+          />
+        </div>
+
         {/* PIs Extracted Tab Content */}
         {activeMainTab === 'pis-extracted' && (
           <>
@@ -4653,28 +4825,47 @@ const Planning = () => {
                                   </span>
                                 )}
                                 {canReleaseToPlanning ? (
-                                  <button
-                                    type="button"
-                                    className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold"
-                                    onClick={() => openReleaseToPlanningModal(item)}
-                                  >
-                                    Release to Planning
-                                  </button>
+                                  <>
+                                    <span
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-800 border border-red-200"
+                                      title="Open gap vs TOTAL REQ after SIH + planned + PO + in-transit."
+                                    >
+                                      Shortage{' '}
+                                      {item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
+                                        ? gapNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                                        : Math.round(gapNeed).toLocaleString()}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold w-full"
+                                      onClick={() => openReleaseToPlanningModal(item)}
+                                    >
+                                      Release to Planning
+                                    </button>
+                                  </>
                                 ) : shortageForRelease ? (
                                   <span
-                                    className="inline-flex items-center px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200"
-                                    title={`Supply (incl. planned) meets TOTAL REQ — no open gap (${gapNeed.toLocaleString()} remaining).`}
+                                    className="inline-flex items-center px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200 w-full justify-center"
+                                    title={`Supply (incl. planned + PO + in-transit) meets TOTAL REQ — no open gap (${gapNeed.toLocaleString()} remaining).`}
                                   >
                                     Covered
                                   </span>
                                 ) : (
                                   <span
-                                    className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200"
-                                    title="No planning shortage."
+                                    className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200 w-full justify-center"
+                                    title="Planning fulfilled — no open shortage vs TOTAL REQ."
                                   >
                                     No shortage
                                   </span>
                                 )}
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 rounded border border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 text-[11px] font-semibold w-full"
+                                  title="Ask Procurement to quote this material — optional new vendor or MOQ even when rates already exist on Items List."
+                                  onClick={() => openReleaseToPlanningModal(item, { intent: 'quotation' })}
+                                >
+                                  Request quotation
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -4689,7 +4880,9 @@ const Planning = () => {
         )}
 
         {/* Batches Tab — list all batches we've sent out (batch code, SO, product, sent status, BOM summary) */}
-        {activeMainTab === 'batches' && <PlanningBatchesTab onBatchClick={setBatchForDetailModal} />}
+        {activeMainTab === 'batches' && (
+          <PlanningBatchesTab onBatchClick={setBatchForDetailModal} dateFilter={dateFilter} />
+        )}
 
       </div>
 
@@ -4750,38 +4943,103 @@ const Planning = () => {
       {/* Release to Planned modal */}
       {releaseToPlanningItem && (() => {
         const item = releaseToPlanningItem;
+        const isQuotationOnlyModal = releaseModalIntent === 'quotation';
         const slabs = getQuotationSlabsForItem(item);
         const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
         const previous = plannedLinesFromBackend
           .filter((l) => plannedLineCountsTowardItemRelease(l, item))
           .slice(0, 10);
         const availModal = Number(item.supplyTowardGrossNum ?? 0);
-        const gapNeedModal = Math.max(0, Number(item.totalRequired || 0) - availModal);
+        const grossReqModal = Number(item.totalRequired || 0);
+        const gapNeedModal = Math.max(0, grossReqModal - availModal);
+        const hasShortfallModal = item.netNum < 0;
+        const hasPlannedShortfallModal = grossReqModal > 0 && availModal < grossReqModal;
+        const shortageForReleaseModal = hasShortfallModal || hasPlannedShortfallModal;
+        const canAddPlannedLineRelease = gapNeedModal > 1e-6;
         const releasedModal = releasedQtyTowardPlanningGap(item, procurementRequests, plannedLinesFromBackend);
         const qtyFmt = (n: number) => formatItemsInvolvedQty(n, item.itemType, item.unit);
+        const prefillReleaseQtyFromGap = () => {
+          if (gapNeedModal <= 1e-6) return;
+          let qtyStr = '';
+          if (item.itemType === 'RM') {
+            const master = findRmMasterRecord(item.raw_material_id, item.code, rawMaterialsList);
+            const proc = rmProcurementFieldsFromKg(gapNeedModal, master);
+            qtyStr = formatItemsInvolvedQty(proc.quantity_requested, 'RM', proc.unit);
+          } else {
+            qtyStr = formatItemsInvolvedQty(gapNeedModal, item.itemType, item.unit);
+          }
+          setReleaseToPlanningForm((f) => ({ ...f, qty: qtyStr }));
+        };
         const releasePtStages = resolveStagedPaymentTermsForForm(
           releaseToPlanningForm.paymentTermsRaw,
           releaseToPlanningForm.paymentTermsType,
           Number(releaseToPlanningForm.advancePercent)
         );
         const hasVendorSlabs = slabs.length > 0;
+        const vendorDatalistId = `release-vendor-suggestions-${item.id}`;
         const canRequestQuotation = Number(releaseToPlanningForm.qty || 0) > 0;
+        const applyReleaseVendorInput = (name: string) => {
+          const trimmed = name.trim();
+          if (!trimmed) {
+            setReleaseToPlanningForm((f) => ({ ...f, vendorName: '', vendorId: null, paymentTermsRaw: null }));
+            return;
+          }
+          const match = slabs.find((s) => s.vendorName === trimmed);
+          if (match) {
+            const p = parsePaymentTermsString(match.paymentTerms || '');
+            setReleaseToPlanningForm((f) => ({
+              ...f,
+              vendorName: trimmed,
+              vendorId: match.vendorId,
+              moq: match.moq,
+              unitPrice: isQuotationOnlyModal ? '' : String(match.unitPrice),
+              paymentTermsType: p.type,
+              advancePercent: String(
+                p.advancePercent ||
+                (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+              ),
+              leadTimeDays: match.leadTimeDays,
+              paymentTermsRaw: String(match.paymentTerms || '').trim() || null,
+            }));
+          } else {
+            setReleaseToPlanningForm((f) => ({
+              ...f,
+              vendorName: trimmed,
+              vendorId: null,
+              paymentTermsRaw: null,
+              ...(isQuotationOnlyModal ? { unitPrice: '' } : {}),
+            }));
+          }
+        };
+        const closeReleaseModal = () => {
+          setReleaseToPlanningItem(null);
+          setReleaseModalIntent('release');
+        };
         return (
           <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
               <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Release to PO Planned Stage</h2>
-                  <p className="text-xs text-slate-600 mt-0.5">Pick vendor & MOQ price, choose qty, set payment terms. Creates planned lines grouped by vendor.</p>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {isQuotationOnlyModal ? 'Request vendor quotation' : 'Release to PO Planned Stage'}
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    {isQuotationOnlyModal
+                      ? 'Sends a quote request to Procurement → Quotations only. Does not change Items Involved planned qty, NET, or shortages.'
+                      : 'Pick vendor & MOQ price, choose qty, set payment terms. Add Planned Line updates procurement release; Request quotation does not.'}
+                  </p>
                 </div>
-                <button type="button" onClick={() => setReleaseToPlanningItem(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
+                <button type="button" onClick={closeReleaseModal} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
               </div>
               <div className="p-5 overflow-auto">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <h3 className="font-bold text-slate-900 text-sm mb-1">{item.name} <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.code}</span></h3>
                     <p className="text-xs text-slate-500 mb-3">
-                      {item.itemType} · {item.unit} · Open gap vs TOTAL REQ (after supply): {qtyFmt(gapNeedModal)} · On PR / draft PO lines: {qtyFmt(releasedModal)}
+                      {item.itemType} · {item.unit}
+                      {isQuotationOnlyModal
+                        ? ' · Enter qty to quote (reference for Procurement; planning balances unchanged).'
+                        : ` · Open gap vs TOTAL REQ (after supply): ${qtyFmt(gapNeedModal)} · On PR / draft PO lines: ${qtyFmt(releasedModal)}`}
                     </p>
                     <div className="border-t border-slate-200 my-3" />
                     <table className="w-full text-xs">
@@ -4849,81 +5107,136 @@ const Planning = () => {
                       <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
                     ) : (
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                        <p className="text-xs font-semibold text-amber-900">No vendor — release is blocked</p>
+                        <p className="text-xs font-semibold text-amber-900">No vendor on Items List</p>
                         <p className="text-[11px] text-amber-800 mt-0.5">
-                          Enter quantity on the right, then use <span className="font-semibold">Request quotation</span> to
-                          create a Procurement request (visible under Requests).
+                          <span className="font-semibold">Request quotation</span> sends a quote ask to Procurement → Quotations
+                          only. It does not add planned qty or change Items Involved NET until Procurement records a vendor rate.
+                          {gapNeedModal > 1e-6
+                            ? ` Open gap vs demand: ${qtyFmt(gapNeedModal)} — after quotes exist, use Add Planned Line or Release to Planning from the table.`
+                            : ' Stock/pipeline may already cover BOM demand; you can still request a quote for future POs.'}
                         </p>
                       </div>
                     )}
                     {hasVendorSlabs && (
                       <p className="text-[11px] text-slate-500 mt-2">
-                        No suitable vendor? Enter qty and use <span className="font-medium">Request quotation</span> in the
-                        footer instead of Add Planned Line.
+                        No suitable vendor? Enter qty and use <span className="font-medium">Request quotation</span> (Procurement
+                        only — does not change planned qty). Use <span className="font-medium">Add Planned Line</span> after rates exist.
                       </p>
                     )}
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${isQuotationOnlyModal ? 'lg:col-span-2' : ''}`}>
+                    <h3 className="font-bold text-slate-900 text-sm mb-3">
+                      {isQuotationOnlyModal ? 'Quotation request' : 'Planned line details'}
+                    </h3>
+                    {!isQuotationOnlyModal && (
+                      <div
+                        className={`mb-3 rounded-lg border px-3 py-2.5 ${
+                          canAddPlannedLineRelease
+                            ? 'border-red-200 bg-red-50'
+                            : shortageForReleaseModal
+                              ? 'border-emerald-200 bg-emerald-50'
+                              : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        {canAddPlannedLineRelease ? (
+                          <>
+                            <p className="text-xs font-semibold text-red-900">Open shortage for release</p>
+                            <p className="text-[11px] text-red-800 mt-0.5">
+                              Gap vs TOTAL REQ (after SIH + planned + PO + in-transit):{' '}
+                              <span className="font-bold">{qtyFmt(gapNeedModal)}</span>
+                              {releasedModal > 1e-6 ? (
+                                <>
+                                  {' '}
+                                  · Already on PR / draft PO: <span className="font-semibold">{qtyFmt(releasedModal)}</span>
+                                </>
+                              ) : null}
+                            </p>
+                          </>
+                        ) : shortageForReleaseModal ? (
+                          <p className="text-xs font-semibold text-emerald-800">
+                            Supply covers TOTAL REQ — no open release gap. Use Request quotation if you only need vendor
+                            rates.
+                          </p>
+                        ) : (
+                          <p className="text-xs font-semibold text-slate-700">No BOM shortage for this item.</p>
+                        )}
+                      </div>
+                    )}
+                    <div className={`grid grid-cols-2 gap-3 mb-3 ${isQuotationOnlyModal ? 'max-w-2xl' : ''}`}>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
-                        <select
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                          {isQuotationOnlyModal ? 'Vendor to quote (optional)' : 'Vendor'}
+                        </label>
+                        <input
+                          type="text"
+                          list={vendorDatalistId}
                           value={releaseToPlanningForm.vendorName}
-                          onChange={(e) => {
-                            const name = e.target.value;
-                            const match = slabs.find((s) => s.vendorName === name);
-                            if (!name.trim()) {
-                              setReleaseToPlanningForm((f) => ({ ...f, vendorName: '', paymentTermsRaw: null }));
-                              return;
-                            }
-                            if (match) {
-                              const p = parsePaymentTermsString(match.paymentTerms || '');
-                              setReleaseToPlanningForm((f) => ({
-                                ...f,
-                                vendorName: name,
-                                vendorId: match.vendorId,
-                                moq: match.moq,
-                                unitPrice: String(match.unitPrice),
-                                paymentTermsType: p.type,
-                                advancePercent: String(
-                                  p.advancePercent ||
-                                  (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
-                                ),
-                                leadTimeDays: match.leadTimeDays,
-                                paymentTermsRaw: String(match.paymentTerms || '').trim() || null,
-                              }));
-                            } else {
-                              setReleaseToPlanningForm((f) => ({ ...f, vendorName: name, paymentTermsRaw: null }));
-                            }
-                          }}
+                          onChange={(e) => applyReleaseVendorInput(e.target.value)}
+                          placeholder={isQuotationOnlyModal ? 'New vendor or pick existing' : 'Select or type vendor'}
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
-                        >
-                          <option value="">— Select —</option>
-                          {vendorOptions.map((v) => (<option key={v} value={v}>{v}</option>))}
-                        </select>
+                        />
+                        <datalist id={vendorDatalistId}>
+                          {vendorOptions.map((v) => (
+                            <option key={v} value={v} />
+                          ))}
+                        </datalist>
+                        {isQuotationOnlyModal ? (
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Pick an existing vendor or type a new name for Procurement to quote.
+                          </p>
+                        ) : null}
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ</label>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                          {isQuotationOnlyModal ? 'Target MOQ (optional)' : 'MOQ'}
+                        </label>
                         <input
                           type="number"
                           min={0}
                           value={releaseToPlanningForm.moq || ''}
                           onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, moq: Number(e.target.value || 0) }))}
+                          placeholder={isQuotationOnlyModal ? 'e.g. new tier' : undefined}
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className={`grid gap-3 mb-3 ${isQuotationOnlyModal ? 'grid-cols-1 max-w-xs' : 'grid-cols-2'}`}>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Quantity</label>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                          {isQuotationOnlyModal ? 'Quantity to quote' : 'Quantity'}
+                          {releaseToPlanningItem?.itemType === 'RM'
+                            ? procurementUnitSuffix(
+                                findRmMasterRecord(
+                                  releaseToPlanningItem.raw_material_id,
+                                  releaseToPlanningItem.code,
+                                  rawMaterialsList
+                                )?.uom
+                              )
+                            : releaseToPlanningItem?.itemType === 'PM'
+                              ? ' (pcs)'
+                              : ''}
+                        </label>
                         <input type="number" min={0} value={releaseToPlanningForm.qty} onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, qty: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                        {isQuotationOnlyModal ? (
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Qty for Procurement reference — NET, planned qty, and shortages stay unchanged. Add vendor / MOQ
+                            above when quoting a new tier.
+                          </p>
+                        ) : releaseToPlanningItem?.itemType === 'RM' ? (
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Items Involved totals stay in kg; PO/procurement uses this RM&apos;s primary unit.
+                          </p>
+                        ) : null}
                       </div>
+                      {!isQuotationOnlyModal && (
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Unit price (₹)</label>
                         <input type="number" min={0} value={releaseToPlanningForm.unitPrice} onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, unitPrice: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
                       </div>
+                      )}
                     </div>
+                    {!isQuotationOnlyModal && (
+                    <>
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
@@ -4995,24 +5308,21 @@ const Planning = () => {
                       </div>
                       <p className="text-[11px] text-slate-600 mt-2">{formatStagedPaymentTermsObject(releasePtStages)}</p>
                     </div>
-                    {/* <div className="flex gap-2 mb-3">
-                      <button type="button" onClick={() => setReleaseToPlanningForm((f) => ({ ...f, qty: String(shortfall) }))} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">Prefill qty = Gap</button>
-                      <button
-                        type="button"
-                        disabled={releaseToPlanningSaving}
-                        onClick={async () => {
-                          setReleaseToPlanningSaving(true);
-                          try {
-                            await addPlannedLine();
-                          } finally {
-                            setReleaseToPlanningSaving(false);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-50"
-                      >
-                        Add to Planned
-                      </button>
-                    </div> */}
+                    </>
+                    )}
+                    {!isQuotationOnlyModal && canAddPlannedLineRelease && (
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={prefillReleaseQtyFromGap}
+                          className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                        >
+                          Prefill qty = Gap ({qtyFmt(gapNeedModal)})
+                        </button>
+                      </div>
+                    )}
+                    {!isQuotationOnlyModal && (
+                    <>
                     <div className="border-t border-slate-200 my-3" />
                     <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
                     <table className="w-full text-xs">
@@ -5072,19 +5382,23 @@ const Planning = () => {
                         )}
                       </tbody>
                     </table>
+                    </>
+                    )}
                   </div>
                 </div>
               </div>
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
                 <p className="text-xs text-slate-500">
-                  {hasVendorSlabs
-                    ? 'Planned stage is the transition stage before Draft POs and splitting/releasing.'
-                    : 'No vendor on Items List — request a quotation so Procurement can add rates.'}
+                  {isQuotationOnlyModal
+                    ? 'Creates a Procurement → Quotations request only (new vendor / MOQ allowed). After rates are recorded, use Release to Planning → Add Planned Line.'
+                    : hasVendorSlabs
+                      ? 'Add Planned Line updates planned release. Request quotation can ask for additional vendor or MOQ without changing Items Involved.'
+                      : 'Request quotation sends work to Procurement → Quotations (no planning qty change).'}
                 </p>
                 <div className="flex flex-wrap gap-2 justify-end">
                   <button
                     type="button"
-                    onClick={() => setReleaseToPlanningItem(null)}
+                    onClick={closeReleaseModal}
                     className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
                   >
                     Cancel
@@ -5097,33 +5411,39 @@ const Planning = () => {
                       setReleaseToPlanningSaving(true);
                       try {
                         const ok = await requestQuotationForPlanningItem();
-                        if (ok) setReleaseToPlanningItem(null);
+                        if (ok) closeReleaseModal();
                       } finally {
                         setReleaseToPlanningSaving(false);
                       }
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 ${
-                      hasVendorSlabs
-                        ? 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
-                        : 'bg-amber-600 text-white hover:bg-amber-700'
+                      isQuotationOnlyModal || !hasVendorSlabs
+                        ? 'bg-amber-600 text-white hover:bg-amber-700'
+                        : 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
                     }`}
                   >
                     {releaseToPlanningSaving ? 'Sending…' : 'Request quotation'}
                   </button>
-                  {hasVendorSlabs && (
+                  {!isQuotationOnlyModal && hasVendorSlabs && (
                     <button
                       type="button"
                       disabled={
                         releaseToPlanningSaving ||
+                        !canAddPlannedLineRelease ||
                         !releaseToPlanningForm.vendorName ||
                         !canRequestQuotation ||
                         !(Number(releaseToPlanningForm.unitPrice || 0) > 0)
+                      }
+                      title={
+                        !canAddPlannedLineRelease
+                          ? 'No open shortage vs TOTAL REQ — nothing to release to Planning'
+                          : undefined
                       }
                       onClick={async () => {
                         setReleaseToPlanningSaving(true);
                         try {
                           const ok = await addPlannedLine();
-                          if (ok) setReleaseToPlanningItem(null);
+                          if (ok) closeReleaseModal();
                         } finally {
                           setReleaseToPlanningSaving(false);
                         }
@@ -6852,7 +7172,7 @@ const Planning = () => {
                                   onChange={(e) => {
                                     const id = e.target.value;
                                     const master = rawMaterialsList.find((r) => String(r.id) === id);
-                                    if (master) updatePrItem(idx, { raw_material_id: parseInt(String(master.id), 10), pack_material_id: undefined, product_id: undefined, code: master.code, name: master.name, unit: master.uom || 'KG' });
+                                    if (master) updatePrItem(idx, { raw_material_id: parseInt(String(master.id), 10), pack_material_id: undefined, product_id: undefined, code: master.code, name: master.name, unit: normRmPrimaryUom(master.uom) });
                                   }}
                                   className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
                                 >

@@ -115,13 +115,91 @@ export async function fetchItemsList(type?: 'RM' | 'PM'): Promise<ServiceResult<
   }
 }
 
+export interface PriceListPageQuery {
+  limit: number;
+  offset?: number;
+  search?: string;
+  partyId?: number;
+}
+
+export interface PriceListPageResult {
+  rows: PriceListItemPage[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PriceListPageStats {
+  rmWithTiers: number;
+  pmWithTiers: number;
+  prWithTiers: number;
+  totalRateRows: number;
+  totalTiers: number;
+}
+
+/** Full catalog (legacy). Prefer fetchPriceListPagePaginated for Items List UI. */
 export async function fetchPriceListPage(type: 'RM' | 'PM' | 'PR'): Promise<ServiceResult<PriceListItemPage[]>> {
   try {
-    const list = await api.get<PriceListItemPage[]>(`/api/v1/items-list/page?type=${encodeURIComponent(type)}`);
-    return { data: list ?? [], error: null, success: true };
+    const list = await api.get<PriceListItemPage[] | PriceListPageResult>(
+      `/api/v1/items-list/page?type=${encodeURIComponent(type)}`
+    );
+    const rows = Array.isArray(list) ? list : list?.rows ?? [];
+    return { data: rows, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load price list page';
     return { data: [], error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export async function fetchPriceListPagePaginated(
+  type: 'RM' | 'PM' | 'PR',
+  query: PriceListPageQuery
+): Promise<ServiceResult<PriceListPageResult>> {
+  try {
+    const qs = new URLSearchParams({
+      type,
+      limit: String(query.limit),
+      offset: String(query.offset ?? 0),
+    });
+    if (query.search?.trim()) qs.set('search', query.search.trim());
+    if (query.partyId != null && !Number.isNaN(query.partyId)) qs.set('party_id', String(query.partyId));
+    const payload = await api.get<PriceListPageResult>(`/api/v1/items-list/page?${qs.toString()}`);
+    return {
+      data: payload ?? { rows: [], total: 0, limit: query.limit, offset: query.offset ?? 0 },
+      error: null,
+      success: true,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load price list page';
+    return {
+      data: { rows: [], total: 0, limit: query.limit, offset: query.offset ?? 0 },
+      error: { code: 'ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
+export async function fetchPriceListPageStats(): Promise<ServiceResult<PriceListPageStats>> {
+  try {
+    const stats = await api.get<PriceListPageStats>('/api/v1/items-list/page/stats');
+    return {
+      data: stats ?? {
+        rmWithTiers: 0,
+        pmWithTiers: 0,
+        prWithTiers: 0,
+        totalRateRows: 0,
+        totalTiers: 0,
+      },
+      error: null,
+      success: true,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load price list stats';
+    return {
+      data: null,
+      error: { code: 'ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
   }
 }
 

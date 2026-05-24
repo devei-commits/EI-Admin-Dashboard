@@ -9,6 +9,7 @@ import { ShoppingCart, Package, Search, Loader2, LayoutDashboard, ArrowUpDown } 
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
 import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
+import { normalizePackSize } from '../utils/orderFulfillmentUtils';
 import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
 import {
   fetchFulfillmentOrders,
@@ -21,6 +22,8 @@ import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
+import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 
 type ViewMode = 'orders' | 'batches';
 type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
@@ -35,6 +38,7 @@ export const OrderFulfillment: React.FC = () => {
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +97,7 @@ export const OrderFulfillment: React.FC = () => {
           itemNo: String(idx + 1).padStart(3, '0'),
           sku: item.sku,
           productName: item.productName,
-          pack: item.pack || '—',
+          pack: normalizePackSize(item.pack),
           orderedQty: item.orderedQty,
           unitPrice: item.unitPrice,
           batchSplits: [{
@@ -265,6 +269,7 @@ export const OrderFulfillment: React.FC = () => {
   const filteredSaleOrders = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     const filtered = saleOrders.filter((so) => {
+      if (!matchesDateRangeFilter(so.orderDate, dateFilter.from, dateFilter.to)) return false;
       if (statusFilter !== 'all' && so.soStatus !== statusFilter) return false;
       if (priorityFilter !== 'all' && so.priority !== priorityFilter) return false;
       if (cityFilter !== 'all' && String(so.customerCity || '').trim() !== cityFilter) return false;
@@ -305,7 +310,7 @@ export const OrderFulfillment: React.FC = () => {
       return sortOrder === 'asc' ? an - bn : bn - an;
     });
     return filtered;
-  }, [saleOrders, searchTerm, statusFilter, priorityFilter, cityFilter, sortKey, sortOrder]);
+  }, [saleOrders, searchTerm, statusFilter, priorityFilter, cityFilter, sortKey, sortOrder, dateFilter]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
@@ -349,7 +354,12 @@ export const OrderFulfillment: React.FC = () => {
             </span>
           </div>
 
-          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/70 p-3">
+          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/70 p-3 space-y-3">
+            <DateRangeFilterInputs
+              value={dateFilter}
+              onChange={setDateFilter}
+              dateFieldLabel="Order date"
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
               <div className="relative xl:col-span-2">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -423,6 +433,7 @@ export const OrderFulfillment: React.FC = () => {
                   setCityFilter('all');
                   setSortKey('dueDate');
                   setSortOrder('asc');
+                  setDateFilter({ from: '', to: '' });
                 }}
                 className="text-xs font-semibold text-gray-600 hover:text-gray-900 underline"
               >

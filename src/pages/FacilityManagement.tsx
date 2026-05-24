@@ -67,7 +67,10 @@ const FacilityManagement: React.FC = () => {
   useEffect(() => { loadAreas(); }, [loadAreas]);
 
   const warehouseAreas = areas.filter((a) => a.areaType === 'warehouse');
-  const manufacturingAreas = areas.filter((a) => a.areaType === 'production');
+  /** Legacy umbrella row (no zones); stock is on AREA-MU-01 / AREA-MU-02 only. */
+  const manufacturingAreas = areas.filter(
+    (a) => a.areaType === 'production' && a.code !== 'AREA-MU'
+  );
   const groupAreas = facilityGroup === 'warehouse' ? warehouseAreas : manufacturingAreas;
 
   useEffect(() => {
@@ -78,6 +81,11 @@ const FacilityManagement: React.FC = () => {
   }, [loading, facilityGroup, groupAreas, selectedAreaId]);
 
   const selectedArea = areas.find((a) => a.id === selectedAreaId) ?? null;
+
+  const allWarehouseZones = warehouseAreas.flatMap((a) => a.zones);
+  const warehouseDefaultZones = allWarehouseZones.filter((z) => z.isDefault);
+  const facilityWarehouseDefault =
+    warehouseDefaultZones.length === 1 ? warehouseDefaultZones[0] : null;
 
   const renderAreaCard = (area: FacilityAreaDTO) => (
     <div
@@ -239,7 +247,7 @@ const FacilityManagement: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
           <p className="text-sm text-gray-500 mt-1">
             {mainTab === 'structure'
-              ? 'Two facility types: Warehouse (GRN inbound, storage) and Manufacturing unit (MTR from WH). Each has areas → zones → racks; one default zone per type.'
+              ? 'Layout: one Main Warehouse (RM + PM + FG zones) and two Manufacturing units (each with zones → racks). One default warehouse zone (GRN) and one default manufacturing zone (MTR).'
               : 'Default warehouse and manufacturing storage per item for MTR / GRN routing.'}
           </p>
         </div>
@@ -313,8 +321,8 @@ const FacilityManagement: React.FC = () => {
             </div>
             <div className="border-t border-gray-200 pt-4">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-800">Manufacturing unit</h3>
-                <span className="text-[10px] text-amber-700">MTR · ML1 / ML2</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-800">Manufacturing units</h3>
+                <span className="text-[10px] text-amber-700">2 units · ML1 / ML2</span>
               </div>
               <div className="space-y-2">
                 {manufacturingAreas.length === 0 ? (
@@ -349,7 +357,9 @@ const FacilityManagement: React.FC = () => {
                     </h2>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {selectedArea.areaType === 'warehouse'
-                        ? 'Inbound GRN posts to the default warehouse zone (and DEFAULT rack).'
+                        ? facilityWarehouseDefault
+                          ? `Inbound GRN posts to ${facilityWarehouseDefault.name} (${facilityWarehouseDefault.code}) — the single facility default warehouse zone.`
+                          : 'Inbound GRN posts to the one default warehouse zone (and DEFAULT rack). Only one zone can be default.'
                         : 'MTR from warehouse posts to default manufacturing zone / rack when MU zone is not specified.'}
                     </p>
                     <p className="text-xs text-gray-400 mt-0.5">{selectedArea.description || 'No description'}</p>
@@ -362,6 +372,27 @@ const FacilityManagement: React.FC = () => {
                     Add Zone
                   </button>
                 </div>
+                {selectedArea.areaType === 'warehouse' && warehouseDefaultZones.length !== 1 && (
+                  <div
+                    className={`mx-4 mt-4 px-3 py-2 rounded-lg text-xs ${
+                      warehouseDefaultZones.length === 0
+                        ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                        : 'bg-red-50 text-red-900 border border-red-200'
+                    }`}
+                  >
+                    {warehouseDefaultZones.length === 0 ? (
+                      <>
+                        No default warehouse zone is set. GRN inbound needs exactly one — use{' '}
+                        <strong>Set as default</strong> on the zone that should receive all GRN stock (e.g. RM Store).
+                      </>
+                    ) : (
+                      <>
+                        Multiple warehouse zones are marked default ({warehouseDefaultZones.map((z) => z.code).join(', ')}
+                        ). Only one is allowed — restart the API or set default again on the correct zone.
+                      </>
+                    )}
+                  </div>
+                )}
                 {selectedArea.zones.length === 0 ? (
                   <div className="py-16 text-center text-gray-400 text-sm">
                     No zones in this area yet. Click "Add Zone" to create one.
@@ -411,8 +442,15 @@ const FacilityManagement: React.FC = () => {
                             <td className="px-4 py-3 text-gray-400 max-w-[200px] truncate">{zone.description || '—'}</td>
                             <td className="px-4 py-3">
                               {zone.isDefault ? (
-                                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
-                                  Default
+                                <span
+                                  className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800"
+                                  title={
+                                    selectedArea.areaType === 'warehouse'
+                                      ? 'Facility default for GRN inbound (only one warehouse zone)'
+                                      : 'Facility default for MTR receive'
+                                  }
+                                >
+                                  {selectedArea.areaType === 'warehouse' ? 'GRN default' : 'MTR default'}
                                 </span>
                               ) : (
                                 <button
@@ -421,7 +459,11 @@ const FacilityManagement: React.FC = () => {
                                   onClick={() => handleSetDefaultZone(zone)}
                                   className="text-xs font-medium text-gray-700 hover:text-gray-900 underline disabled:opacity-50"
                                 >
-                                  {defaultSavingZoneId === zone.id ? 'Saving…' : 'Set as default'}
+                                  {defaultSavingZoneId === zone.id
+                                    ? 'Saving…'
+                                    : selectedArea.areaType === 'warehouse'
+                                      ? 'Set as GRN default'
+                                      : 'Set as default'}
                                 </button>
                               )}
                             </td>

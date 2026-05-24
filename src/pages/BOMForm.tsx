@@ -3,6 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, Pencil, Check, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
+import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
+import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
+import RmMasterTypeahead from '../components/RmMasterTypeahead';
+import PmMasterTypeahead from '../components/PmMasterTypeahead';
+import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
+import { buildPmTypeaheadOptions, pmTypeaheadLabelForId } from '../lib/pmTypeahead';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 import {
@@ -154,7 +161,7 @@ function emptyBomForm(): BOMFormState {
     bomTaxPreference: 'Taxable',
     bomReturnable: false,
     bomAssociateItems: '',
-    bomCompositeItem: '',
+    bomCompositeItem: 'Yes',
     formulaIngredients: [],
     skuBomLines: [],
     skuBomLimitQty: '',
@@ -190,11 +197,9 @@ interface BOMFormProps {
   onSaved?: () => void;
 }
 
-function inferPrCompositeFromCode(code: string): '' | 'Yes' | 'No' {
-  if (!code) return '';
-  if (code.startsWith(`${COMPOSITE_ITEM_PREFIX_BASE}-`)) return 'Yes';
-  if (code.startsWith('EI-PR-')) return 'No';
-  return '';
+/** PR masters are composite items; default Yes when DB flag is unset. */
+function inferPrCompositeFromCode(_code: string): 'Yes' {
+  return 'Yes';
 }
 
 function bomFormToRmLines(fd: BOMFormState) {
@@ -247,10 +252,17 @@ function parseMrpNumber(mrp: string): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
-/** PR registration requires a positive MRP (same check as advance + submit). */
+/** When MRP is provided, it must parse to a positive amount. Empty is allowed. */
 function isValidMrpForPr(mrp: string): boolean {
+  if (!mrp?.trim()) return true;
   const n = parseMrpNumber(mrp);
   return n !== undefined && n > 0;
+}
+
+function mrpValidationMessage(mrp: string): string | null {
+  if (!mrp?.trim()) return null;
+  if (isValidMrpForPr(mrp)) return null;
+  return 'Enter a positive amount, e.g. 499 or ₹499';
 }
 
 /**
@@ -544,7 +556,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [tempSkuLine, setTempSkuLine] = useState({ inciName: '', qtyPerUnit: '', uom: 'GM' });
   const [editingSkuLineId, setEditingSkuLineId] = useState<string | null>(null);
   const [selectedSkuRmId, setSelectedSkuRmId] = useState<string>('');
-  const [skuRmSearchTerm, setSkuRmSearchTerm] = useState('');
+  const [skuRmQuery, setSkuRmQuery] = useState('');
   const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
   const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
@@ -554,14 +566,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [masterLoading, setMasterLoading] = useState(true);
   const [selectedRmId, setSelectedRmId] = useState<string>('');
   const [selectedPmId, setSelectedPmId] = useState<string>('');
-  const [rmSearchTerm, setRmSearchTerm] = useState('');
-  const [pmSearchTerm, setPmSearchTerm] = useState('');
+  const [ingredientRmQuery, setIngredientRmQuery] = useState('');
+  const [packPmQuery, setPackPmQuery] = useState('');
   /** Zoho composite item id for pulling mapped_items into SKU BOM (defaults from saved Zoho Item ID). */
   const [zohoCompositeFetchId, setZohoCompositeFetchId] = useState('');
   const [zohoCompositeLoading, setZohoCompositeLoading] = useState(false);
   const skuExcelFileInputRef = useRef<HTMLInputElement | null>(null);
   const [skuExcelUploading, setSkuExcelUploading] = useState(false);
   const [skuBomClearing, setSkuBomClearing] = useState(false);
+  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [pendingPrSubmit, setPendingPrSubmit] = useState<
+    { mode: 'create' | 'update'; body: Record<string, unknown> } | null
+  >(null);
+  const [submitConfirming, setSubmitConfirming] = useState(false);
 
   const stages = [
     'Primary info (details & Books)',
@@ -578,9 +595,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     Boolean(
       formData.category.trim() &&
         formData.bomCompositeItem &&
-        formData.prSubCategory.trim() &&
-        formData.productName.trim() &&
-        isValidMrpForPr(formData.mrp)
+        formData.productName.trim()
     );
   // Existing products normally keep identity/code fields locked.
   // Exception: legacy rows that have no BOM payload loaded (all edit arrays empty)
@@ -637,42 +652,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     () => new Set(formData.packingComponents.map((c) => String(c.packMaterialId || '')).filter(Boolean)),
     [formData.packingComponents]
   );
-  const filteredRawMaterials = useMemo(() => {
-    const q = rmSearchTerm.trim().toLowerCase();
-    const list = [...rawMaterials].sort((a, b) => {
-      const aText = `${a.code || ''} ${a.inci || a.name || ''}`.toLowerCase();
-      const bText = `${b.code || ''} ${b.inci || b.name || ''}`.toLowerCase();
-      return aText.localeCompare(bText);
-    });
-    if (!q) return list;
-    return list.filter((rm) =>
-      `${rm.code || ''} ${rm.inci || rm.name || ''}`.toLowerCase().includes(q)
-    );
-  }, [rawMaterials, rmSearchTerm]);
-  const filteredSkuRawMaterials = useMemo(() => {
-    const q = skuRmSearchTerm.trim().toLowerCase();
-    const list = [...rawMaterials].sort((a, b) => {
-      const aText = `${a.code || ''} ${a.inci || a.name || ''}`.toLowerCase();
-      const bText = `${b.code || ''} ${b.inci || b.name || ''}`.toLowerCase();
-      return aText.localeCompare(bText);
-    });
-    if (!q) return list;
-    return list.filter((rm) =>
-      `${rm.code || ''} ${rm.inci || rm.name || ''}`.toLowerCase().includes(q)
-    );
-  }, [rawMaterials, skuRmSearchTerm]);
-  const filteredPackMaterials = useMemo(() => {
-    const q = pmSearchTerm.trim().toLowerCase();
-    const list = [...packMaterials].sort((a, b) => {
-      const aText = `${a.code || ''} ${a.description || ''}`.toLowerCase();
-      const bText = `${b.code || ''} ${b.description || ''}`.toLowerCase();
-      return aText.localeCompare(bText);
-    });
-    if (!q) return list;
-    return list.filter((pm) =>
-      `${pm.code || ''} ${pm.description || ''}`.toLowerCase().includes(q)
-    );
-  }, [packMaterials, pmSearchTerm]);
+  const formulaRmTypeaheadOptions = useMemo(
+    () =>
+      buildRmTypeaheadOptions(rawMaterials, {
+        excludeIds: selectedRmIds,
+        allowId: selectedRmId || undefined,
+      }),
+    [rawMaterials, selectedRmIds, selectedRmId]
+  );
+  const skuRmTypeaheadOptions = useMemo(
+    () =>
+      buildRmTypeaheadOptions(rawMaterials, {
+        excludeIds: selectedSkuRmIds,
+        allowId: selectedSkuRmId || undefined,
+      }),
+    [rawMaterials, selectedSkuRmIds, selectedSkuRmId]
+  );
+  const packPmTypeaheadOptions = useMemo(
+    () =>
+      buildPmTypeaheadOptions(packMaterials, {
+        excludeIds: selectedPmIds,
+        allowId: selectedPmId || undefined,
+      }),
+    [packMaterials, selectedPmIds, selectedPmId]
+  );
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const skuDraftRef = useRef<HTMLDivElement>(null);
@@ -710,7 +713,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   }, [formData.zohoId]);
 
   useEffect(() => {
-    if (Math.abs(formulaPercentTotal - 100) > 0.001) return;
+    if (formulaPercentTotal > 100.001) return;
     setErrors((prev) => {
       if (!prev.formulaPercentTotal) return prev;
       const next = { ...prev };
@@ -800,7 +803,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       uom: ing.uom || 'GM',
     });
     setSelectedRmId(ing.rawMaterialId || '');
-    setRmSearchTerm('');
+    setIngredientRmQuery(
+      ing.rawMaterialId
+        ? rmTypeaheadLabelForId(rawMaterials, ing.rawMaterialId)
+        : ing.inciName
+    );
     window.setTimeout(() => {
       ingredientDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, 0);
@@ -809,12 +816,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const cancelIngredientEdit = () => {
     setEditingIngredientId(null);
     setSelectedRmId('');
+    setIngredientRmQuery('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
   };
 
   const flushIngredientDraft = (): boolean => {
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
-    if (!rm && !tempIngredient.inciName.trim()) return false;
+    const manualInci = tempIngredient.inciName.trim() || ingredientRmQuery.trim();
+    if (!rm && !manualInci) return false;
 
     if (editingIngredientId) {
       if (rm) {
@@ -834,7 +843,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 ...item,
                 rawMaterialId: rm ? String(rm.id) : undefined,
                 rmCode: rm ? rm.code : '',
-                inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
+                inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
                 phase: tempIngredient.phase,
                 percentWW: tempIngredient.percentWW,
                 uom: tempIngredient.uom || rm?.uom || 'GM',
@@ -844,6 +853,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }));
       setEditingIngredientId(null);
       setSelectedRmId('');
+      setIngredientRmQuery('');
       setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
       return true;
     }
@@ -860,7 +870,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           id: Date.now().toString(),
           rawMaterialId: rm ? String(rm.id) : undefined,
           rmCode: rm ? rm.code : '',
-          inciName: rm ? (rm.inci || rm.name || tempIngredient.inciName) : tempIngredient.inciName,
+          inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
           phase: tempIngredient.phase,
           percentWW: tempIngredient.percentWW,
           // Keep operator-selected UOM; fallback to RM UOM only if no explicit input.
@@ -869,6 +879,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       ],
     }));
     setSelectedRmId('');
+    setIngredientRmQuery('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
     return true;
   };
@@ -881,6 +892,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingIngredientId((cur) => {
       if (cur === id) {
         setSelectedRmId('');
+        setIngredientRmQuery('');
         setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
         return null;
       }
@@ -936,7 +948,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
     setEditingIngredientId(null);
     setSelectedRmId('');
-    setRmSearchTerm('');
+    setIngredientRmQuery('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
     addToast('success', `Imported ${res.rows.length} line(s) from SKU BOM (% w/w total 100%).`);
   }, [
@@ -1103,7 +1115,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         if (applyFormula) {
           setEditingIngredientId(null);
           setSelectedRmId('');
-          setRmSearchTerm('');
+          setIngredientRmQuery('');
           setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
         }
         let msg = `Loaded ${data.sku_bom.length} line(s) from Zoho${data.composite_name ? `: ${data.composite_name}` : ''}.`;
@@ -1208,7 +1220,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       uom: row.uom || 'KG',
     });
     setSelectedSkuRmId(row.rawMaterialId || '');
-    setSkuRmSearchTerm('');
+    setSkuRmQuery(
+      row.rawMaterialId ? rmTypeaheadLabelForId(rawMaterials, row.rawMaterialId) : row.inciName
+    );
     window.setTimeout(() => {
       skuDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, 0);
@@ -1217,12 +1231,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const cancelSkuLineEdit = () => {
     setEditingSkuLineId(null);
     setSelectedSkuRmId('');
+    setSkuRmQuery('');
     setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
   };
 
   const flushSkuLineDraft = (): boolean => {
     const rm = selectedSkuRmId ? rawMaterialById.get(String(selectedSkuRmId)) : undefined;
-    if (!rm && !tempSkuLine.inciName.trim()) return false;
+    const manualInci = tempSkuLine.inciName.trim() || skuRmQuery.trim();
+    if (!rm && !manualInci) return false;
     const qtyNum = parseFloat(String(tempSkuLine.qtyPerUnit).replace(/[^\d.-]/g, ''));
     if (Number.isNaN(qtyNum) || qtyNum <= 0) {
       addToast('error', 'Enter a positive quantity per unit for SKU BOM');
@@ -1247,7 +1263,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 ...item,
                 rawMaterialId: rm ? String(rm.id) : undefined,
                 rmCode: rm ? rm.code : item.rmCode,
-                inciName: rm ? (rm.inci || rm.name || tempSkuLine.inciName) : tempSkuLine.inciName,
+                inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
                 qtyPerUnit: tempSkuLine.qtyPerUnit,
                 uom: tempSkuLine.uom || rm?.uom || 'GM',
               }
@@ -1256,6 +1272,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }));
       setEditingSkuLineId(null);
       setSelectedSkuRmId('');
+      setSkuRmQuery('');
       setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
       return true;
     }
@@ -1272,13 +1289,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           id: Date.now().toString(),
           rawMaterialId: rm ? String(rm.id) : undefined,
           rmCode: rm ? rm.code : '',
-          inciName: rm ? (rm.inci || rm.name || tempSkuLine.inciName) : tempSkuLine.inciName,
+          inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
           qtyPerUnit: tempSkuLine.qtyPerUnit,
           uom: tempSkuLine.uom || rm?.uom || 'GM',
         },
       ],
     }));
     setSelectedSkuRmId('');
+    setSkuRmQuery('');
     setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
     return true;
   };
@@ -1291,6 +1309,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingSkuLineId((cur) => {
       if (cur === id) {
         setSelectedSkuRmId('');
+        setSkuRmQuery('');
         setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
         return null;
       }
@@ -1313,7 +1332,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       uom: c.uom || '',
     });
     setSelectedPmId(c.packMaterialId || '');
-    setPmSearchTerm('');
+    setPackPmQuery(
+      c.packMaterialId ? pmTypeaheadLabelForId(packMaterials, c.packMaterialId) : c.pmDescription
+    );
     window.setTimeout(() => {
       packDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, 0);
@@ -1322,12 +1343,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const cancelComponentEdit = () => {
     setEditingComponentId(null);
     setSelectedPmId('');
+    setPackPmQuery('');
     setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
   };
 
   const flushComponentDraft = (): boolean => {
     const pm = selectedPmId ? packMaterialById.get(String(selectedPmId)) : undefined;
-    if (!pm && !tempComponent.pmDescription.trim()) return false;
+    const manualDesc = tempComponent.pmDescription.trim() || packPmQuery.trim();
+    if (!pm && !manualDesc) return false;
 
     if (editingComponentId) {
       if (pm) {
@@ -1347,7 +1370,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 ...item,
                 packMaterialId: pm ? String(pm.id) : undefined,
                 pmCode: pm ? pm.code : '',
-                pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
+                pmDescription: pm ? (pm.description || manualDesc) : manualDesc,
                 type: tempComponent.type || pm?.level || pm?.type || '',
                 qtyUnit: tempComponent.qtyUnit,
                 uom: tempComponent.uom || pm?.unit || 'PCS',
@@ -1357,6 +1380,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }));
       setEditingComponentId(null);
       setSelectedPmId('');
+      setPackPmQuery('');
       setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
       return true;
     }
@@ -1373,7 +1397,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           id: Date.now().toString(),
           packMaterialId: pm ? String(pm.id) : undefined,
           pmCode: pm ? pm.code : '',
-          pmDescription: pm ? (pm.description || tempComponent.pmDescription) : tempComponent.pmDescription,
+          pmDescription: pm ? (pm.description || manualDesc) : manualDesc,
           type: tempComponent.type || pm?.level || pm?.type || '',
           qtyUnit: tempComponent.qtyUnit,
           uom: tempComponent.uom || pm?.unit || 'PCS',
@@ -1381,6 +1405,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       ],
     }));
     setSelectedPmId('');
+    setPackPmQuery('');
     setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
     return true;
   };
@@ -1431,45 +1456,44 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
-  const handleSubmit = async () => {
+  const prPreviewSections = useMemo(
+    () => buildMasterPreviewSections(formData as unknown as Record<string, unknown>, PR_PREVIEW_SECTIONS),
+    [formData]
+  );
+
+  const validatePrForSubmit = (): { mode: 'create' | 'update'; body: Record<string, unknown> } | null => {
     setErrors({});
     if (!formData.category.trim()) {
       setErrors({ category: 'Step 1 — PR Category is required' });
       addToast('error', 'Step 1 — Select a PR Category');
       setCurrentStage(0);
       focusPrField('category');
-      return;
+      return null;
     }
     if (!formData.bomCompositeItem) {
       setErrors({ bomCompositeItem: 'Step 1 — Composite Item selection is required' });
       addToast('error', 'Step 1 — Select whether this is a Composite Item (Yes / No)');
       setCurrentStage(0);
       focusPrField('bomCompositeItem');
-      return;
+      return null;
     }
     if (!formData.productName.trim()) {
       setErrors({ productName: 'Step 1 — Product Name is required' });
       addToast('error', 'Step 1 — Product Name is required');
       setCurrentStage(0);
       focusPrField('productName');
-      return;
+      return null;
     }
-    if (!formData.prSubCategory.trim()) {
-      setErrors({ prSubCategory: 'Step 1 — Sub-Category is required' });
-      addToast('error', 'Step 1 — Sub-Category is required');
-      setCurrentStage(0);
-      focusPrField('prSubCategory');
-      return;
-    }
-    if (!isValidMrpForPr(formData.mrp)) {
-      setErrors({ mrp: 'Step 1 — MRP Price is required (enter a positive amount, e.g. 499 or ₹499)' });
-      addToast('error', 'Step 1 — MRP Price is required');
+    const mrpMsg = mrpValidationMessage(formData.mrp);
+    if (mrpMsg) {
+      setErrors({ mrp: `Step 1 — MRP Price: ${mrpMsg}` });
+      addToast('error', `Step 1 — MRP Price: ${mrpMsg}`);
       setCurrentStage(0);
       window.setTimeout(() => {
         const el = document.getElementById('mrp');
         if (el instanceof HTMLElement) el.focus();
       }, 0);
-      return;
+      return null;
     }
     const codeTrim = formData.skuCode.trim();
     if (formData.prRecordType !== 'legacy') {
@@ -1486,7 +1510,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               : 'Internal PR code must start with PR (not TPR) for a permanent record.'
           );
           setCurrentStage(0);
-          return;
+          return null;
         }
       }
     }
@@ -1498,35 +1522,61 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         const el = document.getElementById('fillSize');
         if (el instanceof HTMLElement) el.focus();
       }, 0);
-      return;
+      return null;
     }
 
     const rmCount = countMeaningfulFormulaRmLines(bomFormToRmLines(formData));
     if (rmCount < 1) {
       addToast('error', 'At least one Formula BOM line is required. Add ingredients in Formula BOM.');
       setCurrentStage(1);
-      return;
+      return null;
+    }
+    if (formulaPercentTotal > 100.001) {
+      const msg = `Formula BOM % w/w total cannot exceed 100% (current ${formulaPercentTotal.toFixed(2)}%).`;
+      setErrors({ formulaPercentTotal: `Step 2 — ${msg}` });
+      addToast('error', `Step 2 — ${msg}`);
+      setCurrentStage(1);
+      return null;
     }
     const pmCount = countMeaningfulPackLines(bomFormToPmLines(formData));
     if (pmCount < 1) {
       addToast('error', 'At least one Pack BOM line is required. Add packaging in Pack BOM.');
       setCurrentStage(3);
-      return;
+      return null;
     }
 
     const meaningfulSku = countMeaningfulSkuRmLines(bomFormToSkuRmLines(formData));
     if (meaningfulSku > 0 && !skuBomValidation.ok) {
       addToast('error', skuBomValidation.error);
       setCurrentStage(2);
-      return;
+      return null;
     }
 
+    if (productIdFromRoute) {
+      return { mode: 'update', body: buildPrUpdateBody(formData) };
+    }
+    return { mode: 'create', body: buildPrRegistrationBody(formData) };
+  };
+
+  const handleSubmit = () => {
+    const pending = validatePrForSubmit();
+    if (!pending) return;
+    setPendingPrSubmit(pending);
+    setSubmitPreviewOpen(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    const pending = pendingPrSubmit;
+    if (!pending) return;
+    setSubmitConfirming(true);
     try {
-      if (productIdFromRoute) {
-        const res = await updatePRProduct(productIdFromRoute, buildPrUpdateBody(formData));
+      if (pending.mode === 'update' && productIdFromRoute) {
+        const res = await updatePRProduct(productIdFromRoute, pending.body);
         if (res.success) {
           addToast('success', 'Product updated successfully!');
           onSaved?.();
+          setSubmitPreviewOpen(false);
+          setPendingPrSubmit(null);
           if (onClose) onClose();
           else navigate('/bom');
         } else {
@@ -1535,10 +1585,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         return;
       }
 
-      const res = await createPRRegistration(buildPrRegistrationBody(formData));
+      const res = await createPRRegistration(pending.body);
       if (res.success) {
         addToast('success', 'Product registered — saved to Products (PR) master.');
         onSaved?.();
+        setSubmitPreviewOpen(false);
+        setPendingPrSubmit(null);
         if (onClose) onClose();
         else navigate('/bom');
       } else {
@@ -1547,6 +1599,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSubmitConfirming(false);
     }
   };
 
@@ -1594,7 +1648,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   {errors.category ? <p className="mt-1 text-xs text-red-600">{errors.category}</p> : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category <span className="text-red-600">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category (optional)</label>
                   <select
                     id="prSubCategory"
                     value={formData.prSubCategory}
@@ -1726,7 +1780,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
-                    MRP Price <span className="text-red-600">*</span>
+                    MRP Price <span className="text-slate-400 font-normal">(optional — sale order price comes from Items List client rates)</span>
                   </label>
                   <input
                     id="mrp"
@@ -1831,35 +1885,29 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       </button>
                     ) : null}
                   </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      placeholder="Search Raw Material by code/name"
-                      value={rmSearchTerm}
-                      onChange={(e) => setRmSearchTerm(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
-                    />
-                    <select
-                      value={selectedRmId}
-                      onChange={(e) => setSelectedRmId(e.target.value)}
-                      disabled={masterLoading}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    >
-                      <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
-                      {filteredRawMaterials.map((rm) => (
-                        <option key={rm.id} value={rm.id} disabled={selectedRmIds.has(String(rm.id)) && String(selectedRmId) !== String(rm.id)}>
-                          {rm.code} — {rm.inci || rm.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Or type INCI Name (manual)"
-                      value={tempIngredient.inciName}
-                      onChange={(e) => setTempIngredient(prev => ({ ...prev, inciName: e.target.value }))}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    />
-                  </div>
+                  <RmMasterTypeahead
+                    className="sm:col-span-2"
+                    options={formulaRmTypeaheadOptions}
+                    value={ingredientRmQuery}
+                    loading={masterLoading}
+                    selectedId={selectedRmId}
+                    onValueChange={(next) => {
+                      setIngredientRmQuery(next);
+                      setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                    }}
+                    onSelect={(opt) => {
+                      setSelectedRmId(opt.id);
+                      setIngredientRmQuery(opt.label);
+                      const rm = rawMaterialById.get(opt.id);
+                      setTempIngredient((prev) => ({
+                        ...prev,
+                        inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                        uom: prev.uom || rm?.uom || 'GM',
+                      }));
+                    }}
+                    onClearSelection={() => setSelectedRmId('')}
+                    placeholder="Search RM by code or INCI — pick from list or type manual name"
+                  />
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <input
                       type="text"
@@ -1888,9 +1936,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
-                  <p className="text-xs text-slate-600">
-                    Total (saved lines): <span className={`font-semibold ${Math.abs(formulaPercentTotal - 100) <= 0.001 ? 'text-blue-600' : 'text-red-600'}`}>{formulaPercentTotal.toFixed(2)}%</span>
-                  </p>
+                  <div>
+                    <p className="text-xs text-slate-600">
+                      Total (saved lines):{' '}
+                      <span
+                        className={`font-semibold ${
+                          formulaPercentTotal > 100.001
+                            ? 'text-red-600'
+                            : Math.abs(formulaPercentTotal - 100) <= 0.001
+                              ? 'text-blue-600'
+                              : 'text-amber-700'
+                        }`}
+                      >
+                        {formulaPercentTotal.toFixed(2)}%
+                      </span>
+                      {formulaPercentTotal > 100.001 ? (
+                        <span className="text-red-600"> — cannot exceed 100%</span>
+                      ) : null}
+                    </p>
+                    {errors.formulaPercentTotal ? (
+                      <p className="mt-1 text-xs text-red-600">{errors.formulaPercentTotal}</p>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     onClick={addIngredient}
@@ -2137,35 +2204,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </button>
                   ) : null}
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <input
-                    type="text"
-                    placeholder="Search Raw Material by code/name"
-                    value={skuRmSearchTerm}
-                    onChange={(e) => setSkuRmSearchTerm(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
-                  />
-                  <select
-                    value={selectedSkuRmId}
-                    onChange={(e) => setSelectedSkuRmId(e.target.value)}
-                    disabled={masterLoading}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  >
-                    <option value="">{masterLoading ? 'Loading raw materials…' : 'Select Raw Material (RM master)'}</option>
-                    {filteredSkuRawMaterials.map((rm) => (
-                      <option key={rm.id} value={rm.id} disabled={selectedSkuRmIds.has(String(rm.id)) && String(selectedSkuRmId) !== String(rm.id)}>
-                        {rm.code} — {rm.inci || rm.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Or type INCI / name (manual)"
-                    value={tempSkuLine.inciName}
-                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, inciName: e.target.value }))}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
-                </div>
+                <RmMasterTypeahead
+                  options={skuRmTypeaheadOptions}
+                  value={skuRmQuery}
+                  loading={masterLoading}
+                  selectedId={selectedSkuRmId}
+                  onValueChange={(next) => {
+                    setSkuRmQuery(next);
+                    setTempSkuLine((prev) => ({ ...prev, inciName: next }));
+                  }}
+                  onSelect={(opt) => {
+                    setSelectedSkuRmId(opt.id);
+                    setSkuRmQuery(opt.label);
+                    const rm = rawMaterialById.get(opt.id);
+                    setTempSkuLine((prev) => ({
+                      ...prev,
+                      inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                      uom: prev.uom || rm?.uom || 'GM',
+                    }));
+                  }}
+                  onClearSelection={() => setSelectedSkuRmId('')}
+                  placeholder="Search RM by code or INCI — pick from list or type manual name"
+                />
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <input
                     type="number"
@@ -2267,35 +2327,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       </button>
                     ) : null}
                   </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      placeholder="Search Pack Material by code/description"
-                      value={pmSearchTerm}
-                      onChange={(e) => setPmSearchTerm(e.target.value)}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm sm:col-span-2"
-                    />
-                    <select
-                      value={selectedPmId}
-                      onChange={(e) => setSelectedPmId(e.target.value)}
-                      disabled={masterLoading}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    >
-                      <option value="">{masterLoading ? 'Loading pack materials…' : 'Select Pack Material (PM master)'}</option>
-                      {filteredPackMaterials.map((pm) => (
-                        <option key={pm.id} value={pm.id} disabled={selectedPmIds.has(String(pm.id)) && String(selectedPmId) !== String(pm.id)}>
-                          {pm.code} — {pm.description}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Or type PM Description (manual)"
-                      value={tempComponent.pmDescription}
-                      onChange={(e) => setTempComponent(prev => ({ ...prev, pmDescription: e.target.value }))}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    />
-                  </div>
+                  <PmMasterTypeahead
+                    className="sm:col-span-2"
+                    options={packPmTypeaheadOptions}
+                    value={packPmQuery}
+                    loading={masterLoading}
+                    selectedId={selectedPmId}
+                    onValueChange={(next) => {
+                      setPackPmQuery(next);
+                      setTempComponent((prev) => ({ ...prev, pmDescription: next }));
+                    }}
+                    onSelect={(opt) => {
+                      setSelectedPmId(opt.id);
+                      setPackPmQuery(opt.label);
+                      const pm = packMaterialById.get(opt.id);
+                      setTempComponent((prev) => ({
+                        ...prev,
+                        pmDescription: pm ? (pm.description || opt.label) : opt.label,
+                        type: prev.type || pm?.level || pm?.type || '',
+                        uom: prev.uom || pm?.unit || 'PCS',
+                      }));
+                    }}
+                    onClearSelection={() => setSelectedPmId('')}
+                    placeholder="Search PM by code or description — pick from list or type manual name"
+                  />
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <input
                       type="text"
@@ -2685,21 +2740,38 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   }
 
   return (
-    <MasterFormBase
-      title={productIdFromRoute ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
-      stages={stages}
-      currentStage={currentStage}
-      onStageChange={setCurrentStage}
-      errors={errors}
-      formData={formData as unknown as Record<string, unknown>}
-      onInputChange={() => {}}
-      onSubmit={handleSubmit}
-      nextDisabled={isNewProduct && !canAdvancePastPrimary}
-      nextDisabledTitle="Complete PR category, sub-category, composite item, product name, and MRP price on this step before continuing."
-      isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
-    >
-      {renderStageContent()}
-    </MasterFormBase>
+    <>
+      <MasterFormBase
+        title={productIdFromRoute ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
+        stages={stages}
+        currentStage={currentStage}
+        onStageChange={setCurrentStage}
+        errors={errors}
+        formData={formData as unknown as Record<string, unknown>}
+        onInputChange={() => {}}
+        onSubmit={handleSubmit}
+        nextDisabled={isNewProduct && !canAdvancePastPrimary}
+        nextDisabledTitle="Complete PR category, sub-category, composite item, and product name on this step before continuing."
+        isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
+      >
+        {renderStageContent()}
+      </MasterFormBase>
+      <MasterSubmitPreviewModal
+        isOpen={submitPreviewOpen}
+        onClose={() => {
+          if (submitConfirming) return;
+          setSubmitPreviewOpen(false);
+          setPendingPrSubmit(null);
+        }}
+        onConfirm={handleConfirmSubmit}
+        title={
+          productIdFromRoute ? 'Preview — update product (PR)' : 'Preview — new product registration (PR)'
+        }
+        sections={prPreviewSections}
+        confirming={submitConfirming}
+        isEdit={!!productIdFromRoute}
+      />
+    </>
   );
 };
 

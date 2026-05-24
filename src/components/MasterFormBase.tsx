@@ -19,6 +19,8 @@ interface MasterFormBaseProps {
  children: ReactNode;
  onSave?: () => void;
  onSubmit?: () => void;
+ /** Label for the submit button (default: Review & submit). */
+ submitLabel?: string;
  onReset?: () => void;
  primaryFields?: string[];
  /** When true, disables the Next button (e.g. Zoho sync gate on step 0). */
@@ -49,6 +51,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  children,
  onSave,
  onSubmit,
+ submitLabel = 'Review & submit',
  onReset,
  primaryFields = [],
  nextDisabled = false,
@@ -228,7 +231,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
            onClick={onSubmit}
            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition"
           >
-           Submit
+           {submitLabel}
           </button>
          )}
          <button

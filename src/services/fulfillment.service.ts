@@ -139,6 +139,43 @@ export async function fetchProducts(): Promise<ProductOption[]> {
   return Array.isArray(data) ? data : [];
 }
 
+export interface StagedPaymentTermsPayload {
+  advance_pct: number;
+  pre_shipment_pct: number;
+  post_shipment_pct: number;
+  credit_days: number;
+}
+
+export interface ClientProductPriceResult {
+  product_id: number;
+  client_id: number;
+  quantity: number;
+  price_per_unit: number | null;
+  currency: string;
+  payment_terms: string | null;
+  staged_payment_terms: StagedPaymentTermsPayload | null;
+  source: string;
+  items_list_id?: number | null;
+  rate_id?: number | null;
+  tier_id?: number | null;
+  message?: string;
+}
+
+/** PR unit price from Items List client rate + MOQ tier (sale orders, not PO). */
+export async function fetchClientProductPrice(params: {
+  clientId: number;
+  productId: number;
+  quantity?: number;
+}): Promise<ClientProductPriceResult> {
+  const qs = new URLSearchParams({
+    client_id: String(params.clientId),
+    product_id: String(params.productId),
+    quantity: String(params.quantity ?? 1),
+  });
+  const res = await api.get<ClientProductPriceResult>(`${BASE}/client-product-price?${qs}`);
+  return ((res as { data?: ClientProductPriceResult })?.data ?? res) as ClientProductPriceResult;
+}
+
 /* ── Transporters ── */
 
 export interface TransporterOption { id: number; name: string; code: string; phone: string; email: string; trackingUrl: string; }

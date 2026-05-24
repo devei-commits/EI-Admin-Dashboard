@@ -12,7 +12,7 @@ const LEAD_DAYS_PRODUCT = 45;
 const LEAD_DAYS_CUSTOMISATION = 90;
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { AddSOModalProps } from '../../types/orderFulfillment';
-import { getTodayISO, addDays } from '../../utils/orderFulfillmentUtils';
+import { getTodayISO, addDays, isValidPackSize } from '../../utils/orderFulfillmentUtils';
 import {
   resolveStagedPaymentTermsFromCustomerMaster,
   serializeStagedPaymentTerms,
@@ -22,6 +22,7 @@ import {
   fetchNextSoNo,
   fetchCustomers,
   fetchProducts,
+  fetchClientProductPrice,
   type CustomerOption,
   type ProductOption,
 } from '../../services/fulfillment.service';
@@ -39,6 +40,17 @@ const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-gray-900';
 const SUGGEST_ITEM_META_CLASS = 'text-xs text-gray-500';
 
 type AutocompleteTarget = null | { kind: 'customer' } | { kind: 'product'; index: number };
+
+function parseProductIdFromOption(product: ProductOption): number | null {
+  const m = /^PR-(\d+)$/i.exec(String(product.id || '').trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function packSizeFromProductRecord(product: ProductOption | undefined): string {
+  return (product?.pack ?? '').trim();
+}
 
 export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -82,6 +94,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [priceHints, setPriceHints] = useState<Record<number, string>>({});
+  const priceResolveGenRef = useRef(0);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const [autocompleteTarget, setAutocompleteTarget] = useState<AutocompleteTarget>(null);
   const [suggestPanelRect, setSuggestPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -186,10 +203,83 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCreditDaysStr(String(staged.credit_days));
   };
 
+  const resolveLinePrice = useCallback(
+    async (index: number, snapshot: typeof items, clientId: number) => {
+      const line = snapshot[index];
+      if (!line?.productName?.trim() || !clientId) return;
+      const product = productsByName.get(line.productName.trim());
+      if (!product) return;
+      const productId = parseProductIdFromOption(product);
+      if (!productId) return;
+
+      const gen = ++priceResolveGenRef.current;
+      try {
+        const result = await fetchClientProductPrice({
+          clientId,
+          productId,
+          quantity: line.orderedQty,
+        });
+        if (gen !== priceResolveGenRef.current) return;
+
+        setItems((prev) => {
+          if (prev[index]?.productName?.trim() !== line.productName.trim()) return prev;
+          const next = [...prev];
+          const price = result.price_per_unit;
+          next[index] = {
+            ...next[index],
+            unitPrice: price != null && price > 0 ? price : next[index].unitPrice,
+          };
+          return next;
+        });
+
+        if (result.message) {
+          setPriceHints((prev) => ({ ...prev, [index]: result.message! }));
+        } else {
+          setPriceHints((prev) => {
+            const next = { ...prev };
+            delete next[index];
+            return next;
+          });
+        }
+
+        const fromPriceList =
+          result.source === 'client_price_list_tier' || result.source === 'client_price_list_rate';
+        if (fromPriceList && result.staged_payment_terms) {
+          applyStagedPaymentFields(result.staged_payment_terms);
+        }
+      } catch (err) {
+        console.error('Failed to resolve client product price:', err);
+        setPriceHints((prev) => ({
+          ...prev,
+          [index]: 'Could not load price from client price list.',
+        }));
+      }
+    },
+    [productsByName],
+  );
+
+  const linePriceSignature = items
+    .map((it) => `${it.productName}|${it.orderedQty}`)
+    .join(';');
+
+  useEffect(() => {
+    if (!selectedCustomerId || !isOpen) return;
+    const clientId = selectedCustomerId;
+    const timer = window.setTimeout(() => {
+      const snap = itemsRef.current;
+      snap.forEach((_, index) => {
+        void resolveLinePrice(index, snap, clientId);
+      });
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [selectedCustomerId, linePriceSignature, isOpen, resolveLinePrice]);
+
   const handleCustomerChange = (name: string) => {
     setCustomer(name);
     const selected = customers.find(c => c.name === name);
     if (!selected) {
+      setSelectedCustomerId(null);
+      setPriceHints({});
       setCustomerCode('');
       setCustomerCity('');
       setShipAddress('');
@@ -206,6 +296,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       return;
     }
 
+    setSelectedCustomerId(selected.id);
     setCustomerCode(selected.code || '');
     setCustomerCity(selected.city || '');
     setShipAddress(selected.shippingAddress || '');
@@ -242,12 +333,20 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       const selected = productsByName.get(value);
       if (selected) {
         newItems[index].sku = selected.sku;
-        newItems[index].pack = selected.pack;
-        if (selected.price > 0) newItems[index].unitPrice = selected.price;
+        newItems[index].pack = packSizeFromProductRecord(selected);
+        if (!selectedCustomerId && selected.price > 0) {
+          newItems[index].unitPrice = selected.price;
+        } else {
+          newItems[index].unitPrice = 0;
+        }
       } else {
         newItems[index].sku = '';
         newItems[index].pack = '';
+        newItems[index].unitPrice = 0;
       }
+    }
+    if (field === 'pack') {
+      newItems[index].pack = String(value ?? '').trim();
     }
     setItems(newItems);
   };
@@ -287,7 +386,19 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         newErrors.push(`Select a valid product for item #${index + 1}.`);
       }
       if (item.orderedQty <= 0) newErrors.push(`Quantity for item #${index + 1} must be positive.`);
-      if (item.unitPrice <= 0) newErrors.push(`Unit price for item #${index + 1} must be positive.`);
+      if (item.unitPrice <= 0) {
+        newErrors.push(
+          `Unit price for item #${index + 1} is required — set client pricing in Items List (Products) or enter manually.`,
+        );
+      }
+      if (item.productName && !isValidPackSize(item.pack)) {
+        const prPack = packSizeFromProductRecord(productsByName.get(item.productName.trim()));
+        newErrors.push(
+          prPack
+            ? `Pack size for item #${index + 1} is required.`
+            : `Pack size for item #${index + 1} is required — not set on the product record (PR); enter it manually.`,
+        );
+      }
     });
 
     const adv = Number(advancePctStr);
@@ -322,7 +433,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       shipAddress,
       paymentTerms,
       notes,
-      items,
+      items: items.map((it) => ({
+        ...it,
+        pack: String(it.pack ?? '').trim(),
+      })),
     };
 
     onSave(saveData as any);
@@ -351,6 +465,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
     setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
+    setSelectedCustomerId(null);
+    setPriceHints({});
     setErrors([]);
     setAutocompleteTarget(null);
     setSuggestPanelRect(null);
@@ -550,7 +666,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
 
               <div className="rounded-lg border border-slate-200 p-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-800">Payment terms (three stages + credit days)</p>
-                <p className="text-xs text-slate-500">Aligned with customer master (advance / pre-shipment / post-shipment). Total of the three percentages must not exceed 100%.</p>
+                <p className="text-xs text-slate-500">
+                  Prefilled from customer master; when you add a product, terms from that client&apos;s Items List rate apply when configured.
+                  Total of the three percentages must not exceed 100%.
+                </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <Input label="Advance %" type="number" min={0} max={100} step="0.01" value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} required />
                   <Input label="Pre-shipment %" type="number" min={0} max={100} step="0.01" value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} required />
@@ -566,7 +685,14 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               {/* Items Section */}
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Order Items</h3>
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const selectedProduct = item.productName
+                    ? productsByName.get(item.productName.trim())
+                    : undefined;
+                  const packFromPr = packSizeFromProductRecord(selectedProduct);
+                  const packLockedFromPr = Boolean(packFromPr);
+
+                  return (
                   <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-gray-50 relative">
                     <div className="col-span-12 md:col-span-3 space-y-2">
                       <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
@@ -589,13 +715,49 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       <Input label="SKU" value={item.sku} readOnly disabled />
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <Input label="Pack Size" value={item.pack} readOnly disabled />
+                      <Input
+                        label="Pack Size"
+                        value={item.pack}
+                        readOnly={packLockedFromPr}
+                        disabled={packLockedFromPr}
+                        required={Boolean(item.productName?.trim())}
+                        placeholder={
+                          packLockedFromPr
+                            ? undefined
+                            : 'Required if not on PR'
+                        }
+                        onChange={
+                          packLockedFromPr
+                            ? undefined
+                            : (e) => handleItemChange(index, 'pack', e.target.value)
+                        }
+                      />
+                      {!packLockedFromPr && item.productName?.trim() ? (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Not on product record — enter pack size to create this order.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="col-span-6 md:col-span-2">
                       <Input label="Quantity" type="number" min={1} required value={item.orderedQty} onChange={(e) => handleItemChange(index, 'orderedQty', parseInt(e.target.value))} />
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <Input label="Unit Price (₹)" type="number" min={0.01} step="0.01" required value={item.unitPrice} onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} />
+                      <Input
+                        label="Unit Price (₹)"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        required
+                        value={item.unitPrice}
+                        onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))}
+                      />
+                      {selectedCustomerId ? (
+                        <p className="text-xs text-slate-500 mt-1">
+                          {priceHints[index] || 'From client price list when configured (MOQ tier by quantity).'}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-700 mt-1">Select a customer to load price from Items List.</p>
+                      )}
                     </div>
                     <div className="col-span-12 md:col-span-1">
                       {items.length > 1 && (
@@ -605,7 +767,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <Button onClick={handleAddItem} className="w-full">
                   <Plus className="mr-2 h-4 w-4" /> Add Another Item
                 </Button>

@@ -8,6 +8,7 @@ import { VendorClientProvider } from './context/VendorClientContext'
 import { GlobalStateProvider } from './context/GlobalStateContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
+import SessionExpiredNotifier from './components/SessionExpiredNotifier'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
 import Sidebar from "./components/Sidebar"
 import StandaloneModuleLayout from "./components/StandaloneModuleLayout"
@@ -465,6 +466,7 @@ const App = () => {
                             <AuthProvider>
                                    <NetworkStatus isOnline={isOnline} />
                                    <ToastProvider>
+                                          <SessionExpiredNotifier />
                                           <VendorClientProvider>
                                                  <ItemsProvider>
                                                         <GlobalStateProvider>

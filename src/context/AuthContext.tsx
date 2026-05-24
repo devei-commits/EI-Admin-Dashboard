@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import * as authService from '../services/auth.service';
-import { getAuthToken, clearAuthToken } from '../lib/apiClient';
+import { getAuthToken, clearAuthToken, SESSION_EXPIRED_EVENT } from '../lib/apiClient';
 import type { User } from '../types/user.types';
 
 // Types
@@ -87,6 +87,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
  useEffect(() => {
   loadUserFromToken();
  }, [loadUserFromToken]);
+
+ useEffect(() => {
+  const onSessionExpired = () => {
+   clearAuthToken();
+   setUser(null);
+   try {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+   } catch {
+    // ignore
+   }
+  };
+  window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+ }, []);
 
  const login = async (email: string, password: string): Promise<LoginOutcome> => {
   try {

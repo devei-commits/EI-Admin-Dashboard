@@ -3,6 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
+import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
+import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import ArrayItemManager from '../components/ArrayItemManager';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
@@ -17,9 +20,11 @@ import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawM
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import {
-  RM_SUB_CATEGORY_SKU_OPTIONS,
   RM_SUB_CATEGORY_SKU_SELECT_OPTIONS,
   normalizeRmSubCategoryForSelect,
+  normalizeRmDetailSubCategoryForSelect,
+  rmDetailSubCategoryOptionsForSkuCategory,
+  rmSkuCategoryRequiresDetailSubCategory,
 } from '../constants/materialMasterSkuRules';
 import { resolveRmEditCategories } from '../utils/masterImportCategoryResolve';
 
@@ -196,6 +201,9 @@ const RawMaterialRefactored: React.FC = () => {
  const [tempTest, setTempTest] = useState({ 
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
+ const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+ const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
+ const [submitConfirming, setSubmitConfirming] = useState(false);
 
  const focusFieldById = useCallback((fieldId: string) => {
   window.setTimeout(() => {
@@ -250,6 +258,15 @@ const RawMaterialRefactored: React.FC = () => {
 
  const isNewRm = !existingRmId;
  const taxIsTaxable = formData.rmTaxPreference === 'Taxable';
+ const rmDetailSubCategoryRequired = rmSkuCategoryRequiresDetailSubCategory(formData.subCategory);
+ const rmDetailSubCategoryOptions = useMemo(() => {
+  const base = rmDetailSubCategoryOptionsForSkuCategory(formData.subCategory);
+  const cur = String(formData.optionalRmSubCategory ?? '').trim();
+  if (cur && !base.some((o) => o.value === cur)) {
+   return [{ value: cur, label: cur }, ...base];
+  }
+  return base;
+ }, [formData.subCategory, formData.optionalRmSubCategory]);
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
@@ -323,8 +340,26 @@ const RawMaterialRefactored: React.FC = () => {
      }
     }
    }
-   setFormData((prev) => ({ ...prev, subCategory: next }));
+   setFormData((prev) => ({
+    ...prev,
+    subCategory: next,
+    optionalRmSubCategory: normalizeRmDetailSubCategoryForSelect(next, prev.optionalRmSubCategory),
+   }));
+   setErrors((prev) => {
+    const n = { ...prev };
+    delete n.subCategory;
+    delete n.optionalRmSubCategory;
+    return n;
+   });
    return;
+  }
+  if (id === 'optionalRmSubCategory') {
+   setErrors((prev) => {
+    if (!prev.optionalRmSubCategory) return prev;
+    const n = { ...prev };
+    delete n.optionalRmSubCategory;
+    return n;
+   });
   }
   setFormData(prev => ({
    ...prev,
@@ -498,13 +533,13 @@ const RawMaterialRefactored: React.FC = () => {
   }));
  };
 
- const handleSubmit = async () => {
+ const buildRmSavePayload = (): Record<string, unknown> | null => {
   if (!existingRmId) {
    if (!formData.subCategory?.trim()) {
-    addToast('error', 'Sub-category is required (Primary info step)');
+    addToast('error', 'Category is required (Primary info step)');
     setCurrentStage(0);
     focusFieldById('subCategory');
-    return;
+    return null;
    }
   }
   if (!formData.rmReturnable?.trim()) {
@@ -515,7 +550,7 @@ const RawMaterialRefactored: React.FC = () => {
    addToast('error', 'Step 1 — Returnable Item is required (pick Yes or No)');
    setCurrentStage(0);
    focusFieldById('rmReturnable');
-   return;
+   return null;
   }
   if (!formData.primaryUom?.trim()) {
    setErrors((prev) => ({
@@ -525,7 +560,7 @@ const RawMaterialRefactored: React.FC = () => {
    addToast('error', 'Step 1 — Primary UoM is required (pick KG / GM / L / ML)');
    setCurrentStage(0);
    focusFieldById('primaryUom');
-   return;
+   return null;
   }
   const validation = validatePrimaryFields(formData, 'rawMaterial', {
    omitFields: isNewRm ? ['rmSku'] : undefined,
@@ -536,6 +571,7 @@ const RawMaterialRefactored: React.FC = () => {
     const stageByField: Record<string, number> = {
       rmSku: 0,
       subCategory: 0,
+      optionalRmSubCategory: 0,
       inciName: 0,
       tradeCommercialName: 0,
       primaryUom: 0,
@@ -567,7 +603,7 @@ const RawMaterialRefactored: React.FC = () => {
      Object.values(taxValidation.errors)[0];
     addToast('error', firstMsg || 'Please fill all required fields');
    }
-   return;
+   return null;
   }
   const skuTrim = String(formData.rmSku || '').trim();
   if (skuTrim) {
@@ -576,7 +612,7 @@ const RawMaterialRefactored: React.FC = () => {
      addToast('error', 'Internal RM code must start with "CLUB" for Club items.');
      setCurrentStage(0);
      focusFieldById('rmSku');
-     return;
+     return null;
     }
    } else {
     const digitForSub = rmSubCategoryLeadingDigit(formData.subCategory);
@@ -587,15 +623,33 @@ const RawMaterialRefactored: React.FC = () => {
      );
      setCurrentStage(0);
      focusFieldById('rmSku');
-     return;
+     return null;
     }
    }
   }
-  const savePayload = {
+  return {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
    category: formData.subCategory?.trim() || formData.rmCategory,
   };
+ };
+
+ const rmPreviewSections = useMemo(
+  () => buildMasterPreviewSections(formData as Record<string, unknown>, RM_PREVIEW_SECTIONS),
+  [formData]
+ );
+
+ const handleSubmit = () => {
+  const savePayload = buildRmSavePayload();
+  if (!savePayload) return;
+  setPendingSavePayload(savePayload);
+  setSubmitPreviewOpen(true);
+ };
+
+ const handleConfirmSubmit = async () => {
+  const savePayload = pendingSavePayload;
+  if (!savePayload) return;
+  setSubmitConfirming(true);
   try {
    if (existingRmId) {
     const rmIdForSync = parseInt(String(existingRmId), 10);
@@ -626,11 +680,15 @@ const RawMaterialRefactored: React.FC = () => {
     }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+   setSubmitPreviewOpen(false);
+   setPendingSavePayload(null);
    resetRmFormToEmpty();
    setPageTab('dashboard');
   } catch (err) {
    console.error(err);
    addToast('error', err instanceof Error ? err.message : 'Failed to save raw material');
+  } finally {
+   setSubmitConfirming(false);
   }
  };
 
@@ -642,10 +700,10 @@ const RawMaterialRefactored: React.FC = () => {
    return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sub-category (drives internal SKU)</h3>
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
        <SelectField
-        label="Sub-category"
+        label="Category"
         id="subCategory"
         value={formData.subCategory}
         onChange={handleInputChange}
@@ -654,18 +712,32 @@ const RawMaterialRefactored: React.FC = () => {
         error={errors.subCategory}
         disabled={lockPrimaryFields}
        />
-       <InputField
-        label="Sub-sub-category (optional)"
-        id="optionalRmSubCategory"
-        value={formData.optionalRmSubCategory}
-        onChange={handleInputChange}
-        placeholder="Finer grouping from Excel Sub-Category, if any"
-        error={errors.optionalRmSubCategory}
-       />
+       {rmDetailSubCategoryRequired ? (
+        <SelectField
+         label="Sub-category (optional)"
+         id="optionalRmSubCategory"
+         value={formData.optionalRmSubCategory}
+         onChange={handleInputChange}
+         options={rmDetailSubCategoryOptions}
+         error={errors.optionalRmSubCategory}
+         disabled={lockPrimaryFields || !formData.subCategory?.trim()}
+        />
+       ) : (
+        <InputField
+         label="Sub-category (optional)"
+         id="optionalRmSubCategory"
+         value={formData.optionalRmSubCategory}
+         onChange={handleInputChange}
+         placeholder={isRmClubItemsSubCategory(formData.subCategory) ? 'Optional note for club items' : 'Select a category first'}
+         error={errors.optionalRmSubCategory}
+         disabled={!formData.subCategory?.trim()}
+        />
+       )}
       </div>
       <p className="text-xs text-gray-500 mt-2">
-       Pick Bulk raw materials, Fragrance, Colors &amp; pigments, or Club items for sub-category — codes use 1 / 2 / 3 or{' '}
-       <span className="font-mono">CLUB</span>. Sub-sub-category is optional detail only.
+       Category drives the internal SKU prefix (<span className="font-mono">1</span> bulk,{' '}
+       <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colors, or{' '}
+       <span className="font-mono">CLUB</span>). Sub-category lists depend on the category you pick.
       </p>
      </div>
 
@@ -676,13 +748,13 @@ const RawMaterialRefactored: React.FC = () => {
         {isRmClubItemsSubCategory(formData.subCategory) ? (
          <>
           Assigned on save: <span className="font-mono">CLUB</span> plus five digits (e.g.{' '}
-          <span className="font-mono text-gray-800">CLUB00001</span>).
+          <span className="font-mono text-gray-800">CLUB00019</span>).
          </>
         ) : (
          <>
           Assigned on save: leading digit from sub-category (<span className="font-mono">1</span>,{' '}
-          <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus five digits (e.g.{' '}
-          <span className="font-mono text-gray-800">100001</span>).
+          <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus six digits — seven
+          digits total (e.g. <span className="font-mono text-gray-800">1000001</span>).
          </>
         )}
        </div>
@@ -1495,7 +1567,13 @@ const RawMaterialRefactored: React.FC = () => {
       normalizeRmSubCategoryForSelect(r.category ?? '') ||
       normalizeRmSubCategoryForSelect(r.group ?? '') ||
       resolvedCats.subCategory;
-    merged.optionalRmSubCategory = resolvedCats.optionalRmSubCategory || merged.optionalRmSubCategory || '';
+    const parentForDetail = merged.subCategory;
+    merged.optionalRmSubCategory =
+      normalizeRmDetailSubCategoryForSelect(parentForDetail, resolvedCats.optionalRmSubCategory) ||
+      normalizeRmDetailSubCategoryForSelect(parentForDetail, merged.optionalRmSubCategory) ||
+      resolvedCats.optionalRmSubCategory ||
+      merged.optionalRmSubCategory ||
+      '';
     merged.rmCategory = resolvedCats.rmCategory || merged.rmCategory;
     merged.rmType = resolvedCats.rmType;
     if (!Array.isArray((merged as { vendors?: unknown }).vendors)) {
@@ -1615,7 +1693,7 @@ const RawMaterialRefactored: React.FC = () => {
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
                   nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-1 fields (sub-category, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable). For new RMs, internal code is assigned on save."
+                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category when applicable, INCI, trade/commercial name, primary UoM, returnable item, tax preference, and taxable HSN/GST when applicable). For new RMs, internal code is assigned on save."
                   isStageDisabled={(idx) => isNewRm && idx > 0 && !canAdvancePastPrimary}
                 >
                   {renderStageContent()}
@@ -1625,6 +1703,19 @@ const RawMaterialRefactored: React.FC = () => {
           </div>
         </div>
       )}
+      <MasterSubmitPreviewModal
+        isOpen={submitPreviewOpen}
+        onClose={() => {
+          if (submitConfirming) return;
+          setSubmitPreviewOpen(false);
+          setPendingSavePayload(null);
+        }}
+        onConfirm={handleConfirmSubmit}
+        title={isEditing ? 'Preview — update raw material' : 'Preview — new raw material'}
+        sections={rmPreviewSections}
+        confirming={submitConfirming}
+        isEdit={isEditing}
+      />
     </div>
   );
 };

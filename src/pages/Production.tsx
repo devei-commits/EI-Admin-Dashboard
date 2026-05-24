@@ -3698,6 +3698,13 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const handleSubmit = async () => {
     // Only include lines with quantity to transfer (required > 0)
     if (linesToSend.length === 0) return;
+    if (hasShortage) {
+      addToast(
+        'error',
+        'Cannot send MTR: warehouse available stock (WH − reserved) is less than the quantity to transfer for one or more items. Reduce quantities or receive stock at warehouse first.',
+      );
+      return;
+    }
     if (!String(transferTo || '').trim()) {
       addToast('error', allProductionZones.length === 0
         ? 'No manufacturing zones in Facility Management. Add production areas/zones under Masters first.'
@@ -3752,9 +3759,9 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
       <Tip color="orange" icon={<Send size={14} />}>Request transfer of {type.toUpperCase()} from <b>{fromLabel}</b> to <b>{toLabel}</b></Tip>
       {hasShortage && (
-        <div className="mt-3 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs flex items-start gap-2">
+        <div className="mt-3 px-3 py-2.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs flex items-start gap-2">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          <span><strong>Insufficient at source:</strong> To transfer exceeds Available (WH) for some items. Reduce &quot;To transfer&quot; or ensure more stock is available at warehouse (WH − reserved).</span>
+          <span><strong>Send MTR blocked:</strong> &quot;To transfer&quot; exceeds Available (WH) for some items. Reduce quantities or ensure more stock at warehouse (available = WH stock − reserved) before sending.</span>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 mb-4">
@@ -3842,7 +3849,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         {allAtMu ? (
           <button onClick={handleCompleteStep} disabled={sending} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {sending ? 'Completing…' : 'Complete step'}</button>
         ) : (
-          <button onClick={handleSubmit} disabled={sending || linesToSend.length === 0} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
+          <button onClick={handleSubmit} disabled={sending || linesToSend.length === 0 || hasShortage} title={hasShortage ? 'Insufficient warehouse stock for one or more lines' : undefined} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
         )}
       </div>
     </Modal>

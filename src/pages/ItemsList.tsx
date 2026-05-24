@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import { Search, X } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
+import { parseMoqInput } from '../utils/moqQuantity';
 import {
   fetchPriceListPage,
+  fetchPriceListPagePaginated,
+  fetchPriceListPageStats,
   createItemList,
   createItemListRate,
   createItemListTier,
@@ -17,6 +21,8 @@ import {
 } from '../services/itemsList.service';
 import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
+import { Pagination } from '../components/ui/Pagination';
+import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
   formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
@@ -32,6 +38,8 @@ interface PriceTierRow {
   validTill: string;
   note: string;
 }
+
+const PAGE_SIZE = 25;
 
 const EMPTY_TIERS: PriceTierRow[] = [
   { id: '1', moq: '', price: '', validTill: '', note: '' },
@@ -57,6 +65,9 @@ const ItemsList: React.FC = () => {
   const [addPriceListCombinedItems, setAddPriceListCombinedItems] = useState<PriceListItemPage[]>([]);
   const [loadingCombined, setLoadingCombined] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
+  const [listSearchQuery, setListSearchQuery] = useState('');
+  const [listSearchDebounced, setListSearchDebounced] = useState('');
+  const [listPage, setListPage] = useState(1);
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
   const [clientFilterId, setClientFilterId] = useState<string>('');
   const [advancePctStr, setAdvancePctStr] = useState('');
@@ -88,22 +99,63 @@ const ItemsList: React.FC = () => {
   const [editTierNote, setEditTierNote] = useState('');
   const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
-  const priceListQueries = useQueries({
-    queries: (['rm', 'pm', 'pr'] as const).map((tab) => ({
-      queryKey: ['items-list-pageitems', tab],
-      queryFn: async (): Promise<PriceListItemPage[]> => {
-        const res = await fetchPriceListPage(tab.toUpperCase() as 'RM' | 'PM' | 'PR');
-        if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load items list');
-        return res.data;
-      },
-      staleTime: 2 * 60 * 1000,
-    })),
+  const activeListType: 'RM' | 'PM' | 'PR' =
+    activeTab === 'rm' ? 'RM' : activeTab === 'pm' ? 'PM' : 'PR';
+
+  const partyFilterId =
+    activeTab === 'pr'
+      ? clientFilterId
+        ? parseInt(clientFilterId, 10)
+        : undefined
+      : vendorFilterId
+        ? parseInt(vendorFilterId, 10)
+        : undefined;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setListSearchDebounced(listSearchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [listSearchQuery]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [activeTab, listSearchDebounced, vendorFilterId, clientFilterId]);
+
+  const pageQuery = useQuery({
+    queryKey: ['items-list-page', activeListType, listPage, listSearchDebounced, partyFilterId ?? ''],
+    queryFn: async () => {
+      const res = await fetchPriceListPagePaginated(activeListType, {
+        limit: PAGE_SIZE,
+        offset: (listPage - 1) * PAGE_SIZE,
+        search: listSearchDebounced.trim() || undefined,
+        partyId:
+          partyFilterId != null && !Number.isNaN(partyFilterId) ? partyFilterId : undefined,
+      });
+      if (!res.success || !res.data) {
+        throw new Error(
+          typeof res.error === 'object' && res.error && 'message' in res.error
+            ? String((res.error as { message?: string }).message)
+            : 'Failed to load items list'
+        );
+      }
+      return res.data;
+    },
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
   });
-  const rmPageItems: PriceListItemPage[] = priceListQueries[0].data ?? [];
-  const pmPageItems: PriceListItemPage[] = priceListQueries[1].data ?? [];
-  const prPageItems: PriceListItemPage[] = priceListQueries[2].data ?? [];
-  const pageItems: PriceListItemPage[] =
-    activeTab === 'rm' ? rmPageItems : activeTab === 'pm' ? pmPageItems : prPageItems;
+
+  const statsQuery = useQuery({
+    queryKey: ['items-list-page-stats'],
+    queryFn: async () => {
+      const res = await fetchPriceListPageStats();
+      if (!res.success || !res.data) throw new Error('Failed to load stats');
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const filteredPageItems: PriceListItemPage[] = pageQuery.data?.rows ?? [];
+  const totalListItems = pageQuery.data?.total ?? 0;
+  const totalListPages = Math.max(1, Math.ceil(totalListItems / PAGE_SIZE));
 
   const vendorsQuery = useQuery({
     queryKey: ['items-list-vendors', 'vendor'],
@@ -128,40 +180,15 @@ const ItemsList: React.FC = () => {
   const vendors: VendorClientRecord[] = vendorsQuery.data ?? [];
   const clients: VendorClientRecord[] = clientsQuery.data ?? [];
   const loading =
-    vendorsQuery.isLoading ||
-    clientsQuery.isLoading ||
-    priceListQueries.some((q) => q.isLoading);
+    vendorsQuery.isLoading || clientsQuery.isLoading || pageQuery.isLoading;
 
-  const filteredPageItems = useMemo(() => {
-    if (activeTab === 'rm' || activeTab === 'pm') {
-      if (!vendorFilterId) return pageItems;
-      const vid = vendorFilterId;
-      return pageItems.filter((item) => item.vendorRates?.some((r) => String(r.vendor_id) === vid));
-    }
-    if (activeTab === 'pr') {
-      if (!clientFilterId) return pageItems;
-      const cid = clientFilterId;
-      return pageItems.filter((item) => item.vendorRates?.some((r) => String(r.vendor_id) === cid));
-    }
-    return pageItems;
-  }, [activeTab, pageItems, vendorFilterId, clientFilterId]);
-
-  const stats = useMemo(() => {
-    const totalTiersAll = (rows: PriceListItemPage[]) =>
-      rows.reduce(
-        (s, i) => s + (i.vendorRates?.reduce((ss, v) => ss + (v.tiers?.length ?? 0), 0) ?? 0),
-        0
-      );
-    const totalRatesAll = (rows: PriceListItemPage[]) =>
-      rows.reduce((s, i) => s + (i.vendorRates?.length ?? 0), 0);
-    return {
-      rmWithTiers: rmPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
-      pmWithTiers: pmPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
-      prWithTiers: prPageItems.filter((i) => (i.vendorRates?.length ?? 0) > 0).length,
-      totalRateRows: totalRatesAll(rmPageItems) + totalRatesAll(pmPageItems) + totalRatesAll(prPageItems),
-      totalTiers: totalTiersAll(rmPageItems) + totalTiersAll(pmPageItems) + totalTiersAll(prPageItems),
-    };
-  }, [rmPageItems, pmPageItems, prPageItems]);
+  const stats = statsQuery.data ?? {
+    rmWithTiers: 0,
+    pmWithTiers: 0,
+    prWithTiers: 0,
+    totalRateRows: 0,
+    totalTiers: 0,
+  };
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
@@ -180,22 +207,23 @@ const ItemsList: React.FC = () => {
     }
     let cancelled = false;
     setLoadingCombined(true);
+    const q = itemSearchQuery.trim();
     Promise.all([
-      fetchPriceListPage('RM'),
-      fetchPriceListPage('PM'),
-      fetchPriceListPage('PR'),
+      fetchPriceListPagePaginated('RM', { limit: 80, offset: 0, search: q || undefined }),
+      fetchPriceListPagePaginated('PM', { limit: 80, offset: 0, search: q || undefined }),
+      fetchPriceListPagePaginated('PR', { limit: 80, offset: 0, search: q || undefined }),
     ]).then(([rRes, pRes, prRes]) => {
       if (cancelled) return;
-      const rm = rRes.success && rRes.data ? rRes.data : [];
-      const pm = pRes.success && pRes.data ? pRes.data : [];
-      const pr = prRes.success && prRes.data ? prRes.data : [];
+      const rm = rRes.success && rRes.data ? rRes.data.rows : [];
+      const pm = pRes.success && pRes.data ? pRes.data.rows : [];
+      const pr = prRes.success && prRes.data ? prRes.data.rows : [];
       setAddPriceListCombinedItems([...rm, ...pm, ...pr]);
       setLoadingCombined(false);
     }).catch(() => {
       if (!cancelled) setLoadingCombined(false);
     });
     return () => { cancelled = true; };
-  }, [showAddTierModal, addPriceListMode, tierTarget]);
+  }, [showAddTierModal, addPriceListMode, tierTarget, itemSearchQuery]);
 
   const openAddTier = (item: PriceListItemPage) => {
     setTierTarget(item);
@@ -340,7 +368,7 @@ const ItemsList: React.FC = () => {
       const rateId = rateRes.data.id;
       for (const t of valid) {
         await createItemListTier(String(itemsListId!), rateId, {
-          moq_min: parseInt(t.moq, 10) || 1,
+          moq_min: parseMoqInput(t.moq) ?? 1,
           price_per_unit: parseFloat(t.price),
           valid_till: t.validTill || null,
           note: t.note || null,
@@ -454,9 +482,9 @@ const ItemsList: React.FC = () => {
 
   const handleUpdateTier = async () => {
     if (!editingTier || editingTier.item.itemsListId == null) return;
-    const moqMin = parseInt(editTierMoqMin, 10);
+    const moqMin = parseMoqInput(editTierMoqMin);
     const price = parseFloat(editTierPrice);
-    if (Number.isNaN(moqMin) || Number.isNaN(price)) {
+    if (moqMin == null || Number.isNaN(price)) {
       addToast('error', 'MOQ and price are required');
       return;
     }
@@ -467,7 +495,7 @@ const ItemsList: React.FC = () => {
       editingTier.tier.id,
       {
         moq_min: moqMin,
-        moq_max: editTierMoqMax ? parseInt(editTierMoqMax, 10) : null,
+        moq_max: editTierMoqMax.trim() ? parseMoqInput(editTierMoqMax) : null,
         price_per_unit: price,
         valid_till: editTierValidTill || null,
         note: editTierNote || null,
@@ -522,6 +550,44 @@ const ItemsList: React.FC = () => {
     const pool = tierTarget?.type === 'PR' ? clients : vendors;
     return pool.filter((p) => !partyIdsUsed.has(parseInt(p.id, 10)));
   }, [tierTarget?.type, clients, vendors, partyIdsUsed]);
+
+  const applySelectedParty = (v: VendorClientRecord | null) => {
+    setSelectedParty(v);
+    if (!v) {
+      setAdvancePctStr('');
+      setPreShipmentPctStr('');
+      setPostShipmentPctStr('');
+      setCreditDaysStr('');
+      setLeadTimeDays('');
+      return;
+    }
+    void (async () => {
+      try {
+        let paymentTerms = v.paymentTerms;
+        let data = v.data as Record<string, unknown> | undefined;
+        let lead = v.leadTime ?? '';
+        const fullRes = await fetchVendorClientById(v.id);
+        if (fullRes.success && fullRes.data) {
+          paymentTerms = fullRes.data.paymentTerms ?? paymentTerms;
+          data = (fullRes.data.data ?? data) as Record<string, unknown> | undefined;
+          lead = fullRes.data.leadTime ?? lead;
+        }
+        const staged = resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data);
+        setAdvancePctStr(String(staged.advance_pct));
+        setPreShipmentPctStr(String(staged.pre_shipment_pct));
+        setPostShipmentPctStr(String(staged.post_shipment_pct));
+        setCreditDaysStr(staged.credit_days ? String(staged.credit_days) : '');
+        setLeadTimeDays(lead ? String(lead) : '');
+      } catch {
+        addToast('error', 'Could not apply client payment terms. Try again or refresh.');
+      }
+    })();
+  };
+
+  const partyIdsUsedForTypeahead = useMemo(() => {
+    if (!tierTarget?.vendorRates?.length) return undefined;
+    return new Set(tierTarget.vendorRates.map((r) => String(r.vendor_id)));
+  }, [tierTarget?.vendorRates]);
 
   const handleMasterCategoriesExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -673,7 +739,11 @@ const ItemsList: React.FC = () => {
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setListSearchQuery('');
+                    setListPage(1);
+                  }}
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                     activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
@@ -712,19 +782,15 @@ const ItemsList: React.FC = () => {
                 <label htmlFor="items-list-client-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
                   Filter by client
                 </label>
-                <select
-                  id="items-list-client-filter"
-                  value={clientFilterId}
-                  onChange={(e) => setClientFilterId(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="">All clients</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name ?? c.id}
-                    </option>
-                  ))}
-                </select>
+                <VendorClientNameTypeahead
+                  inputId="items-list-client-filter"
+                  parties={clients}
+                  selectedId={clientFilterId}
+                  loading={clientsQuery.isLoading}
+                  placeholder="All clients — search by name, city…"
+                  onSelect={(c) => setClientFilterId(c?.id ?? '')}
+                  className="min-w-[220px]"
+                />
                 {clientFilterId ? (
                   <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
                     Only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
@@ -740,6 +806,38 @@ const ItemsList: React.FC = () => {
             + Add Price List
           </button>
         </div>
+
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="search"
+            value={listSearchQuery}
+            onChange={(e) => setListSearchQuery(e.target.value)}
+            placeholder={
+              activeTab === 'pr'
+                ? 'Search product code, name, or client…'
+                : 'Search item code, name, or vendor…'
+            }
+            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            aria-label="Search items list"
+          />
+          {listSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setListSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          ) : null}
+        </div>
+        {listSearchDebounced.trim() && !loading ? (
+          <p className="text-xs text-gray-500 -mt-4">
+            {totalListItems} {activeTab === 'pr' ? 'product' : 'item'}
+            {totalListItems !== 1 ? 's' : ''} match &quot;{listSearchDebounced.trim()}&quot;
+          </p>
+        ) : null}
 
         {loading ? (
           <div className="py-12 text-center text-gray-500">Loading…</div>
@@ -916,17 +1014,30 @@ const ItemsList: React.FC = () => {
             })}
             {filteredPageItems.length === 0 && (
               <p className="text-gray-500 py-8 text-center">
-                {pageItems.length === 0
-                  ? 'No items'
+                {listSearchDebounced.trim()
+                  ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
                   : activeTab === 'pr'
                     ? clientFilterId
                       ? 'No products with client pricing for the selected client.'
                       : 'No products in catalogue.'
-                    : 'No items with rates for the selected vendor.'}
+                    : vendorFilterId
+                      ? 'No items with rates for the selected vendor.'
+                      : 'No items in this tab.'}
               </p>
             )}
           </div>
         )}
+
+        {!loading && totalListItems > 0 ? (
+          <Pagination
+            currentPage={listPage}
+            totalPages={totalListPages}
+            onPageChange={setListPage}
+            totalItems={totalListItems}
+            itemsPerPage={PAGE_SIZE}
+            variant="compact"
+          />
+        ) : null}
       </div>
 
       {showAddTierModal && (tierTarget || addPriceListMode) && (
@@ -1011,50 +1122,32 @@ const ItemsList: React.FC = () => {
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
                     {tierTarget.type === 'PR' ? 'Client *' : 'Vendor *'}
                   </label>
-                  <select
-                    value={selectedParty?.id ?? ''}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const pool = tierTarget.type === 'PR' ? clients : vendors;
-                      const v = pool.find((x) => x.id === id) ?? null;
-                      setSelectedParty(v);
-                      if (!v) {
-                        setAdvancePctStr('');
-                        setPreShipmentPctStr('');
-                        setPostShipmentPctStr('');
-                        setCreditDaysStr('');
-                        setLeadTimeDays('');
-                        return;
-                      }
-                      void (async () => {
-                        try {
-                          let paymentTerms = v.paymentTerms;
-                          let data = v.data as Record<string, unknown> | undefined;
-                          let lead = v.leadTime ?? '';
-                          const fullRes = await fetchVendorClientById(v.id);
-                          if (fullRes.success && fullRes.data) {
-                            paymentTerms = fullRes.data.paymentTerms ?? paymentTerms;
-                            data = (fullRes.data.data ?? data) as Record<string, unknown> | undefined;
-                            lead = fullRes.data.leadTime ?? lead;
-                          }
-                          const staged = resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data);
-                          setAdvancePctStr(String(staged.advance_pct));
-                          setPreShipmentPctStr(String(staged.pre_shipment_pct));
-                          setPostShipmentPctStr(String(staged.post_shipment_pct));
-                          setCreditDaysStr(staged.credit_days ? String(staged.credit_days) : '');
-                          setLeadTimeDays(lead ? String(lead) : '');
-                        } catch {
-                          addToast('error', 'Could not apply vendor payment terms. Try again or refresh.');
-                        }
-                      })();
-                    }}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
-                  >
-                    <option value="">Select…</option>
-                    {availableParties.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
-                    ))}
-                  </select>
+                  {tierTarget.type === 'PR' ? (
+                    <VendorClientNameTypeahead
+                      parties={clients}
+                      selectedId={selectedParty?.id ?? ''}
+                      loading={clientsQuery.isLoading}
+                      disabled={availableParties.length === 0 && !!tierTarget.vendorRates?.length}
+                      disabledIds={partyIdsUsedForTypeahead}
+                      placeholder="Search client by name, city…"
+                      onSelect={applySelectedParty}
+                    />
+                  ) : (
+                    <select
+                      value={selectedParty?.id ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const v = vendors.find((x) => x.id === id) ?? null;
+                        applySelectedParty(v);
+                      }}
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value="">Select…</option>
+                      {availableParties.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
+                      ))}
+                    </select>
+                  )}
                   {availableParties.length === 0 && tierTarget.vendorRates?.length ? (
                     <p className="text-xs text-amber-600 mt-1">
                       {tierTarget.type === 'PR'

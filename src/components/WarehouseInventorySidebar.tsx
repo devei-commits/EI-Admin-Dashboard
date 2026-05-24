@@ -12,6 +12,11 @@ import {
 } from '../services/warehouseInventory.service';
 import StockByLocationPanel, { type RackQtyDraft } from './StockByLocationPanel';
 import { warehouseStoreLabelForItemType } from '../constants/warehouseItemLocations';
+import {
+  formatQtyInputDisplay,
+  parseQtyInputString,
+  sanitizeQtyInputString,
+} from '../utils/qtyInput';
 
 interface Props {
   item: InventoryItem | null;
@@ -43,6 +48,30 @@ function numOr(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+const STOCK_QTY_INPUT_FIELDS = [
+  'whStock',
+  'ml1Stock',
+  'ml2Stock',
+  'reserved',
+  'inTransit',
+  'reorderPt',
+  'avgMo',
+] as const;
+
+type StockQtyInputField = (typeof STOCK_QTY_INPUT_FIELDS)[number];
+
+function buildStockQtyDraft(item: InventoryItem): Record<StockQtyInputField, string> {
+  return {
+    whStock: formatQtyInputDisplay(item.whStock),
+    ml1Stock: formatQtyInputDisplay(item.ml1Stock),
+    ml2Stock: formatQtyInputDisplay(item.ml2Stock),
+    reserved: formatQtyInputDisplay(item.reserved),
+    inTransit: formatQtyInputDisplay(item.inTransit),
+    reorderPt: formatQtyInputDisplay(item.reorderPt),
+    avgMo: formatQtyInputDisplay(item.avgMo),
+  };
+}
+
 const WarehouseInventorySidebar: React.FC<Props> = ({
   item,
   onClose,
@@ -60,6 +89,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
   const [stockByLocation, setStockByLocation] = useState<StockByLocationPayload | null>(null);
   const [stockByLocationLoading, setStockByLocationLoading] = useState(false);
   const [rackQtyDraft, setRackQtyDraft] = useState<RackQtyDraft[] | null>(null);
+  const [stockQtyDraft, setStockQtyDraft] = useState<Partial<Record<StockQtyInputField, string>>>({});
   const editSnapshotRef = useRef<InventoryItem | null>(null);
 
   function buildRackDraftFromPayload(payload: StockByLocationPayload): RackQtyDraft[] {
@@ -89,6 +119,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
           stockInHand: whTotal + itemPrev.ml1Stock + itemPrev.ml2Stock,
         };
       });
+      setStockQtyDraft((prev) => ({ ...prev, whStock: formatQtyInputDisplay(whTotal) }));
       return next;
     });
   };
@@ -107,9 +138,11 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
         zone: item.zone === '—' ? '' : item.zone,
         rack: item.rack === '—' ? '' : item.rack,
       };
+      setStockQtyDraft(buildStockQtyDraft(item));
       setIsEditMode(true);
     } else {
       editSnapshotRef.current = null;
+      setStockQtyDraft({});
       setIsEditMode(false);
     }
   }, [item, initialEditMode]);
@@ -194,6 +227,18 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
     });
   };
 
+  const handleStockQtyInput = (field: StockQtyInputField, raw: string) => {
+    const sanitized = sanitizeQtyInputString(raw);
+    setStockQtyDraft((prev) => ({ ...prev, [field]: sanitized }));
+    updateInventoryField(field, parseQtyInputString(sanitized));
+  };
+
+  const stockQtyInputValue = (field: StockQtyInputField): string => {
+    if (field in stockQtyDraft) return stockQtyDraft[field] ?? '';
+    if (!selectedItem) return '';
+    return formatQtyInputDisplay(selectedItem[field]);
+  };
+
   const startEdit = () => {
     if (!selectedItem) return;
     editSnapshotRef.current = { ...selectedItem };
@@ -206,6 +251,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
       };
     });
     setAdjustNote('');
+    setStockQtyDraft(buildStockQtyDraft(selectedItem));
     setIsEditMode(true);
   };
 
@@ -216,6 +262,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
     editSnapshotRef.current = null;
     setAdjustNote('');
     setRackQtyDraft(null);
+    setStockQtyDraft({});
     setStockByLocation(null);
     setIsEditMode(false);
   };
@@ -296,6 +343,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
       setIsEditMode(false);
       setAdjustNote('');
       setRackQtyDraft(null);
+      setStockQtyDraft({});
       await refreshHistory(wid);
       const locRes = await fetchStockByLocation(wid);
       if (locRes.success && locRes.data) {
@@ -314,13 +362,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
 
   const warehouseStoreLabel = warehouseStoreLabelForItemType(selectedItem.type);
   const whLocationHint =
-    selectedItem.type === 'RM'
-      ? 'Adjust stock only in the RM warehouse zone and its racks.'
-      : selectedItem.type === 'PM'
-        ? 'Adjust stock only in the packaging (PM) warehouse zone and its racks.'
-        : selectedItem.type === 'FG/PR'
-          ? 'Adjust stock only in the finished-goods warehouse zone and its racks.'
-          : 'Adjust stock across warehouse zones and racks.';
+    'Adjust stock in any warehouse zone and rack. New inbound (GRN) posts to the facility default warehouse zone.';
 
   const isModal = variant === 'modal';
   return (
@@ -380,7 +422,7 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
             {isEditMode ? (
               <p className="text-[10px] text-slate-500">
                 {whLocationHint} WH total follows the sum of rack quantities in{' '}
-                <span className="font-semibold text-slate-700">{warehouseStoreLabel}</span>.
+                <span className="font-semibold text-slate-700">{warehouseStoreLabel}</span> (all zones listed below).
               </p>
             ) : (
               <p className="text-[10px] text-slate-500">
@@ -489,15 +531,16 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">WH stock</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.whStock}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('whStock')}
                   readOnly={rackQtyDraft != null && rackQtyDraft.length > 0}
                   title={
                     rackQtyDraft != null && rackQtyDraft.length > 0
                       ? 'Derived from rack quantities above'
                       : undefined
                   }
-                  onChange={(e) => updateInventoryField('whStock', Number(e.target.value) || 0)}
+                  onChange={(e) => handleStockQtyInput('whStock', e.target.value)}
                   className={`w-full border border-slate-300 rounded px-2 py-1 text-sm text-cyan-700 ${
                     rackQtyDraft != null && rackQtyDraft.length > 0
                       ? 'bg-slate-100 cursor-default'
@@ -512,9 +555,10 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">ML1 stock</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.ml1Stock}
-                  onChange={(e) => updateInventoryField('ml1Stock', Number(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('ml1Stock')}
+                  onChange={(e) => handleStockQtyInput('ml1Stock', e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-blue-700"
                 />
               ) : (
@@ -525,9 +569,10 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">ML2 stock</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.ml2Stock}
-                  onChange={(e) => updateInventoryField('ml2Stock', Number(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('ml2Stock')}
+                  onChange={(e) => handleStockQtyInput('ml2Stock', e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-indigo-700"
                 />
               ) : (
@@ -557,9 +602,10 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">In transit</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.inTransit}
-                  onChange={(e) => updateInventoryField('inTransit', Number(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('inTransit')}
+                  onChange={(e) => handleStockQtyInput('inTransit', e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm text-rose-700"
                 />
               ) : (
@@ -580,9 +626,10 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">Reorder point</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.reorderPt}
-                  onChange={(e) => updateInventoryField('reorderPt', Number(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('reorderPt')}
+                  onChange={(e) => handleStockQtyInput('reorderPt', e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm"
                 />
               ) : (
@@ -593,9 +640,10 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               <p className="text-[9px] uppercase text-slate-500 mb-1">Avg monthly</p>
               {isEditMode ? (
                 <input
-                  type="number"
-                  value={selectedItem.avgMo}
-                  onChange={(e) => updateInventoryField('avgMo', Number(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={stockQtyInputValue('avgMo')}
+                  onChange={(e) => handleStockQtyInput('avgMo', e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm"
                 />
               ) : (

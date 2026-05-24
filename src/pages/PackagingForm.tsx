@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
+import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
@@ -21,7 +24,11 @@ import {
   PM_SKU_CATEGORY_OPTIONS,
   isCanonicalPmSkuCategory,
   normalizePmSkuCategoryForSelect,
+  normalizePmDetailSubCategoryForSelect,
+  pmDetailSubCategoryOptionsForSkuCategory,
   pmLevelForSubCategory,
+  pmSkuCategoryRequiresDetailSubCategory,
+  pmSkuMatchesCodePrefix,
   pmSubCategorySkuPrefix,
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
@@ -41,11 +48,6 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   MISC: { label: 'Miscellaneous / Others', prefix: 'EI-PM-MISC' },
 };
 
-function pmSkuMatchesSubCategoryPrefix(sku: string, prefix: '4' | '5M' | '5L'): boolean {
-  if (prefix === '5L') return /^5[Ll]/.test(sku);
-  return sku.startsWith(prefix);
-}
-
 const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 const PM_REQUIRED_FIELDS: Array<{
@@ -54,7 +56,7 @@ const PM_REQUIRED_FIELDS: Array<{
   section: number;
   toastMessage: string;
 }> = [
-  { id: 'pmSkuCategory', label: 'Sub-category', section: 0, toastMessage: 'Step 1 — Sub-category is required' },
+  { id: 'pmSkuCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
   { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 1 — Generate or enter SKU before submitting' },
   { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item Name is required' },
   { id: 'itemCategory', label: 'Item type', section: 0, toastMessage: 'Step 1 — Item type is required' },
@@ -215,6 +217,9 @@ const PackagingRefactored: React.FC = () => {
   const [autoSaveOn, setAutoSaveOn] = useState(true);
   const [lastSaved, setLastSaved] = useState<string>('—');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [pendingPmPayload, setPendingPmPayload] = useState<CreatePackMaterialPayload | null>(null);
+  const [submitConfirming, setSubmitConfirming] = useState(false);
   const focusPmField = useCallback((fieldId: string) => {
     window.setTimeout(() => {
       const el = document.getElementById(fieldId);
@@ -226,6 +231,17 @@ const PackagingRefactored: React.FC = () => {
 
   const isNewPm = !existingPmId;
   const taxIsTaxable = formData.pkgTaxPreference === 'Taxable';
+  const pmDetailSubCategoryRequired = pmSkuCategoryRequiresDetailSubCategory(
+    formData.pmSkuCategory || formData.subCategory
+  );
+  const pmDetailSubCategoryOptions = useMemo(() => {
+    const base = pmDetailSubCategoryOptionsForSkuCategory(formData.pmSkuCategory || formData.subCategory);
+    const cur = String(formData.optionalPmSubCategory ?? '').trim();
+    if (cur && !base.some((o) => o.value === cur)) {
+      return [{ value: cur, label: cur }, ...base];
+    }
+    return base;
+  }, [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]);
   const canAdvancePastPrimary =
     !isNewPm ||
     Boolean(
@@ -322,8 +338,8 @@ const PackagingRefactored: React.FC = () => {
       const sku = String(formData.itemCode || '').trim();
       if (sku && existingPmId && canon) {
         const p = pmSubCategorySkuPrefix(canon);
-        if (p && !pmSkuMatchesSubCategoryPrefix(sku, p)) {
-          addToast('error', `This PM code (${sku}) must start with "${p}" for the selected sub-category.`);
+        if (p && !pmSkuMatchesCodePrefix(sku, p)) {
+          addToast('error', `This PM code (${sku}) must start with "${p}" for the selected category.`);
           return;
         }
       }
@@ -331,9 +347,24 @@ const PackagingRefactored: React.FC = () => {
         ...prev,
         pmSkuCategory: canon || prev.pmSkuCategory,
         subCategory: canon || prev.subCategory,
+        optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(canon, prev.optionalPmSubCategory),
         ...(level ? { level } : {}),
       }));
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.pmSkuCategory;
+        delete next.optionalPmSubCategory;
+        return next;
+      });
       return;
+    }
+    if (id === 'optionalPmSubCategory') {
+      setErrors((prev) => {
+        if (!prev.optionalPmSubCategory) return prev;
+        const next = { ...prev };
+        delete next.optionalPmSubCategory;
+        return next;
+      });
     }
     setFormData(prev => ({
       ...prev,
@@ -545,7 +576,20 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
-  const handleSubmit = async () => {
+  const pmPreviewFormData = useMemo(
+    () => ({
+      ...(formData as Record<string, unknown>),
+      itemCode: formData.itemCode || generatedCode || '',
+    }),
+    [formData, generatedCode]
+  );
+
+  const pmPreviewSections = useMemo(
+    () => buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS),
+    [pmPreviewFormData]
+  );
+
+  const validatePmForSubmit = (): CreatePackMaterialPayload | null => {
     const requiredFields = PM_REQUIRED_FIELDS.filter((field) => {
       if (field.id === 'itemCode' && !existingPmId) return false;
       return true;
@@ -562,8 +606,11 @@ const PackagingRefactored: React.FC = () => {
           addToast('error', field.toastMessage);
           setCurrentSection(field.section);
           focusPmField(field.id);
-          return;
+          return null;
         }
+        continue;
+      }
+      if (field.id === 'optionalPmSubCategory') {
         continue;
       }
       const rawValue = formData[field.id as keyof typeof formData];
@@ -577,7 +624,7 @@ const PackagingRefactored: React.FC = () => {
         addToast('error', field.toastMessage);
         setCurrentSection(field.section);
         focusPmField(field.id);
-        return;
+        return null;
       }
     }
     const codeRule = (formData.itemCode || generatedCode || '').trim();
@@ -587,11 +634,11 @@ const PackagingRefactored: React.FC = () => {
         .trim()
         .toLowerCase();
     const pfxRule = pmSubCategorySkuPrefix(skuCatKey);
-    if (pfxRule && codeRule && !pmSkuMatchesSubCategoryPrefix(codeRule, pfxRule)) {
-      addToast('error', `SKU must start with "${pfxRule}" for sub-category "${formData.pmSkuCategory || formData.subCategory}".`);
+    if (pfxRule && codeRule && !pmSkuMatchesCodePrefix(codeRule, pfxRule)) {
+      addToast('error', `SKU must start with "${pfxRule}" for category "${formData.pmSkuCategory || formData.subCategory}".`);
       setCurrentSection(0);
       focusPmField('itemCode');
-      return;
+      return null;
     }
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
     if (!taxValidation.valid) {
@@ -604,9 +651,22 @@ const PackagingRefactored: React.FC = () => {
       );
       setCurrentSection(0);
       if (firstTaxKey) focusPmField(firstTaxKey);
-      return;
+      return null;
     }
-    const payload = buildPayload();
+    return buildPayload();
+  };
+
+  const handleSubmit = () => {
+    const payload = validatePmForSubmit();
+    if (!payload) return;
+    setPendingPmPayload(payload);
+    setSubmitPreviewOpen(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    const payload = pendingPmPayload;
+    if (!payload) return;
+    setSubmitConfirming(true);
     try {
       if (existingPmId) {
         const pmIdForSync = parseInt(String(existingPmId), 10);
@@ -620,9 +680,7 @@ const PackagingRefactored: React.FC = () => {
         );
         setExistingPmId(null);
       } else {
-        const saved = await createPackMaterial({
-          ...payload,
-        });
+        const saved = await createPackMaterial({ ...payload });
         const newPmId = parseInt(String(saved.id), 10);
         const syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
         addToast(
@@ -634,10 +692,14 @@ const PackagingRefactored: React.FC = () => {
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      setSubmitPreviewOpen(false);
+      setPendingPmPayload(null);
       resetPmFormToEmpty();
       setPageTab('bpr');
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
+    } finally {
+      setSubmitConfirming(false);
     }
   };
 
@@ -649,10 +711,10 @@ const PackagingRefactored: React.FC = () => {
           <div className="min-w-0 space-y-5 sm:space-y-6">
             {/* PM Category — Industry Buckets */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sub-category (drives internal SKU)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SelectField
-                  label="Sub-category"
+                  label="Category"
                   id="pmSkuCategory"
                   value={formData.pmSkuCategory}
                   onChange={handleInputChange}
@@ -664,20 +726,36 @@ const PackagingRefactored: React.FC = () => {
                 {formData.pmSkuCategory &&
                 !PM_SKU_CATEGORY_OPTIONS.includes(formData.pmSkuCategory as (typeof PM_SKU_CATEGORY_OPTIONS)[number]) ? (
                   <p className="text-[10px] text-amber-800 mt-1 col-span-2">
-                    Legacy sub-category &quot;{formData.pmSkuCategory}&quot; — pick a PPM / SPM / TPM option to align level and SKU rules.
+                    Legacy category &quot;{formData.pmSkuCategory}&quot; — pick a PPM / SPM / TPM option to align level and SKU rules.
                   </p>
                 ) : null}
-                <InputField
-                  label="Sub-sub-category (optional)"
-                  id="optionalPmSubCategory"
-                  value={formData.optionalPmSubCategory}
-                  onChange={handleInputChange}
-                  placeholder="e.g. folding carton, shrink sleeve"
-                  error={errors.optionalPmSubCategory}
-                />
+                {pmDetailSubCategoryRequired ? (
+                  <SelectField
+                    label="Sub-category (optional)"
+                    id="optionalPmSubCategory"
+                    value={formData.optionalPmSubCategory}
+                    onChange={handleInputChange}
+                    options={pmDetailSubCategoryOptions}
+                    error={errors.optionalPmSubCategory}
+                    disabled={lockPrimaryFields || !formData.pmSkuCategory?.trim()}
+                  />
+                ) : (
+                  <InputField
+                    label="Sub-category (optional)"
+                    id="optionalPmSubCategory"
+                    value={formData.optionalPmSubCategory}
+                    onChange={handleInputChange}
+                    placeholder="Select a category first"
+                    error={errors.optionalPmSubCategory}
+                    disabled={!formData.pmSkuCategory?.trim()}
+                  />
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                PPM → Primary (SKU 4…), SPM - Monocarton / Labels → Secondary (5M… / 5L…), TPM - Other components → Tertiary (SKU 4…). Level is set automatically from sub-category.
+                Category sets the SKU series: PPM <span className="font-mono">4</span>, SPM Labels{' '}
+                <span className="font-mono">5L</span>, Monocartons <span className="font-mono">5M</span>, Other Secondary{' '}
+                <span className="font-mono">5O</span>, TPM Tertiary <span className="font-mono">6T</span>, Ancillary{' '}
+                <span className="font-mono">6A</span>. Level is set automatically from category.
               </p>
             </div>
 
@@ -731,7 +809,7 @@ const PackagingRefactored: React.FC = () => {
                   onChange={handleInputChange}
                   placeholder={
                     isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory)
-                      ? 'Optional — leave blank to assign on save (4… / 5M… / 5L…)'
+                      ? 'Optional — leave blank to assign on save (4… / 5L… / 5M… / 5O… / 6T… / 6A…)'
                       : 'e.g. 400001 or legacy code'
                   }
                   requiredMark={
@@ -1396,6 +1474,11 @@ const PackagingRefactored: React.FC = () => {
         merged.subCategory = merged.pmSkuCategory;
         const lvl = pmLevelForSubCategory(merged.pmSkuCategory);
         if (lvl) merged.level = lvl;
+        merged.optionalPmSubCategory =
+          normalizePmDetailSubCategoryForSelect(merged.pmSkuCategory, merged.optionalPmSubCategory) ||
+          merged.optionalPmSubCategory ||
+          '';
+        merged.matBody = merged.optionalPmSubCategory || merged.matBody || '';
         return merged;
       });
 
@@ -1548,7 +1631,7 @@ const PackagingRefactored: React.FC = () => {
                     onClick={handleSubmit}
                     className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
                   >
-                    Submit
+                    Review & submit
                   </button>
                 </div>
               </div>
@@ -1684,6 +1767,19 @@ const PackagingRefactored: React.FC = () => {
           </div>
         </div>
       </div>
+      <MasterSubmitPreviewModal
+        isOpen={submitPreviewOpen}
+        onClose={() => {
+          if (submitConfirming) return;
+          setSubmitPreviewOpen(false);
+          setPendingPmPayload(null);
+        }}
+        onConfirm={handleConfirmSubmit}
+        title={isEditingPm ? 'Preview — update packaging material' : 'Preview — new packaging material'}
+        sections={pmPreviewSections}
+        confirming={submitConfirming}
+        isEdit={isEditingPm}
+      />
     </>
   );
 };

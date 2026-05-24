@@ -23,7 +23,7 @@ import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
-import { createGRN, fetchGRNList, updateGRN, type GRNRecordFromApi } from '../../services/grn.service';
+import { createGRN, fetchGRNById, fetchGRNList, updateGRN, type GRNRecordFromApi } from '../../services/grn.service';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import {
   fetchPriceListPage,
@@ -55,6 +55,7 @@ import {
   computeIssuedPoEtaFromLeadTimes,
 } from './procurementDataMappers';
 import type { ReleaseLineEditRow } from './procurementDataMappers';
+import { formatMoqDisplay, moqValuesEqual, parseMoqInput } from '../../utils/moqQuantity';
 import type {
   RequestType,
   RequestPriority,
@@ -94,6 +95,8 @@ import {
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import GrnMonitorDetailPanel from '../../components/procurement/GrnMonitorDetailPanel';
+import { Pagination } from '../../components/ui/Pagination';
 import {
   parseStagedPaymentTerms,
   serializeStagedPaymentTerms,
@@ -319,6 +322,8 @@ function resolveMasterIdsFromRawItem(raw: any): {
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
 const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
 
+const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+
 /**
  * Procurement requests whose released POs should appear under Issued POs.
  * Includes Under GRN: marking one split PO delivered sets the whole PR to Under GRN, but sibling POs (e.g. …-S2) must stay visible.
@@ -341,10 +346,10 @@ function requestStatusIsPreDraftPipeline(status: RequestStatus): boolean {
   return REQUEST_STATUSES_PRE_DRAFT_PIPELINE.includes(status);
 }
 
-/** True when payment terms include an advance % (cannot issue PO until advance is recorded in PO tracking). */
+/** True when payment terms include a positive advance % (transaction details + advance recording apply). */
 function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null): boolean {
-  const { type } = parsePaymentTermsString(paymentTerms);
-  return paymentTermsTypeRequiresAdvancePercent(type);
+  const { type, advancePercent } = parsePaymentTermsString(paymentTerms);
+  return paymentTermsTypeRequiresAdvancePercent(type) && Number(advancePercent) > 0;
 }
 
 const RELEASE_PAYMENT_MODES = ['NEFT', 'RTGS', 'IMPS', 'UPI', 'Cheque', 'Cash', 'Bank Transfer'] as const;
@@ -885,6 +890,10 @@ const Procurement: React.FC = () => {
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
+  const [grnMonitorPage, setGrnMonitorPage] = useState(1);
+  const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
+  const [selectedGrnMonitor, setSelectedGrnMonitor] = useState<GRNRecordFromApi | null>(null);
+  const [grnMonitorDetailLoading, setGrnMonitorDetailLoading] = useState(false);
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
   const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
   const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
@@ -980,6 +989,64 @@ const Procurement: React.FC = () => {
     }
     return set;
   }, [grnListFromApi]);
+
+  const openGrnMonitorDetail = useCallback(async (grn: GRNRecordFromApi) => {
+    setSelectedGrnMonitor(grn);
+    setGrnMonitorDetailLoading(true);
+    try {
+      const full = await fetchGRNById(String(grn.id));
+      if (full) setSelectedGrnMonitor(full);
+    } finally {
+      setGrnMonitorDetailLoading(false);
+    }
+  }, []);
+
+  const filteredGrnMonitorLines = useMemo(() => {
+    const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
+    return grnList.filter((grn) => {
+      if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
+      if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
+      const statusNorm =
+        (grn.status || '') === 'GRN Complete'
+          ? 'Completed'
+          : (grn.status || '') === 'Under GRN'
+            ? 'Under GRN'
+            : 'Pending GRN';
+      if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
+      if (!grnSearch.trim()) return true;
+      const q = grnSearch.toLowerCase();
+      return (
+        (grn.grnNo ?? '').toLowerCase().includes(q) ||
+        (grn.poNo ?? '').toLowerCase().includes(q) ||
+        (grn.vendor ?? '').toLowerCase().includes(q) ||
+        (grn.lineItems ?? []).some(
+          (l) =>
+            (l.item ?? '').toLowerCase().includes(q) || (l.itemCode ?? '').toLowerCase().includes(q)
+        )
+      );
+    });
+  }, [grnListFromApi, grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch]);
+
+  const grnMonitorTotalPages = Math.max(
+    1,
+    Math.ceil(filteredGrnMonitorLines.length / grnMonitorPageSize)
+  );
+  const grnMonitorSafePage = Math.min(grnMonitorPage, grnMonitorTotalPages);
+  const grnMonitorStartIndex = (grnMonitorSafePage - 1) * grnMonitorPageSize;
+  const pagedGrnMonitorLines = filteredGrnMonitorLines.slice(
+    grnMonitorStartIndex,
+    grnMonitorStartIndex + grnMonitorPageSize
+  );
+
+  useEffect(() => {
+    setGrnMonitorPage(1);
+  }, [grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch, grnMonitorPageSize]);
+
+  useEffect(() => {
+    if (grnMonitorPage > grnMonitorTotalPages) {
+      setGrnMonitorPage(grnMonitorTotalPages);
+    }
+  }, [grnMonitorPage, grnMonitorTotalPages]);
 
   const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading, refetch: refetchWarehouseInventory } = useQuery({
     queryKey: ['warehouse-inventory'],
@@ -2035,7 +2102,7 @@ const Procurement: React.FC = () => {
     const tierId = editItemsListLineTarget.tierId;
     const nextPrice = Number(editItemsListLineForm.pricePerUnit || 0) || 0;
     const moqMaxRaw = String(editItemsListLineForm.moqMax ?? '').trim();
-    const nextMoqMax = moqMaxRaw === '' ? null : (Number(moqMaxRaw) || 0);
+    const nextMoqMax = moqMaxRaw === '' ? null : parseMoqInput(moqMaxRaw);
     const adv = Number(editItemsListLineForm.advancePct);
     const pre = Number(editItemsListLineForm.preShipmentPct);
     const post = Number(editItemsListLineForm.postShipmentPct);
@@ -3557,17 +3624,11 @@ const Procurement: React.FC = () => {
   };
 
   const validateReleasePaymentFields = (required: boolean): string | null => {
+    if (!required) return null;
     const txn = releasePaymentTransactionNo.trim();
-    const hasAny = Boolean(txn || releasePaymentMode || releasePaymentDate);
-    if (required || releaseDraftRequiresAdvance) {
-      if (!txn) return 'Transaction number is required.';
-      if (!releasePaymentMode) return 'Mode of payment is required.';
-      if (!releasePaymentDate) return 'Payment date is required.';
-      return null;
-    }
-    if (hasAny && (!txn || !releasePaymentMode || !releasePaymentDate)) {
-      return 'Enter transaction no., mode, and date together, or leave all payment fields empty.';
-    }
+    if (!txn) return 'Transaction number is required.';
+    if (!releasePaymentMode) return 'Mode of payment is required.';
+    if (!releasePaymentDate) return 'Payment date is required.';
     return null;
   };
 
@@ -3761,7 +3822,9 @@ const Procurement: React.FC = () => {
       const trackingResult = await updatePoTracking(backendPoIdNormalized, {
         poReleasedAt,
         poReleasedNote: releaseNote,
-        ...buildReleasePaymentTrackingPayload(),
+        ...(draftPaymentTermsRequireAdvance(draft.paymentTerms)
+          ? buildReleasePaymentTrackingPayload()
+          : {}),
       });
       if (!trackingResult.success) {
         const err = trackingResult.error;
@@ -3780,6 +3843,7 @@ const Procurement: React.FC = () => {
 
     // If payment terms are set, route to Treasury for advance approval
     if (draft.paymentTerms?.trim()) {
+      const needsAdvanceTxn = draftPaymentTermsRequireAdvance(draft.paymentTerms);
       globalDispatch({
         type: 'ADD_PO',
         payload: {
@@ -3790,9 +3854,13 @@ const Procurement: React.FC = () => {
             vendor: draft.vendor,
             paymentTerms: draft.paymentTerms,
             grandTotal: draft.grandTotal,
-            paymentTransactionNo: releasePaymentTransactionNo.trim(),
-            paymentMode: releasePaymentMode,
-            paymentTransactionDate: releasePaymentDate,
+            ...(needsAdvanceTxn
+              ? {
+                  paymentTransactionNo: releasePaymentTransactionNo.trim(),
+                  paymentMode: releasePaymentMode,
+                  paymentTransactionDate: releasePaymentDate,
+                }
+              : {}),
             lines: draft.lineItems.map((l) => ({
               itemId: l.itemCode,
               itemName: l.item,
@@ -4313,7 +4381,7 @@ const Procurement: React.FC = () => {
         prev.map((line, i) => {
           if (i !== idx) return line;
           const next: typeof line = { ...line, [field]: value };
-          const qtyNum = parseFloat(String(next.orderQty).replace(/[^\d.]/g, '')) || 0;
+          const qtyNum = parseMoqInput(next.orderQty) ?? 0;
           const priceNum = parseFloat(String(next.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
           next.totalValue = parseFloat((qtyNum * priceNum).toFixed(2));
           return next;
@@ -6204,6 +6272,8 @@ const Procurement: React.FC = () => {
                             onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMax: e.target.value }))}
                             type="number"
                             min={0}
+                            step="any"
+                            inputMode="decimal"
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                             disabled={editItemsListLineSaving}
                           />
@@ -6730,20 +6800,7 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'GRN Monitor' && (() => {
                 const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
-                const filteredGrnLines = grnList.filter((grn) => {
-                  if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
-                  if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
-                  const statusNorm = (grn.status || '') === 'GRN Complete' ? 'Completed' : (grn.status || '') === 'Under GRN' ? 'Under GRN' : 'Pending GRN';
-                  if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
-                  if (!grnSearch.trim()) return true;
-                  const q = grnSearch.toLowerCase();
-                  return (
-                    (grn.grnNo ?? '').toLowerCase().includes(q) ||
-                    (grn.poNo ?? '').toLowerCase().includes(q) ||
-                    (grn.vendor ?? '').toLowerCase().includes(q) ||
-                    (grn.lineItems ?? []).some((l) => (l.item ?? '').toLowerCase().includes(q) || (l.itemCode ?? '').toLowerCase().includes(q))
-                  );
-                });
+                const filteredGrnLines = filteredGrnMonitorLines;
                 const totalGrns = grnList.length;
                 const rmGrns = grnList.filter((g) => g.type === 'RM').length;
                 const pmGrns = grnList.filter((g) => g.type === 'PM').length;
@@ -6853,15 +6910,35 @@ const Procurement: React.FC = () => {
                     </div>
 
                     {/* GRN list from warehouse (read-only) */}
-                    <p className="text-[11px] text-slate-500 mb-2">Data from warehouse GRN table. Read-only.</p>
+                    <p className="text-[11px] text-slate-500 mb-2">Data from warehouse GRN table. Click a row to view full GRN details.</p>
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                      <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
                         <div className="flex items-center gap-2">
                           <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
                           <div>
                             <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN list (warehouse)</p>
-                            <p className="text-[11px] text-slate-500">Read-only progress from backend</p>
+                            <p className="text-[11px] text-slate-500">
+                              {filteredGrnLines.length} GRN{filteredGrnLines.length === 1 ? '' : 's'} match filters
+                              {grnList.length !== filteredGrnLines.length ? ` (${grnList.length} total)` : ''}
+                            </p>
                           </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                          <span>Rows per page</span>
+                          <select
+                            value={grnMonitorPageSize}
+                            onChange={(e) => {
+                              setGrnMonitorPageSize(Number(e.target.value));
+                              setGrnMonitorPage(1);
+                            }}
+                            className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                          >
+                            {GRN_MONITOR_PAGE_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 
@@ -6882,8 +6959,20 @@ const Procurement: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredGrnLines.map((grn) => (
-                              <tr key={grn.id} className="border-b border-slate-100 hover:bg-blue-50/60">
+                            {pagedGrnMonitorLines.map((grn) => (
+                              <tr
+                                key={grn.id}
+                                role="button"
+                                tabIndex={0}
+                                className="border-b border-slate-100 hover:bg-blue-50/60 cursor-pointer"
+                                onClick={() => void openGrnMonitorDetail(grn)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    void openGrnMonitorDetail(grn);
+                                  }
+                                }}
+                              >
                                 <td className="px-4 py-2 align-middle font-mono text-emerald-700">{grn.grnNo}</td>
                                 <td className="px-4 py-2 align-middle font-mono text-slate-700">{grn.poNo}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{grn.vendor}</td>
@@ -6914,13 +7003,27 @@ const Procurement: React.FC = () => {
                           </tbody>
                         </table>
                       </div>
+                      {filteredGrnLines.length > 0 && grnMonitorTotalPages > 1 && (
+                        <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+                          <Pagination
+                            currentPage={grnMonitorSafePage}
+                            totalPages={grnMonitorTotalPages}
+                            onPageChange={setGrnMonitorPage}
+                            totalItems={filteredGrnLines.length}
+                            itemsPerPage={grnMonitorPageSize}
+                            variant="compact"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {/* Line items by GRN (read-only) */}
-                    {filteredGrnLines.some((g) => (g.lineItems?.length ?? 0) > 0) && (
+                    {/* Line items for GRNs on current page */}
+                    {pagedGrnMonitorLines.some((g) => (g.lineItems?.length ?? 0) > 0) && (
                       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                         <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                          <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN line items (read-only)</p>
+                          <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">
+                            GRN line items — page {grnMonitorSafePage}
+                          </p>
                         </div>
                         <div className="overflow-x-auto max-h-64 overflow-y-auto">
                           <table className="w-full min-w-full text-[11px] text-slate-900">
@@ -6934,7 +7037,7 @@ const Procurement: React.FC = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {filteredGrnLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
+                              {pagedGrnMonitorLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
                                 <tr key={`${grn.id}-${idx}`} className="border-b border-slate-100">
                                   <td className="px-4 py-1.5 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
                                   <td className="px-4 py-1.5">{li.item ?? li.itemCode ?? '—'}</td>
@@ -6943,7 +7046,7 @@ const Procurement: React.FC = () => {
                                   <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
                                 </tr>
                               )))}
-                              {filteredGrnLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
+                              {pagedGrnMonitorLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
                                 <tr>
                                   <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
                                     No GRN line items.
@@ -6981,7 +7084,19 @@ const Procurement: React.FC = () => {
                               </thead>
                               <tbody>
                                 {completedFromApi.map((grn) => (
-                                  <tr key={grn.id} className="border-b border-slate-100 hover:bg-emerald-50/40">
+                                  <tr
+                                    key={grn.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="border-b border-slate-100 hover:bg-emerald-50/40 cursor-pointer"
+                                    onClick={() => void openGrnMonitorDetail(grn)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        void openGrnMonitorDetail(grn);
+                                      }
+                                    }}
+                                  >
                                     <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
                                     <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
                                     <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
@@ -7654,6 +7769,15 @@ const Procurement: React.FC = () => {
         );
       })()}
 
+      {/* ── GRN Monitor detail (warehouse API) ── */}
+      {selectedGrnMonitor && (
+        <GrnMonitorDetailPanel
+          grn={selectedGrnMonitor}
+          loading={grnMonitorDetailLoading}
+          onClose={() => setSelectedGrnMonitor(null)}
+        />
+      )}
+
       {/* ── GRN Detail Side Panel ── */}
       {selectedGrn && (() => {
         const grn = selectedGrn;
@@ -8135,48 +8259,49 @@ const Procurement: React.FC = () => {
                 <PaymentTermsDisplay value={releasePOTarget.paymentTerms} />
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
-                <p className="text-xs font-semibold text-slate-800">Payment transaction</p>
-                <p className="text-[11px] text-slate-600">
-                  Record how this PO was paid (or will be paid). Shown in Treasury with the full PO details.
-                  {releaseDraftRequiresAdvance ? ' Required before recording advance or releasing.' : ''}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Transaction no.</label>
-                    <input
-                      value={releasePaymentTransactionNo}
-                      onChange={(e) => setReleasePaymentTransactionNo(e.target.value)}
-                      placeholder="e.g. UTR / cheque no."
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Mode of payment</label>
-                    <select
-                      value={releasePaymentMode}
-                      onChange={(e) => setReleasePaymentMode(e.target.value as ReleasePaymentMode | '')}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                    >
-                      <option value="">Select mode</option>
-                      {RELEASE_PAYMENT_MODES.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment date</label>
-                    <input
-                      type="date"
-                      value={releasePaymentDate}
-                      onChange={(e) => setReleasePaymentDate(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                    />
+              {releaseDraftRequiresAdvance && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                  <p className="text-xs font-semibold text-slate-800">Payment transaction</p>
+                  <p className="text-[11px] text-slate-600">
+                    Required for advance payment terms. Record how the advance was paid — shown in Treasury with the PO.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Transaction no.</label>
+                      <input
+                        value={releasePaymentTransactionNo}
+                        onChange={(e) => setReleasePaymentTransactionNo(e.target.value)}
+                        placeholder="e.g. UTR / cheque no."
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Mode of payment</label>
+                      <select
+                        value={releasePaymentMode}
+                        onChange={(e) => setReleasePaymentMode(e.target.value as ReleasePaymentMode | '')}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      >
+                        <option value="">Select mode</option>
+                        {RELEASE_PAYMENT_MODES.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment date</label>
+                      <input
+                        type="date"
+                        value={releasePaymentDate}
+                        onChange={(e) => setReleasePaymentDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {releaseDraftRequiresAdvance && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
@@ -9257,7 +9382,8 @@ const Procurement: React.FC = () => {
         const vendorSlabsFromQuotes = reqQuotesForItem.flatMap((q) => {
           const line = q.lines.find((l) => quoteLineMatchesReleaseTarget(l, item));
           if (!line) return [];
-          const moqFromQty = typeof line.qty === 'string' ? parseInt(line.qty, 10) : line.qty;
+          const moqFromQty =
+            typeof line.qty === 'string' ? parseMoqInput(line.qty) ?? line.qty : line.qty;
           return [{ vendor: q.vendor, moq: Number.isNaN(moqFromQty) ? item.moq ?? '—' : moqFromQty, unitPrice: line.pricePerUnit, leadDays: q.leadTimeDays, terms: q.terms }];
         });
         const vendorSlabs = vendorSlabsFromItemsList.length > 0 ? vendorSlabsFromItemsList : vendorSlabsFromQuotes;
@@ -10744,7 +10870,7 @@ const Procurement: React.FC = () => {
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="bg-slate-50 px-4 py-2 flex text-[11px] font-semibold text-slate-600">
                   <div className="flex-1 min-w-[200px]">ITEM (RM/PM from masters)</div>
-                  <div className="w-24 text-right">QTY</div>
+                  <div className="w-24 text-right">MOQ</div>
                   <div className="w-28 text-right">PRICE / UNIT</div>
                   <div className="w-16" />
                 </div>
@@ -10784,7 +10910,11 @@ const Procurement: React.FC = () => {
                         </div>
                         <div className="w-24 text-right pl-1">
                           <input
-                            type="text"
+                            type="number"
+                            min={0}
+                            step="any"
+                            inputMode="decimal"
+                            placeholder="0.5"
                             value={line.orderQty}
                             onChange={handleRecordQuoteLineChange(idx, 'orderQty')}
                             disabled={recordQuoteSaving}
@@ -10954,7 +11084,7 @@ const Procurement: React.FC = () => {
                     const linkedPrId = String(recordQuoteForm.procurementRequestId ?? '').trim();
                     if (linkedPrId) {
                       const quotationItems = recordQuoteLines.map((l) => {
-                        const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                        const qty = parseMoqInput(l.orderQty) ?? 0;
                         const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
                         return {
                           raw_material_id: l.raw_material_id ?? undefined,
@@ -11064,7 +11194,7 @@ const Procurement: React.FC = () => {
                     };
 
                     for (const l of recordQuoteLines) {
-                      const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                      const qty = parseMoqInput(l.orderQty) ?? 0;
                       const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
                       if (qty <= 0 || price <= 0) continue;
 
@@ -11103,7 +11233,8 @@ const Procurement: React.FC = () => {
                       }
 
                       // Create tier row for this MOQ (or update if same MOQ already exists).
-                      const existingTier = (existingRate?.tiers ?? []).find((t) => Number(t.moq_min) === Number(qty)) ?? null;
+                      const existingTier =
+                        (existingRate?.tiers ?? []).find((t) => moqValuesEqual(t.moq_min, qty)) ?? null;
                       if (existingTier) {
                         await updateItemListTier(String(itemsListId), rateId, existingTier.id, {
                           price_per_unit: price,

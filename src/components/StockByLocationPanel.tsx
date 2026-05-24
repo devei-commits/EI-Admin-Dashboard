@@ -1,5 +1,11 @@
+import { useEffect, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import type { StockByLocationPayload } from '../services/warehouseInventory.service';
+import {
+  formatQtyInputDisplay,
+  parseQtyInputString,
+  sanitizeQtyInputString,
+} from '../utils/qtyInput';
 
 export type RackQtyDraft = { rackId: number; qtyWh: number };
 
@@ -233,6 +239,26 @@ const StockByLocationPanel: React.FC<Props> = ({
   rackDraft,
   onRackQtyChange,
 }) => {
+  const [rackQtyInputById, setRackQtyInputById] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!editable || !rackDraft) {
+      setRackQtyInputById({});
+      return;
+    }
+    setRackQtyInputById((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const d of rackDraft) {
+        if (!(d.rackId in next)) {
+          next[d.rackId] = formatQtyInputDisplay(d.qtyWh);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [editable, rackDraft]);
+
   if (loading) {
     return <p className="text-[11px] text-slate-500">Loading stock by location…</p>;
   }
@@ -331,13 +357,19 @@ const StockByLocationPanel: React.FC<Props> = ({
                           <span className="font-mono w-14 shrink-0">{r.rackCode}</span>
                           {editable && onRackQtyChange ? (
                             <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={qty}
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                rackQtyInputById[r.rackId] ??
+                                formatQtyInputDisplay(qty)
+                              }
                               onChange={(e) => {
-                                const n = parseFloat(e.target.value);
-                                onRackQtyChange(r.rackId, Number.isFinite(n) && n >= 0 ? n : 0);
+                                const sanitized = sanitizeQtyInputString(e.target.value);
+                                setRackQtyInputById((prev) => ({
+                                  ...prev,
+                                  [r.rackId]: sanitized,
+                                }));
+                                onRackQtyChange(r.rackId, parseQtyInputString(sanitized));
                               }}
                               className="w-20 border border-slate-300 rounded px-1.5 py-0.5 text-[10px] font-mono bg-white"
                             />
