@@ -19,7 +19,7 @@ import {
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import {
-  fetchEquipment, fetchTeam, fetchBatches, syncBatchesFromPlanning,
+  fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
   updateBatch as apiBatchUpdate,
   createRworkBatch as apiCreateRworkBatch,
   createEquipment as apiCreateEquipment,
@@ -52,6 +52,7 @@ import {
   isQtyShort,
   normalizeQtyForCompare,
   qtyAvailable,
+  qtyMtrFromReserved,
   scaleQty,
 } from '../utils/formatQty';
 import { fetchDepartments } from '../services/department.service';
@@ -460,7 +461,7 @@ function buildAtFacilityMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Re
   return map;
 }
 
-/** WH stock only (excl. ML1/ML2) by code. Available to transfer = whStockOnly - reserved. */
+/** WH stock only (excl. ML1/ML2) by code. MTR uses reserved qty at WH (see qtyMtrFromReserved). */
 function buildWhStockOnlyMap(inv: WarehouseInventoryRow[], type: 'RM' | 'PM'): Record<string, number> {
   const map: Record<string, number> = {};
   for (const r of inv) {
@@ -3454,7 +3455,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   /** At production facility by code — for "already at facility" and to-transfer = required - atFacility */
   atFacilityRM?: Record<string, number>; atFacilityPM?: Record<string, number>;
-  /** WH stock only (available to transfer = whStockOnly - reserved) */
+  /** WH stock only — MTR transferable pool = min(reserved, whStockOnly) */
   whStockOnlyRM?: Record<string, number>; whStockOnlyPM?: Record<string, number>;
   reservedRM?: Record<string, number>; reservedPM?: Record<string, number>;
   /** When batch.dispensingRM is empty (e.g. opened from Reserve RM), pass RM list from planning */
@@ -3472,6 +3473,21 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const whStockOnlyMap = type === 'rm' ? (whStockOnlyRM ?? {}) : (whStockOnlyPM ?? {});
   const reservedMap = type === 'rm' ? (reservedRM ?? {}) : (reservedPM ?? {});
   const unit = type === 'rm' ? 'KG' : 'pcs';
+  const batchPk = (batch as Batch & { _pk?: number })._pk;
+  const [batchReservedMap, setBatchReservedMap] = useState<Record<string, number>>({});
+  const [loadingBatchReserved, setLoadingBatchReserved] = useState(false);
+
+  useEffect(() => {
+    if (!batchPk) {
+      setBatchReservedMap({});
+      return;
+    }
+    setLoadingBatchReserved(true);
+    fetchBatchMtrReserved(batchPk)
+      .then((byCode) => setBatchReservedMap(byCode || {}))
+      .catch(() => setBatchReservedMap({}))
+      .finally(() => setLoadingBatchReserved(false));
+  }, [batchPk, batch.bmrNo, type]);
 
   // Troubleshooting: log MTR maps when batch/type change
   useEffect(() => {
@@ -3481,8 +3497,9 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       atFacilityMap: { ...atFacilityMap },
       whStockOnlyMap: { ...whStockOnlyMap },
       reservedMap: { ...reservedMap },
+      batchReservedMap: { ...batchReservedMap },
     });
-  }, [type, batch.bmrNo, atFacilityMap, whStockOnlyMap, reservedMap]);
+  }, [type, batch.bmrNo, atFacilityMap, whStockOnlyMap, reservedMap, batchReservedMap]);
 
   const [priority, setPriority] = useState('Normal');
   const [reqDate, setReqDate] = useState(type === 'rm' ? (batch.rmConnectDate || today()) : (batch.pmConnectDate || today()));
@@ -3496,12 +3513,26 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const effectiveItems = baseItems.length > 0 ? baseItems : derivedItems;
   // localItems[].required = qty to request (to transfer); default max(0, batch need - at facility)
   const [localItems, setLocalItems] = useState<DispensingItem[]>(() => effectiveItems.map(i => ({ ...i })));
-  const shortages = localItems.map((it) => {
-    const toTransfer = it.required;
-    const availableWH = qtyAvailable(whStockOnlyMap[it.code] ?? 0, reservedMap[it.code] ?? 0);
-    return { code: it.code, required: toTransfer, available: availableWH, short: isQtyShort(availableWH, toTransfer) };
-  }).filter(x => x.short);
-  const hasShortage = shortages.length > 0;
+  const shortages = localItems
+    .map((it) => {
+      const toTransfer = it.required ?? 0;
+      if (toTransfer <= 0) return null;
+      const code = String(it.code ?? '').trim();
+      const batchRes = batchReservedMap[code];
+      const mtrPool = qtyMtrFromReserved(
+        whStockOnlyMap[code] ?? 0,
+        reservedMap[code] ?? 0,
+        batchRes,
+      );
+      return {
+        code,
+        required: toTransfer,
+        available: mtrPool,
+        short: isQtyShort(mtrPool, toTransfer, type === 'rm' ? 'kg' : 'pcs'),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null && x.short);
+  const hasShortage = !loadingBatchReserved && shortages.length > 0;
 
   const allWhZones = warehouseAreas.flatMap(a => a.zones);
   const allProductionZones = productionAreas.flatMap(a => a.zones);
@@ -3612,7 +3643,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       });
       setLocalItems(next);
     }
-  }, [batch.bmrNo, type, effectiveItems.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [batch.bmrNo, type, effectiveItems, atFacilityMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (needLoadInMtr && derivedItems.length > 0 && localItems.length === 0) {
@@ -3634,7 +3665,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
       });
       setLocalItems(next);
     }
-  }, [needLoadInMtr, derivedItems, localItems.length]); // eslint-disable-line react-hooks/exhaustive-deps  
+  }, [needLoadInMtr, derivedItems, localItems.length, atFacilityMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     Promise.all([
@@ -3701,7 +3732,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     if (hasShortage) {
       addToast(
         'error',
-        'Cannot send MTR: warehouse available stock (WH − reserved) is less than the quantity to transfer for one or more items. Reduce quantities or receive stock at warehouse first.',
+        'Cannot send MTR: reserved qty at warehouse is less than the quantity to transfer for one or more items. Reserve material for this batch or reduce transfer qty.',
       );
       return;
     }
@@ -3758,10 +3789,13 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   return (
     <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
       <Tip color="orange" icon={<Send size={14} />}>Request transfer of {type.toUpperCase()} from <b>{fromLabel}</b> to <b>{toLabel}</b></Tip>
+      {loadingBatchReserved && (
+        <div className="mt-3 text-xs text-gray-500">Loading batch reservation…</div>
+      )}
       {hasShortage && (
         <div className="mt-3 px-3 py-2.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs flex items-start gap-2">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-          <span><strong>Send MTR blocked:</strong> &quot;To transfer&quot; exceeds Available (WH) for some items. Reduce quantities or ensure more stock at warehouse (available = WH stock − reserved) before sending.</span>
+          <span><strong>Send MTR blocked:</strong> &quot;To transfer&quot; exceeds what can move from WH for this batch (pool = batch reserved, capped by WH stock). Reserve RM/PM for this batch first, lower transfer qty, or use <b>Complete step</b> if stock is already at the production facility.</span>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 mb-4">
@@ -3799,7 +3833,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         <div><label className={LBL}>Priority</label><select className={INP} value={priority} onChange={e => setPriority(e.target.value)}><option>Urgent</option><option>Normal</option><option>Low</option></select></div>
       </div>
       <SectionLabel icon={<Package size={12} />} color="text-gray-600">
-        Items to Transfer — x = needed, y = already at production facility, to transfer = max(0, x−y). Available at source = WH − reserved.
+        Items to Transfer — x = needed, y = already at production facility, to transfer = max(0, x−y). At WH for MTR = reserved (production allocation), not free stock.
       </SectionLabel>
       {loadingItems && (
         <div className="py-4 text-center text-sm text-gray-500">Loading items for this batch…</div>
@@ -3816,15 +3850,21 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
               <th className="px-2 py-1.5 text-right">Required</th>
               <th className="px-2 py-1.5 text-right">At production facility</th>
               <th className="px-2 py-1.5 text-left">To transfer</th>
-              <th className="px-2 py-1.5 text-right">Available (WH)</th>
+              <th className="px-2 py-1.5 text-right">Reserved (WH)</th>
               <th className="px-2 py-1.5 text-left">Unit</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">{localItems.map((r, i) => {
               const batchNeed = effectiveItems[i]?.required ?? r.required;
               const atFacility = atFacilityMap[r.code] ?? 0;
               const toTransfer = r.required;
-              const availableWH = qtyAvailable(whStockOnlyMap[r.code] ?? 0, reservedMap[r.code] ?? 0);
-              const short = isQtyShort(availableWH, toTransfer);
+              const code = String(r.code ?? '').trim();
+              const batchRes = batchReservedMap[code];
+              const mtrPool = qtyMtrFromReserved(
+                whStockOnlyMap[code] ?? 0,
+                reservedMap[code] ?? 0,
+                batchRes,
+              );
+              const short = toTransfer > 0 && isQtyShort(mtrPool, toTransfer, qtyKindMtr);
               return (
                 <tr key={i} className={short ? 'bg-amber-50/60' : ''}>
                   <td className="px-2 py-1.5 font-semibold">{r.inci || r.name}</td>
@@ -3835,7 +3875,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
                     <input type="number" className="w-20 px-1.5 py-0.5 border border-gray-200 rounded font-mono text-right" min={0} step={type === 'rm' ? 0.01 : 1} value={type === 'rm' ? toTransfer : toTransfer} onChange={e => setItemQty(i, type === 'rm' ? parseFloat(e.target.value) || 0 : parseInt(e.target.value, 10) || 0)} />
                   </td>
                   <td className={`px-2 py-1.5 font-mono text-right ${short ? 'text-amber-600' : 'text-gray-700'}`}>
-                    {fmtQtyMtr(availableWH)}{short && <span className="text-red-600 ml-1">(short {fmtQtyMtr(calcShortageQtyForKind(availableWH, toTransfer, qtyKindMtr))})</span>}
+                    {fmtQtyMtr(mtrPool)}{short && <span className="text-red-600 ml-1">(short {fmtQtyMtr(calcShortageQtyForKind(mtrPool, toTransfer, qtyKindMtr))})</span>}
                   </td>
                   <td className="px-2 py-1.5">{unit}</td>
                 </tr>
@@ -3849,7 +3889,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         {allAtMu ? (
           <button onClick={handleCompleteStep} disabled={sending} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {sending ? 'Completing…' : 'Complete step'}</button>
         ) : (
-          <button onClick={handleSubmit} disabled={sending || linesToSend.length === 0 || hasShortage} title={hasShortage ? 'Insufficient warehouse stock for one or more lines' : undefined} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
+          <button onClick={handleSubmit} disabled={sending || loadingBatchReserved || linesToSend.length === 0 || hasShortage} title={hasShortage ? 'Insufficient batch reserved stock at WH for one or more lines' : undefined} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
         )}
       </div>
     </Modal>

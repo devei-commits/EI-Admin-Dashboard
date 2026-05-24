@@ -408,7 +408,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">Qty</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">
                   Availability
-                  <div className="text-[10px] font-normal text-gray-500">RM / PM units</div>
+                  <div className="text-[10px] font-normal text-gray-500">RM / PM lines · WH or BMR/BPR done</div>
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">
                   Exec%
@@ -548,7 +548,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                             </b>
                           </div>
                           <div className="text-[10px] text-gray-500 mt-1">
-                            started {rmStarted}/{rmStartable || 0}
+                            production started {rmStarted}/{totalBatches || rmStartable || 0}
                           </div>
                           <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
                             <div
@@ -565,7 +565,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                             </b>
                           </div>
                           <div className="text-[10px] text-gray-500 mt-1">
-                            started {pmStarted}/{pmStartable || 0}
+                            production started {pmStarted}/{totalBatches || pmStartable || 0}
                           </div>
                           <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
                             <div

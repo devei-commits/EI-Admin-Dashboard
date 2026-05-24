@@ -67,11 +67,24 @@ export function formatQtyWithUnit(value: unknown, kind: 'kg' | 'pcs'): string {
   return `${formatQtyExact(value, kind)} ${kind === 'kg' ? 'KG' : 'pcs'}`;
 }
 
-/** Free stock at warehouse for reserve / MTR (no rounding). */
+/** Free stock at warehouse for reserve (SIH − reserved). */
 export function qtyAvailable(sih: number, reserved: number): number {
   const s = Number(sih) || 0;
   const r = Number(reserved) || 0;
   return Math.max(0, s - r);
+}
+
+/**
+ * Outbound MTR (WH → MU): transferable qty from WH = min(physical WH stock, batch reserved).
+ * When batchReserved is provided (reserved_batch_items for this BMR/BPR), use it; else warehouse reserved.
+ */
+export function qtyMtrFromReserved(whStock: number, reservedGlobal: number, batchReserved?: number): number {
+  const wh = Number(whStock) || 0;
+  const alloc =
+    batchReserved !== undefined && batchReserved !== null
+      ? Number(batchReserved) || 0
+      : Number(reservedGlobal) || 0;
+  return Math.max(0, Math.min(alloc, wh));
 }
 
 /** Compare at full decimal precision so float noise does not false-trigger Short. */

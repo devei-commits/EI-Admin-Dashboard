@@ -171,6 +171,20 @@ export async function fetchBatchById(pk: number): Promise<BatchRow | null> {
   }
 }
 
+/** Reserved qty for this production batch by material code (for MTR modal). */
+export async function fetchBatchMtrReserved(pk: number): Promise<Record<string, number>> {
+  try {
+    const res = await api.get<{ success?: boolean; byCode?: Record<string, number> }>(
+      `${BASE}/batches/${pk}/mtr-reserved`,
+    );
+    const data = (res as { data?: { byCode?: Record<string, number> } })?.data ?? res;
+    const byCode = (data as { byCode?: Record<string, number> })?.byCode;
+    return byCode && typeof byCode === 'object' ? byCode : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function createBatch(payload: Record<string, unknown>): Promise<BatchRow> {
   const res = await api.post<BatchRow>(`${BASE}/batches`, payload);
   return (res as any)?.data ?? res;
