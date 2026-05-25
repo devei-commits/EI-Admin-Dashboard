@@ -25,7 +25,6 @@ import {
   countMeaningfulFormulaRmLines,
   countMeaningfulPackLines,
   countMeaningfulSkuRmLines,
-  parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
   getEffectiveSkuBomLimitForPersist,
   formulaRowsToSkuBomLines,
@@ -59,7 +58,6 @@ interface BOMFormState {
   category: string;
   productForm: string;
   brandClient: string;
-  fillSize: string;
   packConfiguration: string;
   skuCode: string;
   /** Permanent vs temporary internal-code series; `legacy` only when editing old DB rows. */
@@ -149,7 +147,6 @@ function emptyBomForm(): BOMFormState {
     category: '',
     productForm: '',
     brandClient: '',
-    fillSize: '',
     packConfiguration: '',
     skuCode: '',
     prRecordType: 'permanent',
@@ -214,7 +211,7 @@ function bomFormToRmLines(fd: BOMFormState) {
       rm_code: ing.rmCode || '',
       raw_material_id: ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
       pct_w_w: parseFloat(ing.percentWW) || 0,
-      uom: ing.uom,
+      uom: 'KG',
       ...(sg != null ? { specific_gravity: sg } : {}),
     };
   });
@@ -272,24 +269,6 @@ function mrpValidationMessage(mrp: string): string | null {
   return 'Enter a positive amount, e.g. 499 or ₹499';
 }
 
-/**
- * Accept fill sizes only in `g` or `ml` to keep backend unit parsing unambiguous.
- * Examples: 50g, 500 g, 30ml, 100 ml
- */
-function normalizeFillSizeInput(raw: string): string {
-  const text = String(raw || '').trim().toLowerCase();
-  if (!text) return '';
-  const m = text.match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
-  if (!m) return text;
-  const value = m[1];
-  const unit = m[2].toLowerCase();
-  return `${value}${unit}`;
-}
-
-function isValidFillSizeInput(raw: string): boolean {
-  return /^(\d+(?:\.\d+)?)\s*(g|ml)$/i.test(String(raw || '').trim());
-}
-
 function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
   const internalCode = fd.skuCode.trim();
@@ -302,8 +281,6 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     form: fd.productForm || null,
     type: fd.productForm || null,
     client: fd.brandClient || null,
-    fill_size: fd.fillSize || null,
-    packSize: fd.fillSize || null,
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
@@ -325,7 +302,6 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     rm_lines: bomFormToRmLines(fd),
     sku_rm_lines: bomFormToSkuRmLines(fd),
     ...getEffectiveSkuBomLimitForPersist({
-      fillSize: fd.fillSize,
       skuBomLimitQty: fd.skuBomLimitQty,
       skuBomLimitUom: fd.skuBomLimitUom,
     }),
@@ -355,7 +331,6 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       : {}),
     category: fd.category || null,
     form: fd.productForm || null,
-    fill_size: fd.fillSize || null,
     storage_conditions: fd.prDefaultStorageType || null,
     pr_sub_category: fd.prSubCategory || null,
     pr_qc_group: fd.prQcGroup || null,
@@ -382,7 +357,6 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       rm_lines: bomFormToRmLines(fd),
       sku_rm_lines: bomFormToSkuRmLines(fd),
       ...getEffectiveSkuBomLimitForPersist({
-        fillSize: fd.fillSize,
         skuBomLimitQty: fd.skuBomLimitQty,
         skuBomLimitUom: fd.skuBomLimitUom,
       }),
@@ -416,7 +390,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
         inciName: ing.inci_name || '',
         phase: phase.phase || '',
         percentWW: String(ing.pct_w_w ?? ''),
-        uom: ing.uom || 'GM',
+        uom: 'KG',
         specificGravity:
           ing.specific_gravity != null && Number(ing.specific_gravity) > 0
             ? String(ing.specific_gravity)
@@ -432,17 +406,11 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     qtyPerUnit: row.qty_per_unit != null ? String(row.qty_per_unit) : '',
     uom: row.uom || 'GM',
   }));
-  const fromFillSize = parseFillSizeToSkuNet(p.fill_size || '');
-  const skuBomLimitQtyStr = fromFillSize
-    ? fromFillSize.qty
-    : p.skuBomLimitQty != null && !Number.isNaN(Number(p.skuBomLimitQty))
+  const skuBomLimitQtyStr =
+    p.skuBomLimitQty != null && !Number.isNaN(Number(p.skuBomLimitQty))
       ? String(p.skuBomLimitQty)
       : '';
-  const skuBomLimitUomStr = fromFillSize
-    ? fromFillSize.uom
-    : p.skuBomLimitUom?.trim()
-      ? String(p.skuBomLimitUom)
-      : 'GM';
+  const skuBomLimitUomStr = p.skuBomLimitUom?.trim() ? String(p.skuBomLimitUom) : 'GM';
   const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => ({
     id: `pc-${i}`,
     packMaterialId:
@@ -485,7 +453,6 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
       normalizePrProductFormForSelect(p.form || '') ||
       String(p.form || '').trim(),
     brandClient: p.brand_client || p.brand_name || '',
-    fillSize: p.fill_size || '',
     prDefaultStorageType: p.storage_conditions || '',
     prQcGroup: (p as unknown as { pr_qc_group?: string | null }).pr_qc_group || '',
     skuCode,
@@ -561,7 +528,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     inciName: '',
     phase: '',
     percentWW: '',
-    uom: 'GM',
+    uom: 'KG',
     specificGravity: '1',
   });
   const [tempSkuLine, setTempSkuLine] = useState({ inciName: '', qtyPerUnit: '', uom: 'GM' });
@@ -706,7 +673,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const skuBomValidation = useMemo(() => {
     const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-      fillSize: formData.fillSize,
       skuBomLimitQty: formData.skuBomLimitQty,
       skuBomLimitUom: formData.skuBomLimitUom,
     });
@@ -720,7 +686,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       limitQty,
       limitUom,
     });
-  }, [formData.skuBomLines, formData.skuBomLimitQty, formData.skuBomLimitUom, formData.fillSize]);
+  }, [formData.skuBomLines, formData.skuBomLimitQty, formData.skuBomLimitUom]);
 
   useEffect(() => {
     const z = formData.zohoId?.trim();
@@ -833,7 +799,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingIngredientId(null);
     setSelectedRmId('');
     setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
   };
 
   const flushIngredientDraft = (): boolean => {
@@ -862,7 +828,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
                 phase: tempIngredient.phase,
                 percentWW: tempIngredient.percentWW,
-                uom: tempIngredient.uom || rm?.uom || 'GM',
+                uom: 'KG',
                 specificGravity: tempIngredient.specificGravity || '1',
               }
             : item
@@ -871,7 +837,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       setEditingIngredientId(null);
       setSelectedRmId('');
       setIngredientRmQuery('');
-      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
+      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
       return true;
     }
 
@@ -891,14 +857,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           phase: tempIngredient.phase,
           percentWW: tempIngredient.percentWW,
           // Keep operator-selected UOM; fallback to RM UOM only if no explicit input.
-          uom: tempIngredient.uom || rm?.uom || 'GM',
+          uom: 'KG',
           specificGravity: tempIngredient.specificGravity || '1',
         },
       ],
     }));
     setSelectedRmId('');
     setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
     return true;
   };
 
@@ -911,7 +877,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       if (cur === id) {
         setSelectedRmId('');
         setIngredientRmQuery('');
-        setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
+        setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
         return null;
       }
       return cur;
@@ -924,12 +890,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const importSkuBomFromFormulaBom = useCallback(() => {
     const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-      fillSize: formData.fillSize,
       skuBomLimitQty: formData.skuBomLimitQty,
       skuBomLimitUom: formData.skuBomLimitUom,
     });
     if (!limitQty || !limitUom) {
-      addToast('error', 'Set net per-unit quantity and UOM (Fill Size e.g. 50g/50ml, or manual limit on this step).');
+      addToast('error', 'Set net per-unit quantity and UOM on the SKU BOM step before importing from Formula BOM.');
       return;
     }
     const formulaLines = formData.formulaIngredients.map((ing) => ({
@@ -970,7 +935,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       `Imported ${res.rows.length} SKU line(s) from Formula BOM for net ${res.limitQty} ${res.limitUom}.`
     );
   }, [
-    formData.fillSize,
     formData.skuBomLimitQty,
     formData.skuBomLimitUom,
     formData.formulaIngredients,
@@ -1113,18 +1077,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
-  const prPreviewFormData = useMemo(
-    () => ({
-      ...(formData as unknown as Record<string, unknown>),
-      skuCode: isNewProduct ? '(Assigned on save)' : formData.skuCode,
-      skuForZoho: isNewProduct ? '(Same as internal code after save)' : formData.skuForZoho,
-    }),
-    [formData, isNewProduct]
-  );
-
   const prPreviewSections = useMemo(
-    () => buildMasterPreviewSections(prPreviewFormData, PR_PREVIEW_SECTIONS),
-    [prPreviewFormData]
+    () =>
+      buildMasterPreviewSections(formData as unknown as Record<string, unknown>, PR_PREVIEW_SECTIONS, {
+        omitKeys: isNewProduct ? ['skuCode', 'skuForZoho'] : undefined,
+      }),
+    [formData, isNewProduct]
   );
 
   const validatePrForSubmit = (): { mode: 'create' | 'update'; body: Record<string, unknown> } | null => {
@@ -1161,17 +1119,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return null;
     }
-    if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
-      setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
-      addToast('error', 'Fill Size must be in g or ml format (example: 50g or 50ml) — see Step 5 (Specs & Regulatory)');
-      setCurrentStage(5);
-      window.setTimeout(() => {
-        const el = document.getElementById('fillSize');
-        if (el instanceof HTMLElement) el.focus();
-      }, 0);
-      return null;
-    }
-
     const rmCount = countMeaningfulFormulaRmLines(bomFormToRmLines(formData));
     if (rmCount < 1) {
       addToast('error', 'At least one Formula BOM line is required. Add ingredients in Formula BOM.');
@@ -1244,7 +1191,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     ? 'Permanent'
                     : 'Legacy',
             },
-            ...(formData.fillSize.trim() ? [{ label: 'Fill size', value: formData.fillSize.trim() }] : []),
+            ...(formData.skuBomLimitQty.trim()
+              ? [
+                  {
+                    label: 'SKU BOM net per unit',
+                    value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
+                  },
+                ]
+              : []),
           ]);
           setSaveSuccessZohoNote(null);
           setSubmitPreviewOpen(false);
@@ -1270,7 +1224,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             label: 'Record type',
             value: formData.prRecordType === 'temporary' ? 'Temporary (TPR#####)' : 'Permanent (PR#####)',
           },
-          ...(formData.fillSize.trim() ? [{ label: 'Fill size', value: formData.fillSize.trim() }] : []),
+          ...(formData.skuBomLimitQty.trim()
+            ? [
+                {
+                  label: 'SKU BOM net per unit',
+                  value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
+                },
+              ]
+            : []),
           ...(res.data.bom?.bom_code
             ? [{ label: 'Linked BOM', value: String(res.data.bom.bom_code) }]
             : []),
@@ -1446,25 +1407,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     ) : null}
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5">
-                    Internal code is assigned automatically on save for the series you select.
+                    {isNewProduct
+                      ? 'Internal code is generated on save for the series you select and shown in the confirmation dialog.'
+                      : 'Record type applies to how this product was registered.'}
                   </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Internal PR code (SKU)</label>
-                  {isNewProduct ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-                      Assigned on save:{' '}
-                      <span className="font-mono text-slate-800">
-                        {formData.prRecordType === 'temporary' ? 'TPR#####' : 'PR#####'}
-                      </span>
-                    </div>
-                  ) : (
+                {!isNewProduct ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Internal PR code (SKU)</label>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono text-slate-800">
                       {formData.skuCode || '—'}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
@@ -1498,7 +1454,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
                 <p className="text-xs text-slate-600 mb-2">
-                  Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line — Planning uses these values at BOM confirmation for vessel volume (not the RM master). Total % w/w should equal 100%. Use{' '}
+                  Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line. Formula amounts are always <strong>% w/w on a kg batch</strong>; SG converts litre-based RMs to kg at Planning BOM confirmation (e.g. SG 0.9 → 9 kg = 10 L). Total % w/w should equal 100%. Use{' '}
                   <strong>Import from Formula BOM</strong> on the SKU BOM step to derive per-unit quantities from these % w/w lines.
                 </p>
 
@@ -1523,7 +1479,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         <div className="text-slate-600">{ing.percentWW}</div>
                         <div className="text-slate-600 font-mono tabular-nums">{ing.specificGravity || '1'}</div>
                         <div className="flex justify-end items-center gap-1">
-                          <span className="text-slate-600 mr-auto">{ing.uom}</span>
+                          <span className="text-slate-600 mr-auto">KG</span>
                           <button
                             type="button"
                             onClick={() => beginEditIngredient(ing.id)}
@@ -1609,15 +1565,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, specificGravity: e.target.value }))}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
-                    <select
-                      value={tempIngredient.uom}
-                      onChange={(e) => setTempIngredient(prev => ({ ...prev, uom: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    >
-                      <option>GM</option>
-                      <option>ML</option>
-                      <option>KG</option>
-                    </select>
+                    <span className="px-2 py-1.5 text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded" title="Formula BOM % w/w is always on a kg batch basis">
+                      KG
+                    </span>
                   </div>
                 </div>
 
@@ -1657,7 +1607,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             </div>
         );
       case 2: {
-        const fillNet = parseFillSizeToSkuNet(formData.fillSize);
         return (
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-violet-800 mb-2">
@@ -1667,50 +1616,39 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <p className="text-xs text-slate-600 mb-3">
                 Read-only view of per-unit RM quantities for <strong>one</strong> finished unit. Lines are populated only via{' '}
                 <strong>Import from Formula BOM</strong> below (Formula % w/w must total 100%). When present, the sum must match net per unit (±0.001).
+                Pack size on sale orders uses this net per unit.
               </p>
 
-              {fillNet ? (
-                <div className="mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100 space-y-1">
-                  <p className="text-xs font-semibold text-violet-900 uppercase tracking-wide">Net per 1 product unit</p>
-                  <p className="text-lg font-mono font-bold text-violet-900">
-                    {fillNet.qty} <span className="text-base font-semibold text-violet-700">{fillNet.uom}</span>
-                  </p>
-                  <p className="text-xs text-slate-600">
-                    Pulled from product <strong>Fill Size</strong> ({formData.fillSize.trim() || '—'}). Change it on the <strong>Specs & Regulatory</strong> step; SKU totals validate against that value.
-                  </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100">
+                <div>
+                  <label className="block text-xs font-semibold text-violet-900 mb-1">Net per 1 product unit — quantity</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="e.g. 50"
+                    value={formData.skuBomLimitQty}
+                    onChange={(e) => handleInputChange('skuBomLimitQty', e.target.value)}
+                    className="w-full px-2 py-1.5 border border-violet-200 rounded text-sm"
+                  />
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-amber-50/80 border border-amber-100">
-                  <div>
-                    <label className="block text-xs font-semibold text-amber-900 mb-1">Net per 1 product unit — quantity (manual)</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min="0"
-                      placeholder="e.g. 50"
-                      value={formData.skuBomLimitQty}
-                      onChange={(e) => handleInputChange('skuBomLimitQty', e.target.value)}
-                      className="w-full px-2 py-1.5 border border-amber-200 rounded text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-amber-900 mb-1">UOM</label>
-                    <select
-                      value={formData.skuBomLimitUom}
-                      onChange={(e) => handleInputChange('skuBomLimitUom', e.target.value)}
-                      className="w-full px-2 py-1.5 border border-amber-200 rounded text-sm"
-                    >
-                      <option value="GM">G / GM (grams)</option>
-                      <option value="KG">KG (kilograms)</option>
-                      <option value="ML">ML (millilitres)</option>
-                      <option value="L">L (litres)</option>
-                    </select>
-                  </div>
-                  <p className="sm:col-span-2 text-xs text-amber-800">
-                    Add <strong>Fill Size</strong> as <span className="font-mono">50g</span> or <span className="font-mono">50ml</span> on Specs & Regulatory to auto-fill net here next time.
-                  </p>
+                <div>
+                  <label className="block text-xs font-semibold text-violet-900 mb-1">UOM</label>
+                  <select
+                    value={formData.skuBomLimitUom}
+                    onChange={(e) => handleInputChange('skuBomLimitUom', e.target.value)}
+                    className="w-full px-2 py-1.5 border border-violet-200 rounded text-sm"
+                  >
+                    <option value="GM">G / GM (grams)</option>
+                    <option value="KG">KG (kilograms)</option>
+                    <option value="ML">ML (millilitres)</option>
+                    <option value="L">L (litres)</option>
+                  </select>
                 </div>
-              )}
+                <p className="sm:col-span-2 text-xs text-violet-800">
+                  Defines pack size for sale orders (e.g. <span className="font-mono">50 G</span>, <span className="font-mono">30 ML</span>).
+                </p>
+              </div>
 
               <div className="mb-4 p-3 rounded-lg border border-blue-200 bg-blue-50/80 space-y-2">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1719,7 +1657,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       Import from Formula BOM
                     </p>
                     <p className="text-[11px] text-blue-900/80 mt-0.5">
-                      Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> on the previous step (must total 100%). Uses net per unit from Fill Size or manual limit above.
+                      Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> on the previous step (must total 100%). Uses net per unit above.
                     </p>
                   </div>
                   <button
@@ -2042,23 +1980,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="fillSize">Fill Size (in g or ml)</label>
-                    <input
-                      id="fillSize"
-                      type="text"
-                      placeholder="e.g. 50g or 50ml"
-                      value={formData.fillSize}
-                      onChange={(e) => handleInputChange('fillSize', normalizeFillSizeInput(e.target.value))}
-                      aria-invalid={errors.fillSize ? true : undefined}
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${
-                        errors.fillSize ? 'border-red-500 bg-red-50/40' : 'border-slate-200'
-                      }`}
-                    />
-                    {errors.fillSize ? (
-                      <p className="mt-1 text-xs text-red-600">{errors.fillSize}</p>
-                    ) : null}
-                  </div>
-                  <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">QC Inspection Group</label>
                     <select
                       value={formData.prQcGroup}
@@ -2277,10 +2198,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         subtitle={
           saveSuccessIsEdit
             ? 'Changes are saved. Internal code cannot be changed here.'
-            : 'Your product is saved with the internal code below (assigned by the server).'
+            : 'Your product is saved. Details and the generated internal code are below.'
         }
         generatedCode={saveSuccessCode}
-        codeLabel="Internal PR code (SKU)"
+        codeLabel={saveSuccessIsEdit ? 'Internal PR code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
         zohoNote={saveSuccessZohoNote}
       />

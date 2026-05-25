@@ -11,7 +11,7 @@ import {
   countMeaningfulFormulaRmLines,
   countMeaningfulPackLines,
   countMeaningfulSkuRmLines,
-  parseFillSizeToSkuNet,
+  formatSkuBomLimitAsPack,
   getEffectiveSkuBomLimitFields,
   formulaRowsToSkuBomLines,
   flattenFormulaBomPhases,
@@ -157,16 +157,14 @@ const BOMDashboard: React.FC = () => {
 
   const importFormulaBomIntoSkuBom = () => {
     if (!editDraft) return;
-    const fillSize = String(editDraft.fill_size ?? '');
     const limQ = editDraft.skuBomLimitQty != null ? String(editDraft.skuBomLimitQty) : '';
     const limU = String(editDraft.skuBomLimitUom ?? 'GM');
     const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-      fillSize,
       skuBomLimitQty: limQ,
       skuBomLimitUom: limU,
     });
     if (!limitQty || !limitUom) {
-      toast.error('Set net per-unit quantity and UOM (Fill Size e.g. 50g/50ml, or manual limit on this tab).');
+      toast.error('Set net per-unit quantity and UOM on the SKU BOM tab before importing from Formula BOM.');
       return;
     }
     const formulaLines = flattenFormulaBomPhases(editDraft.formulaBom ?? []);
@@ -435,7 +433,6 @@ const BOMDashboard: React.FC = () => {
       category: editDraft.category ?? selectedProduct.category,
       status: editDraft.status ?? selectedProduct.status,
       form: editDraft.form ?? selectedProduct.form,
-      fill_size: editDraft.fill_size ?? selectedProduct.fill_size,
       batch_size_kg: editDraft.batch_size_kg ?? selectedProduct.batch_size_kg,
       shelf_life_months: editDraft.shelf_life_months ?? selectedProduct.shelf_life_months,
       version: editDraft.version ?? selectedProduct.version,
@@ -478,15 +475,8 @@ const BOMDashboard: React.FC = () => {
       uom: r.uom || 'GM',
       ...(r.raw_material_id != null ? { raw_material_id: r.raw_material_id } : {}),
     }));
-    const fillStrPanel =
-      String(editDraft.fill_size ?? selectedProduct.fill_size ?? '').trim();
-    const fromFillPanel = parseFillSizeToSkuNet(fillStrPanel);
-    const sku_bom_limit_qty = fromFillPanel
-      ? parseFloat(fromFillPanel.qty)
-      : (editDraft.skuBomLimitQty ?? selectedProduct.skuBomLimitQty ?? null);
-    const sku_bom_limit_uom = fromFillPanel
-      ? fromFillPanel.uom
-      : (editDraft.skuBomLimitUom ?? selectedProduct.skuBomLimitUom ?? null);
+    const sku_bom_limit_qty = editDraft.skuBomLimitQty ?? selectedProduct.skuBomLimitQty ?? null;
+    const sku_bom_limit_uom = editDraft.skuBomLimitUom ?? selectedProduct.skuBomLimitUom ?? null;
     if (countMeaningfulFormulaRmLines(rm_lines) < 1) {
       setSaving(false);
       toast.error('At least one Formula BOM line is required.');
@@ -719,7 +709,7 @@ const BOMDashboard: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PRODUCT</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CATEGORY</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FORM</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FILL SIZE</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PACK SIZE</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">BATCH (KG)</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">SHELF LIFE</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM INGS.</th>
@@ -762,7 +752,9 @@ const BOMDashboard: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.category || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.form ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.fill_size ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm font-mono text-gray-600">
+                          {formatSkuBomLimitAsPack(p.skuBomLimitQty, p.skuBomLimitUom)}
+                        </td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.batch_size_kg ?? '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.shelf_life_months != null ? `${p.shelf_life_months}M` : '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">{p.rm_ingredients_count ?? 0}</td>
@@ -994,8 +986,13 @@ const BOMDashboard: React.FC = () => {
                         <div><span className="text-gray-500">Form</span>
                           {isEditMode ? <input value={displayProduct.form ?? ''} onChange={(e) => updateDraft({ form: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.form ?? '—'}</div>}
                         </div>
-                        <div><span className="text-gray-500">Fill Size</span>
-                          {isEditMode ? <input value={displayProduct.fill_size ?? ''} onChange={(e) => updateDraft({ fill_size: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.fill_size ?? '—'}</div>}
+                        <div><span className="text-gray-500">Pack size (SKU BOM)</span>
+                          <div className="font-mono mt-1">
+                            {formatSkuBomLimitAsPack(
+                              isEditMode ? editDraft?.skuBomLimitQty : selectedProduct?.skuBomLimitQty,
+                              isEditMode ? editDraft?.skuBomLimitUom : selectedProduct?.skuBomLimitUom
+                            )}
+                          </div>
                         </div>
                         <div><span className="text-gray-500">SKU Code</span>
                           {isEditMode ? (
@@ -1136,33 +1133,23 @@ const BOMDashboard: React.FC = () => {
                 })()}
                 {panelTab === 2 && (selectedProduct || editDraft) && (() => {
                   const skuList = (isEditMode ? editDraft?.skuBom : selectedProduct?.skuBom) ?? [];
-                  const fillForNet = String(
-                    (isEditMode ? editDraft?.fill_size : selectedProduct?.fill_size) ?? ''
-                  ).trim();
-                  const fillNetPanel = parseFillSizeToSkuNet(fillForNet);
-                  const limQ = fillNetPanel
-                    ? parseFloat(fillNetPanel.qty)
-                    : isEditMode
-                      ? editDraft?.skuBomLimitQty
-                      : selectedProduct?.skuBomLimitQty;
-                  const limU = fillNetPanel
-                    ? fillNetPanel.uom
-                    : isEditMode
-                      ? editDraft?.skuBomLimitUom
-                      : selectedProduct?.skuBomLimitUom;
+                  const limQ = isEditMode ? editDraft?.skuBomLimitQty : selectedProduct?.skuBomLimitQty;
+                  const limU = isEditMode ? editDraft?.skuBomLimitUom : selectedProduct?.skuBomLimitUom;
+                  const hasNet = limQ != null && Number(limQ) > 0 && String(limU ?? '').trim();
                   return (
                     <div className="space-y-4">
                       <p className="text-xs text-gray-600">
-                        Read-only per-unit RM quantities derived from <strong>Formula BOM</strong> via Import below. Net per unit comes from <strong>Fill Size</strong> (<span className="font-mono">50g</span> / <span className="font-mono">50ml</span>) or manual limit. When lines exist, the sum must match net (±0.001).
+                        Read-only per-unit RM quantities derived from <strong>Formula BOM</strong> via Import below. Net per unit is set on SKU BOM (used as pack size on sale orders). When lines exist, the sum must match net (±0.001).
                       </p>
-                      {fillNetPanel ? (
+                      {hasNet ? (
                         <div className="p-3 bg-violet-50 border border-violet-100 rounded-lg space-y-1">
-                          <p className="text-[10px] font-semibold text-violet-900 uppercase">Net per 1 product unit (from Fill Size)</p>
+                          <p className="text-[10px] font-semibold text-violet-900 uppercase">Net per 1 product unit</p>
                           <p className="text-lg font-mono font-bold text-violet-900">
-                            {fillNetPanel.qty} <span className="text-base font-semibold text-violet-700">{fillNetPanel.uom}</span>
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            Fill Size: <span className="font-mono">{fillForNet || '—'}</span> — edit on Overview tab (<span className="font-mono">fill_size</span> on product).
+                            {limQ}{' '}
+                            <span className="text-base font-semibold text-violet-700">{limU}</span>
+                            <span className="text-sm font-normal text-violet-700 ml-2">
+                              (pack {formatSkuBomLimitAsPack(limQ, limU)})
+                            </span>
                           </p>
                         </div>
                       ) : isEditMode ? (
@@ -1201,7 +1188,7 @@ const BOMDashboard: React.FC = () => {
                           <span className="font-bold">
                             {limQ != null ? limQ : '—'} {limU || ''}
                           </span>
-                          <span className="block text-xs font-normal text-gray-500 mt-1">Set product Fill Size (e.g. 50g) to auto-fill.</span>
+                          <span className="block text-xs font-normal text-gray-500 mt-1">Set net per unit (qty + UOM) for pack size on sale orders.</span>
                         </p>
                       )}
                       {canEdit && (
@@ -1212,7 +1199,7 @@ const BOMDashboard: React.FC = () => {
                                 Import from Formula BOM
                               </p>
                               <p className="text-[11px] text-blue-900/80 mt-0.5">
-                                Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> (must total 100%). Uses net per unit from Fill Size or manual limit above. Replaces existing SKU BOM lines.
+                                Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> (must total 100%). Uses net per unit above. Replaces existing SKU BOM lines.
                               </p>
                             </div>
                             <button

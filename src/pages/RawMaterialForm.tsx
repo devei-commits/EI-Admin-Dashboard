@@ -287,7 +287,8 @@ const RawMaterialRefactored: React.FC = () => {
     formData.rmReturnable?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
- const lockPrimaryFields = !!existingRmId;
+ /** On edit: SKU and primary UoM stay fixed; category, names, and returnable can change. */
+ const lockImmutableMasterOnEdit = !!existingRmId;
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
@@ -328,27 +329,6 @@ const RawMaterialRefactored: React.FC = () => {
   }
   if (id === 'subCategory') {
    const next = value;
-   const sku = String(formData.rmSku || '').trim();
-   if (sku && existingRmId) {
-    if (isRmClubItemsSubCategory(next)) {
-     if (!sku.toUpperCase().startsWith('CLUB')) {
-      addToast(
-       'error',
-       `This RM code (${sku}) must start with "CLUB" for Club items.`
-      );
-      return;
-     }
-    } else {
-     const d = rmSubCategoryLeadingDigit(next);
-     if (d && !sku.startsWith(d)) {
-      addToast(
-       'error',
-       `This RM code (${sku}) does not start with "${d}", which is required for canonical sub-category "${next}".`
-      );
-      return;
-     }
-    }
-   }
    setFormData((prev) => ({
     ...prev,
     subCategory: next,
@@ -627,28 +607,6 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return null;
   }
-  const skuTrim = String(formData.rmSku || '').trim();
-  if (skuTrim) {
-   if (isRmClubItemsSubCategory(formData.subCategory)) {
-    if (!skuTrim.toUpperCase().startsWith('CLUB')) {
-     addToast('error', 'Internal RM code must start with "CLUB" for Club items.');
-     setCurrentStage(0);
-     focusFieldById('rmSku');
-     return null;
-    }
-   } else {
-    const digitForSub = rmSubCategoryLeadingDigit(formData.subCategory);
-    if (digitForSub && !skuTrim.startsWith(digitForSub)) {
-     addToast(
-      'error',
-      `Internal RM code must start with "${digitForSub}" for sub-category "${formData.subCategory}".`
-     );
-     setCurrentStage(0);
-     focusFieldById('rmSku');
-     return null;
-    }
-   }
-  }
   const payload: Record<string, unknown> = {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
@@ -657,23 +615,22 @@ const RawMaterialRefactored: React.FC = () => {
   if (isNewRm) {
    delete payload.rmSku;
    delete payload.sku;
+  } else {
+   delete payload.rmSku;
+   delete payload.sku;
+   delete payload.code;
   }
   delete payload.specific_gravity;
   delete payload.specificGravity;
   return payload;
  };
 
- const rmPreviewFormData = useMemo(
-  () => ({
-   ...(formData as Record<string, unknown>),
-   ...(isNewRm ? { rmSku: '(Assigned on save)', sku: '(Assigned on save)' } : {}),
-  }),
-  [formData, isNewRm]
- );
-
  const rmPreviewSections = useMemo(
-  () => buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS),
-  [rmPreviewFormData]
+  () =>
+   buildMasterPreviewSections(formData as Record<string, unknown>, RM_PREVIEW_SECTIONS, {
+    omitKeys: isNewRm ? ['rmSku', 'sku'] : undefined,
+   }),
+  [formData, isNewRm]
  );
 
  const handleSubmit = () => {
@@ -769,7 +726,7 @@ const RawMaterialRefactored: React.FC = () => {
         options={[...RM_SUB_CATEGORY_SKU_SELECT_OPTIONS]}
         requiredMark
         error={errors.subCategory}
-        disabled={lockPrimaryFields}
+        disabled={false}
        />
        {rmDetailSubCategoryRequired ? (
         <SelectField
@@ -779,7 +736,7 @@ const RawMaterialRefactored: React.FC = () => {
          onChange={handleInputChange}
          options={rmDetailSubCategoryOptions}
          error={errors.optionalRmSubCategory}
-         disabled={lockPrimaryFields || !formData.subCategory?.trim()}
+         disabled={!formData.subCategory?.trim()}
         />
        ) : (
         <InputField
@@ -800,32 +757,15 @@ const RawMaterialRefactored: React.FC = () => {
       </p>
      </div>
 
-     {isNewRm ? (
-      <div>
-       <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
-       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-        {isRmClubItemsSubCategory(formData.subCategory) ? (
-         <>
-          Assigned on save: <span className="font-mono">CLUB</span> plus five digits (e.g.{' '}
-          <span className="font-mono text-gray-800">CLUB00019</span>).
-         </>
-        ) : (
-         <>
-          Assigned on save: leading digit from sub-category (<span className="font-mono">1</span>,{' '}
-          <span className="font-mono">2</span>, or <span className="font-mono">3</span>) plus six digits — seven
-          digits total (e.g. <span className="font-mono text-gray-800">1000001</span>).
-         </>
-        )}
-       </div>
-      </div>
-     ) : (
+     {!isNewRm ? (
       <div>
        <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
         {formData.rmSku || '—'}
        </div>
+       <p className="text-xs text-gray-500 mt-1">Assigned at creation — cannot be changed here.</p>
       </div>
-     )}
+     ) : null}
 
      <div className="border-t border-gray-200 pt-4">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
@@ -837,7 +777,7 @@ const RawMaterialRefactored: React.FC = () => {
         onChange={handleInputChange}
         placeholder="Official INCI name as per supplier / standard"
         requiredMark
-        readOnly={lockPrimaryFields}
+        readOnly={false}
        />
        <InputField
         label="Trade/Commercial Name"
@@ -846,7 +786,7 @@ const RawMaterialRefactored: React.FC = () => {
         onChange={handleInputChange}
         placeholder="What vendor calls this raw material"
         requiredMark
-        readOnly={lockPrimaryFields}
+        readOnly={false}
        />
        <SelectField
         label="Primary UoM"
@@ -854,7 +794,7 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.primaryUom}
         onChange={handleInputChange}
         options={isNewRm ? [...RM_NEW_PRIMARY_UOM_OPTIONS] : [...RM_EDIT_PRIMARY_UOM_OPTIONS]}
-        disabled={lockPrimaryFields}
+        disabled={lockImmutableMasterOnEdit}
         requiredMark
         error={errors.primaryUom}
        />
@@ -875,7 +815,7 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.rmReturnable}
         onChange={handleInputChange}
         options={['Yes', 'No']}
-        disabled={lockPrimaryFields}
+        disabled={false}
         requiredMark
         error={errors.rmReturnable}
        />
@@ -885,7 +825,7 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.rmTaxPreference}
         onChange={handleInputChange}
         options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-        disabled={lockPrimaryFields}
+        disabled={lockImmutableMasterOnEdit}
         requiredMark
         error={errors.rmTaxPreference}
        />
@@ -961,7 +901,7 @@ const RawMaterialRefactored: React.FC = () => {
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
        <p className="text-xs text-gray-500 mb-3">
         {isNewRm
-         ? 'Internal RM code is assigned on save and synced to Zoho Books with your tax preferences (or both roll back if Books fails).'
+         ? 'Saved to Esthetic Insights and synced to Zoho Books with your tax preferences (or both roll back if Books fails). The internal code appears in the confirmation dialog after save.'
          : 'Internal RM code is fixed; Zoho item ID is read-only.'}
        </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1774,10 +1714,10 @@ const RawMaterialRefactored: React.FC = () => {
         subtitle={
          saveSuccessIsEdit
           ? 'Changes are saved. Internal code cannot be changed here.'
-          : 'Your raw material is saved with the internal code below (assigned by the server).'
+          : 'Your raw material is saved. Details and the generated internal code are below.'
         }
         generatedCode={saveSuccessCode}
-        codeLabel="Internal RM code (SKU)"
+        codeLabel={saveSuccessIsEdit ? 'Internal RM code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
         zohoNote={saveSuccessZohoNote}
       />

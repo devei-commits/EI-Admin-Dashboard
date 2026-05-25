@@ -16,6 +16,8 @@ export interface PriceListSyncResult {
 export interface VendorClientRecord {
   id: string;
   type: "vendor" | "client";
+  /** EI-VEN-##### / EI-CLI-##### — also in data.entityCode */
+  entityCode?: string;
   /** users.userid when this master is linked to a portal/login user */
   userId?: string | null;
   zohoId?: string;
@@ -50,7 +52,8 @@ export interface PaginatedRowsResponse<T> {
 
 export interface CreateVendorClientPayload {
   type: "vendor" | "client";
-  entityCode: string;
+  /** Omit on create — server allocates EI-VEN / EI-CLI series. */
+  entityCode?: string;
   zohoId?: string | null;
   /** Optional link to portal/user management record. */
   userId?: string | null;
@@ -201,9 +204,11 @@ export async function createVendorClient(
   payload: CreateVendorClientPayload,
 ): Promise<ServiceResult<VendorClientRecord>> {
   try {
-    const body = {
+    const body: Record<string, unknown> = {
       type: payload.type,
-      entityCode: payload.entityCode,
+      ...(payload.entityCode != null && String(payload.entityCode).trim()
+        ? { entityCode: payload.entityCode.trim() }
+        : {}),
       ...(payload.userId != null && payload.userId !== ""
         ? { userId: payload.userId }
         : {}),

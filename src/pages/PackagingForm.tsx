@@ -29,7 +29,6 @@ import {
   pmDetailSubCategoryOptionsForSkuCategory,
   pmLevelForSubCategory,
   pmSkuCategoryRequiresDetailSubCategory,
-  pmSkuMatchesCodePrefix,
   pmSubCategorySkuPrefix,
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
@@ -256,7 +255,8 @@ const PackagingRefactored: React.FC = () => {
         formData.pkgTaxPreference?.trim() &&
         (!taxIsTaxable || (formData.pkgHsn?.trim() && formData.pkgGst?.toString().trim()))
     );
-  const lockPrimaryFields = !!existingPmId;
+  /** On edit: internal code and level stay fixed; category, name, and returnable can change. */
+  const lockImmutableMasterOnEdit = !!existingPmId;
 
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
   const [tempVendor, setTempVendor] = useState({
@@ -345,14 +345,6 @@ const PackagingRefactored: React.FC = () => {
     if (id === 'pmSkuCategory' || id === 'subCategory') {
       const canon = normalizePmSkuCategoryForSelect(value) || '';
       const level = pmLevelForSubCategory(canon);
-      const sku = String(formData.itemCode || '').trim();
-      if (sku && existingPmId && canon) {
-        const p = pmSubCategorySkuPrefix(canon);
-        if (p && !pmSkuMatchesCodePrefix(sku, p)) {
-          addToast('error', `This PM code (${sku}) must start with "${p}" for the selected category.`);
-          return;
-        }
-      }
       setFormData((prev) => ({
         ...prev,
         pmSkuCategory: canon || prev.pmSkuCategory,
@@ -529,17 +521,15 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const buildPayload = () => {
-    const codeTrim = existingPmId ? (formData.itemCode || generatedCode || '').trim() : '';
     const firstVendor = formData.vendors[0];
     const skuForZoho = undefined;
-    const descBase = formData.name?.trim() || (codeTrim ? `PM Item ${codeTrim}` : 'New pack material');
+    const descBase = formData.name?.trim() || 'New pack material';
     const skuCat =
       normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
       String(formData.pmSkuCategory || formData.subCategory || '')
         .trim()
         .toLowerCase();
     return {
-      ...(codeTrim ? { code: codeTrim } : {}),
       description: descBase,
       type: formData.itemCategory || undefined,
       level: formData.level || undefined,
@@ -586,19 +576,12 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
-  const pmPreviewFormData = useMemo(
-    () => ({
-      ...(formData as Record<string, unknown>),
-      itemCode: isNewPm
-        ? '(Assigned on save)'
-        : formData.itemCode || generatedCode || '',
-    }),
-    [formData, generatedCode, isNewPm]
-  );
-
   const pmPreviewSections = useMemo(
-    () => buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS),
-    [pmPreviewFormData]
+    () =>
+      buildMasterPreviewSections(formData as Record<string, unknown>, PM_PREVIEW_SECTIONS, {
+        omitKeys: isNewPm ? ['itemCode', 'pkgSku'] : undefined,
+      }),
+    [formData, isNewPm]
   );
 
   const validatePmForSubmit = (): CreatePackMaterialPayload | null => {
@@ -632,21 +615,6 @@ const PackagingRefactored: React.FC = () => {
         addToast('error', field.toastMessage);
         setCurrentSection(field.section);
         focusPmField(field.id);
-        return null;
-      }
-    }
-    if (existingPmId) {
-      const codeRule = (formData.itemCode || generatedCode || '').trim();
-      const skuCatKey =
-        normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
-        String(formData.pmSkuCategory || formData.subCategory || '')
-          .trim()
-          .toLowerCase();
-      const pfxRule = pmSubCategorySkuPrefix(skuCatKey);
-      if (pfxRule && codeRule && !pmSkuMatchesCodePrefix(codeRule, pfxRule)) {
-        addToast('error', `SKU must start with "${pfxRule}" for category "${formData.pmSkuCategory || formData.subCategory}".`);
-        setCurrentSection(0);
-        focusPmField('itemCode');
         return null;
       }
     }
@@ -798,42 +766,14 @@ const PackagingRefactored: React.FC = () => {
               </p>
             </div>
 
-            {isNewPm ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Internal PM code (SKU)</label>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
-                  {(() => {
-                    const skuCat =
-                      normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) || '';
-                    const pfx = pmSubCategorySkuPrefix(skuCat);
-                    if (!pfx) {
-                      return (
-                        <>
-                          Assigned on save after you pick a category (PPM, SPM, or TPM). Prefix examples:{' '}
-                          <span className="font-mono">4</span>, <span className="font-mono">5L</span>,{' '}
-                          <span className="font-mono">5M</span>, <span className="font-mono">5O</span>,{' '}
-                          <span className="font-mono">6T</span>, <span className="font-mono">6A</span>.
-                        </>
-                      );
-                    }
-                    return (
-                      <>
-                        Assigned on save: starts with <span className="font-mono">{pfx}</span> (e.g.{' '}
-                        <span className="font-mono text-gray-800">{pfx === '4' ? '4000001' : `${pfx}00001`}</span>
-                        ).
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            ) : (
+            {!isNewPm ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Internal PM code (SKU)</label>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
                   {formData.itemCode || '—'}
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div className="border-t border-gray-200 pt-4">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
@@ -846,7 +786,7 @@ const PackagingRefactored: React.FC = () => {
                   placeholder="Packaging item name as used internally"
                   requiredMark
                   error={errors.name}
-                  readOnly={lockPrimaryFields}
+                  readOnly={false}
                 />
                 <div>
                   <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
@@ -886,7 +826,7 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.pkgReturnable}
                   onChange={handleInputChange}
                   options={['Yes', 'No']}
-                  disabled={lockPrimaryFields}
+                  disabled={false}
                   requiredMark
                   error={errors.pkgReturnable}
                 />
@@ -896,7 +836,7 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.pkgTaxPreference}
                   onChange={handleInputChange}
                   options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-                  disabled={lockPrimaryFields}
+                  disabled={lockImmutableMasterOnEdit}
                   requiredMark
                   error={errors.pkgTaxPreference}
                 />
@@ -968,7 +908,7 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
               <p className="text-xs text-gray-500 mb-3">
                 {isNewPm
-                  ? 'Internal PM code is assigned on save and synced to Zoho Books with your tax preferences (or both roll back if Books fails).'
+                  ? 'Saved to Esthetic Insights and synced to Zoho Books with your tax preferences (or both roll back if Books fails). The internal code appears in the confirmation dialog after save.'
                   : 'Internal PM code is fixed; Zoho item ID is read-only.'}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1826,10 +1766,10 @@ const PackagingRefactored: React.FC = () => {
         subtitle={
           saveSuccessIsEdit
             ? 'Changes are saved. Internal code cannot be changed here.'
-            : 'Your pack material is saved with the internal code below (assigned by the server).'
+            : 'Your pack material is saved. Details and the generated internal code are below.'
         }
         generatedCode={saveSuccessCode}
-        codeLabel="Internal PM code (SKU)"
+        codeLabel={saveSuccessIsEdit ? 'Internal PM code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
         zohoNote={saveSuccessZohoNote}
       />

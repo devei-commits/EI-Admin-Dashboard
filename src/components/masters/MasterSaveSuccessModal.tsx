@@ -48,10 +48,12 @@ export function MasterSaveSuccessModal({
       }
     >
       <div className="space-y-4">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">{codeLabel}</p>
-          <p className="mt-1 text-2xl font-mono font-bold text-emerald-900 break-all">{generatedCode}</p>
-        </div>
+        {generatedCode.trim() ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">{codeLabel}</p>
+            <p className="mt-1 text-2xl font-mono font-bold text-emerald-900 break-all">{generatedCode}</p>
+          </div>
+        ) : null}
         {rows.length > 0 ? (
           <dl className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
             {rows.map((row) => (

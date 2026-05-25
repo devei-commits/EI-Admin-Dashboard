@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, type VendorClientRecord } from '../services/vendorClient.service';
+import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, type VendorClientRecord } from '../services/vendorClient.service';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 
@@ -160,7 +161,6 @@ const FIELD_ERROR_STAGE: Record<string, number> = {
  tradeName: 0,
  primaryEmail: 0,
  primaryPhone: 0,
- entityCode: 0,
  billingAddress: 1,
  shippingAddress: 1,
  state: 1,
@@ -184,10 +184,6 @@ function validateVendorForm(fd: VendorFormData, options: { isNewVendor: boolean 
  else if (!isValidEmail(fd.primaryEmail)) newErrors.primaryEmail = 'Enter a valid email address';
  if (!fd.primaryPhone.trim()) newErrors.primaryPhone = 'Primary phone is required';
  else if (!isValidPhone(fd.primaryPhone)) newErrors.primaryPhone = 'Enter a valid phone number (10–15 digits)';
-
- if (options.isNewVendor && !String(fd.entityCode || '').trim()) {
-  newErrors.entityCode = 'Generate entity code before submitting';
- }
 
  if (!fd.billingAddress.trim() || fd.billingAddress.trim().length < MIN_ADDR) {
   newErrors.billingAddress = `Billing address is required (at least ${MIN_ADDR} characters)`;
@@ -239,6 +235,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const [currentStage, setCurrentStage] = useState(0);
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [isSaving, setIsSaving] = useState(false);
+ const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+ const [saveSuccessCode, setSaveSuccessCode] = useState('');
+ const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+ const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
  const [savingPriceList, setSavingPriceList] = useState(false);
  const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
@@ -523,24 +523,32 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   return fallback;
  };
 
- const generateCode = async () => {
-  const res = await fetchNextCode('vendor');
-  if (res.success && res.data) {
-   setFormData(prev => ({ ...prev, entityCode: res.data }));
-   addToast('success', `Entity code generated: ${res.data}`);
-  } else {
-    addToast('error', getErrorMessage(res.error, 'Failed to generate code'));
-  }
- };
+ const entityCodeFromRecord = (record: VendorClientRecord) =>
+  String(record.entityCode ?? (record.data as { entityCode?: string })?.entityCode ?? '').trim();
 
- const regenerateCode = async () => {
-  const res = await fetchNextCode('vendor');
-  if (res.success && res.data) {
-   setFormData(prev => ({ ...prev, entityCode: res.data }));
-   addToast('success', `Entity code regenerated: ${res.data}`);
-  } else {
-    addToast('error', getErrorMessage(res.error, 'Failed to generate code'));
-  }
+ const closeSaveSuccessModal = () => {
+  setSaveSuccessOpen(false);
+  setSaveSuccessCode('');
+  setSaveSuccessRows([]);
+  setSaveSuccessZohoNote(null);
+  setFormData({
+   setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '', zohoId: '',
+   legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
+   billingAddress: '', shippingAddress: '', state: '', country: 'India',
+   website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
+   paymentTerms: '', customTerms: '', creditLimit: '', penalty: '',
+   paymentCreditType: 'Credit',
+   payablesAdvancedPct: '0',
+   payablesBeforeDispatchPct: '0',
+   payablesAfterDispatchPct: '100',
+   tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
+   agreementType: '', agreementStatus: '', startDate: '', endDate: '',
+   agreementLink: '', owner: '', agreementNotes: '',
+   linkedUserId: '',
+  });
+  setDocuments([]); setPocs([]); setBanks([]); setVendorItems([]);
+  setCurrentStage(0);
+  onSaved?.();
  };
 
  const addDocument = () => {
@@ -771,7 +779,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
 
   const res = await createVendorClient({
    type: 'vendor',
-   entityCode: formData.entityCode || '',
    ...(formData.linkedUserId.trim() ? { userId: formData.linkedUserId.trim() } : {}),
    name: payload.name,
    email: payload.email,
@@ -785,15 +792,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
    data: payload.data as Record<string, unknown>,
   });
 
-  if (res.success) {
-   const zohoSynced = res.data?.zoho_sync?.synced === true;
-   addToast(
-    'success',
-    zohoSynced
-      ? 'Vendor created and synced to Zoho Books.'
-      : 'Vendor created successfully!',
-   );
-   const sync = res.data?.priceListSync;
+  if (res.success && res.data) {
+   const sync = res.data.priceListSync;
    if (sync && sync.skipped.length > 0) {
     const hint = sync.skipped[0]
      ? `${sync.skipped[0].code}: ${sync.skipped[0].reason}`
@@ -804,25 +804,26 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
     );
    }
    void invalidateItemsListAfterVendorSave();
-   setFormData({
-    setupType: 'VENDOR', setupCategory: '', setupPrefix: 'VEN', entityCode: '', zohoId: '',
-    legalName: '', tradeName: '', primaryEmail: '', primaryPhone: '',
-    billingAddress: '', shippingAddress: '', state: '', country: 'India',
-    website: '', segment: '', notes: '', gstin: '', pan: '', msme: '', iec: '',
-    paymentTerms: '', customTerms: '', creditLimit: '', penalty: '',
-    paymentCreditType: 'Credit',
-    payablesAdvancedPct: '0',
-    payablesBeforeDispatchPct: '0',
-    payablesAfterDispatchPct: '100',
-    tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
-    agreementType: '', agreementStatus: '', startDate: '', endDate: '',
-    agreementLink: '', owner: '', agreementNotes: '',
-    linkedUserId: '',
-   });
-   setDocuments([]); setPocs([]); setBanks([]); setVendorItems([]);
-   setCurrentStage(0);
+   const code = entityCodeFromRecord(res.data);
+   setSaveSuccessCode(code);
+   setSaveSuccessRows([
+    { label: 'Legal name', value: res.data.name || formData.legalName || '' },
+    { label: 'Trade name', value: formData.tradeName || '' },
+    { label: 'Category', value: res.data.category || formData.setupCategory || '' },
+    { label: 'Email', value: res.data.email || formData.primaryEmail || '' },
+   ]);
+   const zohoSynced = res.data.zoho_sync?.synced === true;
+   setSaveSuccessZohoNote(
+    zohoSynced && res.data.zoho_sync?.contact_id
+      ? `Synced to Zoho Books (contact ${res.data.zoho_sync.contact_id}).`
+      : zohoSynced
+        ? 'Synced to Zoho Books.'
+        : res.data.zoho_sync?.error
+          ? `Saved locally; Zoho sync failed: ${res.data.zoho_sync.error}`
+          : null
+   );
+   setSaveSuccessOpen(true);
    setIsSaving(false);
-   onSaved?.();
    return;
   }
    addToast('error', getErrorMessage(res.error, 'Failed to create vendor'));
@@ -913,8 +914,8 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className={sectionTitleClass}>Vendor identity</div>
        {!editingId ? (
         <p className="text-sm text-gray-600 -mt-2 mb-2">
-          Fill category, names, contact details, and generate an entity code. On submit, the server creates the Zoho Books
-          contact and saves the Zoho ID — if Zoho sync fails, nothing is saved.
+          Fill category, names, and contact details. On submit the server assigns an entity code (EI-VEN-#####), creates the
+          Zoho Books contact when sync is enabled, and shows the generated code in a confirmation dialog.
         </p>
        ) : null}
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -942,35 +943,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </div>
        </div>
 
-       <div className={sectionTitleClass}>Code Series</div>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-         <label className={labelClass}>Series Prefix</label>
-         <input type="text" value="VEN" readOnly className={`${inputClass} bg-gray-50`} />
+       {editingId && String(formData.entityCode || '').trim() ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Entity code</p>
+         <p className="text-sm font-mono text-gray-800 mt-0.5">{formData.entityCode}</p>
         </div>
-        <div>
-         <label className={labelClass}>Next Code Preview {!editingId ? req : null}</label>
-         <input
-          type="text"
-          value={formData.entityCode || '— Generate to get code —'}
-          readOnly
-          className={`${fieldClass('entityCode')} bg-gray-50`}
-         />
-         {errMsg('entityCode')}
-        </div>
-       </div>
-       <div className="flex gap-2 flex-wrap">
-        <span className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-mono"><b>Vendor:</b> EI-VEN-00001</span>
-        <span className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-mono"><b>Client:</b> EI-CLI-00001</span>
-       </div>
-       <div className="flex gap-2">
-        <button type="button" onClick={generateCode} className="px-4 py-2 bg-green-100 text-green-800 border border-green-300 rounded-lg hover:bg-green-200 transition font-medium text-sm">
-         Generate Code
-        </button>
-        <button type="button" onClick={regenerateCode} className="px-4 py-2 bg-red-100 text-red-800 border border-red-300 rounded-lg hover:bg-red-200 transition font-medium text-sm">
-         Regenerate
-        </button>
-       </div>
+       ) : null}
 
        {editingId && String(formData.zohoId || '').trim() ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -1730,6 +1708,16 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
      </div>
     </div>
    </form>
+   <MasterSaveSuccessModal
+    isOpen={saveSuccessOpen}
+    onClose={closeSaveSuccessModal}
+    title="Vendor created"
+    subtitle="Your vendor is saved. Details and the generated entity code are below."
+    generatedCode={saveSuccessCode}
+    codeLabel="Generated entity code"
+    rows={saveSuccessRows}
+    zohoNote={saveSuccessZohoNote}
+   />
   </div>
  );
 };

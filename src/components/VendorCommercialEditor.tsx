@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
+import VendorClientNameTypeahead from './VendorClientNameTypeahead';
 import { fetchVendorClientById, type VendorClientRecord } from '../services/vendorClient.service';
 import {
   formatStagedPaymentTermsObject,
@@ -122,6 +123,20 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
   const uomHint = variant === 'rm' ? 'MOQ (KG etc.)' : 'MOQ (pcs etc.)';
   const hydrateRequestRef = useRef(0);
 
+  const selectedVendorId = useMemo(() => {
+    const row = findVendorClientByName(vendorClientList, tempFields.name || '');
+    return row?.id ?? '';
+  }, [vendorClientList, tempFields.name]);
+
+  const addedVendorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const v of vendors) {
+      const row = findVendorClientByName(vendorClientList, v.name);
+      if (row?.id) ids.add(row.id);
+    }
+    return ids;
+  }, [vendors, vendorClientList]);
+
   /** Pull location, lead time, MOQ, and staged payment terms from vendor master (full row when possible). */
   const hydrateFromVendorMaster = (name: string) => {
     const listRow = findVendorClientByName(vendorClientList, name);
@@ -173,29 +188,24 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
     <div className="border border-gray-300 rounded-lg p-4 mb-4 space-y-4">
       <h3 className="font-semibold text-gray-800">Vendor Manager</h3>
       <p className="text-xs text-gray-500">
-        Pick a vendor to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; if you only fill MOQ + unit price below, a single tier is created from those values. Vendor pricing is synced to Items List when you submit this master.
+        Search and pick a vendor from suggestions to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; if you only fill MOQ + unit price below, a single tier is created from those values. Vendor pricing is synced to Items List when you submit this master.
       </p>
 
       <div className="bg-gray-50 p-4 rounded-lg space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Vendor name</label>
-            <select
-              value={tempFields.name || ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                onTempFieldChange('name', val);
-                hydrateFromVendorMaster(val);
+            <VendorClientNameTypeahead
+              parties={vendorClientList}
+              selectedId={selectedVendorId}
+              placeholder="Search vendor by name, code, city…"
+              disabledIds={addedVendorIds}
+              onSelect={(party) => {
+                const name = party?.name?.trim() ?? '';
+                onTempFieldChange('name', name);
+                if (name) hydrateFromVendorMaster(name);
               }}
-              className="w-full p-2 border border-gray-300 rounded text-sm"
-            >
-              <option value="">Select vendor</option>
-              {vendorClientList.map((v) => (
-                <option key={v.id} value={v.name}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+            />
             {errors.venName ? <p className="text-red-500 text-xs mt-1">{errors.venName}</p> : null}
           </div>
           <div>

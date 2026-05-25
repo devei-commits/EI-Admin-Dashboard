@@ -8,6 +8,10 @@ import {
   type StockByLocationPayload,
   fetchUsageStats,
   importInventorySummaryExcel,
+  importMainWarehouseSihExcel,
+  importMl1SihExcel,
+  importMl2SihExcel,
+  type WarehouseSihExcelImportResponse,
   inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
@@ -970,7 +974,23 @@ const WarehouseInventory = () => {
     () => new Map()
   );
   const inventorySummaryFileRef = useRef<HTMLInputElement>(null);
+  const mainWarehouseSihFileRef = useRef<HTMLInputElement>(null);
+  const ml1SihFileRef = useRef<HTMLInputElement>(null);
+  const ml2SihFileRef = useRef<HTMLInputElement>(null);
   const [importingInventoryExcel, setImportingInventoryExcel] = useState(false);
+  const [importingSihBucket, setImportingSihBucket] = useState<'warehouse' | 'ml1' | 'ml2' | null>(null);
+
+  const formatSihImportResult = (label: string, res: WarehouseSihExcelImportResponse) => {
+    const s = res.summary;
+    return [
+      `${label}: processed ${res.rows_total ?? 0} row(s) from "${res.sheet_name ?? 'sheet'}".`,
+      `RM: ${s?.rm_updated ?? 0}, PM: ${s?.pm_updated ?? 0}, PR: ${s?.pr_updated ?? 0} updated`,
+      s?.created ? `(${s.created} new warehouse rows)` : '',
+      `Skipped: ${s?.skipped ?? 0}, Errors: ${s?.errors ?? 0}`,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  };
 
   const handleInventorySummaryExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -979,16 +999,7 @@ const WarehouseInventory = () => {
     setImportingInventoryExcel(true);
     try {
       const res = await importInventorySummaryExcel(file, { details: true });
-      const s = res.summary;
-      const msg = [
-        `Processed ${res.rows_total ?? 0} row(s) from "${res.sheet_name ?? 'Inventory Summary'}".`,
-        `RM: ${s?.rm_updated ?? 0}, PM: ${s?.pm_updated ?? 0}, PR: ${s?.pr_updated ?? 0} updated`,
-        s?.created ? `(${s.created} new warehouse rows)` : '',
-        `Skipped: ${s?.skipped ?? 0}, Errors: ${s?.errors ?? 0}`,
-      ]
-        .filter(Boolean)
-        .join(' ');
-      alert(msg);
+      alert(formatSihImportResult('Zoho Inventory Summary', res));
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -996,6 +1007,29 @@ const WarehouseInventory = () => {
       alert(message);
     } finally {
       setImportingInventoryExcel(false);
+    }
+  };
+
+  const handleSihBucketExcelChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    bucket: 'warehouse' | 'ml1' | 'ml2',
+    importer: (file: File, options?: { details?: boolean }) => Promise<WarehouseSihExcelImportResponse>,
+    label: string
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingSihBucket(bucket);
+    try {
+      const res = await importer(file, { details: true });
+      alert(formatSihImportResult(label, res));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      refetchWarehouseInventory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `${label} import failed`;
+      alert(message);
+    } finally {
+      setImportingSihBucket(null);
     }
   };
   useEffect(() => {
@@ -1334,13 +1368,64 @@ const WarehouseInventory = () => {
                     className="hidden"
                     onChange={handleInventorySummaryExcelChange}
                   />
+                  <input
+                    ref={mainWarehouseSihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleSihBucketExcelChange(e, 'warehouse', importMainWarehouseSihExcel, 'Main warehouse SIH')
+                    }
+                  />
+                  <input
+                    ref={ml1SihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) => handleSihBucketExcelChange(e, 'ml1', importMl1SihExcel, 'ML1 SIH')}
+                  />
+                  <input
+                    ref={ml2SihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) => handleSihBucketExcelChange(e, 'ml2', importMl2SihExcel, 'ML2 SIH')}
+                  />
                   <button
                     type="button"
-                    disabled={importingInventoryExcel}
+                    disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => inventorySummaryFileRef.current?.click()}
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                    title="Zoho Inventory Summary export"
                   >
-                    {importingInventoryExcel ? 'Importing…' : 'Fix stock from Zoho Excel'}
+                    {importingInventoryExcel ? 'Importing…' : 'Zoho stock Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => mainWarehouseSihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+                    title="Main warehouse workbook — Sheet3 with sku, item_name, SIH"
+                  >
+                    {importingSihBucket === 'warehouse' ? 'Importing…' : 'Upload WH SIH'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => ml1SihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                    title="ML1 workbook — STOCK IN HAND sheet: sku, item_name, PHYSICAL QTY"
+                  >
+                    {importingSihBucket === 'ml1' ? 'Importing…' : 'Upload ML1 SIH'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => ml2SihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                    title="ML2 workbook — Sheet3 with sku, item_name, SIH"
+                  >
+                    {importingSihBucket === 'ml2' ? 'Importing…' : 'Upload ML2 SIH'}
                   </button>
                 </>
               )}

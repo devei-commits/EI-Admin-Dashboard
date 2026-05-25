@@ -20,7 +20,10 @@ export interface PRProductListItem {
   /** PR sub-category from BOM notes (list API); optional. */
   pr_sub_category?: string | null;
   form?: string;
+  /** @deprecated Legacy; pack size for SOs uses skuBomLimitQty/Uom. */
   fill_size?: string;
+  skuBomLimitQty?: number | null;
+  skuBomLimitUom?: string | null;
   batch_size_kg?: number;
   shelf_life_months?: number;
   mrp_price?: number;

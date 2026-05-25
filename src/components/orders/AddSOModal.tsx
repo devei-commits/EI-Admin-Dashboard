@@ -49,7 +49,8 @@ function parseProductIdFromOption(product: ProductOption): number | null {
 }
 
 function packSizeFromProductRecord(product: ProductOption | undefined): string {
-  return (product?.pack ?? '').trim();
+  const p = (product?.pack ?? '').trim();
+  return p || '0';
 }
 
 export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave }) => {
@@ -221,14 +222,18 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         });
         if (gen !== priceResolveGenRef.current) return;
 
+        const fromTier = result.source === 'client_price_list_tier';
+        const fromDefaultRate = result.source === 'client_price_list_rate';
+        const autoPrice = result.price_per_unit != null && result.price_per_unit > 0;
+
         setItems((prev) => {
           if (prev[index]?.productName?.trim() !== line.productName.trim()) return prev;
           const next = [...prev];
-          const price = result.price_per_unit;
-          next[index] = {
-            ...next[index],
-            unitPrice: price != null && price > 0 ? price : next[index].unitPrice,
-          };
+          if (fromTier || (fromDefaultRate && autoPrice)) {
+            next[index] = { ...next[index], unitPrice: result.price_per_unit! };
+          } else if (result.source === 'no_tier_match' || !autoPrice) {
+            next[index] = { ...next[index], unitPrice: 0 };
+          }
           return next;
         });
 
@@ -242,8 +247,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
           });
         }
 
-        const fromPriceList =
-          result.source === 'client_price_list_tier' || result.source === 'client_price_list_rate';
+        const fromPriceList = fromTier || fromDefaultRate;
         if (fromPriceList && result.staged_payment_terms) {
           applyStagedPaymentFields(result.staged_payment_terms);
         }
@@ -345,9 +349,6 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         newItems[index].unitPrice = 0;
       }
     }
-    if (field === 'pack') {
-      newItems[index].pack = String(value ?? '').trim();
-    }
     setItems(newItems);
   };
 
@@ -392,12 +393,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         );
       }
       if (item.productName && !isValidPackSize(item.pack)) {
-        const prPack = packSizeFromProductRecord(productsByName.get(item.productName.trim()));
-        newErrors.push(
-          prPack
-            ? `Pack size for item #${index + 1} is required.`
-            : `Pack size for item #${index + 1} is required — not set on the product record (PR); enter it manually.`,
-        );
+        newErrors.push(`Pack size for item #${index + 1} could not be resolved from the PR SKU BOM.`);
       }
     });
 
@@ -690,7 +686,6 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                     ? productsByName.get(item.productName.trim())
                     : undefined;
                   const packFromPr = packSizeFromProductRecord(selectedProduct);
-                  const packLockedFromPr = Boolean(packFromPr);
 
                   return (
                   <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-gray-50 relative">
@@ -717,24 +712,14 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                     <div className="col-span-6 md:col-span-2">
                       <Input
                         label="Pack Size"
-                        value={item.pack}
-                        readOnly={packLockedFromPr}
-                        disabled={packLockedFromPr}
+                        value={item.productName?.trim() ? packFromPr : item.pack}
+                        readOnly
+                        disabled
                         required={Boolean(item.productName?.trim())}
-                        placeholder={
-                          packLockedFromPr
-                            ? undefined
-                            : 'Required if not on PR'
-                        }
-                        onChange={
-                          packLockedFromPr
-                            ? undefined
-                            : (e) => handleItemChange(index, 'pack', e.target.value)
-                        }
                       />
-                      {!packLockedFromPr && item.productName?.trim() ? (
-                        <p className="text-xs text-amber-700 mt-1">
-                          Not on product record — enter pack size to create this order.
+                      {item.productName?.trim() ? (
+                        <p className="text-xs text-slate-500 mt-1">
+                          From PR SKU BOM net per unit{packFromPr === '0' ? ' (not set — showing 0)' : ''}.
                         </p>
                       ) : null}
                     </div>

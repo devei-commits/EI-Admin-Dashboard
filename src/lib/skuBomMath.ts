@@ -289,37 +289,46 @@ export function parseFillSizeToSkuNet(raw: string | undefined | null): { qty: st
   return { qty, uom: 'ML' };
 }
 
-/** Net limit for validation: fill size wins when parseable, else manual SKU fields. */
+/** Net limit for validation from SKU BOM fields on the PR form. */
 export function getEffectiveSkuBomLimitFields(args: {
-  fillSize: string;
   skuBomLimitQty: string;
   skuBomLimitUom: string;
 }): { limitQty: string; limitUom: string } {
-  const fromFill = parseFillSizeToSkuNet(args.fillSize);
-  if (fromFill) return { limitQty: fromFill.qty, limitUom: fromFill.uom };
   return { limitQty: args.skuBomLimitQty, limitUom: args.skuBomLimitUom?.trim() || 'GM' };
 }
 
-/** Values persisted on BOM — align with product fill_size when set. */
+/** Values persisted on BOM `sku_bom_limit_*`. */
 export function getEffectiveSkuBomLimitForPersist(args: {
-  fillSize: string;
   skuBomLimitQty: string;
   skuBomLimitUom: string;
 }): { sku_bom_limit_qty: number | null; sku_bom_limit_uom: string | null } {
-  const fromFill = parseFillSizeToSkuNet(args.fillSize);
-  if (fromFill) {
-    const n = parseFloat(String(fromFill.qty).replace(/[^\d.-]/g, ''));
-    return {
-      sku_bom_limit_qty: Number.isNaN(n) ? null : n,
-      sku_bom_limit_uom: fromFill.uom,
-    };
-  }
   const qRaw = args.skuBomLimitQty.trim();
   const n = qRaw ? parseFloat(qRaw.replace(/[^\d.-]/g, '')) : NaN;
   return {
     sku_bom_limit_qty: !qRaw || Number.isNaN(n) ? null : n,
     sku_bom_limit_uom: args.skuBomLimitUom?.trim() || null,
   };
+}
+
+/** Display pack size for sale orders from SKU BOM net per unit (`50 G`, `30 ML`, or `0`). */
+export function formatSkuBomLimitAsPack(qtyRaw: unknown, uomRaw: unknown): string {
+  const q = Number(qtyRaw);
+  if (!Number.isFinite(q) || q <= 0) return '0';
+  const u = String(uomRaw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!u) return '0';
+  const qtyStr = q % 1 === 0 ? String(Math.trunc(q)) : String(q);
+  if (u === 'GM' || u === 'G' || u === 'GRAM' || u === 'GRAMS') return `${qtyStr} G`;
+  if (u === 'KG' || u === 'KGS' || u === 'KILO' || u === 'KILOGRAM' || u === 'KILOGRAMS') return `${qtyStr} KG`;
+  if (u === 'ML' || u === 'MILLILITRE' || u === 'MILLILITER' || u === 'MILLILITRES' || u === 'MILLILITERS') {
+    return `${qtyStr} ML`;
+  }
+  if (u === 'L' || u === 'LT' || u === 'LTR' || u === 'LITRE' || u === 'LITER' || u === 'LITRES' || u === 'LITERS') {
+    return `${qtyStr} L`;
+  }
+  return `${qtyStr} ${u}`;
 }
 
 /** One formula row derived from SKU BOM per-unit quantities (percent = line share of net). */

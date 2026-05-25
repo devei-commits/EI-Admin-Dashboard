@@ -158,6 +158,9 @@ export interface ClientProductPriceResult {
   items_list_id?: number | null;
   rate_id?: number | null;
   tier_id?: number | null;
+  moq_min?: number | null;
+  moq_max?: number | null;
+  lowest_moq?: number | null;
   message?: string;
 }
 

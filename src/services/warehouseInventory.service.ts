@@ -612,3 +612,48 @@ export async function importInventorySummaryExcel(
     fd
   );
 }
+
+export type WarehouseSihBucket = 'warehouse' | 'ml1' | 'ml2';
+
+export interface WarehouseSihExcelImportResponse extends InventorySummaryExcelImportResponse {
+  bucket?: WarehouseSihBucket;
+  bucket_label?: string;
+}
+
+async function importSihBucketExcel(
+  bucket: WarehouseSihBucket,
+  file: File,
+  options?: { details?: boolean }
+): Promise<WarehouseSihExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const suffix = options?.details ? '?details=1' : '';
+  return api.post<WarehouseSihExcelImportResponse>(
+    `/api/v1/warehouse-inventory/import-sih-excel/${bucket}${suffix}`,
+    fd
+  );
+}
+
+/** Main warehouse workbook (Sheet3): sku, item_name, SIH → wh_stock. */
+export function importMainWarehouseSihExcel(
+  file: File,
+  options?: { details?: boolean }
+): Promise<WarehouseSihExcelImportResponse> {
+  return importSihBucketExcel('warehouse', file, options);
+}
+
+/** ML1 workbook (STOCK IN HAND sheet): sku, item_name, PHYSICAL QTY → ml1_stock. */
+export function importMl1SihExcel(
+  file: File,
+  options?: { details?: boolean }
+): Promise<WarehouseSihExcelImportResponse> {
+  return importSihBucketExcel('ml1', file, options);
+}
+
+/** ML2 workbook (Sheet3): sku, item_name, SIH → ml2_stock. */
+export function importMl2SihExcel(
+  file: File,
+  options?: { details?: boolean }
+): Promise<WarehouseSihExcelImportResponse> {
+  return importSihBucketExcel('ml2', file, options);
+}

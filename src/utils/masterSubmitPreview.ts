@@ -174,16 +174,17 @@ export function fieldDefs(keys: string[], labelOverrides: Partial<Record<string,
 export function buildMasterPreviewSections(
   formData: Record<string, unknown>,
   sectionDefs: MasterPreviewSectionDef[],
-  options?: { includeEmpty?: boolean }
+  options?: { includeEmpty?: boolean; omitKeys?: string[] }
 ): MasterPreviewSection[] {
   const includeEmpty = options?.includeEmpty ?? true;
+  const omitKeys = new Set(options?.omitKeys ?? []);
   const used = new Set<string>();
   const sections: MasterPreviewSection[] = [];
 
   for (const def of sectionDefs) {
     const rows: MasterPreviewRow[] = [];
     for (const field of def.fields) {
-      if (SKIP_PREVIEW_KEYS.has(field.key)) continue;
+      if (SKIP_PREVIEW_KEYS.has(field.key) || omitKeys.has(field.key)) continue;
       used.add(field.key);
       const raw = formData[field.key];
       if (!includeEmpty && !def.includeEmpty && isEmptyPreviewValue(raw)) continue;
@@ -197,7 +198,7 @@ export function buildMasterPreviewSections(
 
   const otherRows: MasterPreviewRow[] = [];
   for (const key of Object.keys(formData)) {
-    if (used.has(key) || SKIP_PREVIEW_KEYS.has(key)) continue;
+    if (used.has(key) || SKIP_PREVIEW_KEYS.has(key) || omitKeys.has(key)) continue;
     const raw = formData[key];
     if (!includeEmpty && isEmptyPreviewValue(raw)) continue;
     otherRows.push({

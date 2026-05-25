@@ -87,6 +87,7 @@ export const formatLakhs = (amount: number): string => {
 export const isValidPackSize = (pack: string | null | undefined): boolean => {
   const p = String(pack ?? '').trim();
   if (!p) return false;
+  if (p === '0') return true;
   const lower = p.toLowerCase();
   return lower !== '—' && lower !== '-' && lower !== 'n/a' && lower !== 'na';
 };

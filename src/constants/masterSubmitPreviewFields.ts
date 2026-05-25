@@ -276,7 +276,6 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         'prSubCategory',
         'productForm',
         'brandClient',
-        'fillSize',
         'packConfiguration',
         'skuCode',
         'prRecordType',

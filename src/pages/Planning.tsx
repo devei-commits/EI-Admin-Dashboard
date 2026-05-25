@@ -47,7 +47,9 @@ import {
   specificGravityFromBomLine,
   procurementQtyFromKgGap,
   procurementUnitSuffix,
+  rmPrimaryQtyToKg,
 } from '../lib/rmUnitConversion';
+import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import {
@@ -395,6 +397,17 @@ function findRmMasterRecord(
   const c = String(code ?? '').trim().toLowerCase();
   if (c) return list.find((r) => String(r.code ?? '').trim().toLowerCase() === c);
   return undefined;
+}
+
+/** Warehouse qty (RM primary UoM) → kg for planning/BOM confirmation (L × SG, etc.). */
+function warehouseQtyToKg(
+  qty: number,
+  whRow: WarehouseInventoryRow | undefined,
+  master: RawMaterialRecord | undefined,
+  lineSg: number
+): number {
+  const uom = whRow?.whUnit ?? master?.uom ?? 'KG';
+  return rmPrimaryQtyToKg(qty, uom, lineSg);
 }
 
 /** Planning/SO math is kg; procurement/PO lines use RM primary UoM (L, KG, …). */
@@ -1269,7 +1282,8 @@ const Planning = () => {
       type: 'RM' | 'PM',
       code: string | undefined,
       name: string,
-      sourceId?: number
+      sourceId?: number,
+      lineSg = 1
     ) => {
       const wh = warehouseRows.find(
         (r) =>
@@ -1278,7 +1292,14 @@ const Planning = () => {
             (code && r.code === code) ||
             r.name === name)
       );
-      return { sih: wh?.stockInHand ?? 0, reserved: wh?.reserved ?? 0 };
+      if (type === 'PM') {
+        return { sih: wh?.stockInHand ?? 0, reserved: wh?.reserved ?? 0 };
+      }
+      const master = findRmMasterRecord(sourceId, code, rawMaterialsList);
+      return {
+        sih: warehouseQtyToKg(wh?.stockInHand ?? 0, wh, master, lineSg),
+        reserved: warehouseQtyToKg(wh?.reserved ?? 0, wh, master, lineSg),
+      };
     };
 
     const toDetailRow = (
@@ -1298,6 +1319,9 @@ const Planning = () => {
           (line as { name?: string }).name ??
           String(code ?? '');
         const rawMaterialId = (line as { raw_material_id?: number }).raw_material_id;
+        const lineSg = parseSpecificGravity(
+          specificGravityFromBomLine(line) ?? (line as { specific_gravity?: number }).specific_gravity
+        );
         const absoluteQtyRaw = Number((line as { quantity?: number }).quantity ?? 0) || 0;
         const absoluteQtyKg = toKg(absoluteQtyRaw, line.uom);
         const required =
@@ -1315,7 +1339,7 @@ const Planning = () => {
             unit: 'KG',
             pct,
           },
-          findWarehouseStock('RM', code, name, rawMaterialId)
+          findWarehouseStock('RM', code, name, rawMaterialId, lineSg)
         );
       });
 
@@ -2036,7 +2060,10 @@ const Planning = () => {
         }
         const requiredKg = typeof rm.quantity === 'number' ? rm.quantity : 0;
         const wh = warehouseRows.find((r) => r.type === 'RM' && (r.code === master.code || r.name === master.name || r.sourceId === raw_material_id));
-        const sihKg = wh?.stockInHand ?? 0;
+        const lineSg = parseSpecificGravity(
+          (rm as { specific_gravity?: number }).specific_gravity ?? (rm as { specificGravity?: number }).specificGravity
+        );
+        const sihKg = warehouseQtyToKg(wh?.stockInHand ?? 0, wh, master, lineSg);
         const shortageKg = Math.max(0, requiredKg - sihKg);
         const proc = rmProcurementFieldsFromKg(shortageKg, master);
         items.push({
@@ -2141,6 +2168,23 @@ const Planning = () => {
   }, [orderQtyNum, totalKgNum, materialReqUnits, effectiveBatchSizeKg, kgPerUnitForPlanBatches]);
 
   const feasibilityRmRows = useMemo(() => {
+    const rmStockKg = (
+      whRow: WarehouseInventoryRow | undefined,
+      code: string,
+      rawMaterialId: number | string | undefined,
+      lineSg: number
+    ) => {
+      const master = findRmMasterRecord(
+        rawMaterialId != null ? Number(rawMaterialId) : undefined,
+        code,
+        rawMaterialsList
+      );
+      const sihKg = warehouseQtyToKg(whRow?.stockInHand ?? 0, whRow, master, lineSg);
+      const reservedKg = warehouseQtyToKg(whRow?.reserved ?? 0, whRow, master, lineSg);
+      const inTransitKg = warehouseQtyToKg(whRow?.inTransit ?? 0, whRow, master, lineSg);
+      return { sih: sihKg, reserved: reservedKg, free: Math.max(0, sihKg - reservedKg), inTransit: inTransitKg };
+    };
+
     if (bomFormula.length > 0) {
       return bomFormula.map((item) => {
         const code = item.code ?? item.id;
@@ -2152,17 +2196,13 @@ const Planning = () => {
             ? (pct / 100) * effectiveKgPerUnit
             : perBatch / (unitsPerBatch || materialReqUnits || 1);
         const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.code === code || r.name === item.name || String(r.sourceId) === String(item.id)));
-        const sih = whRow?.stockInHand ?? 0;
-        const reserved = whRow?.reserved ?? 0;
-        const free = Math.max(0, sih - reserved);
-        const inTransit = whRow?.inTransit ?? 0;
+        const stock = rmStockKg(whRow, String(code), item.id, specificGravity);
         const reqThisOrder = kgPerUnitRm * materialReqUnits;
-        const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-        const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
-        const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
+        const maxUnits = kgPerUnitRm > 0 ? Math.floor(stock.free / kgPerUnitRm) : 999;
+        const maxBatches = perBatch > 0 ? Math.floor(stock.free / perBatch) : 999;
         const totalReq = effectiveKgPerUnit > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
-        const gap = Math.max(0, reqThisOrder - free);
-        return { name: item.name, code: String(code), pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= materialReqUnits };
+        const gap = Math.max(0, reqThisOrder - stock.free);
+        return { name: item.name, code: String(code), pct, specificGravity, perBatch, ...stock, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= materialReqUnits };
       });
     }
     if (activeBom?.rmLines?.length) {
@@ -2176,17 +2216,13 @@ const Planning = () => {
             ? (pct / 100) * effectiveKgPerUnit
             : perBatch / (unitsPerBatch || materialReqUnits || 1);
         const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.code === code || String(r.sourceId) === String(line.raw_material_id)));
-        const sih = whRow?.stockInHand ?? 0;
-        const reserved = whRow?.reserved ?? 0;
-        const free = Math.max(0, sih - reserved);
-        const inTransit = whRow?.inTransit ?? 0;
+        const stock = rmStockKg(whRow, code, line.raw_material_id, specificGravity);
         const reqThisOrder = kgPerUnitRm * materialReqUnits;
-        const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-        const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
-        const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
+        const maxUnits = kgPerUnitRm > 0 ? Math.floor(stock.free / kgPerUnitRm) : 999;
+        const maxBatches = perBatch > 0 ? Math.floor(stock.free / perBatch) : 999;
         const totalReq = effectiveKgPerUnit > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
-        const gap = Math.max(0, reqThisOrder - free);
-        return { name: line.inci_name ?? code, code, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= materialReqUnits };
+        const gap = Math.max(0, reqThisOrder - stock.free);
+        return { name: line.inci_name ?? code, code, pct, specificGravity, perBatch, ...stock, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= materialReqUnits };
       });
     }
     return (selectedSOForBatch?.rawMaterials ?? []).map((item) => {
@@ -2199,20 +2235,17 @@ const Planning = () => {
         effectiveKgPerUnit > 0
           ? (pct / 100) * effectiveKgPerUnit
           : perBatch / (unitsPerBatch || materialReqUnits || 1);
-      const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.name === item.name || r.code === (item as RawMaterial).code));
-      const sih = whRow?.stockInHand ?? item.quantity ?? 0;
-      const reserved = whRow?.reserved ?? 0;
-      const free = Math.max(0, sih - reserved);
-      const inTransit = whRow?.inTransit ?? 0;
+      const itemCode = (item as RawMaterial).code ?? item.id;
+      const whRow = warehouseRows.find((r) => r.type === 'RM' && (r.name === item.name || r.code === itemCode));
+      const stock = rmStockKg(whRow, String(itemCode), (item as RawMaterial).raw_material_id ?? item.id, specificGravity);
       const reqThisOrder = kgPerUnitRm * materialReqUnits;
-      const reqThisOrderLiters = specificGravity > 0 ? reqThisOrder / specificGravity : reqThisOrder;
-      const maxUnits = kgPerUnitRm > 0 ? Math.floor(free / kgPerUnitRm) : 999;
-      const maxBatches = perBatch > 0 ? Math.floor(free / perBatch) : 999;
+      const maxUnits = kgPerUnitRm > 0 ? Math.floor(stock.free / kgPerUnitRm) : 999;
+      const maxBatches = perBatch > 0 ? Math.floor(stock.free / perBatch) : 999;
       const totalReq = effectiveKgPerUnit > 0 ? (pct / 100) * totalKgNum : perBatch * batchesReq;
-      const gap = Math.max(0, reqThisOrder - free);
-      return { name: item.name, code: (item as RawMaterial).code ?? item.id, pct, specificGravity, perBatch, sih, reserved, free, inTransit, gap, maxBatches, totalReq, reqThisOrder, reqThisOrderLiters, maxUnits, ok: maxUnits >= materialReqUnits };
+      const gap = Math.max(0, reqThisOrder - stock.free);
+      return { name: item.name, code: itemCode, pct, specificGravity, perBatch, ...stock, gap, maxBatches, totalReq, reqThisOrder, maxUnits, ok: maxUnits >= materialReqUnits };
     });
-  }, [bomFormula, activeBom?.rmLines, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.batchSize, selectedSOForBatch?.batchesRequired, selectedSOForBatch?.totalKg, warehouseRows, effectiveBatchSizeKg, batchesReq, orderQtyNum, totalKgNum, effectiveKgPerUnit, unitsPerBatch, materialReqUnits]);
+  }, [bomFormula, activeBom?.rmLines, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.batchSize, selectedSOForBatch?.batchesRequired, selectedSOForBatch?.totalKg, warehouseRows, rawMaterialsList, effectiveBatchSizeKg, batchesReq, orderQtyNum, totalKgNum, effectiveKgPerUnit, unitsPerBatch, materialReqUnits]);
 
   const feasibilityPmRows = useMemo(() => {
     const upb = batchesReq > 0 ? Math.ceil(orderQtyNum / batchesReq) || 3333 : 3333;
@@ -3272,7 +3305,10 @@ const Planning = () => {
       const raw_material_id = master.id != null ? parseInt(String(master.id), 10) : undefined;
       if (raw_material_id == null || Number.isNaN(raw_material_id)) { omitted += 1; continue; }
       const wh = warehouseRows.find((r) => r.type === 'RM' && (Number(r.sourceId) === Number(raw_material_id) || r.code === master.code || r.name === master.name));
-      const sih = wh?.stockInHand ?? 0;
+      const lineSg = parseSpecificGravity(
+        (item as { specific_gravity?: number }).specific_gravity ?? (item as { specificGravity?: number }).specificGravity
+      );
+      const sih = warehouseQtyToKg(wh?.stockInHand ?? 0, wh, master, lineSg);
       const shortageKg = Math.max(0, qty - sih);
       if (shortageKg <= 0) continue;
       const proc = rmProcurementFieldsFromKg(shortageKg, master);
@@ -5471,9 +5507,10 @@ const Planning = () => {
           const raw_material_id = rm?.id != null ? Number(rm.id) : undefined;
           const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
           const required = (sizeKg * pct) / 100;
+          const lineSg = parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine));
           const wh = warehouseRows.find((w) => w.type === 'RM' && (Number(w.sourceId) === Number(raw_material_id) || w.code === code));
-          const sih = wh?.stockInHand ?? 0;
-          const reserved = wh?.reserved ?? 0;
+          const sih = warehouseQtyToKg(wh?.stockInHand ?? 0, wh, rm, lineSg);
+          const reserved = warehouseQtyToKg(wh?.reserved ?? 0, wh, rm, lineSg);
           const available = Math.max(0, sih - reserved);
           const shortfall = Math.max(0, required - available);
           rows.push({
@@ -6144,14 +6181,11 @@ const Planning = () => {
                                 <td className="px-3 py-2 text-right font-mono text-gray-700">{Number(row.specificGravity ?? 1).toFixed(2)}</td>
                                 <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">
                                   {formatQtyExact(row.reqThisOrder, 'kg')}
-                                  <div className="text-[10px] font-normal text-gray-500">
-                                    {formatQtyExact(row.reqThisOrderLiters ?? row.reqThisOrder, 'kg')} L
-                                  </div>
                                 </td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.free.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{row.inTransit.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-700">{formatQtyExact(row.sih, 'kg')}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-600">{formatQtyExact(row.reserved, 'kg')}</td>
+                                <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{formatQtyExact(row.free, 'kg')}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-600">{formatQtyExact(row.inTransit, 'kg')}</td>
                                 <td className="px-3 py-2 text-right font-mono font-semibold">{row.gap > 0 ? <span className="text-red-600">{formatQtyExact(row.gap, 'kg')}</span> : <span className="text-emerald-600">—</span>}</td>
                                 <td className="px-3 py-2 text-right font-mono font-bold text-amber-700">{Math.round(row.maxUnits).toLocaleString()}</td>
                               </tr>
@@ -6242,18 +6276,6 @@ const Planning = () => {
                       setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
                     };
 
-                    const normalizeMassUom = (raw?: string): 'KG' | 'GM' | 'MG' => {
-                      const u = String(raw || '').trim().toUpperCase();
-                      if (u === 'G' || u === 'GM' || u === 'GRAM' || u === 'GRAMS') return 'GM';
-                      if (u === 'MG' || u === 'MILLIGRAM' || u === 'MILLIGRAMS') return 'MG';
-                      return 'KG';
-                    };
-                    const convertKgToMassUom = (kg: number, uom: 'KG' | 'GM' | 'MG') => {
-                      if (uom === 'GM') return kg * 1000;
-                      if (uom === 'MG') return kg * 1000 * 1000;
-                      return kg;
-                    };
-
                     /** Per-batch requirements in BATCH BREAKDOWN: use that batch row's own BOM copy. */
                     const getBatchRmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
                       const rmLines = Array.isArray(batchRow?.rmLines) ? batchRow.rmLines : [];
@@ -6261,9 +6283,7 @@ const Planning = () => {
                       return rmLines.map((line: { inci_name?: string; rm_code?: string; pct_w_w?: number; pct?: number; uom?: string }) => {
                         const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
                         const requiredKg = (batchSizeForCalc * pct) / 100;
-                        const uom = normalizeMassUom(line.uom);
-                        const required = convertKgToMassUom(requiredKg, uom);
-                        return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required, requiredKg, uom };
+                        return { name: line.inci_name ?? line.rm_code ?? '—', code: line.rm_code ?? '', pct, required: requiredKg, requiredKg, uom: 'KG' as const };
                       });
                     };
                     const getBatchPmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
@@ -6446,22 +6466,13 @@ const Planning = () => {
                                                   <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                                     <td className="px-3 py-1.5 text-gray-900 font-medium">{r.name} <span className="text-gray-400 text-xs">({r.code})</span></td>
                                                     <td className="px-3 py-1.5 text-right text-gray-600">{r.pct.toFixed(2)}%</td>
-                                                    <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{formatQtyExact(r.required, 'kg')} {r.uom}</td>
+                                                    <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{formatQtyExact(r.requiredKg ?? r.required, 'kg')} kg</td>
                                                   </tr>
                                                 ))}
                                                 <tr className="bg-teal-50 border-t border-teal-200">
                                                   <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
                                                   <td className="px-3 py-1.5 text-right font-bold text-teal-800">
-                                                    {(() => {
-                                                      const uoms = [...new Set(rmReqs.map((r) => r.uom))];
-                                                      if (uoms.length === 1) {
-                                                        const u = uoms[0] as 'KG' | 'GM' | 'MG';
-                                                        const total = convertKgToMassUom(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), u);
-                                                        return `${formatQtyExact(total, 'kg')} ${u}`;
-                                                      }
-                                                      const totalKg = rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0);
-                                                      return `${formatQtyExact(totalKg, 'kg')} KG`;
-                                                    })()}
+                                                    {formatQtyExact(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), 'kg')} kg
                                                   </td>
                                                 </tr>
                                               </tbody>
@@ -6602,7 +6613,7 @@ const Planning = () => {
                         <div className="min-w-0">
                           <h3 className="text-sm font-bold text-gray-900">BOM default Specific Gravity</h3>
                           <p className="text-xs text-gray-600 mt-1">
-                            Default SG (vs water) for new or swapped RM lines. Each RM line has its own SG field below — required for vessel volume at batch confirmation.
+                            Default SG (vs water) for new or swapped RM lines. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG). All BOM confirmation quantities are shown in kg.
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -6629,11 +6640,17 @@ const Planning = () => {
                       FORMULA BOM ({bomFormula.length} RM ITEMS)
                     </h3>
                     <div className="space-y-3 bg-gray-50 rounded-lg p-4">
-                      {bomFormula.map((item, idx) => (
+                      {bomFormula.map((item, idx) => {
+                        const lineQtyKg = roundMaterialQty(
+                          (effectiveBatchSizeKg * (item.percentage ?? 0)) / 100
+                        );
+                        return (
                         <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200 flex-wrap">
                           <div className="flex-1 min-w-[160px]">
                             <p className="text-sm font-semibold text-gray-900">{item.name}</p>
-                            <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {item.percentage}% · {item.phase ?? 'Phase A'}</p>
+                            <p className="text-xs text-blue-600 font-medium">
+                              {item.code ?? item.id} · {item.percentage}% w/w · {formatQtyExact(lineQtyKg, 'kg')} kg · {item.phase ?? 'Phase A'}
+                            </p>
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
                             <div className="flex items-center gap-1.5">
@@ -6666,7 +6683,8 @@ const Planning = () => {
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     {!canSendToProduction && (
                       <button className="mt-4 text-sm font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
@@ -6870,7 +6888,10 @@ const Planning = () => {
                               ) : (
                                 swapRmResults.map((rm) => {
                                   const whRow = warehouseRows.find((r) => r.code === rm.code);
-                                  const sih = whRow?.stockInHand ?? 0;
+                                  const lineSg = parseSpecificGravity(
+                                    bomFormula[swapSourceIndex ?? 0]?.specificGravity ?? bomLevelSG
+                                  );
+                                  const sih = warehouseQtyToKg(whRow?.stockInHand ?? 0, whRow, rm, lineSg);
                                   return (
                                     <button
                                       key={rm.id}
@@ -6974,7 +6995,11 @@ const Planning = () => {
                           <div className="space-y-2">
                             {category.items.map((item) => {
                               const whRow = warehouseRows.find((r) => r.code === item.code);
-                              const sih = whRow?.stockInHand ?? 0;
+                              const rmMaster = rawMaterialsList.find((r) => r.code === item.code);
+                              const lineSg = parseSpecificGravity(
+                                bomFormula[swapSourceIndex ?? 0]?.specificGravity ?? bomLevelSG
+                              );
+                              const sih = warehouseQtyToKg(whRow?.stockInHand ?? 0, whRow, rmMaster, lineSg);
                               return (
                                 <div key={`${category.name}-${item.id}`} className="px-3 py-2 rounded-lg flex items-center justify-between gap-3 text-sm bg-white border border-gray-200">
                                   <div className="flex-1 min-w-0">
