@@ -19,6 +19,11 @@ import {
   deleteProcurementQuotation,
   updateProcurementQuotation as updateProcurementQuotationApi,
 } from '../../services/procurementQuotations.service';
+import {
+  fetchPlanningQuotationAsks,
+  updatePlanningQuotationAsk,
+  type PlanningQuotationAsk,
+} from '../../services/planningQuotationAsks.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
@@ -44,6 +49,7 @@ import {
   mapOrderToPurchaseOrder,
   mapPurchaseOrderToDraftPO,
   draftLineItemsToPurchaseOrderItems,
+  recalcDraftPoLineItem,
   itemDetailsToProcurementRequestItems,
   assignPrItemToDraftLines,
   matchBackendPrItemForDraftLine,
@@ -789,6 +795,8 @@ const Procurement: React.FC = () => {
     notes: string;
     /** When set, save links quotation to this PR and syncs Items List for Planning. */
     procurementRequestId: string;
+    /** Planning quotation ask — fulfill on Items List save (no PR). */
+    planningQuotationAskId: string;
   }>({
     vendorId: '',
     quoteDate: '',
@@ -796,6 +804,7 @@ const Procurement: React.FC = () => {
     leadTimeDays: '',
     notes: '',
     procurementRequestId: '',
+    planningQuotationAskId: '',
   });
   const [recordQuoteLines, setRecordQuoteLines] = useState<
     {
@@ -956,6 +965,16 @@ const Procurement: React.FC = () => {
       return res.success ? (res.data ?? []) : [];
     },
   });
+
+  const { data: planningQuotationAsksResult } = useQuery({
+    queryKey: ['planning-quotation-asks', 'pending'],
+    queryFn: async () => {
+      const res = await fetchPlanningQuotationAsks({ status: 'pending' });
+      return res.success ? (res.data ?? []) : [];
+    },
+  });
+
+  const planningQuotationAsksPending = planningQuotationAsksResult ?? [];
 
   const { data: vendorClientList } = useQuery({
     queryKey: ['vendor-client', 'vendor'],
@@ -1415,6 +1434,8 @@ const Procurement: React.FC = () => {
   const isProcurementDataLoading =
     vendorClientList === undefined ||
     purchaseOrdersRaw === undefined ||
+    (sideSection === 'Quotations' &&
+      (quotationsResult === undefined || planningQuotationAsksResult === undefined)) ||
     (sideSection !== 'Quotations' && (backendPrResult === undefined || quotationsResult === undefined));
 
   useEffect(() => {
@@ -2051,6 +2072,24 @@ const Procurement: React.FC = () => {
     });
   }, [categoryFilter, planningQuotationRequestsAwaitingQuote, searchQuery]);
 
+  const filteredPlanningQuotationAsks = useMemo(() => {
+    return planningQuotationAsksPending.filter((ask) => {
+      const askType = ask.itemType === 'PM' ? 'PM' : 'RM';
+      if (categoryFilter !== 'All' && askType !== categoryFilter) return false;
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      const matchesCode = String(ask.itemCode ?? '').toLowerCase().includes(query);
+      const matchesName = String(ask.itemName ?? '').toLowerCase().includes(query);
+      const matchesVendor = String(ask.vendorHint ?? '').toLowerCase().includes(query);
+      const matchesPlanning =
+        (ask.planningSoNumber != null && String(ask.planningSoNumber).toLowerCase().includes(query)) ||
+        (ask.planningCustomerName != null && String(ask.planningCustomerName).toLowerCase().includes(query)) ||
+        (ask.planningProductName != null && String(ask.planningProductName).toLowerCase().includes(query)) ||
+        (ask.planningProductCode != null && String(ask.planningProductCode).toLowerCase().includes(query));
+      return matchesCode || matchesName || matchesVendor || matchesPlanning;
+    });
+  }, [categoryFilter, planningQuotationAsksPending, searchQuery]);
+
   const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
     const meta = line as QuoteLine & {
       __itemsListId?: number;
@@ -2262,7 +2301,9 @@ const Procurement: React.FC = () => {
     const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
     const totalQuotes =
       list.length +
-      (sideSection === 'Quotations' ? filteredPlanningQuotationRequestsAwaitingQuote.length : 0);
+      (sideSection === 'Quotations'
+        ? filteredPlanningQuotationAsks.length + filteredPlanningQuotationRequestsAwaitingQuote.length
+        : 0);
     const confirmed = list.filter((quote) => quote.status === 'Confirmed').length;
     const notSelected = list.filter((quote) => quote.status === 'Not Selected').length;
 
@@ -2276,6 +2317,7 @@ const Procurement: React.FC = () => {
         .length,
     };
   }, [
+    filteredPlanningQuotationAsks.length,
     filteredPlanningQuotationRequestsAwaitingQuote.length,
     filteredQuotes,
     procurementRequestsList,
@@ -2623,7 +2665,10 @@ const Procurement: React.FC = () => {
     () => ({
       Overview: procurementRequestsList.length,
       Requests: procurementRequestTabCounts.active,
-      Quotations: quotes.length + planningQuotationRequestsAwaitingQuote.length,
+      Quotations:
+        quotes.length +
+        filteredPlanningQuotationAsks.length +
+        planningQuotationRequestsAwaitingQuote.length,
       'Draft POs': draftPOs.length,
       'Issued POs': issuedPORecords.length,
       'GRN Monitor': (grnListFromApi ?? []).length,
@@ -2634,6 +2679,7 @@ const Procurement: React.FC = () => {
       grnListFromApi,
       issuedPORecords,
       itemTrackerRows,
+      filteredPlanningQuotationAsks.length,
       planningQuotationRequestsAwaitingQuote.length,
       procurementRequestTabCounts,
       procurementRequestsList.length,
@@ -4159,6 +4205,7 @@ const Procurement: React.FC = () => {
       leadTimeDays: '',
       notes: '',
       procurementRequestId: '',
+      planningQuotationAskId: '',
     });
     setRecordQuoteLines([]);
     setRecordQuoteLineSearch({});
@@ -4179,8 +4226,53 @@ const Procurement: React.FC = () => {
       leadTimeDays: '',
       notes: '',
       procurementRequestId: '',
+      planningQuotationAskId: '',
     });
     setRecordQuoteLines([]);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+    setShowRecordQuoteModal(true);
+  };
+
+  const openRecordQuoteFromPlanningAsk = (ask: PlanningQuotationAsk) => {
+    if (!vendors.length) {
+      addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
+      return;
+    }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const lineType: 'RM' | 'PM' = ask.itemType === 'PM' ? 'PM' : 'RM';
+    const qty = Number(ask.quantityRequested) || 0;
+    const vendorHint = String(ask.vendorHint ?? '').trim();
+    const matchedVendor =
+      vendorHint.length > 0
+        ? vendors.find((v) => v.name.trim().toLowerCase() === vendorHint.toLowerCase())
+        : undefined;
+    const lines = [
+      {
+        index: 0,
+        itemId: String(ask.itemCode ?? '').trim(),
+        name: String(ask.itemName ?? '').trim(),
+        uom: String(ask.unit ?? (lineType === 'PM' ? 'PCS' : 'KG')),
+        orderQty: String(qty > 0 ? qty : ''),
+        pricePerUnit: '',
+        totalValue: 0,
+        raw_material_id: ask.rawMaterialId != null ? Number(ask.rawMaterialId) : null,
+        pack_material_id: ask.packMaterialId != null ? Number(ask.packMaterialId) : null,
+        itemType: lineType,
+      },
+    ];
+    setRecordQuoteForm({
+      vendorId: matchedVendor?.id ?? vendors[0].id,
+      quoteDate: todayStr,
+      validTill: '',
+      leadTimeDays: '',
+      notes: ask.notes
+        ? String(ask.notes)
+        : `Vendor quotation for Planning · ${ask.itemName ?? 'Material'} (${ask.itemCode ?? '—'})`,
+      procurementRequestId: '',
+      planningQuotationAskId: String(ask.id),
+    });
+    setRecordQuoteLines(lines);
     setRecordQuoteLineSearch({});
     setRecordQuoteSaving(false);
     setShowRecordQuoteModal(true);
@@ -4223,6 +4315,7 @@ const Procurement: React.FC = () => {
         ? `Vendor quotation for Planning request ${req.code}`
         : `Quotation for ${req.code}`,
       procurementRequestId: req.id,
+      planningQuotationAskId: '',
     });
     setRecordQuoteLines(lines);
     setRecordQuoteLineSearch({});
@@ -4731,7 +4824,7 @@ const Procurement: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 px-1 pt-2 border-t border-slate-100 mt-2">
-                  Planning quotation requests appear here (not under Requests). Record vendor quotes for Planning and PR; Draft POs are created from the PR / Draft POs flow.
+                  Planning quotation asks appear here (no procurement request). Record vendor rates on Items List; planners create PRs manually from Release to Planning.
                 </p>
               </div>
             )}
@@ -5666,10 +5759,95 @@ const Procurement: React.FC = () => {
                     </div>
                   ) : (
                     <>
-                  {filteredPlanningQuotationRequestsAwaitingQuote.length > 0 && (
+                  {filteredPlanningQuotationAsks.length > 0 && (
                     <div className="space-y-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 px-1">
-                        Awaiting vendor quote from Planning ({filteredPlanningQuotationRequestsAwaitingQuote.length})
+                        Awaiting vendor quote from Planning ({filteredPlanningQuotationAsks.length})
+                      </p>
+                      {filteredPlanningQuotationAsks.map((ask) => (
+                        <article
+                          key={`planning-quote-ask-${ask.id}`}
+                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
+                        >
+                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
+                                    Planning
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[ask.itemType === 'PM' ? 'PM' : 'RM']}`}
+                                  >
+                                    {ask.itemType}
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    Awaiting quote
+                                  </span>
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">
+                                  {ask.itemName ?? 'Material line'}
+                                </h3>
+                                <p className="text-xs text-slate-600 mt-1">
+                                  Add vendor / MOQ on Items List — no procurement request is created
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openRecordQuoteFromPlanningAsk(ask)}
+                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
+                              >
+                                Record Quote
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4">
+                            <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
+                            <p className="font-semibold text-slate-900 text-sm">
+                              {Number(ask.quantityRequested ?? 0).toLocaleString('en-IN')}{' '}
+                              {ask.unit || (ask.itemType === 'PM' ? 'PCS' : 'KG')}
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{ask.itemCode || '—'}</p>
+                            {ask.vendorHint ? (
+                              <p className="text-xs text-slate-700 mt-2">
+                                <span className="font-semibold">Vendor hint:</span> {ask.vendorHint}
+                                {ask.moqHint != null && ask.moqHint > 0 ? (
+                                  <>
+                                    {' '}
+                                    · <span className="font-semibold">MOQ:</span> {ask.moqHint}
+                                  </>
+                                ) : null}
+                              </p>
+                            ) : null}
+                            {(ask.planningSoNumber || ask.planningProductName) && (
+                              <p className="text-xs text-slate-600 mt-2">
+                                {ask.planningSoNumber ? (
+                                  <>
+                                    <span className="font-semibold">SO</span> {ask.planningSoNumber}
+                                    {ask.planningCustomerName ? ` · ${ask.planningCustomerName}` : ''}
+                                  </>
+                                ) : null}
+                                {ask.planningProductName ? (
+                                  <span className={ask.planningSoNumber ? ' ml-2' : ''}>
+                                    <span className="font-semibold">Product</span> {ask.planningProductName}
+                                  </span>
+                                ) : null}
+                              </p>
+                            )}
+                            {ask.notes ? (
+                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
+                                {ask.notes}
+                              </p>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {filteredPlanningQuotationRequestsAwaitingQuote.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 px-1">
+                        Legacy planning quotation PRs ({filteredPlanningQuotationRequestsAwaitingQuote.length})
                       </p>
                       {filteredPlanningQuotationRequestsAwaitingQuote.map((req) => (
                         <article
@@ -5748,6 +5926,7 @@ const Procurement: React.FC = () => {
                     </div>
                   )}
                   {quotesForQuotationsSection.length === 0 &&
+                  filteredPlanningQuotationAsks.length === 0 &&
                   filteredPlanningQuotationRequestsAwaitingQuote.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       No quotes match current filters.
@@ -10088,53 +10267,66 @@ const Procurement: React.FC = () => {
                 />
               </div>
               <div>
-                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items</span>
-                <div className="space-y-2">
-                  {editDraftPOForm.lineItems.map((line, idx) => (
-                    <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2 text-sm">
-                      <span className="font-medium text-slate-800 min-w-[120px] truncate">{line.item}</span>
-                      <span className="text-xs text-slate-500 min-w-[70px]">
-                        Lead: {line.leadTimeDays != null ? `${line.leadTimeDays}d` : '—'}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Qty"
-                        value={line.qty}
-                        onChange={(e) => {
-                          const qtyStr = e.target.value;
-                          const qty = parseFloat(String(qtyStr).replace(/[^\d.]/g, '')) || 0;
-                          const price = editDraftPOForm.lineItems[idx].pricePerUnit ?? 0;
-                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
-                          const subtotal = qty * price;
-                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
-                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                          const next = editDraftPOForm.lineItems.map((l, i) =>
-                            i === idx ? { ...l, qty: qtyStr, gstAmount, lineTotal } : l
-                          ) as DraftPOLineItem[];
-                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
-                        }}
-                        className="w-20 rounded border border-slate-300 px-2 py-1"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Price"
-                        value={line.pricePerUnit}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value) || 0;
-                          const qty = parseFloat(String(editDraftPOForm.lineItems[idx].qty).replace(/[^\d.]/g, '')) || 0;
-                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
-                          const subtotal = qty * v;
-                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
-                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                          const next = editDraftPOForm.lineItems.map((l, i) =>
-                            i === idx ? { ...l, pricePerUnit: v, gstAmount, lineTotal } : l
-                          ) as DraftPOLineItem[];
-                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
-                        }}
-                        className="w-24 rounded border border-slate-300 px-2 py-1"
-                      />
-                    </div>
-                  ))}
+                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty &amp; price/unit</span>
+                <div className="rounded-lg border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-[11px] tracking-wide text-slate-500 border-b border-slate-200">
+                        <th className="px-2 py-2 font-semibold">Item</th>
+                        <th className="px-2 py-2 font-semibold text-right w-24">Qty</th>
+                        <th className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
+                        <th className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editDraftPOForm.lineItems.map((line, idx) => (
+                        <tr key={idx} className="border-b border-slate-100 last:border-0">
+                          <td className="px-2 py-2 align-top">
+                            <p className="font-medium text-slate-800 leading-snug">{line.item}</p>
+                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                            {line.leadTimeDays != null ? (
+                              <p className="text-[10px] text-slate-500 mt-0.5">Lead {line.leadTimeDays}d · GST {line.gstPercent ?? 18}%</p>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Qty"
+                              value={line.qty}
+                              onChange={(e) => {
+                                const next = editDraftPOForm.lineItems.map((l, i) =>
+                                  i === idx ? recalcDraftPoLineItem(l, { qty: e.target.value }) : l,
+                                );
+                                setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : ''}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '').trim();
+                                const price = raw === '' ? 0 : parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+                                const next = editDraftPOForm.lineItems.map((l, i) =>
+                                  i === idx ? recalcDraftPoLineItem(l, { pricePerUnit: price }) : l,
+                                );
+                                setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-right align-top tabular-nums text-slate-800 font-medium whitespace-nowrap">
+                            ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -10169,17 +10361,12 @@ const Procurement: React.FC = () => {
                   });
 
                   if (d.backendPoId) {
+                    const poItems = draftLineItemsToPurchaseOrderItems(form.lineItems, prItemsForLines, assignedPrLines);
                     const payload = {
                       vendorName: form.vendor,
                       paymentTerms: form.paymentTerms || undefined,
                       expectedShipmentDate: form.expectedDelivery || undefined,
-                      items: form.lineItems.map((l) => ({
-                        itemName: l.item,
-                        itemCode: l.itemCode,
-                        quantity: l.qty,
-                        rate: String(l.pricePerUnit),
-                        tax: String(l.gstPercent ?? 18),
-                      })),
+                      items: poItems,
                     };
                     const res = await updatePurchaseOrder(d.backendPoId, payload);
                     if (!res.success) {
@@ -10809,12 +10996,18 @@ const Procurement: React.FC = () => {
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  {recordQuoteForm.procurementRequestId ? 'Add quotation for request' : 'Record Vendor Quotation'}
+                  {recordQuoteForm.planningQuotationAskId
+                    ? 'Record quote for Planning ask'
+                    : recordQuoteForm.procurementRequestId
+                      ? 'Add quotation for request'
+                      : 'Record Vendor Quotation'}
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  {recordQuoteForm.procurementRequestId
-                    ? 'Enter vendor and unit prices for each line. Rates are saved to Items List so Planning can release procurement with those vendors.'
-                    : 'Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).'}
+                  {recordQuoteForm.planningQuotationAskId
+                    ? 'Saves vendor rates to Items List only. No procurement request is created; Planning adds a PR manually after rates exist.'
+                    : recordQuoteForm.procurementRequestId
+                      ? 'Enter vendor and unit prices for each line. Rates are saved to Items List so Planning can release procurement with those vendors.'
+                      : 'Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).'}
                 </p>
               </div>
               <button
@@ -11117,14 +11310,6 @@ const Procurement: React.FC = () => {
                         );
                         return;
                       }
-                      const linkedReq = requestsMapped.find((r) => r.id === linkedPrId);
-                      if (linkedReq && isPlanningQuotationRequest(linkedReq)) {
-                        const vendorName = selectedVendorProc?.name?.trim();
-                        await updateProcurementRequestApi(linkedPrId, {
-                          status: 'Quoted',
-                          ...(vendorName ? { preferredVendor: vendorName } : {}),
-                        });
-                      }
                       await queryClient.invalidateQueries({
                         predicate: (q) =>
                           Array.isArray(q.queryKey) &&
@@ -11263,7 +11448,17 @@ const Procurement: React.FC = () => {
                         q.queryKey[0].startsWith('items-list'),
                       refetchType: 'all',
                     });
-                    addToast('success', 'Saved vendor price list (Items List).');
+                    const askId = parseInt(String(recordQuoteForm.planningQuotationAskId ?? ''), 10);
+                    if (Number.isFinite(askId) && askId > 0) {
+                      await updatePlanningQuotationAsk(askId, { status: 'fulfilled' });
+                      await queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+                    }
+                    addToast(
+                      'success',
+                      askId > 0
+                        ? 'Saved to Items List. Planning quotation ask marked fulfilled — planner can create a PR manually when ready.'
+                        : 'Saved vendor price list (Items List).'
+                    );
                     closeRecordQuoteModal();
                     } finally {
                       setRecordQuoteSaving(false);
@@ -11277,7 +11472,11 @@ const Procurement: React.FC = () => {
                       Saving…
                     </>
                   ) : (
-                    recordQuoteForm.procurementRequestId ? 'Save quotation' : 'Save Quote'
+                    recordQuoteForm.planningQuotationAskId
+                      ? 'Save to Items List'
+                      : recordQuoteForm.procurementRequestId
+                        ? 'Save quotation'
+                        : 'Save Quote'
                   )}
                 </button>
               </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -57,9 +58,7 @@ const PM_REQUIRED_FIELDS: Array<{
   toastMessage: string;
 }> = [
   { id: 'pmSkuCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
-  { id: 'itemCode', label: 'SKU', section: 0, toastMessage: 'Step 1 — Generate or enter SKU before submitting' },
-  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item Name is required' },
-  { id: 'itemCategory', label: 'Item type', section: 0, toastMessage: 'Step 1 — Item type is required' },
+  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item name is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -97,7 +96,7 @@ function createEmptyPackagingFormData() {
     pkgHsn: '',
     pkgGst: '',
     pkgTaxPreference: '',
-    pkgReturnable: false,
+    pkgReturnable: '' as '' | 'Yes' | 'No',
     pkgAssociateItems: '',
     name: '',
     level: '',
@@ -220,6 +219,11 @@ const PackagingRefactored: React.FC = () => {
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
   const [pendingPmPayload, setPendingPmPayload] = useState<CreatePackMaterialPayload | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const [saveSuccessCode, setSaveSuccessCode] = useState('');
+  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+  const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
+  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
   const focusPmField = useCallback((fieldId: string) => {
     window.setTimeout(() => {
       const el = document.getElementById(fieldId);
@@ -248,7 +252,7 @@ const PackagingRefactored: React.FC = () => {
       isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory) &&
         pmLevelForSubCategory(formData.pmSkuCategory || formData.subCategory) &&
         formData.name?.trim() &&
-        formData.itemCategory?.trim() &&
+        formData.pkgReturnable?.trim() &&
         formData.pkgTaxPreference?.trim() &&
         (!taxIsTaxable || (formData.pkgHsn?.trim() && formData.pkgGst?.toString().trim()))
     );
@@ -320,7 +324,13 @@ const PackagingRefactored: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target;
     if (id === 'zohoId') return;
-    if (id === 'pkgHsn' || id === 'pkgGst' || id === 'pkgTaxPreference' || id in errors) {
+    if (
+      id === 'pkgHsn' ||
+      id === 'pkgGst' ||
+      id === 'pkgTaxPreference' ||
+      id === 'pkgReturnable' ||
+      id in errors
+    ) {
       setErrors((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -519,9 +529,9 @@ const PackagingRefactored: React.FC = () => {
   };
 
   const buildPayload = () => {
-    const codeTrim = (formData.itemCode || generatedCode || '').trim();
+    const codeTrim = existingPmId ? (formData.itemCode || generatedCode || '').trim() : '';
     const firstVendor = formData.vendors[0];
-    const skuForZoho = formData.pkgSku?.trim() ? formData.pkgSku.trim() : codeTrim || undefined;
+    const skuForZoho = undefined;
     const descBase = formData.name?.trim() || (codeTrim ? `PM Item ${codeTrim}` : 'New pack material');
     const skuCat =
       normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
@@ -548,7 +558,7 @@ const PackagingRefactored: React.FC = () => {
       hsnCode: formData.pkgHsn?.trim() ? formData.pkgHsn.trim() : undefined,
       unit: formData.pkgUnit?.trim() ? formData.pkgUnit.trim() : undefined,
       taxPref: formData.pkgTaxPreference ?? undefined,
-      pkgReturnable: formData.pkgReturnable,
+      pkgReturnable: formData.pkgReturnable === 'Yes' ? true : formData.pkgReturnable === 'No' ? false : null,
       pkgAssociateItems: formData.pkgAssociateItems?.trim() ? formData.pkgAssociateItems.trim() : undefined,
       form_data: (() => {
         const {
@@ -579,9 +589,11 @@ const PackagingRefactored: React.FC = () => {
   const pmPreviewFormData = useMemo(
     () => ({
       ...(formData as Record<string, unknown>),
-      itemCode: formData.itemCode || generatedCode || '',
+      itemCode: isNewPm
+        ? '(Assigned on save)'
+        : formData.itemCode || generatedCode || '',
     }),
-    [formData, generatedCode]
+    [formData, generatedCode, isNewPm]
   );
 
   const pmPreviewSections = useMemo(
@@ -590,11 +602,7 @@ const PackagingRefactored: React.FC = () => {
   );
 
   const validatePmForSubmit = (): CreatePackMaterialPayload | null => {
-    const requiredFields = PM_REQUIRED_FIELDS.filter((field) => {
-      if (field.id === 'itemCode' && !existingPmId) return false;
-      return true;
-    });
-    for (const field of requiredFields) {
+    for (const field of PM_REQUIRED_FIELDS) {
       if (field.id === 'pmSkuCategory') {
         const ok = normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory);
         if (!ok) {
@@ -627,17 +635,29 @@ const PackagingRefactored: React.FC = () => {
         return null;
       }
     }
-    const codeRule = (formData.itemCode || generatedCode || '').trim();
-    const skuCatKey =
-      normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
-      String(formData.pmSkuCategory || formData.subCategory || '')
-        .trim()
-        .toLowerCase();
-    const pfxRule = pmSubCategorySkuPrefix(skuCatKey);
-    if (pfxRule && codeRule && !pmSkuMatchesCodePrefix(codeRule, pfxRule)) {
-      addToast('error', `SKU must start with "${pfxRule}" for category "${formData.pmSkuCategory || formData.subCategory}".`);
+    if (existingPmId) {
+      const codeRule = (formData.itemCode || generatedCode || '').trim();
+      const skuCatKey =
+        normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
+        String(formData.pmSkuCategory || formData.subCategory || '')
+          .trim()
+          .toLowerCase();
+      const pfxRule = pmSubCategorySkuPrefix(skuCatKey);
+      if (pfxRule && codeRule && !pmSkuMatchesCodePrefix(codeRule, pfxRule)) {
+        addToast('error', `SKU must start with "${pfxRule}" for category "${formData.pmSkuCategory || formData.subCategory}".`);
+        setCurrentSection(0);
+        focusPmField('itemCode');
+        return null;
+      }
+    }
+    if (!String(formData.pkgReturnable ?? '').trim()) {
+      setErrors((prev) => ({
+        ...prev,
+        pkgReturnable: 'Step 1 — Returnable Item is required (pick Yes or No)',
+      }));
+      addToast('error', 'Step 1 — Returnable Item is required (pick Yes or No)');
       setCurrentSection(0);
-      focusPmField('itemCode');
+      focusPmField('pkgReturnable');
       return null;
     }
     const taxValidation = validateMasterTaxDetails(formData as Record<string, unknown>, 'packaging');
@@ -663,6 +683,16 @@ const PackagingRefactored: React.FC = () => {
     setSubmitPreviewOpen(true);
   };
 
+  const closeSaveSuccessAndExit = () => {
+    setSaveSuccessOpen(false);
+    setSaveSuccessCode('');
+    setSaveSuccessRows([]);
+    setSaveSuccessZohoNote(null);
+    setExistingPmId(null);
+    resetPmFormToEmpty();
+    setPageTab('bpr');
+  };
+
   const handleConfirmSubmit = async () => {
     const payload = pendingPmPayload;
     if (!payload) return;
@@ -670,32 +700,40 @@ const PackagingRefactored: React.FC = () => {
     try {
       if (existingPmId) {
         const pmIdForSync = parseInt(String(existingPmId), 10);
-        await updatePackMaterial(existingPmId, payload);
+        const saved = await updatePackMaterial(existingPmId, payload);
         const syncCreated = Number.isNaN(pmIdForSync) ? 0 : await syncPmVendorsToItemsListAfterSave(pmIdForSync);
-        addToast(
-          'success',
-          syncCreated > 0
-            ? `Packaging item updated! ${syncCreated} vendor rate(s) synced to Items List.`
-            : 'Packaging item updated!'
-        );
-        setExistingPmId(null);
+        setSaveSuccessIsEdit(true);
+        setSaveSuccessCode(saved.code || formData.itemCode || '');
+        setSaveSuccessRows([
+          { label: 'Item name', value: saved.description || formData.name || '' },
+          { label: 'Category', value: saved.group || formData.pmSkuCategory || '' },
+          { label: 'Level', value: saved.level || formData.level || '' },
+          ...(syncCreated > 0
+            ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
+            : []),
+        ]);
+        setSaveSuccessZohoNote(null);
       } else {
         const saved = await createPackMaterial({ ...payload });
         const newPmId = parseInt(String(saved.id), 10);
         const syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
-        addToast(
-          'success',
-          syncCreated > 0
-            ? `Packaging item saved! ${syncCreated} vendor rate(s) synced to Items List.`
-            : 'Packaging item saved!'
-        );
+        setSaveSuccessIsEdit(false);
+        setSaveSuccessCode(saved.code || '');
+        setSaveSuccessRows([
+          { label: 'Item name', value: saved.description || formData.name || '' },
+          { label: 'Category', value: saved.group || formData.pmSkuCategory || '' },
+          { label: 'Level', value: saved.level || formData.level || '' },
+          ...(syncCreated > 0
+            ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
+            : []),
+        ]);
+        setSaveSuccessZohoNote(null);
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
       setSubmitPreviewOpen(false);
       setPendingPmPayload(null);
-      resetPmFormToEmpty();
-      setPageTab('bpr');
+      setSaveSuccessOpen(true);
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
     } finally {
@@ -738,6 +776,7 @@ const PackagingRefactored: React.FC = () => {
                     options={pmDetailSubCategoryOptions}
                     error={errors.optionalPmSubCategory}
                     disabled={lockPrimaryFields || !formData.pmSkuCategory?.trim()}
+                    emptyLabel="Select sub-category…"
                   />
                 ) : (
                   <InputField
@@ -747,7 +786,7 @@ const PackagingRefactored: React.FC = () => {
                     onChange={handleInputChange}
                     placeholder="Select a category first"
                     error={errors.optionalPmSubCategory}
-                    disabled={!formData.pmSkuCategory?.trim()}
+                    readOnly={!formData.pmSkuCategory?.trim()}
                   />
                 )}
               </div>
@@ -759,8 +798,44 @@ const PackagingRefactored: React.FC = () => {
               </p>
             </div>
 
-            {/* Identity (merged from former section 1) */}
-            <div>
+            {isNewPm ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Internal PM code (SKU)</label>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-600">
+                  {(() => {
+                    const skuCat =
+                      normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) || '';
+                    const pfx = pmSubCategorySkuPrefix(skuCat);
+                    if (!pfx) {
+                      return (
+                        <>
+                          Assigned on save after you pick a category (PPM, SPM, or TPM). Prefix examples:{' '}
+                          <span className="font-mono">4</span>, <span className="font-mono">5L</span>,{' '}
+                          <span className="font-mono">5M</span>, <span className="font-mono">5O</span>,{' '}
+                          <span className="font-mono">6T</span>, <span className="font-mono">6A</span>.
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        Assigned on save: starts with <span className="font-mono">{pfx}</span> (e.g.{' '}
+                        <span className="font-mono text-gray-800">{pfx === '4' ? '4000001' : `${pfx}00001`}</span>
+                        ).
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Internal PM code (SKU)</label>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
+                  {formData.itemCode || '—'}
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-gray-200 pt-4">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
@@ -771,6 +846,7 @@ const PackagingRefactored: React.FC = () => {
                   placeholder="Packaging item name as used internally"
                   requiredMark
                   error={errors.name}
+                  readOnly={lockPrimaryFields}
                 />
                 <div>
                   <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
@@ -781,70 +857,50 @@ const PackagingRefactored: React.FC = () => {
                     type="text"
                     readOnly
                     value={formData.level || '—'}
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-slate-50 text-slate-800 cursor-default"
-                    title="Set automatically from sub-category (PPM / SPM / TPM)"
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-slate-800 cursor-default"
+                    title="Set automatically from category (PPM / SPM / TPM)"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Auto: PPM → Primary, SPM → Secondary, TPM → Tertiary</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Auto: PPM → Primary, SPM → Secondary, TPM → Tertiary
+                  </p>
                 </div>
-                <InputField
-                  label="Item type"
-                  id="itemCategory"
-                  value={formData.itemCategory}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Bottle, Carton, Label, Shipper"
-                  requiredMark
-                  error={errors.itemCategory}
-                />
+                {!isNewPm ? (
+                  <InputField
+                    label="Item type (optional)"
+                    id="itemCategory"
+                    value={formData.itemCategory}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Bottle, Carton, Label, Shipper"
+                    error={errors.itemCategory}
+                  />
+                ) : null}
               </div>
             </div>
 
-            {/* Basic Details */}
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Basic Details</h3>
+            <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax Classification</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="SKU"
-                  id="itemCode"
-                  value={formData.itemCode}
+                <SelectField
+                  label="Returnable Item"
+                  id="pkgReturnable"
+                  value={formData.pkgReturnable}
                   onChange={handleInputChange}
-                  placeholder={
-                    isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory)
-                      ? 'Optional — leave blank to assign on save (4… / 5L… / 5M… / 5O… / 6T… / 6A…)'
-                      : 'e.g. 400001 or legacy code'
-                  }
-                  requiredMark={
-                    !isNewPm ||
-                    !isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory)
-                  }
-                  error={errors.itemCode}
-                  readOnly={lockPrimaryFields}
+                  options={['Yes', 'No']}
+                  disabled={lockPrimaryFields}
+                  requiredMark
+                  error={errors.pkgReturnable}
                 />
-                <div>
-                  <label htmlFor="pkgTaxPreference" className="block text-sm font-medium text-gray-700 mb-1">
-                    Tax Preference
-                    <span className="text-red-600 ml-0.5" aria-hidden>*</span>
-                  </label>
-                  <select
-                    id="pkgTaxPreference"
-                    value={formData.pkgTaxPreference}
-                    onChange={handleInputChange}
-                    aria-invalid={errors.pkgTaxPreference ? true : undefined}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      errors.pkgTaxPreference ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">Select...</option>
-                    {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  {errors.pkgTaxPreference ? (
-                    <p className="mt-1 text-xs text-red-600">{errors.pkgTaxPreference}</p>
-                  ) : (
-                    <p className="text-xs text-gray-500 mt-1">Taxable: HSN and GST % required. Exempted / NonGST: HSN / GST not needed.</p>
-                  )}
-                </div>
-                {formData.pkgTaxPreference === 'Taxable' ? (
+                <SelectField
+                  label="Tax Preference"
+                  id="pkgTaxPreference"
+                  value={formData.pkgTaxPreference}
+                  onChange={handleInputChange}
+                  options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
+                  disabled={lockPrimaryFields}
+                  requiredMark
+                  error={errors.pkgTaxPreference}
+                />
+                {taxIsTaxable ? (
                   <>
                     <InputField
                       label="HSN Code"
@@ -855,30 +911,21 @@ const PackagingRefactored: React.FC = () => {
                       error={errors.pkgHsn}
                       requiredMark
                     />
-                    <div>
-                      <label htmlFor="pkgGst" className="block text-sm font-medium text-gray-700 mb-1">
-                        GST %
-                        <span className="text-red-600 ml-0.5" aria-hidden>*</span>
-                      </label>
-                      <select
-                        id="pkgGst"
-                        value={formData.pkgGst}
-                        onChange={handleInputChange}
-                        aria-invalid={errors.pkgGst ? true : undefined}
-                        className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                          errors.pkgGst ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                        }`}
-                      >
-                        <option value="">Select...</option>
-                        {GST_RATE_OPTIONS.map((v) => (
-                          <option key={v} value={v}>{v}%</option>
-                        ))}
-                      </select>
-                      {errors.pkgGst ? <p className="mt-1 text-xs text-red-600">{errors.pkgGst}</p> : null}
-                    </div>
+                    <SelectField
+                      label="GST %"
+                      id="pkgGst"
+                      value={formData.pkgGst}
+                      onChange={handleInputChange}
+                      options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
+                      requiredMark
+                      error={errors.pkgGst}
+                    />
                   </>
                 ) : null}
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
+              </p>
             </div>
 
           </div>
@@ -886,9 +933,10 @@ const PackagingRefactored: React.FC = () => {
 
       case 1: // Material & Specs
         return (
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-5 sm:space-y-6">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — identity & Zoho details</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — classification</h3>
+              <p className="text-xs text-gray-500 mb-3">Not required to create the PM; complete when available.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
                   label="Expected Product Types"
@@ -896,13 +944,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.expectedProductTypes}
                   onChange={handleInputChange}
                   placeholder="e.g. Creams, Serums, Shampoos"
-                />
-                <InputField
-                  label="SKU (for Zoho)"
-                  id="pkgSku"
-                  value={formData.pkgSku}
-                  onChange={handleInputChange}
-                  placeholder="Optional; defaults to SKU above"
                 />
               </div>
               <div className="mt-3 space-y-3">
@@ -920,45 +961,38 @@ const PackagingRefactored: React.FC = () => {
                   onChange={handleInputChange}
                   placeholder="Any extra description to identify this item uniquely"
                 />
-                <div className="mt-3 flex items-center gap-2">
-                  <input type="checkbox" id="pkgReturnable" checked={formData.pkgReturnable} onChange={handleInputChange}
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600" />
-                  <label htmlFor="pkgReturnable" className="text-sm text-gray-700">Returnable Item</label>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Associate Items</label>
-                  <textarea
-                    id="pkgAssociateItems"
-                    value={formData.pkgAssociateItems}
-                    onChange={handleInputChange}
-                    rows={2}
-                    placeholder="Link related BOM / RM / secondary packaging if any"
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Zoho Item ID</label>
-                  <input
-                    type="text"
-                    id="zohoId"
-                    value={formData.zohoId ?? ''}
-                    readOnly
-                    autoComplete="off"
-                    aria-readonly="true"
-                    placeholder="Populated from the server after save (when Books sync is on)"
-                    onChange={() => {}}
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Read-only — returned by the API after a successful save.</p>
-                </div>
-              </div>
-              <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-                <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-800 mb-2">Zoho Books</h4>
-                <p className="text-xs text-gray-600">
-                  When you submit this form, the server saves the pack material and creates the Zoho item in one step (or rolls back both if Books fails). No separate sync button.
-                </p>
               </div>
             </div>
+
+            <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                {isNewPm
+                  ? 'Internal PM code is assigned on save and synced to Zoho Books with your tax preferences (or both roll back if Books fails).'
+                  : 'Internal PM code is fixed; Zoho item ID is read-only.'}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Zoho Item ID"
+                  id="zohoId"
+                  value={formData.zohoId ?? ''}
+                  onChange={() => {}}
+                  placeholder="Populated from the server after save (when Books sync is on)"
+                  readOnly
+                />
+              </div>
+              <div className="mt-3">
+                <TextareaField
+                  label="Associate Items"
+                  id="pkgAssociateItems"
+                  value={formData.pkgAssociateItems}
+                  onChange={handleInputChange}
+                  placeholder="Link related BOM / RM / packaging codes if any"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Zoho Item ID is read-only — returned by the API after a successful save.</p>
+            </div>
+
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — QC, storage & unit</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1339,8 +1373,8 @@ const PackagingRefactored: React.FC = () => {
               errors={errors}
               itemLabel="Test"
               columns={[
-                { key: 'name', label: 'Test Name' },
-                { key: 'result', label: 'Result' },
+                { key: 'name', label: 'Test Name', required: true },
+                { key: 'result', label: 'Result', required: true },
                 { key: 'date', label: 'Test Date', type: 'date' },
                 { key: 'by', label: 'Tested By' },
                 { key: 'remarks', label: 'Remarks' },
@@ -1419,7 +1453,8 @@ const PackagingRefactored: React.FC = () => {
         pkgUnit: pm.unit ?? 'PCS',
         pkgTaxPreference: pm.taxPref ?? '',
         pkgGst: (pm as any).gst != null ? String((pm as any).gst) : '',
-        pkgReturnable: pm.pkgReturnable ?? false,
+        pkgReturnable:
+          pm.pkgReturnable === true ? 'Yes' : pm.pkgReturnable === false ? 'No' : ('' as '' | 'Yes' | 'No'),
         pkgAssociateItems: pm.pkgAssociateItems ?? '',
       };
 
@@ -1479,6 +1514,10 @@ const PackagingRefactored: React.FC = () => {
           merged.optionalPmSubCategory ||
           '';
         merged.matBody = merged.optionalPmSubCategory || merged.matBody || '';
+        const rawReturnable: unknown = merged.pkgReturnable;
+        if (rawReturnable === true) merged.pkgReturnable = 'Yes';
+        else if (rawReturnable === false) merged.pkgReturnable = 'No';
+        else if (rawReturnable !== 'Yes' && rawReturnable !== 'No') merged.pkgReturnable = '';
         return merged;
       });
 
@@ -1743,7 +1782,7 @@ const PackagingRefactored: React.FC = () => {
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete all required step-0 fields first (sub-category, code, item name, item type, and taxable HSN when applicable).'
+                              ? 'Complete all required step-0 fields first (category, item name, returnable item, tax preference, and taxable HSN/GST when applicable).'
                               : undefined
                           }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -1779,6 +1818,20 @@ const PackagingRefactored: React.FC = () => {
         sections={pmPreviewSections}
         confirming={submitConfirming}
         isEdit={isEditingPm}
+      />
+      <MasterSaveSuccessModal
+        isOpen={saveSuccessOpen}
+        onClose={closeSaveSuccessAndExit}
+        title={saveSuccessIsEdit ? 'Packaging material updated' : 'Packaging material created'}
+        subtitle={
+          saveSuccessIsEdit
+            ? 'Changes are saved. Internal code cannot be changed here.'
+            : 'Your pack material is saved with the internal code below (assigned by the server).'
+        }
+        generatedCode={saveSuccessCode}
+        codeLabel="Internal PM code (SKU)"
+        rows={saveSuccessRows}
+        zohoNote={saveSuccessZohoNote}
       />
     </>
   );
@@ -2444,7 +2497,8 @@ const SelectField: React.FC<{
   disabled?: boolean;
   requiredMark?: boolean;
   error?: string;
-}> = ({ label, id, value, onChange, options, disabled, requiredMark, error }) => (
+  emptyLabel?: string;
+}> = ({ label, id, value, onChange, options, disabled, requiredMark, error, emptyLabel = 'Select...' }) => (
   <div>
     <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
       {label}
@@ -2460,7 +2514,7 @@ const SelectField: React.FC<{
         error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
       } ${disabled ? 'bg-slate-100' : ''}`}
     >
-      <option value="">Select sub-category…</option>
+      <option value="">{emptyLabel}</option>
       {options.map((opt) => {
         const v = typeof opt === 'string' ? opt : opt.value;
         const l = typeof opt === 'string' ? opt : opt.label;

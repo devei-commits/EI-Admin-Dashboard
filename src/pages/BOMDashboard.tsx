@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Trash2, Plus, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
+import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, fetchZohoCompositeSkuBomSuggestion, uploadSkuBomExcel, clearSkuBomForReimport, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
 import { parseFormulaBomWorkbook, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
 import {
@@ -13,10 +13,8 @@ import {
   countMeaningfulSkuRmLines,
   parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
-  skuBomLinesToFormulaRows,
   formulaRowsToSkuBomLines,
   flattenFormulaBomPhases,
-  parseBulkSpecificGravity,
 } from '../lib/skuBomMath';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 
@@ -45,11 +43,6 @@ const BOMDashboard: React.FC = () => {
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [bomEditPopupId, setBomEditPopupId] = useState<string | null>(null);
-  const [zohoSkuFetchId, setZohoSkuFetchId] = useState('');
-  const [zohoSkuFetchLoading, setZohoSkuFetchLoading] = useState(false);
-  const [skuExcelUploading, setSkuExcelUploading] = useState(false);
-  const [skuBomClearing, setSkuBomClearing] = useState(false);
-  const skuExcelFileInputRef = useRef<HTMLInputElement | null>(null);
   const [formulaRmExcelUploading, setFormulaRmExcelUploading] = useState(false);
   /** Full BOM reset for the product currently open in the side panel (toolbar). */
   const [prToolbarFullResetting, setPrToolbarFullResetting] = useState(false);
@@ -162,59 +155,6 @@ const BOMDashboard: React.FC = () => {
     });
   };
 
-  const importSkuBomIntoFormulaBom = () => {
-    if (!editDraft) return;
-    const fillSize = String(editDraft.fill_size ?? '');
-    const limQ = editDraft.skuBomLimitQty != null ? String(editDraft.skuBomLimitQty) : '';
-    const limU = String(editDraft.skuBomLimitUom ?? 'GM');
-    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-      fillSize,
-      skuBomLimitQty: limQ,
-      skuBomLimitUom: limU,
-    });
-    const lines = (editDraft.skuBom ?? []).map((r) => ({
-      inciName: r.inci_name,
-      rmCode: r.rm_code,
-      rawMaterialId: r.raw_material_id != null ? String(r.raw_material_id) : undefined,
-      qtyPerUnit: r.qty_per_unit,
-      uom: r.uom,
-    }));
-    const res = skuBomLinesToFormulaRows({
-      lines,
-      limitQty,
-      limitUom,
-      defaultPhase: 'Imported from SKU',
-      specificGravity: parseBulkSpecificGravity(editDraft.specific_gravity),
-    });
-    if (!res.ok) {
-      toast.error(res.error);
-      return;
-    }
-    const phases = editDraft.formulaBom ?? [];
-    if (phases.some((p) => (p.ingredients?.length ?? 0) > 0)) {
-      const ok = window.confirm(
-        'Replace all Formula BOM phases with one phase containing % w/w from the SKU BOM? Existing phases and lines will be removed from this draft.'
-      );
-      if (!ok) return;
-    }
-    const phaseLabel = 'Imported from SKU';
-    updateDraft({
-      formulaBom: [
-        {
-          phase: phaseLabel,
-          ingredients: res.rows.map((r) => ({
-            inci_name: r.inciName,
-            rm_code: r.rmCode,
-            pct_w_w: parseFloat(r.percentWW),
-            uom: r.uom,
-            raw_material_id: r.rawMaterialId && !Number.isNaN(Number(r.rawMaterialId)) ? Number(r.rawMaterialId) : null,
-          })),
-        },
-      ],
-    });
-    toast.success(`Imported ${res.rows.length} ingredient line(s) from SKU BOM (% total 100%).`);
-  };
-
   const importFormulaBomIntoSkuBom = () => {
     if (!editDraft) return;
     const fillSize = String(editDraft.fill_size ?? '');
@@ -258,207 +198,6 @@ const BOMDashboard: React.FC = () => {
       `Imported ${skuBom.length} SKU line(s) from Formula BOM for net ${res.limitQty} ${res.limitUom}.`
     );
   };
-
-  useEffect(() => {
-    const z = selectedProduct?.zoho_item_id;
-    if (z != null && String(z).trim() !== '') setZohoSkuFetchId(String(z));
-    else setZohoSkuFetchId('');
-  }, [selectedProduct?.product_id, selectedProduct?.zoho_item_id]);
-
-  const loadZohoCompositeIntoSkuBomPanel = async (syncFormula: boolean) => {
-    if (!editDraft) return;
-    let applyFormula = syncFormula;
-    if (applyFormula && (editDraft.formulaBom ?? []).some((p) => (p.ingredients?.length ?? 0) > 0)) {
-      if (
-        !window.confirm(
-          'Replace Formula BOM with % w/w derived from imported SKU lines? Existing formula phases will be removed.'
-        )
-      ) {
-        applyFormula = false;
-      }
-    }
-    const id = zohoSkuFetchId.trim() || (editDraft.zoho_item_id != null ? String(editDraft.zoho_item_id) : '');
-    if (!id) {
-      toast.error('Enter the Zoho composite item id or set Zoho Item ID on the product.');
-      return;
-    }
-    if ((editDraft.skuBom ?? []).length > 0 && !window.confirm('Replace SKU BOM lines with Zoho mapped items?')) return;
-
-    setZohoSkuFetchLoading(true);
-    try {
-      const res = await fetchZohoCompositeSkuBomSuggestion(id);
-      if (!res.success || !res.data) {
-        toast.error(typeof res.error === 'string' ? res.error : 'Failed to load Zoho composite');
-        return;
-      }
-      const data = res.data;
-      const skuBom = data.sku_bom.map((r, i) => ({
-        row_number: i + 1,
-        inci_name: r.inci_name,
-        rm_code: r.rm_code,
-        raw_material_id: r.raw_material_id,
-        qty_per_unit: r.qty_per_unit,
-        uom: r.uom,
-      }));
-      let skuBomLimitQty = editDraft.skuBomLimitQty ?? null;
-      let skuBomLimitUom = editDraft.skuBomLimitUom ?? null;
-      const fillNet = parseFillSizeToSkuNet(String(editDraft.fill_size ?? ''));
-      if (!fillNet && data.sku_bom_limit_qty != null && data.sku_bom_limit_uom) {
-        skuBomLimitQty = data.sku_bom_limit_qty;
-        skuBomLimitUom = data.sku_bom_limit_uom;
-      }
-      const updates: Partial<PRProductDetail> = { skuBom, skuBomLimitQty, skuBomLimitUom };
-      if (applyFormula) {
-        const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-          fillSize: String(editDraft.fill_size ?? ''),
-          skuBomLimitQty: skuBomLimitQty != null ? String(skuBomLimitQty) : '',
-          skuBomLimitUom: String(skuBomLimitUom ?? 'GM'),
-        });
-        const mappedLines = skuBom.map((row) => ({
-          inciName: row.inci_name,
-          rmCode: row.rm_code,
-          rawMaterialId: row.raw_material_id != null ? String(row.raw_material_id) : undefined,
-          qtyPerUnit: String(row.qty_per_unit),
-          uom: row.uom,
-        }));
-        const pctRes = skuBomLinesToFormulaRows({
-          lines: mappedLines,
-          limitQty,
-          limitUom,
-          defaultPhase: 'Imported from SKU',
-          specificGravity: parseBulkSpecificGravity(editDraft.specific_gravity),
-        });
-        if (pctRes.ok) {
-          updates.formulaBom = [
-            {
-              phase: 'Imported from SKU',
-              ingredients: pctRes.rows.map((r) => ({
-                inci_name: r.inciName,
-                rm_code: r.rm_code,
-                pct_w_w: parseFloat(r.percentWW),
-                uom: r.uom,
-                raw_material_id:
-                  r.rawMaterialId && !Number.isNaN(Number(r.rawMaterialId)) ? Number(r.rawMaterialId) : null,
-              })),
-            },
-          ];
-        } else {
-          toast.error(`SKU lines loaded; formula not updated: ${pctRes.error}`);
-        }
-      }
-      updateDraft(updates);
-      let msg = `Loaded ${skuBom.length} SKU line(s) from Zoho${data.composite_name ? `: ${data.composite_name}` : ''}.`;
-      if (data.warnings?.length) msg += ` ${data.warnings.join(' ')}`;
-      if (data.unmatched_components?.length) msg += ` ${data.unmatched_components.length} line(s) need RM linking.`;
-      if (applyFormula && updates.formulaBom) msg += ' Formula % updated.';
-      toast.success(msg);
-    } finally {
-      setZohoSkuFetchLoading(false);
-    }
-  };
-
-  const handleSkuExcelUpload = useCallback(
-    async (file: File) => {
-      if (!selectedProduct) return;
-      if (isEditMode) {
-        const ok = window.confirm(
-          'Importing from Excel writes directly to the server and reloads the product. Any unsaved draft changes will be lost. Continue?'
-        );
-        if (!ok) return;
-      }
-      setSkuExcelUploading(true);
-      try {
-        const res = await uploadSkuBomExcel(selectedProduct.product_id, file);
-        if (!res.success || !res.data) {
-          const err = res.error;
-          const msg =
-            typeof err === 'string'
-              ? err
-              : err && typeof err === 'object' && 'message' in err
-                ? String(err.message)
-                : 'Failed to import Excel';
-          toast.error(msg);
-          return;
-        }
-        const { summary, unmatched, skipped_unknown_type, sheet_name } = res.data;
-        const detail = await fetchPRProductDetail(selectedProduct.product_id);
-        if (detail.success && detail.data) {
-          setSelectedProduct(detail.data);
-          if (isEditMode) setEditDraft({ ...detail.data });
-        }
-        const parts: string[] = [];
-        parts.push(`Sheet "${sheet_name}"`);
-        parts.push(
-          `${summary.sku_rm_count} SKU RM line(s) (${summary.sku_rm_matched} matched, ${summary.sku_rm_unmatched} unmatched)`
-        );
-        parts.push(
-          `${summary.pm_count} Pack line(s) (${summary.pm_matched} matched, ${summary.pm_unmatched} unmatched)`
-        );
-        if (summary.skipped_unknown_type > 0) {
-          parts.push(`${summary.skipped_unknown_type} row(s) skipped (unknown Type)`);
-        }
-        toast.success(`SKU BOM imported — ${parts.join('; ')}.`);
-        if ((unmatched?.length ?? 0) > 0) {
-          const sample = unmatched
-            .slice(0, 3)
-            .map((u) => `"${u.component_name}" (${u.type})`)
-            .join(', ');
-          toast.warning(
-            `${unmatched.length} component name(s) not matched in masters: ${sample}${unmatched.length > 3 ? '…' : ''}`
-          );
-        }
-        if ((skipped_unknown_type?.length ?? 0) > 0) {
-          const sample = skipped_unknown_type.slice(0, 3).map((s) => `row ${s.row_number}`).join(', ');
-          toast.warning(
-            `${skipped_unknown_type.length} row(s) had an unrecognised Type: ${sample}${skipped_unknown_type.length > 3 ? '…' : ''}`
-          );
-        }
-        loadProducts();
-      } finally {
-        setSkuExcelUploading(false);
-        if (skuExcelFileInputRef.current) skuExcelFileInputRef.current.value = '';
-      }
-    },
-    [selectedProduct, isEditMode, loadProducts]
-  );
-
-  const handleClearSkuBomForReimport = useCallback(async () => {
-    if (!selectedProduct) return;
-    if (isEditMode) {
-      const okDraft = window.confirm(
-        'Clearing removes SKU BOM and Pack BOM on the server and reloads the product. Unsaved draft edits on other tabs will be lost. Continue?'
-      );
-      if (!okDraft) return;
-    }
-    const ok = window.confirm(
-      'Clear all SKU BOM lines and Pack BOM lines for this product? Formula BOM (% phases) and process steps are kept. Use this before uploading Excel again from scratch.'
-    );
-    if (!ok) return;
-    setSkuBomClearing(true);
-    try {
-      const res = await clearSkuBomForReimport(selectedProduct.product_id);
-      if (!res.success || !res.data) {
-        const err = res.error;
-        const msg =
-          typeof err === 'string'
-            ? err
-            : err && typeof err === 'object' && 'message' in err
-              ? String(err.message)
-              : 'Failed to clear';
-        toast.error(msg);
-        return;
-      }
-      toast.success(res.data.message ?? 'SKU BOM and Pack BOM cleared.');
-      const detail = await fetchPRProductDetail(selectedProduct.product_id);
-      if (detail.success && detail.data) {
-        setSelectedProduct(detail.data);
-        if (isEditMode) setEditDraft({ ...detail.data });
-      }
-      loadProducts();
-    } finally {
-      setSkuBomClearing(false);
-    }
-  }, [selectedProduct, isEditMode, loadProducts]);
 
   /** Toolbar: wipe BOM line data on every PR (next to Formula BOM Excel). Requires typed confirmation. */
   const handleToolbarClearAllPrBom = useCallback(async () => {
@@ -657,39 +396,6 @@ const BOMDashboard: React.FC = () => {
       if (!prev) return null;
       const packBom = (prev.packBom ?? []).filter((_, i) => i !== rowIdx).map((r, i) => ({ ...r, row_number: i + 1 }));
       return { ...prev, packBom };
-    });
-  };
-
-  const addSkuBomRow = () => {
-    setEditDraft((prev) => ({
-      ...prev!,
-      skuBom: [
-        ...(prev?.skuBom ?? []),
-        {
-          row_number: (prev?.skuBom?.length ?? 0) + 1,
-          inci_name: '',
-          rm_code: '',
-          raw_material_id: null,
-          qty_per_unit: 0,
-          uom: 'KG',
-        },
-      ],
-    }));
-  };
-  const updateSkuBomRow = (rowIdx: number, field: keyof SkuBomRow, value: string | number | null) => {
-    setEditDraft((prev) => {
-      if (!prev) return null;
-      const skuBom = (prev.skuBom ?? []).map((row, i) => (i !== rowIdx ? row : { ...row, [field]: value }));
-      return { ...prev, skuBom };
-    });
-  };
-  const removeSkuBomRow = (rowIdx: number) => {
-    setEditDraft((prev) => {
-      if (!prev) return null;
-      const skuBom = (prev.skuBom ?? [])
-        .filter((_, i) => i !== rowIdx)
-        .map((r, i) => ({ ...r, row_number: i + 1 }));
-      return { ...prev, skuBom };
     });
   };
 
@@ -967,9 +673,7 @@ const BOMDashboard: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      formulaRmExcelUploading || prToolbarFullResetting || skuExcelUploading || skuBomClearing
-                    }
+                    disabled={formulaRmExcelUploading || prToolbarFullResetting}
                     title="Permanently deletes all PR-linked catalogue products, every BOM row, and related planning/inventory rows. Raw and pack material masters are kept. Blocked if ecommerce orders still reference these products. Requires typing a confirmation phrase."
                     onClick={() => void handleToolbarClearAllPrBom()}
                     className="inline-flex items-center px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 text-xs font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap gap-1"
@@ -1383,14 +1087,6 @@ const BOMDashboard: React.FC = () => {
                           <button type="button" onClick={addFormulaPhase} className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700">
                             <Plus className="w-3.5 h-3.5" /> Add phase
                           </button>
-                          <button
-                            type="button"
-                            onClick={importSkuBomIntoFormulaBom}
-                            className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium border border-violet-300 bg-violet-50 text-violet-900 rounded hover:bg-violet-100"
-                            title="Derive % w/w from SKU BOM per-unit quantities (SKU tab must sum to net)."
-                          >
-                            <ArrowDownToLine className="w-3.5 h-3.5" /> Import from SKU BOM
-                          </button>
                         </div>
                       )}
                       {formulaList.map((phase, phaseIdx) => (
@@ -1457,58 +1153,8 @@ const BOMDashboard: React.FC = () => {
                   return (
                     <div className="space-y-4">
                       <p className="text-xs text-gray-600">
-                        Raw materials by <strong>quantity per 1 unit</strong>. Net per unit comes from product <strong>Fill Size</strong> when set (<span className="font-mono">50g</span> / <span className="font-mono">50ml</span>); otherwise use manual limit on this tab. Line UOMs must match mass vs volume. <strong>Sum must equal the limit exactly</strong> (±0.001).
+                        Read-only per-unit RM quantities derived from <strong>Formula BOM</strong> via Import below. Net per unit comes from <strong>Fill Size</strong> (<span className="font-mono">50g</span> / <span className="font-mono">50ml</span>) or manual limit. When lines exist, the sum must match net (±0.001).
                       </p>
-                      {canEdit && (
-                        <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/80 space-y-2">
-                          <div className="flex items-start justify-between gap-3 flex-wrap">
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">
-                                Bulk import from Excel
-                              </p>
-                              <p className="text-[11px] text-emerald-900/80 mt-0.5">
-                                Upload a <span className="font-mono">.xlsx</span> sheet with columns:{' '}
-                                <span className="font-mono">Component Name</span>,{' '}
-                                <span className="font-mono">Type</span> (<em>Raw Material</em> or{' '}
-                                <em>Packaging</em>),{' '}
-                                <span className="font-mono">Qty per SKU (kg/nos)</span>,{' '}
-                                <span className="font-mono">UOM</span>. Raw-material rows populate the SKU BOM below; packaging rows go to the Pack BOM tab. Existing lines are replaced.
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                              <input
-                                ref={skuExcelFileInputRef}
-                                type="file"
-                                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) void handleSkuExcelUpload(f);
-                                }}
-                              />
-                              <button
-                                type="button"
-                                disabled={skuExcelUploading || skuBomClearing}
-                                onClick={() => void handleClearSkuBomForReimport()}
-                                title="Removes SKU BOM and Pack BOM lines on the server so you can upload Excel again. Keeps formula % and process steps."
-                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                {skuBomClearing ? 'Clearing…' : 'Clear import'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={skuExcelUploading || skuBomClearing}
-                                onClick={() => skuExcelFileInputRef.current?.click()}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-                              >
-                                <Upload className="w-3.5 h-3.5" />
-                                {skuExcelUploading ? 'Uploading…' : 'Upload Excel'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                       {fillNetPanel ? (
                         <div className="p-3 bg-violet-50 border border-violet-100 rounded-lg space-y-1">
                           <p className="text-[10px] font-semibold text-violet-900 uppercase">Net per 1 product unit (from Fill Size)</p>
@@ -1581,46 +1227,6 @@ const BOMDashboard: React.FC = () => {
                           </div>
                         </div>
                       )}
-                      {isEditMode && (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-end gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50">
-                            <div className="flex-1 min-w-[180px]">
-                              <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
-                                Zoho composite ID
-                              </label>
-                              <input
-                                type="text"
-                                value={zohoSkuFetchId}
-                                onChange={(e) => setZohoSkuFetchId(e.target.value)}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs font-mono"
-                                placeholder="e.g. 1252231000017972949"
-                                autoComplete="off"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              disabled={zohoSkuFetchLoading}
-                              onClick={() => void loadZohoCompositeIntoSkuBomPanel(false)}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium border border-slate-300 bg-white rounded hover:bg-slate-100 disabled:opacity-50"
-                            >
-                              <CloudDownload className="w-3.5 h-3.5" />
-                              {zohoSkuFetchLoading ? '…' : 'Load from Zoho'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={zohoSkuFetchLoading}
-                              onClick={() => void loadZohoCompositeIntoSkuBomPanel(true)}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium border border-violet-300 bg-violet-50 text-violet-900 rounded hover:bg-violet-100 disabled:opacity-50"
-                            >
-                              <CloudDownload className="w-3.5 h-3.5" />
-                              {zohoSkuFetchLoading ? '…' : 'Load SKU + Formula'}
-                            </button>
-                          </div>
-                          <button type="button" onClick={addSkuBomRow} className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-violet-600 text-white rounded hover:bg-violet-700">
-                            <Plus className="w-3.5 h-3.5" /> Add RM line
-                          </button>
-                        </div>
-                      )}
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
                         <table className="w-full text-sm">
                           <thead>
@@ -1630,60 +1236,26 @@ const BOMDashboard: React.FC = () => {
                               <th className="text-left p-2">RM Code</th>
                               <th className="text-right p-2">Qty / unit</th>
                               <th className="text-left p-2">UOM</th>
-                              {isEditMode && <th className="text-left p-2 w-24">RM id</th>}
-                              {isEditMode && <th className="w-8" />}
                             </tr>
                           </thead>
                           <tbody>
                             {skuList.map((row, i) => (
                               <tr key={i} className="border-t border-gray-100">
                                 <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
-                                {isEditMode ? (
-                                  <>
-                                    <td className="p-2">
-                                      <input value={row.inci_name} onChange={(e) => updateSkuBomRow(i, 'inci_name', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" />
-                                    </td>
-                                    <td className="p-2">
-                                      <input value={row.rm_code} onChange={(e) => updateSkuBomRow(i, 'rm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" />
-                                    </td>
-                                    <td className="p-2">
-                                      <input type="number" step="0.0001" value={row.qty_per_unit} onChange={(e) => updateSkuBomRow(i, 'qty_per_unit', Number(e.target.value) || 0)} className="w-24 px-2 py-1 border rounded text-right text-xs" />
-                                    </td>
-                                    <td className="p-2">
-                                      <input value={row.uom} onChange={(e) => updateSkuBomRow(i, 'uom', e.target.value)} className="w-16 px-2 py-1 border rounded text-xs" />
-                                    </td>
-                                    <td className="p-2">
-                                      <input
-                                        type="number"
-                                        value={row.raw_material_id ?? ''}
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          updateSkuBomRow(i, 'raw_material_id', v === '' ? null : Number(v) || null);
-                                        }}
-                                        className="w-full px-2 py-1 border rounded text-xs font-mono"
-                                        placeholder="optional"
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <button type="button" onClick={() => removeSkuBomRow(i)} className="text-red-600 hover:text-red-700">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
-                                    <td className="p-2 font-medium">{row.inci_name}</td>
-                                    <td className="p-2 font-mono text-xs text-violet-700">{row.rm_code}</td>
-                                    <td className="p-2 text-right font-mono font-bold text-violet-700">{row.qty_per_unit}</td>
-                                    <td className="p-2 text-gray-500">{row.uom}</td>
-                                  </>
-                                )}
+                                <td className="p-2 font-medium">{row.inci_name}</td>
+                                <td className="p-2 font-mono text-xs text-violet-700">{row.rm_code}</td>
+                                <td className="p-2 text-right font-mono font-bold text-violet-700">{row.qty_per_unit}</td>
+                                <td className="p-2 text-gray-500">{row.uom}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                      {skuList.length === 0 && <p className="text-gray-500 text-sm">No SKU-level RM lines. {isEditMode && 'Add a row above.'}</p>}
+                      {skuList.length === 0 && (
+                        <p className="text-gray-500 text-sm">
+                          No SKU-level RM lines. {canEdit ? 'Complete Formula BOM, then use Import from Formula BOM.' : ''}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}

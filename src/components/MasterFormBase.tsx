@@ -201,9 +201,11 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         <div>{children}</div>
 
         {/* Global Errors */}
-        {Object.keys(errors).length > 0 && (
+        {Object.entries(errors).some(([, message]) => String(message ?? '').trim()) && (
          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          {Object.entries(errors).map(([field, message]) => (
+          {Object.entries(errors)
+           .filter(([, message]) => String(message ?? '').trim())
+           .map(([field, message]) => (
            <p key={field} className="text-sm text-red-700 mb-1">
             • {message}
            </p>

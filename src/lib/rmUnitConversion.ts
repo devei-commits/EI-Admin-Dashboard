@@ -32,6 +32,14 @@ export function parseSpecificGravity(raw: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+/** Per-RM SG stored on PR formula BOM (`rm_lines`); null when not set on the line. */
+export function specificGravityFromBomLine(
+  line: { specific_gravity?: unknown; specificGravity?: unknown } | null | undefined
+): number | null {
+  const sg = Number(line?.specific_gravity ?? line?.specificGravity);
+  return Number.isFinite(sg) && sg > 0 ? sg : null;
+}
+
 export function isVolumePrimaryUom(primaryUom: string | undefined | null): boolean {
   const p = normRmPrimaryUom(primaryUom);
   return p === 'L' || p === 'ML';

@@ -68,7 +68,10 @@ function formatFormulaLines(lines: unknown): string {
       const pct = row.percentWW ?? row.pct_w_w ?? '';
       const phase = row.phase ? ` [${row.phase}]` : '';
       const pctStr = pct !== '' && pct != null ? ` — ${pct}% w/w` : '';
-      return `${i + 1}. ${name}${pctStr}${phase}`;
+      const sgRaw = row.specificGravity ?? row.specific_gravity;
+      const sgStr =
+        sgRaw !== '' && sgRaw != null && Number(sgRaw) > 0 ? ` — SG ${sgRaw}` : '';
+      return `${i + 1}. ${name}${pctStr}${sgStr}${phase}`;
     })
     .join('\n');
 }

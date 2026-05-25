@@ -779,6 +779,30 @@ export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): Pro
   });
 }
 
+/** Recompute GST and line total after qty or price/unit change on a draft PO line. */
+export function recalcDraftPoLineItem(
+  line: DraftPOLineItem,
+  patch: Partial<Pick<DraftPOLineItem, 'qty' | 'pricePerUnit'>>,
+): DraftPOLineItem {
+  const qtyStr = patch.qty !== undefined ? patch.qty : line.qty;
+  const qty = parseQuantityRequested(qtyStr);
+  const price =
+    patch.pricePerUnit !== undefined
+      ? Number(patch.pricePerUnit) || 0
+      : Number(line.pricePerUnit) || 0;
+  const gstPct = line.gstPercent ?? 18;
+  const subtotal = qty * price;
+  const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+  const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+  return {
+    ...line,
+    ...(patch.qty !== undefined ? { qty: patch.qty } : {}),
+    ...(patch.pricePerUnit !== undefined ? { pricePerUnit: price } : {}),
+    gstAmount,
+    lineTotal,
+  };
+}
+
 /** Build purchase_orders.items payload from draft lines (optionally enrich ids from PR). */
 export function draftLineItemsToPurchaseOrderItems(
   lines: DraftPOLineItem[],

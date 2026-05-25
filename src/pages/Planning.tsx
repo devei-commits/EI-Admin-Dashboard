@@ -31,6 +31,7 @@ import {
   type ProcurementRequestItem,
   type ProcurementRequest,
 } from '../services/procurement.service';
+import { createPlanningQuotationAsk } from '../services/planningQuotationAsks.service';
 import { fetchPriceListPage, type PriceListItemPage } from '../services/itemsList.service';
 import {
   fetchBOMByProductId,
@@ -43,6 +44,7 @@ import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMa
 import {
   normRmPrimaryUom,
   parseSpecificGravity,
+  specificGravityFromBomLine,
   procurementQtyFromKgGap,
   procurementUnitSuffix,
 } from '../lib/rmUnitConversion';
@@ -401,7 +403,7 @@ function rmProcurementFieldsFromKg(
   master: RawMaterialRecord | undefined,
   lineSg?: number
 ): { quantity_requested: number; unit: string } {
-  const sg = parseSpecificGravity(lineSg ?? master?.specificGravity);
+  const sg = parseSpecificGravity(lineSg);
   const { qty, unit } = procurementQtyFromKgGap(kgQty, master?.uom, sg);
   return { quantity_requested: qty, unit };
 }
@@ -599,24 +601,8 @@ function buildPlanningQuotationLineNotes(opts: {
   return bits.join(' · ');
 }
 
-function quotationRequestLineMergeKey(
-  item: ProcurementRequestItem,
-  vendorName: string,
-  moq: number
-): string {
-  const m = Number(moq) || 0;
-  return `${procurementItemMergeKey(item)}|||${vendorName.trim().toLowerCase()}|||${m > 0 ? m : ''}`;
-}
-
 function isQuotationRequestProcurementRecord(pr: ProcurementRequest): boolean {
   return String(pr.notes ?? '').includes(PLANNING_QUOTATION_REQUEST_NOTE_TAG);
-}
-
-function procurementRequestIsOpenForQuotationMerge(pr: ProcurementRequest): boolean {
-  const st = String(pr.status ?? '').trim();
-  if (/cancel/i.test(st) || /reject/i.test(st)) return false;
-  if (['PO Released', 'Delivery Pending', 'Under GRN'].includes(st)) return false;
-  return true;
 }
 
 /** Tab stats — all possible keys so we can access without `any` */
@@ -1659,7 +1645,7 @@ const Planning = () => {
       percentage: line.pct_w_w ?? 0,
       code: line.rm_code,
       phase: line.phase ?? 'Phase A',
-      specificGravity: (line as BOMRmLine).specific_gravity ?? 1,
+      specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
     })));
     setBomPackaging(pmLines.map((line, i) => ({
       id: String(line.pm_code ?? i),
@@ -1878,7 +1864,7 @@ const Planning = () => {
         percentage: line.pct_w_w ?? line.pct ?? 0,
         code: line.rm_code,
         phase: line.phase,
-        specificGravity: line.specific_gravity ?? 1,
+        specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
       })));
       setBomPackaging(pmLines.map((line: BOMPmLine, i: number) => ({
         id: String((line as { pm_code?: string }).pm_code ?? i),
@@ -1905,7 +1891,7 @@ const Planning = () => {
         percentage: line.pct_w_w ?? line.pct ?? 0,
         code: line.rm_code,
         phase: line.phase,
-        specificGravity: line.specific_gravity ?? 1,
+        specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
       })));
       setBomPackaging(pmLines.map((line: BOMPmLine, i: number) => ({
         id: String((line as { pm_code?: string }).pm_code ?? i),
@@ -1929,7 +1915,7 @@ const Planning = () => {
         percentage: item.percentage,
         code: (item as RawMaterial).code,
         phase: 'Phase A',
-        specificGravity: (item as RawMaterial).specificGravity ?? (item as { specific_gravity?: number }).specific_gravity ?? 1,
+        specificGravity: 1,
       })));
       setBomPackaging((selectedSOForBatch.packagingMaterials ?? []).map((item, i) => ({
         id: (item as PackagingMaterial).code ?? item.id,
@@ -2159,11 +2145,7 @@ const Planning = () => {
       return bomFormula.map((item) => {
         const code = item.code ?? item.id;
         const pct = item.percentage ?? 0;
-        const sgRaw =
-          (item as RawMaterial).specificGravity ??
-          (item as { specific_gravity?: number }).specific_gravity ??
-          1;
-        const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
+        const specificGravity = parseSpecificGravity(item.specificGravity);
         const perBatch = (effectiveBatchSizeKg * pct) / 100;
         const kgPerUnitRm =
           effectiveKgPerUnit > 0
@@ -2187,8 +2169,7 @@ const Planning = () => {
       return activeBom.rmLines.map((line, i) => {
         const code = line.rm_code ?? String(line.raw_material_id ?? i);
         const pct = line.pct_w_w ?? line.pct ?? 0;
-        const sgRaw = (line as any).specific_gravity ?? (line as any).specificGravity ?? 1;
-        const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
+        const specificGravity = parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine));
         const perBatch = (effectiveBatchSizeKg * pct) / 100;
         const kgPerUnitRm =
           effectiveKgPerUnit > 0
@@ -2210,11 +2191,9 @@ const Planning = () => {
     }
     return (selectedSOForBatch?.rawMaterials ?? []).map((item) => {
       const pct = item.percentage || 0;
-      const sgRaw =
-        (item as RawMaterial).specificGravity ??
-        (item as { specific_gravity?: number }).specific_gravity ??
-        1;
-      const specificGravity = Number.isFinite(Number(sgRaw)) && Number(sgRaw) > 0 ? Number(sgRaw) : 1;
+      const specificGravity = parseSpecificGravity(
+        (item as { specific_gravity?: number }).specific_gravity ?? item.specificGravity
+      );
       const perBatch = (effectiveBatchSizeKg * pct) / 100;
       const kgPerUnitRm =
         effectiveKgPerUnit > 0
@@ -3120,27 +3099,11 @@ const Planning = () => {
     const vendorHint = String(releaseToPlanningForm.vendorName ?? '').trim();
     const moqHint = Number(releaseToPlanningForm.moq) || 0;
     const slabsForItem = getQuotationSlabsForItem(planningRow);
-    const lineNotes = buildPlanningQuotationLineNotes({
+    const notes = buildPlanningQuotationLineNotes({
       vendorName: vendorHint,
       moq: moqHint,
       hasExistingRates: slabsForItem.length > 0,
     });
-
-    const newRequestItem: ProcurementRequestItem = {
-      type: planningRow.itemType,
-      code: planningRow.code || planningRow.name,
-      name: planningRow.name,
-      required: qty,
-      sih: Number(planningRow.sihNum ?? 0) || 0,
-      /** Quotation ask only — must not count as planning shortage / release (see items-involved + BE filters). */
-      shortage: 0,
-      quantity_requested: qty,
-      unit: procUnitQ,
-      line_notes: lineNotes,
-      ...(moqHint > 0 ? { moq_min: moqHint } : {}),
-      ...(rmId != null ? { raw_material_id: rmId } : {}),
-      ...(pmId != null ? { pack_material_id: pmId } : {}),
-    };
 
     const peId = Number(planningRow.planningExtractedId);
     if (!Number.isFinite(peId) || peId <= 0) {
@@ -3148,76 +3111,32 @@ const Planning = () => {
       return false;
     }
 
-    const reqRes = await fetchProcurementRequests(peId);
-    if (!reqRes.success || !reqRes.data) {
-      addToast('error', typeof reqRes.error === 'string' ? reqRes.error : 'Failed to load procurement requests');
+    const createRes = await createPlanningQuotationAsk({
+      planningExtractedId: peId,
+      itemType: planningRow.itemType,
+      itemCode: planningRow.code || planningRow.name,
+      itemName: planningRow.name,
+      quantityRequested: qty,
+      unit: procUnitQ,
+      vendorHint: vendorHint || null,
+      moqHint: moqHint > 0 ? moqHint : null,
+      notes,
+      ...(rmId != null ? { rawMaterialId: rmId } : {}),
+      ...(pmId != null ? { packMaterialId: pmId } : {}),
+    });
+
+    if (!createRes.success || !createRes.data) {
+      addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to send quotation ask');
       return false;
     }
 
-    const existing = reqRes.data.find(
-      (r) =>
-        isQuotationRequestProcurementRecord(r) && procurementRequestIsOpenForQuotationMerge(r)
-    );
-
-    let notes = `${PLANNING_QUOTATION_REQUEST_NOTE_TAG} · ${planningRow.name} (${planningRow.code})`;
-    if (vendorHint) notes += ` · Vendor: ${vendorHint}`;
-    if (moqHint > 0) notes += ` · MOQ: ${moqHint}`;
-
-    if (existing) {
-      const existingItems = Array.isArray(existing.items) ? [...existing.items] : [];
-      const mergeKey = quotationRequestLineMergeKey(newRequestItem, vendorHint, moqHint);
-      const idx = existingItems.findIndex(
-        (i) => quotationRequestLineMergeKey(i, vendorHint, moqHint) === mergeKey
-      );
-      let merged: ProcurementRequestItem[];
-      if (idx >= 0) {
-        const old = existingItems[idx];
-        const qNew = (Number(old.quantity_requested ?? 0) || 0) + qty;
-        merged = [...existingItems];
-        merged[idx] = {
-          ...old,
-          required: (Number(old.required ?? 0) || 0) + qty,
-          shortage: 0,
-          quantity_requested: qNew,
-          line_notes: lineNotes,
-          ...(moqHint > 0 ? { moq_min: moqHint } : {}),
-        };
-      } else {
-        merged = [...existingItems, newRequestItem];
-      }
-      const upd = await updateProcurementRequest(existing.id, {
-        items: merged,
-        notes,
-        ...(vendorHint ? { preferredVendor: vendorHint } : {}),
-      });
-      if (!upd.success) {
-        addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update quotation request');
-        return false;
-      }
-    } else {
-      const createRes = await createProcurementRequest({
-        planningExtractedId: peId,
-        planningBatchId: null,
-        priority: 'High',
-        requiredByDate: null,
-        notes,
-        items: [newRequestItem],
-        preferredVendor: vendorHint || null,
-        status: 'Pending',
-      });
-      if (!createRes.success || !createRes.data) {
-        addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create quotation request');
-        return false;
-      }
-    }
-
-    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    await queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
 
     setReleaseToPlanningItem(null);
     setReleaseModalIntent('release');
     addToast(
       'success',
-      'Quotation request sent to Procurement → Quotations. Planning planned qty and shortages are unchanged until you add a planned line after rates exist.'
+      'Quotation ask sent to Procurement → Quotations (no procurement request). After rates are on Items List, use Release to Planning → Add Planned Line to create a PR manually.'
     );
     return true;
   };
@@ -3253,15 +3172,49 @@ const Planning = () => {
 
   const handlePlanBatches = (order: SalesOrder) => {
     setSelectedSOForBatch(order);
-    // Seed bomFormula with per-line SG = BOM-level SG when confirmed; fallback to any pre-existing per-line value.
-    const seededSg = order.bomSpecificGravity != null && order.bomSpecificGravity > 0 ? order.bomSpecificGravity : null;
-    setBomFormula((order.rawMaterials ?? []).map((rm) => ({
-      ...rm,
-      specificGravity: seededSg ?? (rm as RawMaterial).specificGravity ?? (rm as { specific_gravity?: number }).specific_gravity ?? 1,
-    })));
-    // Initial BOM-level SG input value: saved value if confirmed, else sensible default.
-    setBomLevelSG(seededSg != null ? String(seededSg) : '1');
-    setBomPackaging(order.packagingMaterials);
+    lastSyncedBomIdRef.current = null;
+    syncedFallbackOrderIdRef.current = null;
+    const prBom =
+      activeBom &&
+      activeBom.productId === order.productId &&
+      ((activeBom.rmLines?.length ?? 0) > 0 || (activeBom.pmLines?.length ?? 0) > 0)
+        ? activeBom
+        : null;
+    if (prBom?.rmLines?.length) {
+      setBomFormula(
+        prBom.rmLines.map((line: BOMRmLine, i: number) => ({
+          id: String(line.raw_material_id ?? line.rm_code ?? i),
+          name: line.inci_name ?? '',
+          quantity: 0,
+          unit: line.uom ?? 'KG',
+          percentage: line.pct_w_w ?? line.pct ?? 0,
+          code: line.rm_code,
+          phase: line.phase ?? 'Phase A',
+          specificGravity: parseSpecificGravity(specificGravityFromBomLine(line)),
+        }))
+      );
+      setBomPackaging(
+        (prBom.pmLines ?? []).map((line: BOMPmLine, i: number) => ({
+          id: String(line.pm_code ?? i),
+          name: line.description ?? '',
+          quantity: 0,
+          unit: 'PCS',
+          value: line.qty_per_unit ?? 1,
+          percentage: 0,
+          code: line.pm_code,
+        }))
+      );
+      const firstSg = specificGravityFromBomLine(prBom.rmLines[0] as BOMRmLine);
+      setBomLevelSG(firstSg != null ? String(firstSg) : '1');
+    } else {
+      setBomFormula([]);
+      setBomPackaging(order.packagingMaterials ?? []);
+      setBomLevelSG(
+        order.bomConfirmedAt && order.bomSpecificGravity != null && order.bomSpecificGravity > 0
+          ? String(order.bomSpecificGravity)
+          : '1'
+      );
+    }
     const alreadyConfirmed = Boolean(order.bomConfirmedAt);
     setIsReadyForProduction(alreadyConfirmed);
     setActiveBatchTab(alreadyConfirmed ? 'batch-plan' : 'bom-editor');
@@ -3595,23 +3548,32 @@ const Planning = () => {
       addToast('error', 'Add at least one raw material or packaging line to the BOM before confirming.');
       return;
     }
-    // First-batch confirmation requires a valid BOM-level Specific Gravity; ignore when BOM is already confirmed
-    // (subsequent saves keep the previously locked value).
     const bomSgValue = Number(bomLevelSG);
     const alreadyConfirmed = Boolean(selectedSOForBatch.bomConfirmedAt);
-    if (!alreadyConfirmed && (!Number.isFinite(bomSgValue) || bomSgValue <= 0)) {
-      addToast('error', 'Enter a valid BOM Specific Gravity (greater than 0) before confirming.');
+    const allLinesHaveSg = bomFormula.every((item) => {
+      const sg = Number(item.specificGravity);
+      return Number.isFinite(sg) && sg > 0;
+    });
+    if (!alreadyConfirmed && !allLinesHaveSg && (!Number.isFinite(bomSgValue) || bomSgValue <= 0)) {
+      addToast(
+        'error',
+        'Enter Specific Gravity on each RM line, or set a BOM default SG (greater than 0) before confirming.'
+      );
       return;
     }
-    // Fan the BOM-level SG into every RM line so downstream vessel-volume math keeps working per-line.
-    const effectiveSg = Number.isFinite(bomSgValue) && bomSgValue > 0 ? bomSgValue : 1;
+    const blendSg =
+      Number.isFinite(bomSgValue) && bomSgValue > 0
+        ? bomSgValue
+        : bomFormula.length > 0
+          ? resolveBomLineSgForSave(bomFormula[0])
+          : 1;
     const rmLines: BOMRmLine[] = bomFormula.map((item) => ({
       phase: item.phase ?? 'Phase A',
       inci_name: item.name,
       rm_code: item.code ?? item.id,
       pct_w_w: item.percentage,
       uom: 'KG',
-      specific_gravity: effectiveSg,
+      specific_gravity: resolveBomLineSgForSave(item),
       ...(typeof item.id === 'string' && /^\d+$/.test(item.id) ? { raw_material_id: parseInt(item.id, 10) } : {}),
     }));
     const pmLines: BOMPmLine[] = bomPackaging.map((item) => ({
@@ -3641,7 +3603,7 @@ const Planning = () => {
       }
       const confirmed = await updatePlanningExtracted(selectedSOForBatch.id, {
         bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        bomSpecificGravity: effectiveSg,
+        bomSpecificGravity: blendSg,
       });
       if (!confirmed) {
         addToast('error', 'Failed to confirm BOM. Check stock and try again.');
@@ -3659,13 +3621,14 @@ const Planning = () => {
           ? {
               ...prev,
               bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
-              bomSpecificGravity: effectiveSg,
+              bomSpecificGravity: blendSg,
             }
           : prev
       );
-      // Reflect fan-out locally so any in-memory calc before refetch stays consistent.
-      setBomFormula((prev) => prev.map((it) => ({ ...it, specificGravity: effectiveSg })));
-      setBomLevelSG(String(effectiveSg));
+      setBomFormula((prev) =>
+        prev.map((it) => ({ ...it, specificGravity: resolveBomLineSgForSave(it) }))
+      );
+      setBomLevelSG(String(blendSg));
       setIsReadyForProduction(true);
       setActiveBatchTab('batch-plan');
     } catch (error) {
@@ -3881,6 +3844,28 @@ const Planning = () => {
     [effectiveBatchSizeKg]
   );
 
+  const updateBomLineSg = useCallback((lineIndex: number, rawSg: string) => {
+    const n = rawSg === '' ? NaN : parseFloat(rawSg);
+    const safeSg = Number.isFinite(n) && n > 0 ? n : 1;
+    setBomFormula((prev) => {
+      const next = [...prev];
+      const line = next[lineIndex];
+      if (!line) return prev;
+      next[lineIndex] = { ...line, specificGravity: safeSg };
+      return next;
+    });
+  }, []);
+
+  const resolveBomLineSgForSave = useCallback(
+    (item: RawMaterial): number => {
+      const lineSg = Number(item.specificGravity);
+      if (Number.isFinite(lineSg) && lineSg > 0) return lineSg;
+      const bomSg = Number(bomLevelSG);
+      return Number.isFinite(bomSg) && bomSg > 0 ? bomSg : 1;
+    },
+    [bomLevelSG]
+  );
+
   const swapTargetItemGroups = useMemo(() => {
     if (!swapSourceLine || itemGroupsRm.length === 0) return [];
     return itemGroupsRm.filter((grp) =>
@@ -3947,7 +3932,7 @@ const Planning = () => {
   }, [swapRmSearch, activeBatchTab]);
 
   const applyBomLineSwap = useCallback(
-    (rm: { id: string; code: string; name: string; inci?: string }) => {
+    (rm: { id: string; code: string; name: string; inci?: string; specificGravity?: number | null }) => {
       if (swapSourceIndex === null) return false;
       const rmIdNum = parseInt(String(rm.id), 10);
       setBomFormula((prev) => {
@@ -3955,6 +3940,7 @@ const Planning = () => {
         const src = next[swapSourceIndex];
         const pct = src?.percentage ?? 0;
         const qtyKg = roundMaterialQty((effectiveBatchSizeKg * pct) / 100);
+        const defaultSg = parseSpecificGravity(bomLevelSG);
         next[swapSourceIndex] = {
           id: String(rm.id),
           raw_material_id: Number.isFinite(rmIdNum) ? rmIdNum : undefined,
@@ -3964,14 +3950,14 @@ const Planning = () => {
           percentage: pct,
           code: rm.code,
           phase: src?.phase ?? 'Phase A',
-          specificGravity: src?.specificGravity ?? 1,
+          specificGravity: src?.specificGravity ?? defaultSg,
         };
         return next;
       });
       setSwapSourceIndex(null);
       return true;
     },
-    [swapSourceIndex, effectiveBatchSizeKg]
+    [swapSourceIndex, effectiveBatchSizeKg, bomLevelSG]
   );
 
   const upsertRmInItemGroup = async (rmId: number, groupName: string) => {
@@ -4013,7 +3999,14 @@ const Planning = () => {
     setSwapApplying(true);
     try {
       const label = rm.name || rm.inci || rm.code;
-      if (applyBomLineSwap({ id: rm.id, code: rm.code, name: label, inci: rm.inci })) {
+      if (
+        applyBomLineSwap({
+          id: rm.id,
+          code: rm.code,
+          name: label,
+          inci: rm.inci,
+        })
+      ) {
         closeSwapRmSuggestions();
         if (swapAddToGroup && Number.isFinite(rmIdNum)) {
           setSwapPendingGroupRm({ id: rmIdNum, name: label });
@@ -5390,10 +5383,10 @@ const Planning = () => {
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
                 <p className="text-xs text-slate-500">
                   {isQuotationOnlyModal
-                    ? 'Creates a Procurement → Quotations request only (new vendor / MOQ allowed). After rates are recorded, use Release to Planning → Add Planned Line.'
+                    ? 'Sends a reminder to Procurement → Quotations only (no procurement request). After rates are recorded, use Release to Planning → Add Planned Line.'
                     : hasVendorSlabs
-                      ? 'Add Planned Line updates planned release. Request quotation can ask for additional vendor or MOQ without changing Items Involved.'
-                      : 'Request quotation sends work to Procurement → Quotations (no planning qty change).'}
+                      ? 'Add Planned Line updates planned release. Request quotation reminds Procurement to add vendor/MOQ on Items List (no PR).'
+                      : 'Request quotation reminds Procurement → Quotations (no procurement request or planning qty change).'}
                 </p>
                 <div className="flex flex-wrap gap-2 justify-end">
                   <button
@@ -6607,9 +6600,9 @@ const Planning = () => {
                     <div className="rounded-lg border p-4 bg-indigo-50 border-indigo-200">
                       <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="min-w-0">
-                          <h3 className="text-sm font-bold text-gray-900">BOM Specific Gravity</h3>
+                          <h3 className="text-sm font-bold text-gray-900">BOM default Specific Gravity</h3>
                           <p className="text-xs text-gray-600 mt-1">
-                            Enter the blend specific gravity (vs water). Required to confirm BOM on the first batch; applied to every RM line.
+                            Default SG (vs water) for new or swapped RM lines. Each RM line has its own SG field below — required for vessel volume at batch confirmation.
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -6624,7 +6617,7 @@ const Planning = () => {
                             max="3"
                             placeholder="1.00"
                             className="w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            title="Specific gravity (vs water) for vessel volume — single BOM-level value"
+                            title="Default specific gravity for new RM lines (vs water)"
                           />
                           <span className="text-xs text-gray-500">vs water</span>
                         </div>
@@ -6637,12 +6630,27 @@ const Planning = () => {
                     </h3>
                     <div className="space-y-3 bg-gray-50 rounded-lg p-4">
                       {bomFormula.map((item, idx) => (
-                        <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200">
-                          <div className="flex-1">
+                        <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200 flex-wrap">
+                          <div className="flex-1 min-w-[160px]">
                             <p className="text-sm font-semibold text-gray-900">{item.name}</p>
                             <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {item.percentage}% · {item.phase ?? 'Phase A'}</p>
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">SG</label>
+                              <input
+                                type="number"
+                                value={item.specificGravity ?? 1}
+                                onChange={(e) => updateBomLineSg(idx, e.target.value)}
+                                step="0.01"
+                                min="0.1"
+                                max="3"
+                                readOnly={canSendToProduction}
+                                disabled={canSendToProduction}
+                                title="Specific gravity vs water (for L volume)"
+                                className={`w-16 px-2 py-1 border rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                              />
+                            </div>
                             <input
                               type="number"
                               value={item.percentage}
@@ -6699,12 +6707,17 @@ const Planning = () => {
                   <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-200">
                     {!canSendToProduction ? (
                       (() => {
-                        const sgValid = Number.isFinite(Number(bomLevelSG)) && Number(bomLevelSG) > 0;
+                        const allLinesSgOk = bomFormula.every((item) => {
+                          const sg = Number(item.specificGravity);
+                          return Number.isFinite(sg) && sg > 0;
+                        });
+                        const bomDefaultSgOk = Number.isFinite(Number(bomLevelSG)) && Number(bomLevelSG) > 0;
+                        const sgValid = allLinesSgOk || bomDefaultSgOk;
                         const canConfirm = canConfirmBomPerBatch && sgValid;
                         const disabledReason = !canConfirmBomPerBatch
                           ? 'Add RM/PM lines in the BOM editor first'
                           : !sgValid
-                            ? 'Enter a BOM Specific Gravity greater than 0'
+                            ? 'Enter SG on each RM line or a BOM default SG greater than 0'
                             : 'Confirm BOM: available stock is reserved; raise POs for any gaps';
                         return (
                           <button
@@ -6773,6 +6786,19 @@ const Planning = () => {
                                 <p className="text-xs text-gray-500 truncate">
                                   {item.code ?? item.id} · {item.phase ?? 'Phase A'}
                                 </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <label className="text-xs font-semibold text-gray-700 whitespace-nowrap">SG</label>
+                                <input
+                                  type="number"
+                                  min={0.1}
+                                  max={3}
+                                  step="0.01"
+                                  value={item.specificGravity ?? 1}
+                                  onChange={(e) => updateBomLineSg(idx, e.target.value)}
+                                  className="w-[56px] px-2 py-1.5 text-sm border border-gray-300 rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                  title="Specific gravity vs water"
+                                />
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <label className="text-xs font-semibold text-gray-700 whitespace-nowrap">% w/w</label>
@@ -6987,6 +7013,20 @@ const Planning = () => {
                           <div className="flex flex-wrap items-end gap-3 mb-2">
                             <div>
                               <label className="block text-[10px] font-semibold uppercase tracking-wide text-amber-800 mb-1">
+                                SG
+                              </label>
+                              <input
+                                type="number"
+                                min={0.1}
+                                max={3}
+                                step="0.01"
+                                value={bomFormula[swapSourceIndex]?.specificGravity ?? 1}
+                                onChange={(e) => updateBomLineSg(swapSourceIndex, e.target.value)}
+                                className="w-20 px-2 py-1.5 text-sm border border-amber-300 rounded-md bg-white font-mono text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase tracking-wide text-amber-800 mb-1">
                                 % w/w
                               </label>
                               <div className="flex items-center gap-1.5">
@@ -7045,6 +7085,9 @@ const Planning = () => {
                               </button>
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                              <span>
+                                SG: <span className="font-mono font-semibold text-gray-800">{Number(item.specificGravity ?? 1).toFixed(2)}</span>
+                              </span>
                               {swapSourceIndex === idx ? (
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-semibold text-gray-700">% w/w</span>

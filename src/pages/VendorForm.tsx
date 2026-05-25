@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, syncVendorDraftToZoho, type VendorClientRecord } from '../services/vendorClient.service';
+import { fetchVendorClientById, createVendorClient, updateVendorClient as updateVendorClientApi, fetchNextCode, type VendorClientRecord } from '../services/vendorClient.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
 
@@ -161,7 +161,6 @@ const FIELD_ERROR_STAGE: Record<string, number> = {
  primaryEmail: 0,
  primaryPhone: 0,
  entityCode: 0,
- zohoId: 0,
  billingAddress: 1,
  shippingAddress: 1,
  state: 1,
@@ -188,9 +187,6 @@ function validateVendorForm(fd: VendorFormData, options: { isNewVendor: boolean 
 
  if (options.isNewVendor && !String(fd.entityCode || '').trim()) {
   newErrors.entityCode = 'Generate entity code before submitting';
- }
- if (options.isNewVendor && !String(fd.zohoId || '').trim()) {
-  newErrors.zohoId = 'Use “Sync to Zoho” to obtain a Zoho ID before continuing';
  }
 
  if (!fd.billingAddress.trim() || fd.billingAddress.trim().length < MIN_ADDR) {
@@ -244,7 +240,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
  const [errors, setErrors] = useState<Record<string, string>>({});
  const [isSaving, setIsSaving] = useState(false);
  const [savingPriceList, setSavingPriceList] = useState(false);
- const [zohoSyncing, setZohoSyncing] = useState(false);
  const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
  useEffect(() => {
@@ -512,84 +507,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   });
  };
 
- const computedPaymentTermsForZoho = () => {
-  const adv = Number(String(formData.payablesAdvancedPct ?? '').trim()) || 0;
-  const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
-  const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
-  return `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
- };
-
- const handleSyncToZoho = async () => {
-  if (String(formData.zohoId || '').trim()) {
-   addToast('info', 'Zoho ID is already set.');
-   return;
-  }
-  if (!String(formData.entityCode || '').trim()) {
-   addToast('error', 'Generate entity code before syncing to Zoho.');
-   return;
-  }
-  if (!String(formData.legalName || '').trim() || !String(formData.tradeName || '').trim()) {
-   addToast('error', 'Legal name and trade name are required to sync.');
-   return;
-  }
-  if (!String(formData.primaryEmail || '').trim() || !String(formData.primaryPhone || '').trim()) {
-   addToast('error', 'Primary email and phone are required to sync.');
-   return;
-  }
-  setZohoSyncing(true);
-  try {
-   const paymentTerms = computedPaymentTermsForZoho();
-   const shippingResolved = resolveShippingAddress(formData);
-   const res = await syncVendorDraftToZoho({
-    type: 'vendor',
-    entityCode: formData.entityCode,
-    name: formData.tradeName || formData.legalName,
-    email: formData.primaryEmail,
-    phone: formData.primaryPhone,
-    location: formData.state,
-    country: formData.country,
-    category: formData.setupCategory,
-    paymentTerms,
-    notes: formData.notes,
-    data: {
-     ...formData,
-     shippingAddress: shippingResolved,
-     paymentTerms,
-     documents,
-     pocs,
-     banks,
-     vendorItems,
-    } as Record<string, unknown>,
-   });
-   if (!res.success || !res.data) {
-    addToast('error', res.error?.message ?? 'Zoho sync failed');
-    return;
-   }
-   const { zohoId, mappedFields, alreadySynced } = res.data;
-   setFormData((prev) => ({
-    ...prev,
-    ...(mappedFields || {}),
-    zohoId: String(zohoId || '').trim(),
-   }));
-   setErrors((prev) => {
-    const next = { ...prev };
-    if (next.zohoId) delete next.zohoId;
-    return next;
-   });
-   addToast(
-    'success',
-    alreadySynced ? 'Zoho ID already present.' : 'Synced to Zoho. Review fields updated from Zoho.',
-   );
-  } finally {
-   setZohoSyncing(false);
-  }
- };
-
  const handleNextStage = () => {
-  if (!editingId && currentStage === 0 && !String(formData.zohoId || '').trim()) {
-   addToast('error', 'Sync to Zoho first to obtain a Zoho ID.');
-   return;
-  }
   if (currentStage < stages.length - 1) setCurrentStage(currentStage + 1);
  };
 
@@ -854,7 +772,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   const res = await createVendorClient({
    type: 'vendor',
    entityCode: formData.entityCode || '',
-   zohoId: formData.zohoId || undefined,
    ...(formData.linkedUserId.trim() ? { userId: formData.linkedUserId.trim() } : {}),
    name: payload.name,
    email: payload.email,
@@ -869,7 +786,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
   });
 
   if (res.success) {
-   addToast('success', 'Vendor created successfully!');
+   const zohoSynced = res.data?.zoho_sync?.synced === true;
+   addToast(
+    'success',
+    zohoSynced
+      ? 'Vendor created and synced to Zoho Books.'
+      : 'Vendor created successfully!',
+   );
    const sync = res.data?.priceListSync;
    if (sync && sync.skipped.length > 0) {
     const hint = sync.skipped[0]
@@ -940,10 +863,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <button
         type="button"
         onClick={handleNextStage}
-        disabled={
-         currentStage === stages.length - 1 ||
-         (!editingId && currentStage === 0 && !String(formData.zohoId || '').trim())
-        }
+        disabled={currentStage === stages.length - 1}
         className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
        >
         Next
@@ -990,10 +910,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          {errMsg('setupCategory')}
         </div>
        </div>
-       <div className={sectionTitleClass}>Required before Zoho sync</div>
-       <p className="text-sm text-gray-600 -mt-2 mb-2">
-        Fill category, names, contact details, and generate an entity code first. Then use Sync to Zoho to obtain the Zoho ID.
-       </p>
+       <div className={sectionTitleClass}>Vendor identity</div>
+       {!editingId ? (
+        <p className="text-sm text-gray-600 -mt-2 mb-2">
+          Fill category, names, contact details, and generate an entity code. On submit, the server creates the Zoho Books
+          contact and saves the Zoho ID — if Zoho sync fails, nothing is saved.
+        </p>
+       ) : null}
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Legal Name {req}</label>
@@ -1049,32 +972,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </button>
        </div>
 
-       <div className={sectionTitleClass}>Zoho</div>
-       <div className="space-y-2">
-        <label className={labelClass}>Zoho ID {req}</label>
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
-         <input
-          type="text"
-          readOnly
-          value={formData.zohoId}
-          placeholder="— Use “Sync to Zoho” after the fields above —"
-          className={`${fieldClass('zohoId')} bg-gray-50 flex-1 min-w-0`}
-          aria-describedby="zoho-id-hint"
-         />
-         <button
-          type="button"
-          onClick={() => void handleSyncToZoho()}
-          disabled={zohoSyncing || Boolean(String(formData.zohoId || '').trim())}
-          className="shrink-0 px-4 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm whitespace-nowrap"
-         >
-          {zohoSyncing ? 'Syncing…' : 'Sync to Zoho'}
-         </button>
+       {editingId && String(formData.zohoId || '').trim() ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Zoho Books contact ID</p>
+         <p className="text-sm font-mono text-slate-800 mt-0.5">{formData.zohoId}</p>
+         <p className="text-xs text-slate-500 mt-1">Assigned automatically by the server; not editable here.</p>
         </div>
-        {errMsg('zohoId')}
-        <p id="zoho-id-hint" className="text-xs text-slate-500 mt-1">
-         Filled automatically from Zoho; it cannot be edited here.
-        </p>
-       </div>
+       ) : null}
        <div>
         <label className={labelClass}>Linked User Management ID</label>
         <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
@@ -1809,7 +1713,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
       {currentStage === stages.length - 1 ? (
        <button
         type="submit"
-        disabled={isSaving || (!editingId && !String(formData.zohoId || '').trim())}
+        disabled={isSaving}
         className="px-8 py-2.5 bg-green-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
        >
         {isSaving ? 'Saving...' : 'Submit Vendor'}
@@ -1818,7 +1722,6 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <button
         type="button"
         onClick={handleNextStage}
-        disabled={!editingId && currentStage === 0 && !String(formData.zohoId || '').trim()}
         className="px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
        >
         Next

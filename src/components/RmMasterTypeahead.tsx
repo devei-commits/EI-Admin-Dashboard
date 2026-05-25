@@ -16,6 +16,8 @@ export type RmMasterTypeaheadProps = {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** When true, empty/no-match hint does not suggest free-text manual entry (picker-only flows). */
+  requirePickFromList?: boolean;
 };
 
 /**
@@ -33,6 +35,7 @@ export default function RmMasterTypeahead({
   disabled = false,
   placeholder = 'Search RM by code or INCI / name…',
   className = '',
+  requirePickFromList = false,
 }: RmMasterTypeaheadProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -144,7 +147,7 @@ export default function RmMasterTypeahead({
       ) : null}
       {open && !loading && value.trim() && suggestions.length === 0 ? (
         <p className="absolute z-30 mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-500 shadow">
-          No match — text will be saved as manual INCI / name.
+          {requirePickFromList ? 'No matching raw materials.' : 'No match — text will be saved as manual INCI / name.'}
         </p>
       ) : null}
     </div>

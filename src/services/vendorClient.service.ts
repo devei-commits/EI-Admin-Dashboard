@@ -19,6 +19,8 @@ export interface VendorClientRecord {
   /** users.userid when this master is linked to a portal/login user */
   userId?: string | null;
   zohoId?: string;
+  /** Set when backend syncs vendor/client to Zoho Books on create or update */
+  zoho_sync?: { synced: boolean; contact_id?: string; error?: string };
   /** Present for vendors after save when backend syncs vendorItems → items_list */
   priceListSync?: PriceListSyncResult;
   name: string;

@@ -4,6 +4,7 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import ArrayItemManager from '../components/ArrayItemManager';
@@ -44,6 +45,9 @@ const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 
 const RM_QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
 const RM_STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+/** Primary UoM choices when creating a new RM (backend/storage standard). */
+const RM_NEW_PRIMARY_UOM_OPTIONS = ['KG', 'L'] as const;
+const RM_EDIT_PRIMARY_UOM_OPTIONS = ['KG', 'GM', 'L', 'ML'] as const;
 
 function rmSubCategoryLeadingDigit(sub: string): '1' | '2' | '3' | null {
   const canon = normalizeRmSubCategoryForSelect(sub);
@@ -204,6 +208,11 @@ const RawMaterialRefactored: React.FC = () => {
  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
  const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
  const [submitConfirming, setSubmitConfirming] = useState(false);
+ const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+ const [saveSuccessCode, setSaveSuccessCode] = useState('');
+ const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+ const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
+ const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
 
  const focusFieldById = useCallback((fieldId: string) => {
   window.setTimeout(() => {
@@ -435,7 +444,11 @@ const RawMaterialRefactored: React.FC = () => {
    creditDays: '',
   });
   setTempVendorTiers(defaultTempVendorTiers(4));
-  setErrors((prev) => ({ ...prev, venName: '' }));
+  setErrors((prev) => {
+   const next = { ...prev };
+   delete next.venName;
+   return next;
+  });
  };
 
  const handleRemoveVendor = (index: number) => {
@@ -494,7 +507,11 @@ const RawMaterialRefactored: React.FC = () => {
    }]
   }));
   setTempDocument({ type: '', link: '', date: '' });
-  setErrors(prev => ({ ...prev, documentType: '' }));
+  setErrors((prev) => {
+   const next = { ...prev };
+   delete next.documentType;
+   return next;
+  });
  };
 
  const handleRemoveDocument = (id: string) => {
@@ -523,7 +540,11 @@ const RawMaterialRefactored: React.FC = () => {
    }]
   }));
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
-  setErrors(prev => ({ ...prev, testName: '' }));
+  setErrors((prev) => {
+   const next = { ...prev };
+   delete next.testName;
+   return next;
+  });
  };
 
  const handleRemoveTest = (id: string) => {
@@ -553,11 +574,12 @@ const RawMaterialRefactored: React.FC = () => {
    return null;
   }
   if (!formData.primaryUom?.trim()) {
+   const uomHint = isNewRm ? 'KG or L' : 'KG / GM / L / ML';
    setErrors((prev) => ({
     ...prev,
-    primaryUom: 'Step 1 — Primary UoM is required (pick KG / GM / L / ML)',
+    primaryUom: `Step 1 — Primary UoM is required (pick ${uomHint})`,
    }));
-   addToast('error', 'Step 1 — Primary UoM is required (pick KG / GM / L / ML)');
+   addToast('error', `Step 1 — Primary UoM is required (pick ${uomHint})`);
    setCurrentStage(0);
    focusFieldById('primaryUom');
    return null;
@@ -627,16 +649,31 @@ const RawMaterialRefactored: React.FC = () => {
     }
    }
   }
-  return {
+  const payload: Record<string, unknown> = {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
    category: formData.subCategory?.trim() || formData.rmCategory,
   };
+  if (isNewRm) {
+   delete payload.rmSku;
+   delete payload.sku;
+  }
+  delete payload.specific_gravity;
+  delete payload.specificGravity;
+  return payload;
  };
 
+ const rmPreviewFormData = useMemo(
+  () => ({
+   ...(formData as Record<string, unknown>),
+   ...(isNewRm ? { rmSku: '(Assigned on save)', sku: '(Assigned on save)' } : {}),
+  }),
+  [formData, isNewRm]
+ );
+
  const rmPreviewSections = useMemo(
-  () => buildMasterPreviewSections(formData as Record<string, unknown>, RM_PREVIEW_SECTIONS),
-  [formData]
+  () => buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS),
+  [rmPreviewFormData]
  );
 
  const handleSubmit = () => {
@@ -646,6 +683,16 @@ const RawMaterialRefactored: React.FC = () => {
   setSubmitPreviewOpen(true);
  };
 
+ const closeSaveSuccessAndExit = () => {
+  setSaveSuccessOpen(false);
+  setSaveSuccessCode('');
+  setSaveSuccessRows([]);
+  setSaveSuccessZohoNote(null);
+  setExistingRmId(null);
+  resetRmFormToEmpty();
+  setPageTab('dashboard');
+ };
+
  const handleConfirmSubmit = async () => {
   const savePayload = pendingSavePayload;
   if (!savePayload) return;
@@ -653,37 +700,49 @@ const RawMaterialRefactored: React.FC = () => {
   try {
    if (existingRmId) {
     const rmIdForSync = parseInt(String(existingRmId), 10);
-    await updateRawMaterial(existingRmId, savePayload);
+    const record = await updateRawMaterial(existingRmId, savePayload);
     const syncCreated = Number.isNaN(rmIdForSync) ? 0 : await syncRmVendorsToItemsListAfterSave(rmIdForSync);
-    addToast(
-     'success',
-     syncCreated > 0
-      ? `Raw Material updated successfully! ${syncCreated} vendor rate(s) synced to Items List.`
-      : 'Raw Material updated successfully!'
-    );
-    setExistingRmId(null);
+    setSaveSuccessIsEdit(true);
+    setSaveSuccessCode(record.code || formData.rmSku || '');
+    setSaveSuccessRows([
+     { label: 'INCI name', value: record.inci || formData.inciName || '' },
+     { label: 'Trade / commercial name', value: record.name || formData.tradeCommercialName || '' },
+     { label: 'Category', value: record.category || formData.subCategory || '' },
+     { label: 'Primary UoM', value: record.uom || formData.primaryUom || '' },
+     ...(syncCreated > 0
+      ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
+      : []),
+    ]);
+    setSaveSuccessZohoNote(null);
    } else {
     const { record, zohoSync } = await createRawMaterial(savePayload);
     const newRmId = parseInt(String(record.id), 10);
     const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
+    setSaveSuccessIsEdit(false);
+    setSaveSuccessCode(record.code || '');
+    setSaveSuccessRows([
+     { label: 'INCI name', value: record.inci || formData.inciName || '' },
+     { label: 'Trade / commercial name', value: record.name || formData.tradeCommercialName || '' },
+     { label: 'Category', value: record.category || formData.subCategory || '' },
+     { label: 'Primary UoM', value: record.uom || formData.primaryUom || '' },
+     ...(syncCreated > 0
+      ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
+      : []),
+    ]);
     if (zohoSync?.synced === false && zohoSync.error) {
-     addToast(
-      'error',
+     setSaveSuccessZohoNote(
       `Saved in Esthetic Insights, but Zoho Books sync failed: ${zohoSync.error}`
      );
+    } else if (zohoSync?.synced && zohoSync.item_id) {
+     setSaveSuccessZohoNote(`Linked to Zoho Books (item ${zohoSync.item_id}).`);
     } else {
-     const base =
-      zohoSync?.synced && zohoSync.item_id
-       ? `Raw Material ${record.code} saved and linked to Zoho (item ${zohoSync.item_id}).`
-       : `Raw Material ${record.code} saved successfully!`;
-     addToast('success', syncCreated > 0 ? `${base} ${syncCreated} vendor rate(s) synced to Items List.` : base);
+     setSaveSuccessZohoNote(null);
     }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
    setSubmitPreviewOpen(false);
    setPendingSavePayload(null);
-   resetRmFormToEmpty();
-   setPageTab('dashboard');
+   setSaveSuccessOpen(true);
   } catch (err) {
    console.error(err);
    addToast('error', err instanceof Error ? err.message : 'Failed to save raw material');
@@ -760,15 +819,12 @@ const RawMaterialRefactored: React.FC = () => {
        </div>
       </div>
      ) : (
-      <InputField
-       label="SKU"
-       id="rmSku"
-       value={formData.rmSku}
-       onChange={handleInputChange}
-       placeholder="Internal raw material code"
-       requiredMark
-       readOnly={lockPrimaryFields}
-      />
+      <div>
+       <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
+       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
+        {formData.rmSku || '—'}
+       </div>
+      </div>
      )}
 
      <div className="border-t border-gray-200 pt-4">
@@ -797,14 +853,16 @@ const RawMaterialRefactored: React.FC = () => {
         id="primaryUom"
         value={formData.primaryUom}
         onChange={handleInputChange}
-        options={['KG', 'GM', 'L', 'ML']}
+        options={isNewRm ? [...RM_NEW_PRIMARY_UOM_OPTIONS] : [...RM_EDIT_PRIMARY_UOM_OPTIONS]}
         disabled={lockPrimaryFields}
         requiredMark
         error={errors.primaryUom}
        />
       </div>
       <p className="text-xs text-gray-500 mt-2">
-       Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) are derived from the product’s Specific Gravity at BOM confirmation — no manual conversion factor on the master.
+       {isNewRm
+        ? 'New raw materials use KG (mass) or L (volume) only. KG ↔ L conversion uses per-line Specific Gravity on the PR Formula BOM (Planning BOM confirmation).'
+        : 'Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) use per-line Specific Gravity on the PR Formula BOM — not on the RM master.'}
       </p>
      </div>
 
@@ -903,17 +961,10 @@ const RawMaterialRefactored: React.FC = () => {
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
        <p className="text-xs text-gray-500 mb-3">
         {isNewRm
-         ? 'SKU and tax preferences are sent with your save. The server creates the Esthetic Insights row and Zoho Books item together (or rolls back both if Books fails).'
-         : 'Zoho item ID is read-only.'}
+         ? 'Internal RM code is assigned on save and synced to Zoho Books with your tax preferences (or both roll back if Books fails).'
+         : 'Internal RM code is fixed; Zoho item ID is read-only.'}
        </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="SKU (for Zoho)"
-         id="sku"
-         value={formData.sku}
-         onChange={handleInputChange}
-         placeholder="Optional; defaults to RM SKU"
-        />
         <InputField
          label="Zoho Item ID"
          id="zohoId"
@@ -1223,8 +1274,8 @@ const RawMaterialRefactored: React.FC = () => {
         errors={errors}
         itemLabel="Test"
         columns={[
-         { key: 'name', label: 'Test Name' },
-         { key: 'result', label: 'Result' },
+         { key: 'name', label: 'Test Name', required: true },
+         { key: 'result', label: 'Result', required: true },
          { key: 'date', label: 'Test Date', type: 'date' },
          { key: 'approvedBy', label: 'Approved By' },
          { key: 'remarks', label: 'Remarks' },
@@ -1715,6 +1766,20 @@ const RawMaterialRefactored: React.FC = () => {
         sections={rmPreviewSections}
         confirming={submitConfirming}
         isEdit={isEditing}
+      />
+      <MasterSaveSuccessModal
+        isOpen={saveSuccessOpen}
+        onClose={closeSaveSuccessAndExit}
+        title={saveSuccessIsEdit ? 'Raw material updated' : 'Raw material created'}
+        subtitle={
+         saveSuccessIsEdit
+          ? 'Changes are saved. Internal code cannot be changed here.'
+          : 'Your raw material is saved with the internal code below (assigned by the server).'
+        }
+        generatedCode={saveSuccessCode}
+        codeLabel="Internal RM code (SKU)"
+        rows={saveSuccessRows}
+        zohoNote={saveSuccessZohoNote}
       />
     </div>
   );

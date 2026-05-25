@@ -14,6 +14,8 @@ import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import type { PackMaterialRecord } from '../services/packMaterials.service';
+import RmMasterTypeahead from '../components/RmMasterTypeahead';
+import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 
 const EMPTY_FORM = {
   name: '',
@@ -40,6 +42,9 @@ const ItemGroups: React.FC = () => {
   const [editingGroup, setEditingGroup] = useState<ItemGroupRecord | null>(null);
   const [editForm, setEditForm] = useState<{ name: string; description: string; purpose: string; notes: string; status: string; member_ids: number[]; proposedAlternates: ItemGroupAlternate[] }>({ name: '', description: '', purpose: '', notes: '', status: 'Active', member_ids: [], proposedAlternates: [] });
   const [saving, setSaving] = useState(false);
+  const [primaryRmQuery, setPrimaryRmQuery] = useState('');
+  const [memberRmFilter, setMemberRmFilter] = useState('');
+  const [alternateRmQuery, setAlternateRmQuery] = useState('');
 
   useEffect(() => {
     Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()]).then(([rms, pms]) => {
@@ -74,12 +79,34 @@ const ItemGroups: React.FC = () => {
     return rawMaterials.map(r => ({ id: r.id, name: r.name || r.code }));
   }, [form.type, rawMaterials, packMaterials]);
 
+  const rmTypeaheadOptions = useMemo(() => buildRmTypeaheadOptions(rawMaterials), [rawMaterials]);
+
+  const alternateRmTypeaheadOptions = useMemo(() => {
+    const excludeIds = new Set([
+      ...editForm.member_ids.map((id) => String(id)),
+      ...editForm.proposedAlternates.map((a) => String(a.item_id)),
+    ]);
+    return buildRmTypeaheadOptions(rawMaterials, { excludeIds });
+  }, [rawMaterials, editForm.member_ids, editForm.proposedAlternates]);
+
   useEffect(() => {
     if (!showCreateModal) return;
     fetchNextItemGroupCode(form.type).then(res => {
       if (res.success && res.data?.nextCode) setForm(f => ({ ...f, code: res.data!.nextCode }));
     });
   }, [showCreateModal, form.type]);
+
+  useEffect(() => {
+    if (!showCreateModal) {
+      setPrimaryRmQuery('');
+      return;
+    }
+    if (form.type === 'RM' && form.primaryItemId) {
+      setPrimaryRmQuery(rmTypeaheadLabelForId(rawMaterials, form.primaryItemId));
+    } else if (form.type !== 'RM') {
+      setPrimaryRmQuery('');
+    }
+  }, [showCreateModal, form.type, form.primaryItemId, rawMaterials]);
 
   const handleCreateGroup = async () => {
     if (!form.name.trim()) return;
@@ -101,6 +128,7 @@ const ItemGroups: React.FC = () => {
       setSelectedGroup(res.data);
       queryClient.invalidateQueries({ queryKey: ['item-groups-page'] });
       setForm(EMPTY_FORM);
+      setPrimaryRmQuery('');
       setShowCreateModal(false);
       addToast('success', `Item Group "${res.data.name}" created`);
     } else {
@@ -109,6 +137,8 @@ const ItemGroups: React.FC = () => {
   };
 
   const openEdit = (group: ItemGroupRecord) => {
+    setMemberRmFilter('');
+    setAlternateRmQuery('');
     setEditingGroup(group);
     const alts = Array.isArray(group.proposedAlternates) ? group.proposedAlternates : [];
     const normalized = alts.map(a => ({
@@ -134,8 +164,16 @@ const ItemGroups: React.FC = () => {
   const availableMembersForEdit = useMemo(() => {
     if (!editingGroup) return [];
     if (editingGroup.type === 'PM') return packMaterials.map(p => ({ id: parseInt(p.id, 10), code: p.code, name: p.description || p.code }));
-    return rawMaterials.map(r => ({ id: parseInt(r.id, 10), code: r.code, name: r.name || r.code }));
+    return rawMaterials.map(r => ({ id: parseInt(r.id, 10), code: r.code, name: r.name || r.inci || r.code }));
   }, [editingGroup, rawMaterials, packMaterials]);
+
+  const filteredMembersForEdit = useMemo(() => {
+    if (editingGroup?.type !== 'RM' || !memberRmFilter.trim()) return availableMembersForEdit;
+    const q = memberRmFilter.trim().toLowerCase();
+    return availableMembersForEdit.filter(
+      (m) => m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || String(m.id).includes(q)
+    );
+  }, [availableMembersForEdit, editingGroup?.type, memberRmFilter]);
 
   /** RM/PM items that can be added as proposed alternates (not already approved members, not already in proposed list). */
   const availableAlternatesForEdit = useMemo(() => {
@@ -444,15 +482,30 @@ const ItemGroups: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-2">Members ({editingGroup.type === 'RM' ? 'Raw materials' : 'Pack materials'})</h3>
+                    {editingGroup.type === 'RM' ? (
+                      <input
+                        type="text"
+                        value={memberRmFilter}
+                        onChange={(e) => setMemberRmFilter(e.target.value)}
+                        placeholder="Search RM by code or name…"
+                        className="w-full mb-2 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500"
+                      />
+                    ) : null}
                     <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                      {availableMembersForEdit.map(m => (
+                      {filteredMembersForEdit.map(m => (
                         <label key={m.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
                           <input type="checkbox" checked={editForm.member_ids.includes(m.id)} onChange={() => toggleEditMember(m.id)} className="rounded border-gray-300 text-violet-600" />
                           <span className="text-xs font-mono text-gray-600">{m.code}</span>
                           <span className="text-sm text-gray-800 truncate">{m.name}</span>
                         </label>
                       ))}
-                      {availableMembersForEdit.length === 0 && <p className="text-xs text-gray-400 p-2">No {editingGroup.type === 'RM' ? 'raw' : 'pack'} materials in DB.</p>}
+                      {filteredMembersForEdit.length === 0 && (
+                        <p className="text-xs text-gray-400 p-2">
+                          {memberRmFilter.trim() && editingGroup.type === 'RM'
+                            ? 'No raw materials match your search.'
+                            : `No ${editingGroup.type === 'RM' ? 'raw' : 'pack'} materials in DB.`}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -476,22 +529,41 @@ const ItemGroups: React.FC = () => {
                       {editForm.proposedAlternates.length === 0 && <p className="text-xs text-gray-400 p-2">No proposed alternates. Add from the list below.</p>}
                     </div>
                     {availableAlternatesForEdit.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select
-                          className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700"
-                          value=""
-                          onChange={e => {
-                            const id = e.target.value ? parseInt(e.target.value, 10) : 0;
-                            const item = availableAlternatesForEdit.find(m => m.id === id);
-                            if (item) addEditAlternate(item);
-                            e.target.value = '';
-                          }}
-                        >
-                          <option value="">— Add {editingGroup?.type === 'PM' ? 'pack material' : 'raw material'} —</option>
-                          {availableAlternatesForEdit.map(m => (
-                            <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
-                          ))}
-                        </select>
+                      <div className="mt-2">
+                        {editingGroup.type === 'RM' ? (
+                          <RmMasterTypeahead
+                            options={alternateRmTypeaheadOptions}
+                            value={alternateRmQuery}
+                            selectedId=""
+                            onValueChange={setAlternateRmQuery}
+                            onSelect={(opt) => {
+                              const id = parseInt(opt.id, 10);
+                              const item = availableAlternatesForEdit.find((m) => m.id === id);
+                              if (item) addEditAlternate(item);
+                              setAlternateRmQuery('');
+                            }}
+                            onClearSelection={() => setAlternateRmQuery('')}
+                            requirePickFromList
+                            placeholder="Search RM to add as alternate…"
+                            className="[&_input]:text-xs [&_input]:border-amber-200 [&_input]:rounded-lg"
+                          />
+                        ) : (
+                          <select
+                            className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700 w-full"
+                            value=""
+                            onChange={e => {
+                              const id = e.target.value ? parseInt(e.target.value, 10) : 0;
+                              const item = availableAlternatesForEdit.find(m => m.id === id);
+                              if (item) addEditAlternate(item);
+                              e.target.value = '';
+                            }}
+                          >
+                            <option value="">— Add pack material —</option>
+                            {availableAlternatesForEdit.map(m => (
+                              <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     ) : (
                       <p className="mt-2 text-xs text-gray-400">No more {editingGroup?.type === 'RM' ? 'raw materials' : 'pack materials'} available to add as alternates.</p>
@@ -587,7 +659,7 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Type</label>
-                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                  <select value={form.type} onChange={e => { setPrimaryRmQuery(''); setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' })); }} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
                     <option value="RM">RM</option>
                     <option value="PM">PM</option>
                   </select>
@@ -600,12 +672,29 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Primary Item</label>
-                  <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
-                    <option value="">— Select —</option>
-                    {primaryItemOptions.map(item => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
+                  {form.type === 'RM' ? (
+                    <RmMasterTypeahead
+                      options={rmTypeaheadOptions}
+                      value={primaryRmQuery}
+                      selectedId={form.primaryItemId}
+                      onValueChange={setPrimaryRmQuery}
+                      onSelect={(opt) => {
+                        setForm((f) => ({ ...f, primaryItemId: opt.id }));
+                        setPrimaryRmQuery(opt.label);
+                      }}
+                      onClearSelection={() => setForm((f) => ({ ...f, primaryItemId: '' }))}
+                      requirePickFromList
+                      placeholder="Search RM by code or name…"
+                      className="[&_input]:w-full [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm [&_input]:border-gray-300 [&_input]:rounded-lg [&_input]:focus:ring-2 [&_input]:focus:ring-teal-500"
+                    />
+                  ) : (
+                    <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                      <option value="">— Select pack material —</option>
+                      {primaryItemOptions.map(item => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Icon (Emoji)</label>
@@ -622,7 +711,7 @@ const ItemGroups: React.FC = () => {
               </div>
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => { setForm(EMPTY_FORM); setShowCreateModal(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={() => { setForm(EMPTY_FORM); setPrimaryRmQuery(''); setShowCreateModal(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleCreateGroup} disabled={!form.name.trim()} className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed">Create Group</button>
             </div>
           </div>

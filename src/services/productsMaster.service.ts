@@ -48,6 +48,8 @@ export interface FormulaBomPhase {
     pct_w_w: number;
     uom: string;
     raw_material_id?: number | null;
+    /** Per-RM specific gravity (vs water) for vessel volume at Planning BOM confirmation. */
+    specific_gravity?: number | null;
   }[];
 }
 

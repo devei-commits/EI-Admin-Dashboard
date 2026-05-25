@@ -1,11 +1,33 @@
-import React from 'react';
-import type { VendorClientRecord } from '../services/vendorClient.service';
+import React, { useRef } from 'react';
+import { fetchVendorClientById, type VendorClientRecord } from '../services/vendorClient.service';
 import {
   formatStagedPaymentTermsObject,
+  mergeCreditDaysFromClientData,
   resolveStagedPaymentTermsFromVendorRecord,
   serializeStagedPaymentTerms,
   validateStagedPercents,
 } from '../lib/stagedPaymentTerms';
+
+export function findVendorClientByName(
+  vendorClientList: VendorClientRecord[],
+  name: string
+): VendorClientRecord | undefined {
+  const t = String(name ?? '').trim();
+  if (!t) return undefined;
+  return (
+    vendorClientList.find((x) => x.name.trim() === t) ||
+    vendorClientList.find((x) => x.name.trim().toLowerCase() === t.toLowerCase())
+  );
+}
+
+function resolveVendorLocation(v: VendorClientRecord): string {
+  const loc = String(v.location ?? '').trim();
+  if (loc) return loc;
+  const data = v.data && typeof v.data === 'object' ? v.data : {};
+  const state = String((data as { state?: unknown }).state ?? '').trim();
+  if (state) return state;
+  return [v.city, v.country].filter(Boolean).join(', ').trim();
+}
 
 export type VendorTierDraft = {
   moq: string;
@@ -98,23 +120,60 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
 }) => {
   const priceKey = variant === 'rm' ? 'unitPrice' : 'price';
   const uomHint = variant === 'rm' ? 'MOQ (KG etc.)' : 'MOQ (pcs etc.)';
+  const hydrateRequestRef = useRef(0);
 
+  /** Pull location, lead time, MOQ, and staged payment terms from vendor master (full row when possible). */
   const hydrateFromVendorMaster = (name: string) => {
-    const v = vendorClientList.find((x) => x.name === name);
-    if (!v) return;
-    onTempFieldChange('location', v.location || '');
-    const staged = resolveStagedPaymentTermsFromVendorRecord(v.paymentTerms, v.data);
-    onTempFieldChange('advancePct', String(staged.advance_pct));
-    onTempFieldChange('preShipmentPct', String(staged.pre_shipment_pct));
-    onTempFieldChange('postShipmentPct', String(staged.post_shipment_pct));
-    onTempFieldChange('creditDays', String(staged.credit_days ?? 0));
+    const listRow = findVendorClientByName(vendorClientList, name);
+    if (!listRow) return;
+    const reqId = ++hydrateRequestRef.current;
+    void (async () => {
+      let paymentTerms = listRow.paymentTerms;
+      let data: Record<string, unknown> | undefined =
+        listRow.data && typeof listRow.data === 'object' ? (listRow.data as Record<string, unknown>) : undefined;
+      let lead = String(listRow.leadTime ?? '').trim();
+      let location = resolveVendorLocation(listRow);
+      let moq = String(listRow.moq ?? '').trim();
+
+      try {
+        const fullRes = await fetchVendorClientById(listRow.id);
+        if (fullRes.success && fullRes.data) {
+          const full = fullRes.data;
+          paymentTerms = full.paymentTerms ?? paymentTerms;
+          data =
+            full.data && typeof full.data === 'object'
+              ? (full.data as Record<string, unknown>)
+              : data;
+          lead = String(full.leadTime ?? lead).trim();
+          location = resolveVendorLocation(full) || location;
+          moq = String(full.moq ?? moq).trim();
+        }
+      } catch {
+        // List row is enough when detail fetch fails
+      }
+
+      if (reqId !== hydrateRequestRef.current) return;
+
+      onTempFieldChange('location', location);
+      onTempFieldChange('leadTime', lead);
+      if (moq) onTempFieldChange('moq', moq);
+
+      const staged = mergeCreditDaysFromClientData(
+        resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data),
+        data
+      );
+      onTempFieldChange('advancePct', String(staged.advance_pct));
+      onTempFieldChange('preShipmentPct', String(staged.pre_shipment_pct));
+      onTempFieldChange('postShipmentPct', String(staged.post_shipment_pct));
+      onTempFieldChange('creditDays', staged.credit_days ? String(staged.credit_days) : '');
+    })();
   };
 
   return (
     <div className="border border-gray-300 rounded-lg p-4 mb-4 space-y-4">
       <h3 className="font-semibold text-gray-800">Vendor Manager</h3>
       <p className="text-xs text-gray-500">
-        Payment terms match the Items List “Add Price Tier” flow (advance / pre-shipment / post-shipment %, credit days, lead time). Add one or more MOQ/price rows; if you only fill MOQ + unit price below, a single tier is created from those values. Vendor pricing is synced to Items List when you submit this master.
+        Pick a vendor to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; if you only fill MOQ + unit price below, a single tier is created from those values. Vendor pricing is synced to Items List when you submit this master.
       </p>
 
       <div className="bg-gray-50 p-4 rounded-lg space-y-4">

@@ -321,7 +321,6 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
     fields: fieldDefs([
       'phRange',
       'viscosity',
-      'specificGravity',
       'appearance',
       'odour',
       'fillWeightSpec',

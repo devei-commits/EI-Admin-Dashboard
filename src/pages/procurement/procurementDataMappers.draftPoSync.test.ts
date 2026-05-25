@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DraftPOLineItem } from '../../types/procurement.types';
 import type { ProcurementRequestItem } from '../../services/procurement.service';
-import { syncProcurementItemsAfterDraftPoLineQtyEdit } from './procurementDataMappers';
+import { recalcDraftPoLineItem, syncProcurementItemsAfterDraftPoLineQtyEdit } from './procurementDataMappers';
 
 function rmLine(code: string, qty: number, rmId: number): ProcurementRequestItem {
   return {
@@ -56,5 +56,15 @@ describe('syncProcurementItemsAfterDraftPoLineQtyEdit', () => {
 
     expect(updatedItems[0].quantity_requested).toBe(90);
     expect(remainderItems).toHaveLength(0);
+  });
+});
+
+describe('recalcDraftPoLineItem', () => {
+  it('updates line total when price per unit changes', () => {
+    const line = draftLine('Sugar', 'RM-1', '10', 42);
+    const next = recalcDraftPoLineItem(line, { pricePerUnit: 250 });
+    expect(next.pricePerUnit).toBe(250);
+    expect(next.gstAmount).toBe(450);
+    expect(next.lineTotal).toBe(2950);
   });
 });

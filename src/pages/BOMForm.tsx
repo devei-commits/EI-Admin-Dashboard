@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
-import { Plus, Trash2, Pencil, Check, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Upload, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, ArrowUpFromLine } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
@@ -16,9 +17,6 @@ import {
   createPRRegistration,
   fetchPRProductDetail,
   updatePRProduct,
-  fetchZohoCompositeSkuBomSuggestion,
-  uploadSkuBomExcel,
-  clearSkuBomForReimport,
   type PRProductDetail,
   type PrRecordTypeForm,
 } from '../services/productsMaster.service';
@@ -30,9 +28,7 @@ import {
   parseFillSizeToSkuNet,
   getEffectiveSkuBomLimitFields,
   getEffectiveSkuBomLimitForPersist,
-  skuBomLinesToFormulaRows,
   formulaRowsToSkuBomLines,
-  parseBulkSpecificGravity,
 } from '../lib/skuBomMath';
 import {
   PR_CATEGORY_OPTIONS,
@@ -86,6 +82,8 @@ interface BOMFormState {
     phase: string;
     percentWW: string;
     uom: string;
+    /** Per-RM specific gravity (vs water) — used at Planning BOM confirmation for vessel volume. */
+    specificGravity: string;
   }>;
 
   /** Per 1 finished SKU unit (separate from formula % w/w). */
@@ -202,15 +200,24 @@ function inferPrCompositeFromCode(_code: string): 'Yes' {
   return 'Yes';
 }
 
+function parseFormulaIngredientSg(raw: string): number | null {
+  const n = parseFloat(String(raw ?? '').replace(/,/g, '').trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function bomFormToRmLines(fd: BOMFormState) {
-  return fd.formulaIngredients.map((ing) => ({
-    phase: ing.phase,
-    inci_name: ing.inciName,
-    rm_code: ing.rmCode || '',
-    raw_material_id: ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
-    pct_w_w: parseFloat(ing.percentWW) || 0,
-    uom: ing.uom,
-  }));
+  return fd.formulaIngredients.map((ing) => {
+    const sg = parseFormulaIngredientSg(ing.specificGravity);
+    return {
+      phase: ing.phase,
+      inci_name: ing.inciName,
+      rm_code: ing.rmCode || '',
+      raw_material_id: ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
+      pct_w_w: parseFloat(ing.percentWW) || 0,
+      uom: ing.uom,
+      ...(sg != null ? { specific_gravity: sg } : {}),
+    };
+  });
 }
 
 function bomFormToSkuRmLines(fd: BOMFormState) {
@@ -286,7 +293,6 @@ function isValidFillSizeInput(raw: string): boolean {
 function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
   const internalCode = fd.skuCode.trim();
-  const zohoSku = fd.skuForZoho?.trim() || internalCode;
   return {
     product_name: fd.productName.trim(),
     name: fd.productName.trim(),
@@ -298,8 +304,6 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     client: fd.brandClient || null,
     fill_size: fd.fillSize || null,
     packSize: fd.fillSize || null,
-    zoho_sku_code: zohoSku || undefined,
-    bomSku: zohoSku || undefined,
     bom_tax_preference: fd.bomTaxPreference || null,
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
@@ -308,7 +312,6 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
     pack_configuration: fd.packConfiguration || null,
-    specific_gravity: fd.specificGravity || null,
     microbial_limits: fd.microbialLimits || null,
     spf_pa_rating: fd.sppRating || null,
     photostability: fd.phototability || null,
@@ -360,7 +363,6 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
     applicable_regulation: fd.applicableRegulation || null,
     claims_substantiation: fd.claimsSubstantiation || null,
     pack_configuration: fd.packConfiguration || null,
-    specific_gravity: fd.specificGravity || null,
     microbial_limits: fd.microbialLimits || null,
     spf_pa_rating: fd.sppRating || null,
     photostability: fd.phototability || null,
@@ -388,7 +390,6 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       process_steps: bomFormToProcessSteps(fd),
       ph_range: fd.phRange || null,
       pack_configuration: fd.packConfiguration || null,
-      specific_gravity: fd.specificGravity || null,
       pr_sub_category: fd.prSubCategory || null,
       pr_qc_group: fd.prQcGroup || null,
       microbial_limits: fd.microbialLimits || null,
@@ -416,6 +417,10 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
         phase: phase.phase || '',
         percentWW: String(ing.pct_w_w ?? ''),
         uom: ing.uom || 'GM',
+        specificGravity:
+          ing.specific_gravity != null && Number(ing.specific_gravity) > 0
+            ? String(ing.specific_gravity)
+            : '1',
       });
     });
   });
@@ -552,7 +557,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       if (el instanceof HTMLElement) el.focus();
     }, 0);
   }, []);
-  const [tempIngredient, setTempIngredient] = useState({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+  const [tempIngredient, setTempIngredient] = useState({
+    inciName: '',
+    phase: '',
+    percentWW: '',
+    uom: 'GM',
+    specificGravity: '1',
+  });
   const [tempSkuLine, setTempSkuLine] = useState({ inciName: '', qtyPerUnit: '', uom: 'GM' });
   const [editingSkuLineId, setEditingSkuLineId] = useState<string | null>(null);
   const [selectedSkuRmId, setSelectedSkuRmId] = useState<string>('');
@@ -579,6 +590,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     { mode: 'create' | 'update'; body: Record<string, unknown> } | null
   >(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const [saveSuccessCode, setSaveSuccessCode] = useState('');
+  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+  const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
+  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
 
   const stages = [
     'Primary info (details & Books)',
@@ -678,7 +694,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   );
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
-  const skuDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
   const stepDraftRef = useRef<HTMLDivElement>(null);
 
@@ -801,6 +816,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       phase: ing.phase,
       percentWW: ing.percentWW,
       uom: ing.uom || 'GM',
+      specificGravity: ing.specificGravity || '1',
     });
     setSelectedRmId(ing.rawMaterialId || '');
     setIngredientRmQuery(
@@ -817,7 +833,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingIngredientId(null);
     setSelectedRmId('');
     setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
   };
 
   const flushIngredientDraft = (): boolean => {
@@ -847,6 +863,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 phase: tempIngredient.phase,
                 percentWW: tempIngredient.percentWW,
                 uom: tempIngredient.uom || rm?.uom || 'GM',
+                specificGravity: tempIngredient.specificGravity || '1',
               }
             : item
         ),
@@ -854,7 +871,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       setEditingIngredientId(null);
       setSelectedRmId('');
       setIngredientRmQuery('');
-      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
       return true;
     }
 
@@ -875,12 +892,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           percentWW: tempIngredient.percentWW,
           // Keep operator-selected UOM; fallback to RM UOM only if no explicit input.
           uom: tempIngredient.uom || rm?.uom || 'GM',
+          specificGravity: tempIngredient.specificGravity || '1',
         },
       ],
     }));
     setSelectedRmId('');
     setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
     return true;
   };
 
@@ -893,7 +911,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       if (cur === id) {
         setSelectedRmId('');
         setIngredientRmQuery('');
-        setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
+        setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM', specificGravity: '1' });
         return null;
       }
       return cur;
@@ -903,63 +921,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       formulaIngredients: prev.formulaIngredients.filter((item) => item.id !== id),
     }));
   };
-
-  const importFormulaFromSkuBom = useCallback(() => {
-    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-      fillSize: formData.fillSize,
-      skuBomLimitQty: formData.skuBomLimitQty,
-      skuBomLimitUom: formData.skuBomLimitUom,
-    });
-    const mappedLines = formData.skuBomLines.map((l) => ({
-      inciName: l.inciName,
-      rmCode: l.rmCode,
-      rawMaterialId: l.rawMaterialId,
-      qtyPerUnit: l.qtyPerUnit,
-      uom: l.uom,
-    }));
-    const res = skuBomLinesToFormulaRows({
-      lines: mappedLines,
-      limitQty,
-      limitUom,
-      specificGravity: parseBulkSpecificGravity(formData.specificGravity),
-    });
-    if (!res.ok) {
-      addToast('error', res.error);
-      return;
-    }
-    if (formData.formulaIngredients.length > 0) {
-      const ok = window.confirm(
-        'Replace all Formula BOM lines with % w/w derived from the SKU BOM (per-unit quantities)? You can undo only by re-entering lines manually.'
-      );
-      if (!ok) return;
-    }
-    const baseTime = Date.now();
-    setFormData((prev) => ({
-      ...prev,
-      formulaIngredients: res.rows.map((r, i) => ({
-        id: `${baseTime}-${i}`,
-        rawMaterialId: r.rawMaterialId,
-        rmCode: r.rmCode || '',
-        inciName: r.inciName,
-        phase: r.phase,
-        percentWW: r.percentWW,
-        uom: r.uom,
-      })),
-    }));
-    setEditingIngredientId(null);
-    setSelectedRmId('');
-    setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
-    addToast('success', `Imported ${res.rows.length} line(s) from SKU BOM (% w/w total 100%).`);
-  }, [
-    formData.fillSize,
-    formData.skuBomLimitQty,
-    formData.skuBomLimitUom,
-    formData.skuBomLines,
-    formData.specificGravity,
-    formData.formulaIngredients.length,
-    addToast,
-  ]);
 
   const importSkuBomFromFormulaBom = useCallback(() => {
     const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
@@ -1016,310 +977,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     formData.skuBomLines.length,
     addToast,
   ]);
-
-  const loadZohoCompositeIntoBom = useCallback(
-    async (syncFormula: boolean) => {
-      const rawId = zohoCompositeFetchId.trim() || formData.zohoId.trim();
-      if (!rawId) {
-        addToast(
-          'error',
-          'Enter the Zoho composite item id (same as in Inventory / Books), or save the product so Zoho Item ID is populated.'
-        );
-        return;
-      }
-      let applyFormula = syncFormula;
-      if (applyFormula && formData.formulaIngredients.length > 0) {
-        if (
-          !window.confirm(
-            'Replace Formula BOM % w/w from the imported SKU lines? Existing formula lines will be removed.'
-          )
-        ) {
-          applyFormula = false;
-        }
-      }
-      if (formData.skuBomLines.length > 0 && !window.confirm('Replace current SKU BOM lines with Zoho mapped items?')) {
-        return;
-      }
-
-      setZohoCompositeLoading(true);
-      try {
-        const res = await fetchZohoCompositeSkuBomSuggestion(rawId);
-        if (!res.success || !res.data) {
-          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to load Zoho composite');
-          return;
-        }
-        const data = res.data;
-        const base = Date.now();
-        const skuBomLines = data.sku_bom.map((r, i) => ({
-          id: `${base}-${i}`,
-          rawMaterialId: r.raw_material_id != null ? String(r.raw_material_id) : undefined,
-          rmCode: r.rm_code ?? '',
-          inciName: r.inci_name ?? '',
-          qtyPerUnit: String(r.qty_per_unit ?? ''),
-          uom: r.uom || 'G',
-        }));
-        let skuBomLimitQty = formData.skuBomLimitQty;
-        let skuBomLimitUom = formData.skuBomLimitUom;
-        const fillNet = parseFillSizeToSkuNet(formData.fillSize);
-        if (!fillNet && data.sku_bom_limit_qty != null && data.sku_bom_limit_uom) {
-          skuBomLimitQty = String(data.sku_bom_limit_qty);
-          skuBomLimitUom = data.sku_bom_limit_uom;
-        }
-        const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
-          fillSize: formData.fillSize,
-          skuBomLimitQty,
-          skuBomLimitUom,
-        });
-        let formulaIngredients = formData.formulaIngredients;
-        let formulaNote = '';
-        if (applyFormula) {
-          const mappedLines = skuBomLines.map((l) => ({
-            inciName: l.inciName,
-            rmCode: l.rmCode,
-            rawMaterialId: l.rawMaterialId,
-            qtyPerUnit: l.qtyPerUnit,
-            uom: l.uom,
-          }));
-          const pctRes = skuBomLinesToFormulaRows({
-            lines: mappedLines,
-            limitQty,
-            limitUom,
-            specificGravity: parseBulkSpecificGravity(formData.specificGravity),
-          });
-          if (pctRes.ok) {
-            formulaIngredients = pctRes.rows.map((r, i) => ({
-              id: `${base}-f-${i}`,
-              rawMaterialId: r.rawMaterialId,
-              rmCode: r.rmCode || '',
-              inciName: r.inciName,
-              phase: r.phase,
-              percentWW: r.percentWW,
-              uom: r.uom,
-            }));
-            formulaNote = ' Formula % w/w updated from SKU BOM.';
-          } else {
-            addToast('error', `SKU lines loaded; formula not updated: ${pctRes.error}`);
-          }
-        }
-        setFormData((prev) => ({
-          ...prev,
-          skuBomLines,
-          skuBomLimitQty,
-          skuBomLimitUom,
-          formulaIngredients,
-        }));
-        setEditingSkuLineId(null);
-        setSelectedSkuRmId('');
-        setSkuRmSearchTerm('');
-        setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
-        if (applyFormula) {
-          setEditingIngredientId(null);
-          setSelectedRmId('');
-          setIngredientRmQuery('');
-          setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'GM' });
-        }
-        let msg = `Loaded ${data.sku_bom.length} line(s) from Zoho${data.composite_name ? `: ${data.composite_name}` : ''}.`;
-        if (data.warnings?.length) msg += ` ${data.warnings.join(' ')}`;
-        if (data.unmatched_components?.length) {
-          msg += ` ${data.unmatched_components.length} line(s) are not linked to an RM master — link them in the row editor.`;
-        }
-        msg += formulaNote;
-        addToast('success', msg);
-      } finally {
-        setZohoCompositeLoading(false);
-      }
-    },
-    [
-      zohoCompositeFetchId,
-      formData.zohoId,
-      formData.skuBomLines.length,
-      formData.formulaIngredients.length,
-      formData.fillSize,
-      formData.skuBomLimitQty,
-      formData.skuBomLimitUom,
-      addToast,
-    ]
-  );
-
-  const reloadPrFromServer = useCallback(async () => {
-    if (!productIdFromRoute) return;
-    const res = await fetchPRProductDetail(productIdFromRoute);
-    if (res.success && res.data) {
-      setFormData(productDetailToBomForm(res.data));
-    }
-  }, [productIdFromRoute]);
-
-  const handleSkuExcelUploadBomForm = useCallback(
-    async (file: File) => {
-      if (!productIdFromRoute) return;
-      setSkuExcelUploading(true);
-      try {
-        const res = await uploadSkuBomExcel(productIdFromRoute, file);
-        if (!res.success || !res.data) {
-          const err = res.error;
-          const msg =
-            typeof err === 'string'
-              ? err
-              : err && typeof err === 'object' && 'message' in err
-                ? String((err as { message?: string }).message)
-                : 'Failed to import Excel';
-          addToast('error', msg);
-          return;
-        }
-        const { summary, sheet_name } = res.data;
-        await reloadPrFromServer();
-        addToast(
-          'success',
-          `Imported sheet "${sheet_name}" — ${summary.sku_rm_count} SKU RM line(s), ${summary.pm_count} pack line(s).`
-        );
-      } finally {
-        setSkuExcelUploading(false);
-        if (skuExcelFileInputRef.current) skuExcelFileInputRef.current.value = '';
-      }
-    },
-    [productIdFromRoute, reloadPrFromServer, addToast]
-  );
-
-  const handleClearSkuBomForReimportBomForm = useCallback(async () => {
-    if (!productIdFromRoute) return;
-    if (
-      !window.confirm(
-        'Clear all SKU BOM and Pack BOM lines on the server for this PR? Formula BOM (% phases) and process steps are not changed. Use this before uploading Excel again from scratch.'
-      )
-    ) {
-      return;
-    }
-    setSkuBomClearing(true);
-    try {
-      const res = await clearSkuBomForReimport(productIdFromRoute);
-      if (!res.success || !res.data) {
-        const err = res.error;
-        const msg =
-          typeof err === 'string'
-            ? err
-            : err && typeof err === 'object' && 'message' in err
-              ? String((err as { message?: string }).message)
-              : 'Failed to clear';
-        addToast('error', msg);
-        return;
-      }
-      addToast('success', res.data.message ?? 'SKU BOM and Pack BOM cleared.');
-      await reloadPrFromServer();
-    } finally {
-      setSkuBomClearing(false);
-    }
-  }, [productIdFromRoute, reloadPrFromServer, addToast]);
-
-  const beginEditSkuLine = (id: string) => {
-    const row = formData.skuBomLines.find((r) => r.id === id);
-    if (!row) return;
-    setEditingSkuLineId(id);
-    setTempSkuLine({
-      inciName: row.inciName,
-      qtyPerUnit: row.qtyPerUnit,
-      uom: row.uom || 'KG',
-    });
-    setSelectedSkuRmId(row.rawMaterialId || '');
-    setSkuRmQuery(
-      row.rawMaterialId ? rmTypeaheadLabelForId(rawMaterials, row.rawMaterialId) : row.inciName
-    );
-    window.setTimeout(() => {
-      skuDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 0);
-  };
-
-  const cancelSkuLineEdit = () => {
-    setEditingSkuLineId(null);
-    setSelectedSkuRmId('');
-    setSkuRmQuery('');
-    setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
-  };
-
-  const flushSkuLineDraft = (): boolean => {
-    const rm = selectedSkuRmId ? rawMaterialById.get(String(selectedSkuRmId)) : undefined;
-    const manualInci = tempSkuLine.inciName.trim() || skuRmQuery.trim();
-    if (!rm && !manualInci) return false;
-    const qtyNum = parseFloat(String(tempSkuLine.qtyPerUnit).replace(/[^\d.-]/g, ''));
-    if (Number.isNaN(qtyNum) || qtyNum <= 0) {
-      addToast('error', 'Enter a positive quantity per unit for SKU BOM');
-      return false;
-    }
-
-    if (editingSkuLineId) {
-      if (rm) {
-        const conflict = formData.skuBomLines.some(
-          (r) => r.id !== editingSkuLineId && String(r.rawMaterialId) === String(rm.id)
-        );
-        if (conflict) {
-          addToast('error', 'This raw material is already added in SKU BOM');
-          return false;
-        }
-      }
-      setFormData((prev) => ({
-        ...prev,
-        skuBomLines: prev.skuBomLines.map((item) =>
-          item.id === editingSkuLineId
-            ? {
-                ...item,
-                rawMaterialId: rm ? String(rm.id) : undefined,
-                rmCode: rm ? rm.code : item.rmCode,
-                inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
-                qtyPerUnit: tempSkuLine.qtyPerUnit,
-                uom: tempSkuLine.uom || rm?.uom || 'GM',
-              }
-            : item
-        ),
-      }));
-      setEditingSkuLineId(null);
-      setSelectedSkuRmId('');
-      setSkuRmQuery('');
-      setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
-      return true;
-    }
-
-    if (rm && selectedSkuRmIds.has(String(rm.id))) {
-      addToast('error', 'This raw material is already added in SKU BOM');
-      return false;
-    }
-    setFormData((prev) => ({
-      ...prev,
-      skuBomLines: [
-        ...prev.skuBomLines,
-        {
-          id: Date.now().toString(),
-          rawMaterialId: rm ? String(rm.id) : undefined,
-          rmCode: rm ? rm.code : '',
-          inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
-          qtyPerUnit: tempSkuLine.qtyPerUnit,
-          uom: tempSkuLine.uom || rm?.uom || 'GM',
-        },
-      ],
-    }));
-    setSelectedSkuRmId('');
-    setSkuRmQuery('');
-    setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
-    return true;
-  };
-
-  const addSkuLine = () => {
-    flushSkuLineDraft();
-  };
-
-  const removeSkuLine = (id: string) => {
-    setEditingSkuLineId((cur) => {
-      if (cur === id) {
-        setSelectedSkuRmId('');
-        setSkuRmQuery('');
-        setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
-        return null;
-      }
-      return cur;
-    });
-    setFormData((prev) => ({
-      ...prev,
-      skuBomLines: prev.skuBomLines.filter((item) => item.id !== id),
-    }));
-  };
 
   const beginEditComponent = (id: string) => {
     const c = formData.packingComponents.find((x) => x.id === id);
@@ -1456,9 +1113,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
+  const prPreviewFormData = useMemo(
+    () => ({
+      ...(formData as unknown as Record<string, unknown>),
+      skuCode: isNewProduct ? '(Assigned on save)' : formData.skuCode,
+      skuForZoho: isNewProduct ? '(Same as internal code after save)' : formData.skuForZoho,
+    }),
+    [formData, isNewProduct]
+  );
+
   const prPreviewSections = useMemo(
-    () => buildMasterPreviewSections(formData as unknown as Record<string, unknown>, PR_PREVIEW_SECTIONS),
-    [formData]
+    () => buildMasterPreviewSections(prPreviewFormData, PR_PREVIEW_SECTIONS),
+    [prPreviewFormData]
   );
 
   const validatePrForSubmit = (): { mode: 'create' | 'update'; body: Record<string, unknown> } | null => {
@@ -1494,25 +1160,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         if (el instanceof HTMLElement) el.focus();
       }, 0);
       return null;
-    }
-    const codeTrim = formData.skuCode.trim();
-    if (formData.prRecordType !== 'legacy') {
-      const rt = formData.prRecordType === 'temporary' ? 'temporary' : 'permanent';
-      if (codeTrim) {
-        const badTemp = rt === 'temporary' && !/^TPR/i.test(codeTrim);
-        const badPerm =
-          rt === 'permanent' && (!/^PR/i.test(codeTrim) || /^TPR/i.test(codeTrim));
-        if (badTemp || badPerm) {
-          addToast(
-            'error',
-            rt === 'temporary'
-              ? 'Internal PR code must start with TPR for a temporary record.'
-              : 'Internal PR code must start with PR (not TPR) for a permanent record.'
-          );
-          setCurrentStage(0);
-          return null;
-        }
-      }
     }
     if (formData.fillSize.trim() && !isValidFillSizeInput(formData.fillSize)) {
       setErrors({ fillSize: 'Fill Size must be in g or ml format (e.g. 50g or 50ml)' });
@@ -1565,6 +1212,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setSubmitPreviewOpen(true);
   };
 
+  const closeSaveSuccessAndExit = () => {
+    setSaveSuccessOpen(false);
+    setSaveSuccessCode('');
+    setSaveSuccessRows([]);
+    setSaveSuccessZohoNote(null);
+    onSaved?.();
+    if (onClose) onClose();
+    else navigate('/bom');
+  };
+
   const handleConfirmSubmit = async () => {
     const pending = pendingPrSubmit;
     if (!pending) return;
@@ -1573,12 +1230,26 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       if (pending.mode === 'update' && productIdFromRoute) {
         const res = await updatePRProduct(productIdFromRoute, pending.body);
         if (res.success) {
-          addToast('success', 'Product updated successfully!');
-          onSaved?.();
+          setSaveSuccessIsEdit(true);
+          setSaveSuccessCode(formData.skuCode.trim() || '');
+          setSaveSuccessRows([
+            { label: 'Product name', value: formData.productName.trim() },
+            { label: 'Category', value: formData.category || '' },
+            {
+              label: 'Record type',
+              value:
+                formData.prRecordType === 'temporary'
+                  ? 'Temporary'
+                  : formData.prRecordType === 'permanent'
+                    ? 'Permanent'
+                    : 'Legacy',
+            },
+            ...(formData.fillSize.trim() ? [{ label: 'Fill size', value: formData.fillSize.trim() }] : []),
+          ]);
+          setSaveSuccessZohoNote(null);
           setSubmitPreviewOpen(false);
           setPendingPrSubmit(null);
-          if (onClose) onClose();
-          else navigate('/bom');
+          setSaveSuccessOpen(true);
         } else {
           addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update product');
         }
@@ -1586,13 +1257,32 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }
 
       const res = await createPRRegistration(pending.body);
-      if (res.success) {
-        addToast('success', 'Product registered — saved to Products (PR) master.');
-        onSaved?.();
+      if (res.success && res.data) {
+        const product = res.data.product as Record<string, unknown>;
+        const code = String(product.product_code ?? product.productCode ?? '').trim();
+        const zohoId = product.zoho_id ?? product.zohoId;
+        setSaveSuccessIsEdit(false);
+        setSaveSuccessCode(code);
+        setSaveSuccessRows([
+          { label: 'Product name', value: String(product.product_name ?? product.name ?? formData.productName).trim() },
+          { label: 'Category', value: String(product.category ?? formData.category ?? '') },
+          {
+            label: 'Record type',
+            value: formData.prRecordType === 'temporary' ? 'Temporary (TPR#####)' : 'Permanent (PR#####)',
+          },
+          ...(formData.fillSize.trim() ? [{ label: 'Fill size', value: formData.fillSize.trim() }] : []),
+          ...(res.data.bom?.bom_code
+            ? [{ label: 'Linked BOM', value: String(res.data.bom.bom_code) }]
+            : []),
+        ]);
+        setSaveSuccessZohoNote(
+          zohoId != null && String(zohoId).trim()
+            ? `Linked to Zoho Books (item ${String(zohoId).trim()}).`
+            : null
+        );
         setSubmitPreviewOpen(false);
         setPendingPrSubmit(null);
-        if (onClose) onClose();
-        else navigate('/bom');
+        setSaveSuccessOpen(true);
       } else {
         addToast('error', typeof res.error === 'string' ? res.error : 'Failed to register product');
       }
@@ -1756,26 +1446,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     ) : null}
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5">
-                    Leave internal code blank to auto-assign the next free number. Manual codes must match the series you select.
+                    Internal code is assigned automatically on save for the series you select.
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="internalPrCode" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Internal PR code <span className="text-slate-400 font-normal">(optional)</span>
-                  </label>
-                  <input
-                    id="internalPrCode"
-                    type="text"
-                    placeholder={formData.prRecordType === 'temporary' ? 'e.g. TPR00042 or leave blank' : 'e.g. PR00042 or leave blank'}
-                    value={formData.skuCode}
-                    onChange={(e) => handleInputChange('skuCode', e.target.value)}
-                    disabled={lockPrimaryFields}
-                    autoComplete="off"
-                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 ${
-                      lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Internal PR code (SKU)</label>
+                  {isNewProduct ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+                      Assigned on save:{' '}
+                      <span className="font-mono text-slate-800">
+                        {formData.prRecordType === 'temporary' ? 'TPR#####' : 'PR#####'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono text-slate-800">
+                      {formData.skuCode || '—'}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1810,41 +1498,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
                 <p className="text-xs text-slate-600 mb-2">
-                  Add ingredients in phase order. Rows are added only when you click the Add button (total should equal 100%).
+                  Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line — Planning uses these values at BOM confirmation for vessel volume (not the RM master). Total % w/w should equal 100%. Use{' '}
+                  <strong>Import from Formula BOM</strong> on the SKU BOM step to derive per-unit quantities from these % w/w lines.
                 </p>
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <button
-                    type="button"
-                    onClick={importFormulaFromSkuBom}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100"
-                    title="Uses SKU BOM per-unit quantities and net limit; each line becomes % w/w = (line qty ÷ net) × 100."
-                  >
-                    <ArrowDownToLine className="w-3.5 h-3.5" />
-                    Import from SKU BOM
-                  </button>
-                  <span className="text-[11px] text-slate-500 max-w-xl">
-                    Fill the <strong>SKU BOM</strong> step first (lines must sum to net per unit). Imports replace formula lines with the same RMs and phases set to <span className="font-mono">Bulk</span>.
-                  </span>
-                </div>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[520px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[620px] grid-cols-5 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                     <div>INCI Name / Raw Material</div>
                     <div>Phase</div>
                     <div>% W/W</div>
+                    <div>SG</div>
                     <div>UOM</div>
                   </div>
                   <div className="space-y-2">
                     {formData.formulaIngredients.map(ing => (
                       <div
                         key={ing.id}
-                        className={`grid min-w-[520px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                        className={`grid min-w-[620px] grid-cols-5 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
                           ing.id === editingIngredientId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
                         }`}
                       >
                         <div className="text-slate-900">{ing.inciName}</div>
                         <div className="text-slate-600">{ing.phase}</div>
                         <div className="text-slate-600">{ing.percentWW}</div>
+                        <div className="text-slate-600 font-mono tabular-nums">{ing.specificGravity || '1'}</div>
                         <div className="flex justify-end items-center gap-1">
                           <span className="text-slate-600 mr-auto">{ing.uom}</span>
                           <button
@@ -1908,7 +1585,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     onClearSelection={() => setSelectedRmId('')}
                     placeholder="Search RM by code or INCI — pick from list or type manual name"
                   />
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                     <input
                       type="text"
                       placeholder="Phase"
@@ -1921,6 +1598,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       placeholder="% W/W"
                       value={tempIngredient.percentWW}
                       onChange={(e) => setTempIngredient(prev => ({ ...prev, percentWW: e.target.value }))}
+                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="SG (vs water)"
+                      title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
+                      value={tempIngredient.specificGravity}
+                      onChange={(e) => setTempIngredient(prev => ({ ...prev, specificGravity: e.target.value }))}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"
                     />
                     <select
@@ -1976,101 +1662,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-violet-800 mb-2">
                 SKU BOM — RAW MATERIALS (PER UNIT){' '}
-                <span className="font-normal text-violet-600">(optional — Formula BOM and Pack BOM are required)</span>
+                <span className="font-normal text-violet-600">(optional — derived from Formula BOM)</span>
               </label>
               <p className="text-xs text-slate-600 mb-3">
-                Raw materials by quantity for <strong>one</strong> finished unit. Each line can use G, KG, ML, or L; all lines must match the net type (mass vs volume). The <strong>sum must equal the net per unit exactly</strong> (±0.001).
+                Read-only view of per-unit RM quantities for <strong>one</strong> finished unit. Lines are populated only via{' '}
+                <strong>Import from Formula BOM</strong> below (Formula % w/w must total 100%). When present, the sum must match net per unit (±0.001).
               </p>
-
-              {productIdFromRoute ? (
-                <div className="mb-4 p-3 rounded-lg border border-emerald-200 bg-emerald-50/80 space-y-2">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Bulk import from Excel</p>
-                      <p className="text-[11px] text-emerald-900/80 mt-0.5">
-                        Same as PR Masters list: <span className="font-mono">Component Name</span>, <span className="font-mono">Type</span>{' '}
-                        (Raw Material / Packaging), <span className="font-mono">Qty per SKU</span>, <span className="font-mono">UOM</span>. Writes to
-                        the server and reloads this form. <strong>Clear import</strong> empties SKU + Pack BOM lines so you can upload fresh.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
-                      <input
-                        ref={skuExcelFileInputRef}
-                        type="file"
-                        accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void handleSkuExcelUploadBomForm(f);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        disabled={skuExcelUploading || skuBomClearing || zohoCompositeLoading}
-                        onClick={() => void handleClearSkuBomForReimportBomForm()}
-                        title="Clears SKU BOM + Pack BOM on the server; keeps formula % and process steps."
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        {skuBomClearing ? 'Clearing…' : 'Clear import'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={skuExcelUploading || skuBomClearing || zohoCompositeLoading}
-                        onClick={() => skuExcelFileInputRef.current?.click()}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        {skuExcelUploading ? 'Uploading…' : 'Upload Excel'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="mb-4 text-xs text-slate-500 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2">
-                  Save the PR first (get a product id); then you can use <strong>Upload Excel</strong> and <strong>Clear import</strong> here.
-                </p>
-              )}
-
-              <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-slate-50/90 space-y-2">
-                <p className="text-xs font-semibold text-slate-800">Zoho composite (Inventory / Books)</p>
-                <p className="text-[11px] text-slate-600">
-                  Paste the composite item id from Zoho (e.g. <span className="font-mono">1252231000017972949</span>). The server loads <strong>mapped_items</strong> into SKU BOM and optionally derives Formula % w/w. OAuth + org id are configured on the API; Inventory is tried first, then Books.
-                </p>
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">
-                      Composite item ID
-                    </label>
-                    <input
-                      type="text"
-                      value={zohoCompositeFetchId}
-                      onChange={(e) => setZohoCompositeFetchId(e.target.value)}
-                      placeholder="Numeric id from Zoho"
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={zohoCompositeLoading}
-                    onClick={() => void loadZohoCompositeIntoBom(false)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-50"
-                  >
-                    <CloudDownload className="w-3.5 h-3.5" />
-                    {zohoCompositeLoading ? 'Loading…' : 'Load into SKU BOM'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={zohoCompositeLoading}
-                    onClick={() => void loadZohoCompositeIntoBom(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-50"
-                  >
-                    <CloudDownload className="w-3.5 h-3.5" />
-                    {zohoCompositeLoading ? 'Loading…' : 'Load SKU + Formula %'}
-                  </button>
-                </div>
-              </div>
 
               {fillNet ? (
                 <div className="mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100 space-y-1">
@@ -2143,121 +1740,39 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
               ) : !skuBomValidation.ok ? (
                 <p className="text-xs font-medium text-red-600 mb-3">{skuBomValidation.error}</p>
-              ) : (
-                <p className="text-xs text-slate-500 mb-3">Leave lines empty if you do not use SKU-level RM.</p>
-              )}
+              ) : formData.skuBomLines.length === 0 ? (
+                <p className="text-xs text-slate-500 mb-3">
+                  No SKU lines yet. Complete Formula BOM, then click <strong>Import from Formula BOM</strong>.
+                </p>
+              ) : null}
 
               <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                <div className="grid min-w-[480px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                <div className="grid min-w-[400px] grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                   <div>INCI / Raw Material</div>
                   <div>Qty / unit</div>
                   <div>UOM</div>
-                  <div className="text-right">Actions</div>
                 </div>
                 <div className="space-y-2">
-                  {formData.skuBomLines.map((row) => (
-                    <div
-                      key={row.id}
-                      className={`grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
-                        row.id === editingSkuLineId ? 'bg-violet-50 ring-2 ring-violet-200' : 'bg-slate-50'
-                      }`}
-                    >
-                      <div className="text-slate-900">
-                        {row.inciName}
-                        {row.rmCode ? <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span> : null}
+                  {formData.skuBomLines.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-4 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
+                      Import from Formula BOM to populate this list.
+                    </p>
+                  ) : (
+                    formData.skuBomLines.map((row) => (
+                      <div
+                        key={row.id}
+                        className="grid min-w-[400px] grid-cols-3 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                      >
+                        <div className="text-slate-900">
+                          {row.inciName}
+                          {row.rmCode ? <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span> : null}
+                        </div>
+                        <div className="text-slate-800 font-mono">{row.qtyPerUnit}</div>
+                        <div className="text-slate-600">{row.uom}</div>
                       </div>
-                      <div className="text-slate-800 font-mono">{row.qtyPerUnit}</div>
-                      <div className="text-slate-600">{row.uom}</div>
-                      <div className="flex justify-end items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => beginEditSkuLine(row.id)}
-                          className="text-violet-700 hover:text-violet-900 p-1 rounded"
-                          title="Edit line"
-                          aria-label="Edit line"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeSkuLine(row.id)}
-                          className="text-red-600 hover:text-red-800 p-1 rounded"
-                          title="Remove line"
-                          aria-label="Remove line"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
-              </div>
-
-              <div ref={skuDraftRef} className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    {editingSkuLineId ? 'Edit SKU BOM line' : 'New SKU BOM line'}
-                  </p>
-                  {editingSkuLineId ? (
-                    <button type="button" onClick={cancelSkuLineEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
-                      Cancel edit
-                    </button>
-                  ) : null}
-                </div>
-                <RmMasterTypeahead
-                  options={skuRmTypeaheadOptions}
-                  value={skuRmQuery}
-                  loading={masterLoading}
-                  selectedId={selectedSkuRmId}
-                  onValueChange={(next) => {
-                    setSkuRmQuery(next);
-                    setTempSkuLine((prev) => ({ ...prev, inciName: next }));
-                  }}
-                  onSelect={(opt) => {
-                    setSelectedSkuRmId(opt.id);
-                    setSkuRmQuery(opt.label);
-                    const rm = rawMaterialById.get(opt.id);
-                    setTempSkuLine((prev) => ({
-                      ...prev,
-                      inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
-                      uom: prev.uom || rm?.uom || 'GM',
-                    }));
-                  }}
-                  onClearSelection={() => setSelectedSkuRmId('')}
-                  placeholder="Search RM by code or INCI — pick from list or type manual name"
-                />
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <input
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    placeholder="Qty per 1 unit of product"
-                    value={tempSkuLine.qtyPerUnit}
-                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, qtyPerUnit: e.target.value }))}
-                    className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
-                  <select
-                    value={tempSkuLine.uom}
-                    onChange={(e) => setTempSkuLine((prev) => ({ ...prev, uom: e.target.value }))}
-                    className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  >
-                    <option value="GM">GM / G</option>
-                    <option value="KG">KG</option>
-                    <option value="ML">ML</option>
-                    <option value="L">L</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-3">
-                <button
-                  type="button"
-                  onClick={addSkuLine}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-violet-200 text-violet-800 rounded-lg text-sm font-semibold hover:bg-violet-50"
-                >
-                  {editingSkuLineId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {editingSkuLineId ? 'Update SKU BOM line' : 'Add to SKU BOM'}
-                </button>
               </div>
             </div>
         );
@@ -2569,18 +2084,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       ))}
                     </select>
                   </div>
-                  {!lockPrimaryFields ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">SKU for Zoho</label>
-                    <input
-                      type="text"
-                      placeholder="Optional — defaults to internal PR code after save"
-                      value={formData.skuForZoho}
-                      onChange={(e) => handleInputChange('skuForZoho', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                  </div>
-                  ) : null}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
                     <select
@@ -2646,10 +2149,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Viscosity</label>
                       <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Specific Gravity</label>
-                      <input type="text" placeholder="e.g. 0.98-1.02" value={formData.specificGravity} onChange={(e) => handleInputChange('specificGravity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Appearance</label>
@@ -2770,6 +2269,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         sections={prPreviewSections}
         confirming={submitConfirming}
         isEdit={!!productIdFromRoute}
+      />
+      <MasterSaveSuccessModal
+        isOpen={saveSuccessOpen}
+        onClose={closeSaveSuccessAndExit}
+        title={saveSuccessIsEdit ? 'Product updated' : 'Product registered'}
+        subtitle={
+          saveSuccessIsEdit
+            ? 'Changes are saved. Internal code cannot be changed here.'
+            : 'Your product is saved with the internal code below (assigned by the server).'
+        }
+        generatedCode={saveSuccessCode}
+        codeLabel="Internal PR code (SKU)"
+        rows={saveSuccessRows}
+        zohoNote={saveSuccessZohoNote}
       />
     </>
   );
