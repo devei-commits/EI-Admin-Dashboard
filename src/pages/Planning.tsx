@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
+import { parsePlanningSlaTimestamp, planningBomConfirmedAtIso } from '../utils/planningSlaDates';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
 import { fetchSoPlanningAvailability } from '../services/fulfillment.service';
 import {
@@ -48,10 +49,50 @@ import {
   procurementQtyFromKgGap,
   procurementUnitSuffix,
   rmPrimaryQtyToKg,
+  inferBlendSpecificGravity,
 } from '../lib/rmUnitConversion';
+import { parseBulkSpecificGravity } from '../lib/skuBomMath';
+
+function effectivePrSpecBulk(
+  bom: BOMRecord | null | undefined,
+  productDetail: { specific_gravity?: string | null } | null | undefined
+): string {
+  const fromBom = String(bom?.specBulk ?? '').trim();
+  if (fromBom) return fromBom;
+  return String(productDetail?.specific_gravity ?? '').trim();
+}
+
+function resolveBomLevelSgFromPr(
+  specBulk: string | null | undefined,
+  rmLines: BOMRmLine[] | null | undefined,
+  confirmedBomSg: number | null | undefined,
+  alreadyConfirmed: boolean
+): string {
+  if (alreadyConfirmed && confirmedBomSg != null && confirmedBomSg > 0) {
+    return String(confirmedBomSg);
+  }
+  const bulkRaw = String(specBulk ?? '').trim();
+  if (bulkRaw) {
+    return String(parseBulkSpecificGravity(bulkRaw));
+  }
+  if (rmLines?.length) {
+    const blend = inferBlendSpecificGravity(rmLines);
+    if (Number.isFinite(blend) && blend > 0) return String(blend);
+  }
+  const firstSg = specificGravityFromBomLine(rmLines?.[0] as BOMRmLine);
+  return firstSg != null ? String(firstSg) : '1';
+}
+
+function lineSgFromPrBom(line: BOMRmLine, specBulk?: string | null): number {
+  const lineSg = specificGravityFromBomLine(line);
+  if (lineSg != null) return parseSpecificGravity(lineSg);
+  const bulkRaw = String(specBulk ?? '').trim();
+  if (bulkRaw) return parseBulkSpecificGravity(bulkRaw);
+  return 1;
+}
 import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
-import { fetchPRProducts } from '../services/productsMaster.service';
+import { fetchPRProductDetail, fetchPRProducts } from '../services/productsMaster.service';
 import {
   createItemGroup,
   fetchItemGroups,
@@ -441,20 +482,23 @@ function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number;
   return { createdUnits, remainingUnits };
 }
 
-function parseDateSafe(v?: string | null): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function getPlanningSlaMeta(order: SalesOrder, remainingUnits: number): {
   elapsedHours: number;
   label: string;
   sub: string;
   tone: 'green' | 'amber' | 'red';
 } {
-  const start = parseDateSafe(order.orderDate) ?? new Date();
-  const stopAt = remainingUnits <= 0 ? (parseDateSafe(order.bomConfirmedAt ?? null) ?? new Date()) : new Date();
+  const start =
+    parsePlanningSlaTimestamp(order.orderDate) ??
+    parsePlanningSlaTimestamp(order.createdAt) ??
+    new Date();
+  const now = new Date();
+  let stopAt = now;
+  if (remainingUnits <= 0) {
+    const confirmedAt = parsePlanningSlaTimestamp(order.bomConfirmedAt ?? null);
+    stopAt = confirmedAt ?? now;
+    if (stopAt.getTime() > now.getTime()) stopAt = now;
+  }
   const elapsedHours = Math.max(0, (stopAt.getTime() - start.getTime()) / (1000 * 60 * 60));
   const hrs = Math.floor(elapsedHours);
   const mins = Math.floor((elapsedHours - hrs) * 60);
@@ -645,6 +689,8 @@ interface SalesOrder {
   orderQty: string;
   totalKg: string;
   orderDate: string;
+  /** When this row entered planning (fallback SLA start if order date is date-only). */
+  createdAt?: string | null;
   dueDate: string;
   daysLeft: string;
   batchSize: string;
@@ -713,6 +759,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     orderQty: row.orderQty,
     totalKg: row.totalKg,
     orderDate: row.orderDate,
+    createdAt: row.createdAt ?? null,
     dueDate: row.dueDate,
     daysLeft: row.daysLeft,
     batchSize: row.batchSize,
@@ -1202,6 +1249,16 @@ const Planning = () => {
   });
   const activeBom: BOMRecord | null = bomByProduct ?? null;
 
+  const { data: prProductDetailForBom } = useQuery({
+    queryKey: ['pr-product-detail-bom', productIdForBom],
+    queryFn: async () => {
+      const r = await fetchPRProductDetail(productIdForBom);
+      return r.data ?? null;
+    },
+    enabled: planBatchesModalOpen && productIdForBom > 0,
+  });
+  const prSpecBulkForBom = effectivePrSpecBulk(activeBom, prProductDetailForBom);
+
   // BOM for detail popup: when FG row is clicked, load BOM to show RM/PM × order qty
   const productIdForDetail = selectedRowForDetail?.productId ?? 0;
   const { data: bomForDetail } = useQuery({
@@ -1669,7 +1726,7 @@ const Planning = () => {
       percentage: line.pct_w_w ?? 0,
       code: line.rm_code,
       phase: line.phase ?? 'Phase A',
-      specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
+      specificGravity: lineSgFromPrBom(line as BOMRmLine, prSpecBulkForBom),
     })));
     setBomPackaging(pmLines.map((line, i) => ({
       id: String(line.pm_code ?? i),
@@ -1888,7 +1945,7 @@ const Planning = () => {
         percentage: line.pct_w_w ?? line.pct ?? 0,
         code: line.rm_code,
         phase: line.phase,
-        specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
+        specificGravity: lineSgFromPrBom(line as BOMRmLine, prSpecBulkForBom),
       })));
       setBomPackaging(pmLines.map((line: BOMPmLine, i: number) => ({
         id: String((line as { pm_code?: string }).pm_code ?? i),
@@ -1899,6 +1956,14 @@ const Planning = () => {
         percentage: 0,
         code: (line as { pm_code?: string }).pm_code,
       })));
+      setBomLevelSG(
+        resolveBomLevelSgFromPr(
+          prSpecBulkForBom,
+          rmLines,
+          selectedSOForBatch.bomSpecificGravity ?? null,
+          Boolean(selectedSOForBatch.bomConfirmedAt)
+        )
+      );
       return;
     }
     if (activeBom && activeBom.productId === selectedSOForBatch.productId) {
@@ -1915,7 +1980,7 @@ const Planning = () => {
         percentage: line.pct_w_w ?? line.pct ?? 0,
         code: line.rm_code,
         phase: line.phase,
-        specificGravity: parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine)),
+        specificGravity: lineSgFromPrBom(line as BOMRmLine, prSpecBulkForBom),
       })));
       setBomPackaging(pmLines.map((line: BOMPmLine, i: number) => ({
         id: String((line as { pm_code?: string }).pm_code ?? i),
@@ -1926,6 +1991,14 @@ const Planning = () => {
         percentage: 0,
         code: (line as { pm_code?: string }).pm_code,
       })));
+      setBomLevelSG(
+        resolveBomLevelSgFromPr(
+          prSpecBulkForBom,
+          rmLines,
+          selectedSOForBatch.bomSpecificGravity ?? null,
+          Boolean(selectedSOForBatch.bomConfirmedAt)
+        )
+      );
       return;
     }
     if (!activeBom && selectedSOForBatch.rawMaterials?.length >= 0 && syncedFallbackOrderIdRef.current !== selectedSOForBatch.id) {
@@ -1951,7 +2024,7 @@ const Planning = () => {
         code: (item as PackagingMaterial).code,
       })));
     }
-  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.productId, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.packagingMaterials, activeBom?.id, activeBom?.productId, activeBom?.rmLines, activeBom?.pmLines, bomOverrideForPlanning, selectedBatchId]);
+  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.productId, selectedSOForBatch?.rawMaterials, selectedSOForBatch?.packagingMaterials, selectedSOForBatch?.bomConfirmedAt, selectedSOForBatch?.bomSpecificGravity, activeBom?.id, activeBom?.productId, activeBom?.rmLines, activeBom?.pmLines, activeBom?.specBulk, prSpecBulkForBom, prProductDetailForBom?.specific_gravity, bomOverrideForPlanning, selectedBatchId]);
 
   useEffect(() => {
     if (!planBatchesModalOpen) {
@@ -3223,7 +3296,10 @@ const Planning = () => {
           percentage: line.pct_w_w ?? line.pct ?? 0,
           code: line.rm_code,
           phase: line.phase ?? 'Phase A',
-          specificGravity: parseSpecificGravity(specificGravityFromBomLine(line)),
+          specificGravity: lineSgFromPrBom(
+            line,
+            effectivePrSpecBulk(prBom, prProductDetailForBom ?? null)
+          ),
         }))
       );
       setBomPackaging(
@@ -3237,15 +3313,24 @@ const Planning = () => {
           code: line.pm_code,
         }))
       );
-      const firstSg = specificGravityFromBomLine(prBom.rmLines[0] as BOMRmLine);
-      setBomLevelSG(firstSg != null ? String(firstSg) : '1');
+      setBomLevelSG(
+        resolveBomLevelSgFromPr(
+          effectivePrSpecBulk(prBom, prProductDetailForBom ?? null),
+          prBom.rmLines ?? [],
+          order.bomSpecificGravity ?? null,
+          Boolean(order.bomConfirmedAt)
+        )
+      );
     } else {
       setBomFormula([]);
       setBomPackaging(order.packagingMaterials ?? []);
       setBomLevelSG(
-        order.bomConfirmedAt && order.bomSpecificGravity != null && order.bomSpecificGravity > 0
-          ? String(order.bomSpecificGravity)
-          : '1'
+        resolveBomLevelSgFromPr(
+          prSpecBulkForBom,
+          null,
+          order.bomSpecificGravity ?? null,
+          Boolean(order.bomConfirmedAt)
+        )
       );
     }
     const alreadyConfirmed = Boolean(order.bomConfirmedAt);
@@ -3638,7 +3723,7 @@ const Planning = () => {
         queryClient.invalidateQueries({ queryKey: ['planning-bom-override', selectedSOForBatch.id] });
       }
       const confirmed = await updatePlanningExtracted(selectedSOForBatch.id, {
-        bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        bomConfirmedAt: planningBomConfirmedAtIso(),
         bomSpecificGravity: blendSg,
       });
       if (!confirmed) {
@@ -3656,7 +3741,7 @@ const Planning = () => {
         prev
           ? {
               ...prev,
-              bomConfirmedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              bomConfirmedAt: confirmed?.bomConfirmedAt ?? planningBomConfirmedAtIso(),
               bomSpecificGravity: blendSg,
             }
           : prev
@@ -6613,8 +6698,32 @@ const Planning = () => {
                         <div className="min-w-0">
                           <h3 className="text-sm font-bold text-gray-900">BOM default Specific Gravity</h3>
                           <p className="text-xs text-gray-600 mt-1">
-                            Default SG (vs water) for new or swapped RM lines. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG). All BOM confirmation quantities are shown in kg.
+                            Default SG (vs water) for new or swapped RM lines — pre-filled from the PR master Specs field when set. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG). All BOM confirmation quantities are shown in kg.
                           </p>
+                          {prSpecBulkForBom ? (
+                            <p className="text-xs text-indigo-900 mt-2">
+                              PR product SG (master):{' '}
+                              <span className="font-mono font-semibold">{prSpecBulkForBom}</span>
+                              <span className="text-indigo-700">
+                                {' '}
+                                → {parseBulkSpecificGravity(prSpecBulkForBom).toFixed(3)} vs water
+                              </span>
+                            </p>
+                          ) : null}
+                          {bomFormula.length > 0 ? (
+                            <p className="text-xs text-slate-600 mt-1">
+                              Formula blend SG (% w/w weighted):{' '}
+                              <span className="font-mono font-semibold">
+                                {inferBlendSpecificGravity(
+                                  bomFormula.map((it) => ({
+                                    pct: it.percentage,
+                                    specificGravity: it.specificGravity,
+                                  }))
+                                ).toFixed(3)}
+                              </span>{' '}
+                              vs water
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           <label htmlFor="bom-level-sg" className="sr-only">BOM Specific Gravity</label>

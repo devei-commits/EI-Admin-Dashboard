@@ -309,6 +309,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     process_steps: bomFormToProcessSteps(fd),
     ph_range: fd.phRange || null,
     viscosity_range: fd.viscosity || null,
+    specific_gravity: fd.specificGravity.trim() || null,
     appearance: fd.appearance || null,
     odour: fd.odour || null,
     fill_weight_spec: fd.fillWeightSpec || null,
@@ -363,6 +364,7 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       pm_lines: bomFormToPmLines(fd),
       process_steps: bomFormToProcessSteps(fd),
       ph_range: fd.phRange || null,
+      specific_gravity: fd.specificGravity.trim() || null,
       pack_configuration: fd.packConfiguration || null,
       pr_sub_category: fd.prSubCategory || null,
       pr_qc_group: fd.prQcGroup || null,
@@ -2070,6 +2072,21 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Viscosity</label>
                       <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Specific Gravity (vs water)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="e.g. 1.02 or 0.95–1.02"
+                        value={formData.specificGravity}
+                        onChange={(e) => handleInputChange('specificGravity', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        title="Bulk finished-product SG — pre-fills Planning BOM confirmation default SG"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Used as the default SG when confirming BOM in Planning (litre stock → kg). Per-RM SG is set on Formula BOM lines.
+                      </p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Appearance</label>

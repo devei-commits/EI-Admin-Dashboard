@@ -57,7 +57,13 @@ const PM_REQUIRED_FIELDS: Array<{
   toastMessage: string;
 }> = [
   { id: 'pmSkuCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
-  { id: 'name', label: 'Item Name', section: 0, toastMessage: 'Step 1 — Item name is required' },
+  {
+    id: 'tradeCommercialName',
+    label: 'Trade/Commercial Name',
+    section: 0,
+    toastMessage: 'Step 1 — Trade/commercial name is required',
+  },
+  { id: 'pkgUnit', label: 'Primary UoM', section: 0, toastMessage: 'Step 1 — Primary UoM is required' },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -97,6 +103,8 @@ function createEmptyPackagingFormData() {
     pkgTaxPreference: '',
     pkgReturnable: '' as '' | 'Yes' | 'No',
     pkgAssociateItems: '',
+    inciName: '',
+    tradeCommercialName: '',
     name: '',
     level: '',
     itemCategory: '',
@@ -250,13 +258,13 @@ const PackagingRefactored: React.FC = () => {
     Boolean(
       isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory) &&
         pmLevelForSubCategory(formData.pmSkuCategory || formData.subCategory) &&
-        formData.name?.trim() &&
+        (formData.tradeCommercialName?.trim() || formData.name?.trim()) &&
         formData.pkgReturnable?.trim() &&
         formData.pkgTaxPreference?.trim() &&
+        formData.pkgUnit?.trim() &&
         (!taxIsTaxable || (formData.pkgHsn?.trim() && formData.pkgGst?.toString().trim()))
     );
-  /** On edit: internal code and level stay fixed; category, name, and returnable can change. */
-  const lockImmutableMasterOnEdit = !!existingPmId;
+  /** On edit: internal code and level stay fixed; identity, UoM, returnable, and tax remain editable. */
 
   const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
   const [tempVendor, setTempVendor] = useState({
@@ -329,6 +337,7 @@ const PackagingRefactored: React.FC = () => {
       id === 'pkgGst' ||
       id === 'pkgTaxPreference' ||
       id === 'pkgReturnable' ||
+      id === 'pkgUnit' ||
       id in errors
     ) {
       setErrors((prev) => {
@@ -523,7 +532,9 @@ const PackagingRefactored: React.FC = () => {
   const buildPayload = () => {
     const firstVendor = formData.vendors[0];
     const skuForZoho = undefined;
-    const descBase = formData.name?.trim() || 'New pack material';
+    const codeTrim = String(formData.itemCode ?? formData.pkgSku ?? '').trim();
+    const descBase =
+      formData.tradeCommercialName?.trim() || formData.name?.trim() || 'New pack material';
     const skuCat =
       normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory) ||
       String(formData.pmSkuCategory || formData.subCategory || '')
@@ -602,6 +613,22 @@ const PackagingRefactored: React.FC = () => {
         continue;
       }
       if (field.id === 'optionalPmSubCategory') {
+        continue;
+      }
+      if (field.id === 'tradeCommercialName') {
+        const trade = String(formData.tradeCommercialName ?? formData.name ?? '').trim();
+        if (!trade) {
+          const stepNo = field.section + 1;
+          setErrors((prev) => ({
+            ...prev,
+            tradeCommercialName: `Step ${stepNo} — ${field.label} is required`,
+            name: `Step ${stepNo} — ${field.label} is required`,
+          }));
+          addToast('error', field.toastMessage);
+          setCurrentSection(field.section);
+          focusPmField('tradeCommercialName');
+          return null;
+        }
         continue;
       }
       const rawValue = formData[field.id as keyof typeof formData];
@@ -727,7 +754,7 @@ const PackagingRefactored: React.FC = () => {
                   options={[...PM_SKU_CATEGORY_SELECT_OPTIONS]}
                   requiredMark
                   error={errors.pmSkuCategory}
-                  disabled={lockPrimaryFields}
+                  disabled={false}
                 />
                 {formData.pmSkuCategory &&
                 !PM_SKU_CATEGORY_OPTIONS.includes(formData.pmSkuCategory as (typeof PM_SKU_CATEGORY_OPTIONS)[number]) ? (
@@ -743,7 +770,7 @@ const PackagingRefactored: React.FC = () => {
                     onChange={handleInputChange}
                     options={pmDetailSubCategoryOptions}
                     error={errors.optionalPmSubCategory}
-                    disabled={lockPrimaryFields || !formData.pmSkuCategory?.trim()}
+                    disabled={!formData.pmSkuCategory?.trim()}
                     emptyLabel="Select sub-category…"
                   />
                 ) : (
@@ -779,14 +806,40 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
-                  label="Item Name"
-                  id="name"
-                  value={formData.name}
+                  label="INCI Name"
+                  id="inciName"
+                  value={formData.inciName}
                   onChange={handleInputChange}
+                  placeholder="Official INCI / standard name (if applicable)"
+                />
+                <InputField
+                  label="Trade/Commercial Name"
+                  id="tradeCommercialName"
+                  value={formData.tradeCommercialName}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData((prev) => ({ ...prev, tradeCommercialName: v, name: v }));
+                    setErrors((prev) => {
+                      if (!prev.tradeCommercialName && !prev.name) return prev;
+                      const next = { ...prev };
+                      delete next.tradeCommercialName;
+                      delete next.name;
+                      return next;
+                    });
+                  }}
                   placeholder="Packaging item name as used internally"
                   requiredMark
-                  error={errors.name}
+                  error={errors.tradeCommercialName ?? errors.name}
                   readOnly={false}
+                />
+                <SelectField
+                  label="Primary UoM"
+                  id="pkgUnit"
+                  value={formData.pkgUnit}
+                  onChange={handleInputChange}
+                  options={['PCS', 'GM', 'ML', 'L', 'KG']}
+                  requiredMark
+                  error={errors.pkgUnit}
                 />
                 <div>
                   <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
@@ -836,7 +889,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.pkgTaxPreference}
                   onChange={handleInputChange}
                   options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-                  disabled={lockImmutableMasterOnEdit}
                   requiredMark
                   error={errors.pkgTaxPreference}
                 />
@@ -958,17 +1010,6 @@ const PackagingRefactored: React.FC = () => {
                   >
                     <option value="">Select</option>
                     {STORAGE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
-                  <select
-                    id="pkgUnit"
-                    value={formData.pkgUnit}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {['PCS', 'GM', 'ML', 'L', 'KG'].map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
@@ -1376,9 +1417,16 @@ const PackagingRefactored: React.FC = () => {
         normalizePmSkuCategoryForSelect(pm.material || '') ||
         '';
 
+      const fdInci = String((fdObj as { inciName?: string })?.inciName ?? '').trim();
+      const fdTrade = String(
+        (fdObj as { tradeCommercialName?: string })?.tradeCommercialName ?? ''
+      ).trim();
+      const tradeName = fdTrade || String(pm.description ?? '').trim();
       const baseFromRecord = {
         itemCode: pm.code,
-        name: pm.description || '',
+        inciName: fdInci,
+        tradeCommercialName: tradeName,
+        name: tradeName,
         itemCategory: pm.type || '',
         level: pmLevelForSubCategory(skuCatResolved) || pm.level || '',
         pmSkuCategory: skuCatResolved,

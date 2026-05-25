@@ -40,6 +40,33 @@ export function specificGravityFromBomLine(
   return Number.isFinite(sg) && sg > 0 ? sg : null;
 }
 
+/** % w/w-weighted blend SG from formula lines (matches backend orderKgMath). */
+export function inferBlendSpecificGravity(
+  lines:
+    | Array<{
+        pct_w_w?: number;
+        pct?: number;
+        percentage?: number;
+        specific_gravity?: unknown;
+        specificGravity?: unknown;
+      }>
+    | null
+    | undefined
+): number {
+  const arr = Array.isArray(lines) ? lines : [];
+  let weighted = 0;
+  let pctSum = 0;
+  for (const line of arr) {
+    const pct = Number(line?.pct_w_w ?? line?.pct ?? line?.percentage ?? 0);
+    const sg = specificGravityFromBomLine(line);
+    if (!(pct > 0 && sg != null && sg > 0)) continue;
+    weighted += pct * sg;
+    pctSum += pct;
+  }
+  if (pctSum <= 0) return 1;
+  return weighted / pctSum;
+}
+
 export function isVolumePrimaryUom(primaryUom: string | undefined | null): boolean {
   const p = normRmPrimaryUom(primaryUom);
   return p === 'L' || p === 'ML';

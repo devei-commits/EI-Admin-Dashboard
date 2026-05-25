@@ -123,6 +123,8 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
     fields: fieldDefs(
       [
         'itemCode',
+        'inciName',
+        'tradeCommercialName',
         'name',
         'pmSkuCategory',
         'subCategory',
@@ -145,7 +147,10 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
       ],
       {
         itemCode: 'Internal PM code (SKU)',
+        inciName: 'INCI name',
+        tradeCommercialName: 'Trade / commercial name',
         pmSkuCategory: 'Category',
+        pkgUnit: 'Primary UoM',
         optionalPmSubCategory: 'Sub-category',
         pkgHsn: 'HSN / SAC',
         pkgGst: 'GST %',
@@ -320,6 +325,7 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
     fields: fieldDefs([
       'phRange',
       'viscosity',
+      'specificGravity',
       'appearance',
       'odour',
       'fillWeightSpec',
@@ -336,6 +342,6 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
       'crueltyFreeVegan',
       'approvedMarketingClaims',
       'claimsSubstantiation',
-    ]),
+    ], { specificGravity: 'Specific gravity (vs water)' }),
   },
 ];

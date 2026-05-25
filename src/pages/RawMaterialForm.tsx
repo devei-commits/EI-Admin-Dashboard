@@ -287,8 +287,7 @@ const RawMaterialRefactored: React.FC = () => {
     formData.rmReturnable?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
- /** On edit: SKU and primary UoM stay fixed; category, names, and returnable can change. */
- const lockImmutableMasterOnEdit = !!existingRmId;
+ /** On edit: internal SKU/code stays fixed; identity, UoM, returnable, and tax fields remain editable. */
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   const { id, value, type } = e.target;
@@ -794,7 +793,6 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.primaryUom}
         onChange={handleInputChange}
         options={isNewRm ? [...RM_NEW_PRIMARY_UOM_OPTIONS] : [...RM_EDIT_PRIMARY_UOM_OPTIONS]}
-        disabled={lockImmutableMasterOnEdit}
         requiredMark
         error={errors.primaryUom}
        />
@@ -825,7 +823,6 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.rmTaxPreference}
         onChange={handleInputChange}
         options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-        disabled={lockImmutableMasterOnEdit}
         requiredMark
         error={errors.rmTaxPreference}
        />

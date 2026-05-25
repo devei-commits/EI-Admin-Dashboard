@@ -47,6 +47,8 @@ export interface BOMRecord {
   createdAt: string;
   updatedAt?: string;
   productId?: number | null;
+  /** Finished-product bulk SG from PR Specs (vs water); used as BOM default SG at Planning confirmation. */
+  specBulk?: string | null;
   rmLines?: BOMRmLine[] | null;
   pmLines?: BOMPmLine[] | null;
 }
