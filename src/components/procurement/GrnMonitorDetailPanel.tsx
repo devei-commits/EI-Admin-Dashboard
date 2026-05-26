@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import type { GRNRecordFromApi } from '../../services/grn.service';
+import { grnLineItemDisplayName, type GRNRecordFromApi } from '../../services/grn.service';
 
 interface Props {
   grn: GRNRecordFromApi;
@@ -57,7 +57,7 @@ function LineItemsTable({ lineItems }: { lineItems: NonNullable<GRNRecordFromApi
               <th className="px-3 py-2 text-left">Code</th>
               <th className="px-3 py-2 text-right">PO</th>
               <th className="px-3 py-2 text-right">Rcvd</th>
-              <th className="px-3 py-2 text-right">Invoice</th>
+              <th className="px-3 py-2 text-right">Billed qty</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Diff</th>
               <th className="px-3 py-2 text-center">QC</th>
@@ -66,7 +66,7 @@ function LineItemsTable({ lineItems }: { lineItems: NonNullable<GRNRecordFromApi
           <tbody>
             {lineItems.map((li, idx) => (
               <tr key={li.id ?? `${li.itemCode}-${idx}`} className="border-b border-slate-100 last:border-0">
-                <td className="px-3 py-2 align-top font-medium text-slate-900">{li.item || '—'}</td>
+                <td className="px-3 py-2 align-top font-medium text-slate-900">{grnLineItemDisplayName(li)}</td>
                 <td className="px-3 py-2 align-top font-mono text-[10px] text-emerald-700">{li.itemCode || '—'}</td>
                 <td className="px-3 py-2 align-top text-right tabular-nums">{li.poQty ?? '—'}</td>
                 <td className="px-3 py-2 align-top text-right tabular-nums">{li.rcvdQty ?? '—'}</td>

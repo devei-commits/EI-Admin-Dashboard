@@ -73,21 +73,39 @@ export function normalizeLeadTimeDays(raw: unknown): number | undefined {
   return Math.floor(n);
 }
 
-/** Parse YYYY-MM-DD or ISO strings to a local calendar Date (noon) to reduce TZ drift vs UTC parsing. */
+/** Parse YYYY-MM-DD, ISO datetime, or DD-MM-YYYY to a local calendar Date (noon). */
 export function parseDateStringToLocalDate(raw: string | undefined | null): Date | null {
   if (raw == null) return null;
   const s = String(raw).trim();
   if (!s) return null;
-  const dm = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (dm) {
-    const y = Number(dm[1]);
-    const m = Number(dm[2]) - 1;
-    const d = Number(dm[3]);
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]) - 1;
+    const d = Number(iso[3]);
     const dt = new Date(y, m, d, 12, 0, 0, 0);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const m = Number(dmy[2]) - 1;
+    const y = Number(dmy[3]);
+    const dt = new Date(y, m, day, 12, 0, 0, 0);
     return Number.isNaN(dt.getTime()) ? null : dt;
   }
   const t = new Date(s);
   return Number.isNaN(t.getTime()) ? null : t;
+}
+
+/** Normalize API/UI date strings to YYYY-MM-DD for `<input type="date">` and storage. */
+export function normalizeDateOnlyString(raw: string | undefined | null): string {
+  const d = parseDateStringToLocalDate(raw);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function formatDateEnInSafe(raw: string | Date | null | undefined): string {
@@ -240,6 +258,37 @@ function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: n
   return { plannedPrice, leadTimeDays };
 }
 
+/** Planned ₹/unit from `planned_unit_price` or legacy `line_notes` ("Planned rate ₹…"). */
+export function resolvePlannedUnitPrice(item: {
+  planned_unit_price?: number | string | null;
+  line_notes?: string | null;
+}): number {
+  const fieldRate = Number(item?.planned_unit_price);
+  if (Number.isFinite(fieldRate) && fieldRate > 0) return fieldRate;
+  return parsePlannedLineNotes(item?.line_notes ?? undefined).plannedPrice;
+}
+
+/** Keep `line_notes` in sync when user edits planned unit price in Procurement. */
+export function mergePlannedRateIntoLineNotes(
+  lineNotes: string | undefined | null,
+  price: number
+): string {
+  let raw = String(lineNotes ?? '').trim();
+  const hasPrice = Number.isFinite(price) && price > 0;
+  const rateLabel = hasPrice ? `Planned rate ₹${price.toFixed(2)}` : '';
+
+  if (!rateLabel) {
+    raw = raw.replace(/\s*\|\s*Planned rate\s*[₹]?\s*[\d.,]+/gi, '');
+    raw = raw.replace(/Planned rate\s*[₹]?\s*[\d.,]+/gi, '');
+    return raw.replace(/^\s*\|\s*|\s*\|\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  if (/Planned rate\s*[₹]?\s*[\d.,]+/i.test(raw)) {
+    return raw.replace(/Planned rate\s*[₹]?\s*[\d.,]+/i, rateLabel);
+  }
+  return raw ? `${rateLabel} | ${raw}` : rateLabel;
+}
+
 function normVendorKey(s: string): string {
   return String(s ?? '')
     .trim()
@@ -335,8 +384,8 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     priority: (pr.priority as ProcurementRequest['priority']) ?? 'Medium',
     status: PR_STATUS_MAP[pr.status ?? ''] ?? 'New',
     items: itemLabels,
-    dueDate: pr.requiredByDate ?? '',
-    createdDate: pr.createdAt ?? '',
+    dueDate: normalizeDateOnlyString(pr.requiredByDate) || '',
+    createdDate: normalizeDateOnlyString(pr.createdAt) || String(pr.createdAt ?? ''),
     requestedBy: pr.requestedBy ?? undefined,
     preferredVendor:
       (pr as { preferred_vendor?: string | null }).preferred_vendor ?? pr.preferredVendor ?? undefined,

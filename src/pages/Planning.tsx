@@ -52,6 +52,10 @@ import {
   inferBlendSpecificGravity,
 } from '../lib/rmUnitConversion';
 import { parseBulkSpecificGravity } from '../lib/skuBomMath';
+import {
+  badgeToneClass,
+  getItemsInvolvedProcurementDisplay,
+} from '../lib/itemsInvolvedPipelineDisplay';
 
 function effectivePrSpecBulk(
   bom: BOMRecord | null | undefined,
@@ -225,6 +229,10 @@ interface ItemsInvolvedDisplayRow {
   status: string;
   /** BOM qty not yet rolled into planning_batches (split remainder). */
   unallocatedToBatches?: number;
+  totalReleasedNum: number;
+  totalOnPONum: number;
+  totalReceivedNum: number;
+  batchAllocatedQtyNum: number;
 }
 
 type PlannedLine = {
@@ -894,15 +902,44 @@ function PlanningBatchTableRow({
                   : stage === 'On Hold'
                     ? 'text-red-700'
                     : 'text-amber-700';
-          return <div className={`font-semibold uppercase tracking-wide ${tone}`}>{stage}</div>;
+          const detail =
+            stage === 'Released'
+              ? 'FG released from production'
+              : stage === 'In Mfg'
+                ? row.sent
+                  ? 'Sent to Production — BMR/BPR in progress'
+                  : 'Marked in manufacturing'
+                : stage === 'In QC'
+                  ? 'Quality check in progress'
+                  : stage === 'On Hold'
+                    ? 'Blocked — resolve before scheduling'
+                    : row.sent
+                      ? 'Sent — awaiting production start'
+                      : 'Draft batch — confirm BOM & send to Production';
+          return (
+            <>
+              <div className={`font-semibold ${tone}`}>{stage}</div>
+              <div className="text-gray-500 mt-0.5 leading-snug">{detail}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                Batch {row.batchCode ?? `PE-${row.planningExtractedId}-B${row.sequence}`} · seq {row.sequence ?? '—'}
+              </div>
+            </>
+          );
         })()}
-        <div className="text-gray-500 mt-0.5">Stage {row.sequence ? `${row.sequence}` : '—'} of 8</div>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600">
-        {row.dueDate ?? '—'}
+        <div className="font-medium text-gray-800">Due {row.dueDate ?? '—'}</div>
+        <div className="text-gray-500 mt-0.5">
+          {row.sent ? 'Sent to Production' : 'Not sent'} · BOM {row.bomStatus ?? 'Planned'}
+        </div>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600">
-        {row.sent ? 'Released to Production' : 'Awaiting release'}
+        <div className="font-medium text-gray-800">
+          {row.customerName ?? '—'} · SO {row.soNumber ?? '—'}
+        </div>
+        <div className="text-gray-500 mt-0.5">
+          {row.productName ?? row.productCode ?? '—'} · {row.sizeKg != null ? `${row.sizeKg} kg` : '—'}
+        </div>
       </td>
       <td className="px-4 py-3 text-xs">
         <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-medium">
@@ -1080,8 +1117,8 @@ function PlanningBatchesTab({
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Item Status</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Current Status</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Timeline</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Latest Comment</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Related Batches</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">SO / Product</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Related SO</th>
                 <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
               </tr>
             </thead>
@@ -2853,6 +2890,10 @@ const Planning = () => {
       reorderPt: fmtU(Number(row.reorderPt ?? 0) || 0),
       avgMo: fmtU(Number(row.avgMo ?? 0) || 0),
       status: row.status ?? 'In Stock',
+      totalReleasedNum: Number(row.totalReleased ?? 0) || 0,
+      totalOnPONum: Number(row.totalOnPO ?? 0) || 0,
+      totalReceivedNum: Number(row.totalReceived ?? 0) || 0,
+      batchAllocatedQtyNum: Number(row.batchAllocatedQty ?? 0) || 0,
     };
   }), [itemsInvolvedRows]);
 
@@ -3097,7 +3138,10 @@ const Planning = () => {
       return false;
     }
 
-    const requiredByDate: string | null = null;
+    const leadDaysForDue = Math.max(Number(releaseToPlanningForm.leadTimeDays || 0) || 0, 14);
+    const requiredByDate = new Date(Date.now() + leadDaysForDue * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
     const reqRes = await fetchProcurementRequests(peId);
     if (!reqRes.success || !reqRes.data) {
@@ -3140,6 +3184,7 @@ const Planning = () => {
       const upd = await updateProcurementRequest(existing.id, {
         items: merged,
         preferredVendor: vendorName,
+        ...(!existing.requiredByDate ? { requiredByDate } : {}),
       });
       if (!upd.success) {
         addToast('error', typeof upd.error === 'string' ? upd.error : 'Failed to update procurement request');
@@ -4811,9 +4856,9 @@ const Planning = () => {
                       <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Category</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Linked Batches</th>
                       <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">Qty Balance</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Current Status</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">PO Info</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Latest Comment</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Pipeline stage</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Procurement &amp; PO</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Last update</th>
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
@@ -4838,6 +4883,13 @@ const Planning = () => {
                         const overReleasedQty = Math.max(0, releasedTowardGap - grossReq);
                         const shortageForRelease = hasShortfall || hasPlannedShortfall;
                         const canReleaseToPlanning = shortageForRelease && gapNeed > 1e-6;
+                        const procurementDisp = getItemsInvolvedProcurementDisplay(
+                          item,
+                          procurementRequests,
+                          plannedLinesFromBackend
+                        );
+                        const cs = procurementDisp.currentStatus;
+                        const lc = procurementDisp.latestComment;
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2 min-w-[220px]">
@@ -4876,37 +4928,63 @@ const Planning = () => {
                                 Short {item.shortStr}
                               </div>
                             </td>
-                            <td className="px-2 py-2 min-w-[170px]">
-                              {(() => {
-                                const stage = item.poQtyNum <= 0 ? 'Request' : item.inTransitQtyNum <= 0 ? 'PO Raised' : item.whQtyNum <= 0 ? 'Dispatched' : 'GRN';
-                                const elapsed = item.poQtyNum <= 0 ? '18h in stage' : item.inTransitQtyNum <= 0 ? '32h in stage' : item.whQtyNum <= 0 ? '2d in stage' : 'Completed';
-                                const badge = item.netNum < 0 ? 'Overdue' : 'On time';
-                                const badgeCls = item.netNum < 0 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200';
-                                return (
-                                  <>
-                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">{stage}</div>
-                                    <div className="text-[11px] text-gray-500 mt-0.5">{elapsed} · SLA 48h</div>
-                                    <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${badgeCls}`}>{badge}</span>
-                                    <div className="text-[10px] text-gray-400 mt-1">Request · PO Raised · Dispatched · GRN</div>
-                                  </>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-2 py-2 min-w-[170px]">
-                              <div className="text-[11px] text-gray-700 font-medium">
-                                {item.poQtyNum > 0 ? `PO active · ${item.poQtyStr}` : 'PO not raised'}
-                              </div>
-                              <div className="text-[11px] text-gray-500 mt-0.5">
-                                In transit {item.inTransitQtyStr} · WH {item.whQtyStr}
+                            <td className="px-2 py-2 min-w-[200px]">
+                              <div className="text-[11px] font-semibold text-gray-900">{cs.title}</div>
+                              <div className="text-[10px] text-gray-600 mt-0.5 leading-snug">{cs.detail}</div>
+                              <span
+                                className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${badgeToneClass(cs.badgeTone)}`}
+                              >
+                                {cs.badge}
+                              </span>
+                              <div className="flex flex-wrap gap-0.5 mt-1.5">
+                                {cs.steps.map((s) => (
+                                  <span
+                                    key={s.label}
+                                    className={`px-1 py-0.5 rounded text-[9px] font-medium border ${
+                                      s.active
+                                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                        : s.done
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                          : 'bg-gray-50 text-gray-400 border-gray-100'
+                                    }`}
+                                    title={s.label}
+                                  >
+                                    {s.label}
+                                  </span>
+                                ))}
                               </div>
                             </td>
                             <td className="px-2 py-2 min-w-[220px]">
-                              <div className="text-[11px] text-gray-700">
-                                {item.status === 'In Stock' ? 'Stocks healthy' : item.status === 'Low Stock' ? 'Low stock warning' : item.status === 'Critical' ? 'Critical shortage' : item.status}
+                              <div className="space-y-1">
+                                {procurementDisp.poInfo.lines.map((line, li) => (
+                                  <div key={li} className="text-[10px] text-gray-700 leading-snug">
+                                    {line}
+                                  </div>
+                                ))}
+                                <div className="text-[10px] text-gray-500 pt-0.5 border-t border-gray-100">
+                                  Pipeline: PR {item.plannedQty} · PO bal {item.poQtyStr} · Transit{' '}
+                                  {item.inTransitQtyStr} · WH {item.whQtyStr}
+                                </div>
                               </div>
-                              <div className="text-[11px] text-gray-500 mt-0.5">
-                                WH {item.whBatches} · Exp {item.expiry}
-                              </div>
+                            </td>
+                            <td className="px-2 py-2 min-w-[220px]">
+                              {lc ? (
+                                <>
+                                  <div className="text-[10px] text-gray-500">
+                                    {lc.whenLabel} · {lc.source}
+                                  </div>
+                                  <div className="text-[11px] text-gray-800 mt-0.5 leading-snug line-clamp-3">
+                                    {lc.text}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-[11px] text-gray-600">No PR/PO notes yet</div>
+                                  <div className="text-[10px] text-gray-500 mt-0.5">
+                                    WH lot {item.whBatches} · QC {item.status} · Exp {item.expiry}
+                                  </div>
+                                </>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-center min-w-[170px]">
                               <div className="flex flex-col items-center gap-1 min-w-[7rem]">

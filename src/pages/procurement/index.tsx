@@ -28,7 +28,15 @@ import { fetchVendorClients } from '../../services/vendorClient.service';
 import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
-import { createGRN, fetchGRNById, fetchGRNList, updateGRN, type GRNRecordFromApi } from '../../services/grn.service';
+import {
+  createGRN,
+  fetchGRNById,
+  fetchGRNList,
+  grnLineItemDisplayName,
+  grnLineItemsNameSummary,
+  updateGRN,
+  type GRNRecordFromApi,
+} from '../../services/grn.service';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import {
   fetchPriceListPage,
@@ -59,7 +67,13 @@ import {
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
+  formatDateEnInSafe,
+  parseDateStringToLocalDate,
+  normalizeDateOnlyString,
+  resolvePlannedUnitPrice,
+  mergePlannedRateIntoLineNotes,
 } from './procurementDataMappers';
+import { applyDraftPoLinePrices, applyEditRequestSideEffects } from './syncEditRequestSideEffects';
 import type { ReleaseLineEditRow } from './procurementDataMappers';
 import { formatMoqDisplay, moqValuesEqual, parseMoqInput } from '../../utils/moqQuantity';
 import type {
@@ -329,6 +343,7 @@ const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
 const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
 
 const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+const QUOTATIONS_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 /**
  * Procurement requests whose released POs should appear under Issued POs.
@@ -901,6 +916,8 @@ const Procurement: React.FC = () => {
   const [grnSearch, setGrnSearch] = useState('');
   const [grnMonitorPage, setGrnMonitorPage] = useState(1);
   const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
+  const [quotationsPage, setQuotationsPage] = useState(1);
+  const [quotationsPageSize, setQuotationsPageSize] = useState<number>(10);
   const [selectedGrnMonitor, setSelectedGrnMonitor] = useState<GRNRecordFromApi | null>(null);
   const [grnMonitorDetailLoading, setGrnMonitorDetailLoading] = useState(false);
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
@@ -1038,10 +1055,10 @@ const Procurement: React.FC = () => {
         (grn.grnNo ?? '').toLowerCase().includes(q) ||
         (grn.poNo ?? '').toLowerCase().includes(q) ||
         (grn.vendor ?? '').toLowerCase().includes(q) ||
-        (grn.lineItems ?? []).some(
-          (l) =>
-            (l.item ?? '').toLowerCase().includes(q) || (l.itemCode ?? '').toLowerCase().includes(q)
-        )
+        (grn.lineItems ?? []).some((l) => {
+          const name = grnLineItemDisplayName(l).toLowerCase();
+          return name.includes(q) || (l.itemCode ?? '').toLowerCase().includes(q);
+        })
       );
     });
   }, [grnListFromApi, grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch]);
@@ -1442,6 +1459,25 @@ const Procurement: React.FC = () => {
     if (backendPrResult !== undefined) setRequests(requestsFromApi);
   }, [backendPrResult, requestsFromApi]);
 
+  /** Keep open request detail in sync after list refetch (e.g. Edit Request saved required date). */
+  useEffect(() => {
+    if (!selectedRequest?.id) return;
+    const fresh = requestsFromApi.find((r) => r.id === selectedRequest.id);
+    if (!fresh) return;
+    setSelectedRequest((prev) => {
+      if (!prev || prev.id !== fresh.id) return prev;
+      if (
+        prev.dueDate === fresh.dueDate &&
+        prev.priority === fresh.priority &&
+        prev.status === fresh.status &&
+        prev.preferredVendor === fresh.preferredVendor
+      ) {
+        return prev;
+      }
+      return { ...prev, ...fresh };
+    });
+  }, [requestsFromApi, selectedRequest?.id]);
+
   useEffect(() => {
     if (quotationsResult !== undefined) setQuotes(quotesFromApi);
   }, [quotationsResult, quotesFromApi]);
@@ -1468,10 +1504,20 @@ const Procurement: React.FC = () => {
   useEffect(() => {
     if (!editRequestTarget) return;
     const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === editRequestTarget.id) as { items?: BackendPRItem[]; preferredVendor?: string } | undefined;
-    const items = Array.isArray(backendPr?.items) ? backendPr.items.map((i) => ({ ...i })) : [];
+    const items = Array.isArray(backendPr?.items)
+      ? backendPr.items.map((i) => {
+          const price = resolvePlannedUnitPrice(i);
+          if (price <= 0) return { ...i };
+          return {
+            ...i,
+            planned_unit_price: price,
+            line_notes: mergePlannedRateIntoLineNotes(i.line_notes, price),
+          };
+        })
+      : [];
     setEditRequestForm({
       priority: editRequestTarget.priority,
-      requiredByDate: editRequestTarget.dueDate?.slice(0, 10) ?? '',
+      requiredByDate: normalizeDateOnlyString(editRequestTarget.dueDate) || '',
       notes: (backendPr as { notes?: string } | undefined)?.notes ?? '',
       status: editRequestTarget.status,
       preferredVendor: backendPr?.preferredVendor ?? '',
@@ -1548,6 +1594,21 @@ const Procurement: React.FC = () => {
     setEditRequestForm((prev) => {
       const next = [...prev.items];
       if (next[index]) next[index] = { ...next[index], ...updates };
+      return { ...prev, items: next };
+    });
+  };
+
+  const updateEditRequestItemPrice = (index: number, rawValue: string) => {
+    const price = parseFloat(String(rawValue).replace(/,/g, '')) || 0;
+    setEditRequestForm((prev) => {
+      const next = [...prev.items];
+      const cur = next[index];
+      if (!cur) return prev;
+      next[index] = {
+        ...cur,
+        planned_unit_price: price > 0 ? price : undefined,
+        line_notes: mergePlannedRateIntoLineNotes(cur.line_notes, price),
+      };
       return { ...prev, items: next };
     });
   };
@@ -2039,6 +2100,31 @@ const Procurement: React.FC = () => {
     if (sideSection !== 'Quotations') return filteredQuotes;
     return [...filteredQuotes, ...filteredItemsListQuotes];
   }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
+
+  const quotationsTotalPages = Math.max(
+    1,
+    Math.ceil(quotesForQuotationsSection.length / quotationsPageSize)
+  );
+  const quotationsSafePage = Math.min(quotationsPage, quotationsTotalPages);
+  const quotationsStartIndex = (quotationsSafePage - 1) * quotationsPageSize;
+  const pagedQuotesForQuotationsSection = useMemo(
+    () =>
+      quotesForQuotationsSection.slice(
+        quotationsStartIndex,
+        quotationsStartIndex + quotationsPageSize
+      ),
+    [quotesForQuotationsSection, quotationsStartIndex, quotationsPageSize]
+  );
+
+  useEffect(() => {
+    setQuotationsPage(1);
+  }, [searchQuery, categoryFilter, vendorFilter, statusFilter, quotationsPageSize]);
+
+  useEffect(() => {
+    if (quotationsPage > quotationsTotalPages) {
+      setQuotationsPage(quotationsTotalPages);
+    }
+  }, [quotationsPage, quotationsTotalPages]);
 
   const procurementRequestsList = useMemo(
     () => requests.filter(isProcurementRequestsListRow),
@@ -4369,7 +4455,7 @@ const Procurement: React.FC = () => {
       items: [newRequestForm.itemName],
       status: 'New',
       priority: newRequestForm.priority,
-      dueDate: newRequestForm.requiredDate.split('-').reverse().join('-'),
+      dueDate: newRequestForm.requiredDate,
     };
 
     updateProcurementState((current) => ({
@@ -4832,7 +4918,13 @@ const Procurement: React.FC = () => {
             <div className="space-y-4">
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
-                const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
+                const daysUntil = (dateStr: string) => {
+                  const d = parseDateStringToLocalDate(dateStr);
+                  if (!d) return NaN;
+                  const startToday = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(), 12, 0, 0, 0);
+                  const startDue = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+                  return Math.ceil((startDue.getTime() - startToday.getTime()) / 86400000);
+                };
                 // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
                 const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
                 const rmRequests = procurementRequestsList.filter(r => r.type === 'RM');
@@ -4971,7 +5063,7 @@ const Procurement: React.FC = () => {
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
                                   </td>
                                   <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{req.dueDate}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
                                   <td className="px-4 py-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
                                   </td>
@@ -5004,7 +5096,7 @@ const Procurement: React.FC = () => {
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
                                   </td>
                                   <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{req.dueDate}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
                                   <td className="px-4 py-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
                                   </td>
@@ -5228,17 +5320,17 @@ const Procurement: React.FC = () => {
                         });
 
                         return sortedRequests.map((req, idx) => {
-                          const dueDateRaw = String(req.dueDate ?? '').trim();
-                          const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
+                          const dueDate = parseDateStringToLocalDate(req.dueDate);
                           const today = new Date();
-                          const daysLeft =
-                            dueDate && Number.isFinite(dueDate.getTime())
-                              ? Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                              : null;
-                          const dueDateDisplay =
-                            dueDate && Number.isFinite(dueDate.getTime())
-                              ? dueDate.toLocaleDateString('en-IN')
-                              : '—';
+                          const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+                          const daysLeft = dueDate
+                            ? Math.ceil(
+                                (new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 12, 0, 0, 0).getTime() -
+                                  startToday.getTime()) /
+                                  (1000 * 60 * 60 * 24)
+                              )
+                            : null;
+                          const dueDateDisplay = formatDateEnInSafe(req.dueDate);
                           const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
                           const prefVendorDisplay =
                             req.preferredVendor?.trim() ||
@@ -5932,7 +6024,38 @@ const Procurement: React.FC = () => {
                       No quotes match current filters.
                     </div>
                   ) : (
-                    quotesForQuotationsSection.map((quote) => {
+                    <>
+                  {quotesForQuotationsSection.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide">
+                          Recorded quotes & price list
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {quotesForQuotationsSection.length} quote
+                          {quotesForQuotationsSection.length === 1 ? '' : 's'} match filters
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                        <span>Per page</span>
+                        <select
+                          value={quotationsPageSize}
+                          onChange={(e) => {
+                            setQuotationsPageSize(Number(e.target.value));
+                            setQuotationsPage(1);
+                          }}
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          {QUOTATIONS_PAGE_SIZE_OPTIONS.map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {pagedQuotesForQuotationsSection.map((quote) => {
                       const isExpanded = expandedQuoteId === quote.id;
 
                       return (
@@ -6181,7 +6304,20 @@ const Procurement: React.FC = () => {
                           </div>
                         </article>
                       );
-                    })
+                    })}
+                  {quotesForQuotationsSection.length > 0 && quotationsTotalPages > 1 && (
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <Pagination
+                        currentPage={quotationsSafePage}
+                        totalPages={quotationsTotalPages}
+                        onPageChange={setQuotationsPage}
+                        totalItems={quotesForQuotationsSection.length}
+                        itemsPerPage={quotationsPageSize}
+                        variant="compact"
+                      />
+                    </div>
+                  )}
+                    </>
                   )}
                     </>
                   )}
@@ -7129,7 +7265,7 @@ const Procurement: React.FC = () => {
                               <th className="px-4 py-2 text-left">PO No.</th>
                               <th className="px-4 py-2 text-left">Vendor</th>
                               <th className="px-4 py-2 text-center">Type</th>
-                              <th className="px-4 py-2 text-center">Items</th>
+                              <th className="px-4 py-2 text-left min-w-[180px]">Item name(s)</th>
                               <th className="px-4 py-2 text-center">PO Value</th>
                               <th className="px-4 py-2 text-left">Received Date</th>
                               <th className="px-4 py-2 text-left">Assigned To</th>
@@ -7160,7 +7296,17 @@ const Procurement: React.FC = () => {
                                     {grn.type}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2 align-middle text-center">{grn.items ?? 0}</td>
+                                <td className="px-4 py-2 align-middle text-left max-w-[240px]">
+                                  <div className="text-[11px] text-slate-800 font-medium leading-snug">
+                                    {grnLineItemsNameSummary(grn.lineItems)}
+                                  </div>
+                                  {(grn.lineItems?.length ?? grn.items ?? 0) > 0 && (
+                                    <div className="text-[10px] text-slate-500 mt-0.5">
+                                      {grn.lineItems?.length ?? grn.items ?? 0} line
+                                      {(grn.lineItems?.length ?? grn.items ?? 0) === 1 ? '' : 's'}
+                                    </div>
+                                  )}
+                                </td>
                                 <td className="px-4 py-2 align-middle text-center">₹{(grn.poValue ?? 0).toLocaleString('en-IN')}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{(grn.receivedDate && grn.receivedDate !== '') ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{grn.assignedTo || '—'}</td>
@@ -7209,7 +7355,8 @@ const Procurement: React.FC = () => {
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
                                 <th className="px-4 py-2 text-left">GRN No.</th>
-                                <th className="px-4 py-2 text-left">Item</th>
+                                <th className="px-4 py-2 text-left">Item name</th>
+                                <th className="px-4 py-2 text-left">Code</th>
                                 <th className="px-4 py-2 text-center">PO Qty</th>
                                 <th className="px-4 py-2 text-center">Rcvd</th>
                                 <th className="px-4 py-2 text-center">QC</th>
@@ -7219,7 +7366,8 @@ const Procurement: React.FC = () => {
                               {pagedGrnMonitorLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
                                 <tr key={`${grn.id}-${idx}`} className="border-b border-slate-100">
                                   <td className="px-4 py-1.5 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                  <td className="px-4 py-1.5">{li.item ?? li.itemCode ?? '—'}</td>
+                                  <td className="px-4 py-1.5 font-medium text-slate-900">{grnLineItemDisplayName(li)}</td>
+                                  <td className="px-4 py-1.5 font-mono text-[10px] text-slate-600">{li.itemCode || '—'}</td>
                                   <td className="px-4 py-1.5 text-center">{li.poQty ?? '—'}</td>
                                   <td className="px-4 py-1.5 text-center">{li.rcvdQty ?? '—'}</td>
                                   <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
@@ -7227,7 +7375,7 @@ const Procurement: React.FC = () => {
                               )))}
                               {pagedGrnMonitorLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
                                 <tr>
-                                  <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
+                                  <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={6}>
                                     No GRN line items.
                                   </td>
                                 </tr>
@@ -7255,7 +7403,7 @@ const Procurement: React.FC = () => {
                                   <th className="px-4 py-2 text-left">PO No.</th>
                                   <th className="px-4 py-2 text-left">Type</th>
                                   <th className="px-4 py-2 text-left">Vendor</th>
-                                  <th className="px-4 py-2 text-left">Items</th>
+                                  <th className="px-4 py-2 text-left min-w-[160px]">Item name(s)</th>
                                   <th className="px-4 py-2 text-left">Received Date</th>
                                   <th className="px-4 py-2 text-left">Assigned To</th>
                                   <th className="px-4 py-2 text-left">Status</th>
@@ -7280,7 +7428,9 @@ const Procurement: React.FC = () => {
                                     <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
                                     <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
                                     <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{(grn.lineItems ?? []).map((li) => li.item ?? li.itemCode ?? '—').filter(Boolean).join(', ') || '—'}</td>
+                                    <td className="px-4 py-2 text-[11px] max-w-[220px]">
+                                      <div className="font-medium text-slate-800">{grnLineItemsNameSummary(grn.lineItems, 3)}</div>
+                                    </td>
                                     <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
                                     <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
                                     <td className="px-4 py-2">
@@ -8755,7 +8905,7 @@ const Procurement: React.FC = () => {
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Request Date</span>
                     <span className="text-slate-900 font-medium">
-                      {req.createdDate ? new Date(req.createdDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                      {formatDateEnInSafe(req.createdDate)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
@@ -8765,8 +8915,13 @@ const Procurement: React.FC = () => {
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Required Date</span>
                     <span className="text-amber-600 font-bold">
-                      {new Date(req.dueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' })}
+                      {formatDateEnInSafe(req.dueDate)}
                     </span>
+                    {!req.dueDate?.trim() && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Not set — use <strong>Edit Request</strong> below to add a required date.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Source</span>
@@ -9258,6 +9413,34 @@ const Procurement: React.FC = () => {
           >
             <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
             <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Required date</label>
+                  <input
+                    type="date"
+                    value={editRequestForm.requiredByDate}
+                    onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    When material is needed by Planning / production. Also sets Items List tier valid-till for the preferred vendor.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
+                  <select
+                    value={editRequestForm.priority}
+                    onChange={(e) =>
+                      setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+              </div>
               {/* <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor</label>
                 <select
@@ -9326,19 +9509,22 @@ const Procurement: React.FC = () => {
               {/* Line items: editable quantities and unit */}
               {editRequestForm.items.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — quantities & unit</label>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty, unit & planned price</label>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden overflow-x-auto">
+                    <table className="w-full text-sm min-w-[36rem]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Type</th>
                           <th className="px-3 py-2 text-right font-semibold text-slate-700">Qty to request</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Unit</th>
+                          <th className="px-3 py-2 text-right font-semibold text-slate-700">Price (₹/unit)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {editRequestForm.items.map((item, idx) => (
+                        {editRequestForm.items.map((item, idx) => {
+                          const plannedPrice = resolvePlannedUnitPrice(item);
+                          return (
                           <tr key={idx} className="border-b border-slate-100 last:border-0">
                             <td className="px-3 py-2">
                               <span className="font-medium text-slate-900">{item.name ?? item.code ?? '—'}</span>
@@ -9365,8 +9551,20 @@ const Procurement: React.FC = () => {
                                 ))}
                               </select>
                             </td>
+                            <td className="px-3 py-2 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                placeholder="0"
+                                value={plannedPrice > 0 ? plannedPrice : ''}
+                                onChange={(e) => updateEditRequestItemPrice(idx, e.target.value)}
+                                className="w-28 px-2 py-1.5 rounded border border-slate-300 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                              />
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -9509,9 +9707,81 @@ const Procurement: React.FC = () => {
                     addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request'));
                     return;
                   }
-                  queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  const savedId = editRequestTarget.id;
+                  const savedCode = editRequestTarget.code;
+                  if (res.data) {
+                    const updated = mapBackendPrToRequest(res.data);
+                    setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+                    setSelectedRequest((prev) => (prev && prev.id === updated.id ? updated : prev));
+                  } else {
+                    const savedDue = normalizeDateOnlyString(editRequestForm.requiredByDate) || '';
+                    const patchRequest = (r: ProcurementRequest): ProcurementRequest =>
+                      r.id === savedId
+                        ? { ...r, dueDate: savedDue, priority: editRequestForm.priority }
+                        : r;
+                    setRequests((prev) => prev.map(patchRequest));
+                    setSelectedRequest((prev) => (prev && prev.id === savedId ? patchRequest(prev) : prev));
+                  }
+                  const prItemsForSync = Array.isArray(editRequestForm.items) ? editRequestForm.items : [];
+                  const vendorForSync =
+                    editRequestForm.preferredVendor?.trim() ||
+                    editRequestTarget.preferredVendor?.trim() ||
+                    '';
+                  const syncResult = await applyEditRequestSideEffects({
+                    requestId: savedId,
+                    prItems: prItemsForSync,
+                    preferredVendor: vendorForSync,
+                    validTill: normalizeDateOnlyString(editRequestForm.requiredByDate) || null,
+                    draftPOs,
+                    itemsListRm: itemsListRm ?? [],
+                    itemsListPm: itemsListPm ?? [],
+                    vendors: (vendorClientList ?? [])
+                      .filter((v) => v.type === 'vendor')
+                      .map((v) => ({ id: v.id, name: v.name })),
+                  });
+
+                  if (syncResult.draftPosUpdated > 0) {
+                    setDraftPOs((prev) =>
+                      prev.map((d) => {
+                        if (String(d.requestId) !== String(savedId)) return d;
+                        const { lines } = applyDraftPoLinePrices(d, prItemsForSync);
+                        const subtotal = lines.reduce((s, l) => s + (l.lineTotal - l.gstAmount), 0);
+                        const gstTotal = lines.reduce((s, l) => s + l.gstAmount, 0);
+                        return {
+                          ...d,
+                          lineItems: lines,
+                          subtotal: parseFloat(subtotal.toFixed(2)),
+                          gstTotal: parseFloat(gstTotal.toFixed(2)),
+                          grandTotal: parseFloat((subtotal + gstTotal).toFixed(2)),
+                        };
+                      })
+                    );
+                  }
+
+                  await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                  await queryClient.invalidateQueries({
+                    predicate: (q) =>
+                      Array.isArray(q.queryKey) &&
+                      typeof q.queryKey[0] === 'string' &&
+                      q.queryKey[0].startsWith('items-list'),
+                  });
                   setEditRequestTarget(null);
-                  addToast('success', `Request ${editRequestTarget.code} updated`);
+                  const syncParts: string[] = [];
+                  if (syncResult.draftPosUpdated > 0) {
+                    syncParts.push(`${syncResult.draftPosUpdated} draft PO(s)`);
+                  }
+                  if (syncResult.itemsListTiersUpdated > 0) {
+                    syncParts.push(`${syncResult.itemsListTiersUpdated} price list tier(s)`);
+                  }
+                  let successMsg = `Request ${savedCode} updated`;
+                  if (syncParts.length > 0) {
+                    successMsg += ` — also updated ${syncParts.join(' and ')}`;
+                  }
+                  addToast('success', successMsg);
+                  if (syncResult.warnings.length > 0) {
+                    addToast('warning', syncResult.warnings.slice(0, 2).join(' '));
+                  }
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
               >

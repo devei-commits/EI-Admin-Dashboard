@@ -20,7 +20,9 @@ export interface GRNRecordFromApi {
   status: string;
   lineItems?: Array<{
     id: string;
+    /** Display name (from RM/PM master when enriched). */
     item: string;
+    itemName?: string;
     itemCode: string;
     poQty: number;
     rcvdQty: number;
@@ -71,6 +73,32 @@ export async function generateGRNLabels(
 ): Promise<{ labels: GeneratedLabel[]; workflowSteps?: string[] }> {
   const res = await api.post<{ labels: GeneratedLabel[]; workflowSteps?: string[] }>(`/api/v1/grn/${id}/generate-labels`, payload ?? {});
   return res;
+}
+
+/** Resolved line display name (master name preferred over code). */
+export function grnLineItemDisplayName(
+  li: { item?: string; itemName?: string; itemCode?: string } | null | undefined
+): string {
+  if (!li) return '—';
+  const name = String(li.item ?? li.itemName ?? '').trim();
+  if (name) return name;
+  const code = String(li.itemCode ?? '').trim();
+  return code || '—';
+}
+
+/** Comma-separated item names for GRN Monitor tables (truncates long lists). */
+export function grnLineItemsNameSummary(
+  lineItems: GRNRecordFromApi['lineItems'] | undefined,
+  maxNames = 2
+): string {
+  const lines = lineItems ?? [];
+  if (lines.length === 0) return '—';
+  const names = lines.map((li) => grnLineItemDisplayName(li)).filter((n) => n !== '—');
+  if (names.length === 0) return '—';
+  const head = names.slice(0, maxNames);
+  const extra = names.length - head.length;
+  const text = head.join(', ');
+  return extra > 0 ? `${text} +${extra} more` : text;
 }
 
 export async function fetchGRNList(): Promise<GRNRecordFromApi[]> {
