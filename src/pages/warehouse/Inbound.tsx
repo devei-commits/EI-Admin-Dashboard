@@ -418,27 +418,23 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     setSaveError(null);
     setSaving(true);
     try {
-      // When the user typed a custom zone/rack, auto-register it into Facility Management
-      // so the same zone/rack becomes selectable next time (and is surfaced in Facility
-      // Management for admins). Idempotent: reuses an existing zone/rack when the text
-      // matches. Non-fatal: if registration fails we still persist the GRN so the user's
-      // save is not lost.
+      let putawayPrefix = locationPrefix;
+      let putawayZone = locationZone;
       if (locationSource === 'custom' && locationZone.trim() && locationPrefix.trim()) {
-        try {
-          const ensured = await ensureCustomZoneAndRack({
-            areaType: 'warehouse',
-            zoneText: locationZone.trim(),
-            rackText: locationPrefix.trim(),
-          });
-          if (ensured.success) {
-            queryClient.invalidateQueries({ queryKey: ['facility-areas'] });
-            queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
-          } else if (ensured.error) {
-            console.warn('[GRN] ensureCustomZoneAndRack failed:', ensured.error);
-          }
-        } catch (e) {
-          console.warn('[GRN] ensureCustomZoneAndRack threw:', e);
+        const ensured = await ensureCustomZoneAndRack({
+          areaType: 'warehouse',
+          zoneText: locationZone.trim(),
+          rackText: locationPrefix.trim(),
+        });
+        if (!ensured.success || !ensured.data?.rackCode) {
+          throw new Error(ensured.error || 'Could not register custom zone and rack in the main warehouse.');
         }
+        putawayPrefix = ensured.data.rackCode;
+        putawayZone = ensured.data.zoneName || ensured.data.zoneCode || putawayZone;
+        setLocationPrefix(putawayPrefix);
+        setLocationZone(putawayZone);
+        queryClient.invalidateQueries({ queryKey: ['facility-areas'] });
+        queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
       }
 
       const res = await updateGRN(grn.id, {
@@ -446,8 +442,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnDate: grnDate || undefined,
         lineItems: editedLineItems,
         noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
-        locationPrefix: locationPrefix || undefined,
-        locationZone: locationZone || undefined,
+        locationPrefix: putawayPrefix || undefined,
+        locationZone: putawayZone || undefined,
+        locationSource,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
@@ -560,6 +557,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         unitsPerBoxList: boxUnitsList,
         locationPrefix: locationPrefix || undefined,
         locationZone: locationZone || undefined,
+        locationSource,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
@@ -1162,7 +1160,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   </label>
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  Warehouse areas, zones, and racks are maintained under <strong>Facility Management</strong>. Choosing them here sets the same zone label and rack code used on QR labels and stock put-away.
+                  Warehouse areas, zones, and racks are maintained under <strong>Facility Management</strong>. Choosing them here sets the zone label and rack code on QR labels and stock put-away.
+                  Custom mode routes quantity to the <strong>default warehouse zone</strong> (not a separate custom facility).
                 </p>
 
                 {locationSource === 'facility' && facilityAreasLoading && (

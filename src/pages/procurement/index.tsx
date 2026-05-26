@@ -67,6 +67,10 @@ import {
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
+  computeRequestDaysUntilDue,
+  sortVendorQuotesLatestFirst,
+  sortProcurementRequestsLatestFirst,
+  sortPlanningQuotationAsksLatestFirst,
   formatDateEnInSafe,
   parseDateStringToLocalDate,
   normalizeDateOnlyString,
@@ -344,6 +348,8 @@ const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Dra
 
 const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const QUOTATIONS_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+/** Vendor-consolidated quotation cards show this many item rows before "View more". */
+const QUOTATION_VENDOR_LINES_PREVIEW = 5;
 
 /**
  * Procurement requests whose released POs should appear under Issued POs.
@@ -758,6 +764,8 @@ const Procurement: React.FC = () => {
   const [draftPOSearch, setDraftPOSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
+  /** Per-quote id: show all item lines (vendor cards with many consolidated items). */
+  const [expandedQuoteLineLists, setExpandedQuoteLineLists] = useState<Record<string, boolean>>({});
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [newRequestForm, setNewRequestForm] = useState({
@@ -991,7 +999,10 @@ const Procurement: React.FC = () => {
     },
   });
 
-  const planningQuotationAsksPending = planningQuotationAsksResult ?? [];
+  const planningQuotationAsksPending = useMemo(
+    () => sortPlanningQuotationAsksLatestFirst(planningQuotationAsksResult ?? []),
+    [planningQuotationAsksResult],
+  );
 
   const { data: vendorClientList } = useQuery({
     queryKey: ['vendor-client', 'vendor'],
@@ -1255,10 +1266,11 @@ const Procurement: React.FC = () => {
 
   const quotesFromApi = useMemo(() => {
     const list = quotationsResult ?? [];
-    return list.map((q) => {
+    const mapped = list.map((q) => {
       const req = requestsMapped.find((r) => r.id === String(q.procurementRequestId));
       return mapBackendQuotationToQuote(q, req?.code, req?.type);
     });
+    return sortVendorQuotesLatestFirst(mapped);
   }, [quotationsResult, requestsMapped]);
 
   const vendors: Vendor[] = useMemo(
@@ -2097,8 +2109,8 @@ const Procurement: React.FC = () => {
 
   /** Quotations tab: show recorded procurement quotations (DB) and Items List–derived price cards. IL-* rows are not procurement_quotations rows. */
   const quotesForQuotationsSection = useMemo(() => {
-    if (sideSection !== 'Quotations') return filteredQuotes;
-    return [...filteredQuotes, ...filteredItemsListQuotes];
+    if (sideSection !== 'Quotations') return sortVendorQuotesLatestFirst(filteredQuotes);
+    return sortVendorQuotesLatestFirst([...filteredQuotes, ...filteredItemsListQuotes]);
   }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
 
   const quotationsTotalPages = Math.max(
@@ -2118,6 +2130,7 @@ const Procurement: React.FC = () => {
 
   useEffect(() => {
     setQuotationsPage(1);
+    setExpandedQuoteLineLists({});
   }, [searchQuery, categoryFilter, vendorFilter, statusFilter, quotationsPageSize]);
 
   useEffect(() => {
@@ -2138,7 +2151,7 @@ const Procurement: React.FC = () => {
   }, [quotes, requests]);
 
   const filteredPlanningQuotationRequestsAwaitingQuote = useMemo(() => {
-    return planningQuotationRequestsAwaitingQuote.filter((req) => {
+    return sortProcurementRequestsLatestFirst(planningQuotationRequestsAwaitingQuote.filter((req) => {
       if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase();
@@ -2155,11 +2168,11 @@ const Procurement: React.FC = () => {
           (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query)),
       );
       return matchesCode || matchesItems || matchesPlanning || matchesItemDetails;
-    });
+    }));
   }, [categoryFilter, planningQuotationRequestsAwaitingQuote, searchQuery]);
 
   const filteredPlanningQuotationAsks = useMemo(() => {
-    return planningQuotationAsksPending.filter((ask) => {
+    return sortPlanningQuotationAsksLatestFirst(planningQuotationAsksPending.filter((ask) => {
       const askType = ask.itemType === 'PM' ? 'PM' : 'RM';
       if (categoryFilter !== 'All' && askType !== categoryFilter) return false;
       if (!searchQuery.trim()) return true;
@@ -2173,7 +2186,7 @@ const Procurement: React.FC = () => {
         (ask.planningProductName != null && String(ask.planningProductName).toLowerCase().includes(query)) ||
         (ask.planningProductCode != null && String(ask.planningProductCode).toLowerCase().includes(query));
       return matchesCode || matchesName || matchesVendor || matchesPlanning;
-    });
+    }));
   }, [categoryFilter, planningQuotationAsksPending, searchQuery]);
 
   const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
@@ -4918,13 +4931,6 @@ const Procurement: React.FC = () => {
             <div className="space-y-4">
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
-                const daysUntil = (dateStr: string) => {
-                  const d = parseDateStringToLocalDate(dateStr);
-                  if (!d) return NaN;
-                  const startToday = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(), 12, 0, 0, 0);
-                  const startDue = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
-                  return Math.ceil((startDue.getTime() - startToday.getTime()) / 86400000);
-                };
                 // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
                 const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
                 const rmRequests = procurementRequestsList.filter(r => r.type === 'RM');
@@ -4977,7 +4983,9 @@ const Procurement: React.FC = () => {
                         </div>
                         <div className="divide-y divide-slate-100">
                           {activeRequests.map(req => {
-                            const days = daysUntil(req.dueDate);
+                            const days = computeRequestDaysUntilDue(req, TODAY);
+                            const daysDisplay =
+                              days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`;
                             const urgency = days <= 3 ? 100 : days <= 10 ? 80 : days <= 20 ? 55 : 30;
                             return (
                               <div
@@ -4996,7 +5004,7 @@ const Procurement: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
-                                    <span className="text-xs text-slate-500 font-mono">{days}d</span>
+                                    <span className="text-xs text-slate-500 font-mono">{daysDisplay}</span>
                                   </div>
                                 </div>
                                 <p className="text-sm font-bold text-slate-900 mb-0.5">
@@ -5320,16 +5328,8 @@ const Procurement: React.FC = () => {
                         });
 
                         return sortedRequests.map((req, idx) => {
-                          const dueDate = parseDateStringToLocalDate(req.dueDate);
                           const today = new Date();
-                          const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
-                          const daysLeft = dueDate
-                            ? Math.ceil(
-                                (new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate(), 12, 0, 0, 0).getTime() -
-                                  startToday.getTime()) /
-                                  (1000 * 60 * 60 * 24)
-                              )
-                            : null;
+                          const daysLeft = computeRequestDaysUntilDue(req, today);
                           const dueDateDisplay = formatDateEnInSafe(req.dueDate);
                           const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
                           const prefVendorDisplay =
@@ -5400,9 +5400,9 @@ const Procurement: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
                                     <span>Req. {dueDateDisplay}</span>
-                                    <span className={`font-bold ${daysLeft == null ? 'text-slate-500' : daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
+                                    <span className={`font-bold ${daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
                                       }`}>
-                                      {daysLeft == null ? '—' : `${daysLeft}d left`}
+                                      {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`}
                                     </span>
                                   </div>
                                 </div>
@@ -6057,6 +6057,17 @@ const Procurement: React.FC = () => {
                   )}
                   {pagedQuotesForQuotationsSection.map((quote) => {
                       const isExpanded = expandedQuoteId === quote.id;
+                      const linesExpanded = expandedQuoteLineLists[quote.id] ?? false;
+                      const lineCount = quote.lines.length;
+                      const hasManyLines = lineCount > QUOTATION_VENDOR_LINES_PREVIEW;
+                      const hiddenLineCount = hasManyLines ? lineCount - QUOTATION_VENDOR_LINES_PREVIEW : 0;
+                      const visibleLineEntries = (
+                        hasManyLines && !linesExpanded
+                          ? quote.lines
+                              .map((line, idx) => ({ line, idx }))
+                              .slice(0, QUOTATION_VENDOR_LINES_PREVIEW)
+                          : quote.lines.map((line, idx) => ({ line, idx }))
+                      );
 
                       return (
                         <article key={quote.id} className="rounded-xl border border-cyan-300 bg-white shadow-md overflow-hidden">
@@ -6078,14 +6089,22 @@ const Procurement: React.FC = () => {
                                   )}
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-1">{quote.vendor}</h3>
-                                <div className="flex items-center gap-3 text-xs text-slate-600">
+                                <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
                                   <span className="font-mono bg-slate-100 px-2 py-0.5 rounded">
                                     For {quote.requestCode}
                                   </span>
                                   <span>·</span>
                                   <span>{quote.requestType === 'RM' ? 'Raw Material' : 'Packaging Material'}</span>
                                   <span>·</span>
-                                  <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
+                                  <span>
+                                    {lineCount} item{lineCount === 1 ? '' : 's'}
+                                  </span>
+                                  {quote.quotedOn ? (
+                                    <>
+                                      <span>·</span>
+                                      <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
@@ -6103,8 +6122,8 @@ const Procurement: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {quote.lines.map((line, idx) => (
-                                  <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                {visibleLineEntries.map(({ line, idx }) => (
+                                  <tr key={`${quote.id}-line-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
@@ -6197,6 +6216,24 @@ const Procurement: React.FC = () => {
                               </tbody>
                             </table>
                           </div>
+                          {hasManyLines ? (
+                            <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/90 flex justify-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedQuoteLineLists((prev) => ({
+                                    ...prev,
+                                    [quote.id]: !linesExpanded,
+                                  }))
+                                }
+                                className="px-3 py-1.5 rounded-md border border-cyan-300 bg-white text-cyan-800 text-xs font-semibold hover:bg-cyan-50 transition-colors"
+                              >
+                                {linesExpanded
+                                  ? 'Show fewer items'
+                                  : `View ${hiddenLineCount} more item${hiddenLineCount === 1 ? '' : 's'}`}
+                              </button>
+                            </div>
+                          ) : null}
 
                           {/* Footer Info */}
                           <div className="px-5 py-3 bg-slate-50 border-t border-slate-200">

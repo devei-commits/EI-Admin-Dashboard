@@ -93,6 +93,9 @@ export type VendorQuote = {
   requestType: RequestType;
   vendor: string;
   status: QuoteStatus;
+  /** ISO / date-only from API — used to sort newest quotations first */
+  createdAt?: string;
+  updatedAt?: string;
   quotedOn: string;
   leadTimeDays: number;
   terms: string;

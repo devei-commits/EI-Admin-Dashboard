@@ -60,6 +60,7 @@ export interface GenerateLabelsPayload {
   unitsPerBoxList?: number[];
   locationPrefix?: string;
   locationZone?: string;
+  locationSource?: 'facility' | 'custom';
   grnBatchMfg?: string;
   expiry?: string;
   mfgBatch?: string;
@@ -166,6 +167,8 @@ export interface UpdateGRNPayload {
   unitsPerBox?: number | null;
   locationPrefix?: string | null;
   locationZone?: string | null;
+  /** When "custom", backend routes put-away to the facility default warehouse zone/rack. */
+  locationSource?: 'facility' | 'custom';
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;

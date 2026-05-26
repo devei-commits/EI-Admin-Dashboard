@@ -114,6 +114,132 @@ export function formatDateEnInSafe(raw: string | Date | null | undefined): strin
   return d.toLocaleDateString('en-IN');
 }
 
+function calendarDaysBetween(from: Date, to: Date): number {
+  const startFrom = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 12, 0, 0, 0);
+  const startTo = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 12, 0, 0, 0);
+  return Math.ceil((startTo.getTime() - startFrom.getTime()) / 86400000);
+}
+
+function parseRequestAnchorDate(raw: string | undefined | null): Date | null {
+  const cal = parseDateStringToLocalDate(raw);
+  if (cal) return cal;
+  const s = raw != null ? String(raw).trim() : '';
+  if (!s) return null;
+  const t = new Date(s);
+  return Number.isNaN(t.getTime()) ? null : t;
+}
+
+/**
+ * Days until the request is due (negative = overdue).
+ * 1) required-by / dueDate when set
+ * 2) else created date + max item lead time (from API or line notes)
+ * 3) else days since created (open age)
+ */
+export function timestampFromDateString(raw: string | undefined | null): number {
+  if (raw == null || !String(raw).trim()) return 0;
+  const cal = parseDateStringToLocalDate(raw);
+  if (cal) return cal.getTime();
+  const t = new Date(raw);
+  return Number.isNaN(t.getTime()) ? 0 : t.getTime();
+}
+
+export function getVendorQuoteSortKey(quote: Pick<VendorQuote, 'id' | 'createdAt' | 'updatedAt' | 'quotedOn'>): number {
+  const fromCreated = timestampFromDateString(quote.createdAt);
+  if (fromCreated) return fromCreated;
+  const fromUpdated = timestampFromDateString(quote.updatedAt);
+  if (fromUpdated) return fromUpdated;
+  const fromQuoted = timestampFromDateString(quote.quotedOn);
+  if (fromQuoted) return fromQuoted;
+  const idNum = parseInt(String(quote.id).replace(/\D/g, ''), 10);
+  return Number.isFinite(idNum) ? idNum : 0;
+}
+
+export function sortVendorQuotesLatestFirst(quotes: VendorQuote[]): VendorQuote[] {
+  return [...quotes].sort((a, b) => getVendorQuoteSortKey(b) - getVendorQuoteSortKey(a));
+}
+
+export function getProcurementRequestSortKey(req: Pick<ProcurementRequest, 'createdDate' | 'id'>): number {
+  const ts = timestampFromDateString(req.createdDate);
+  if (ts) return ts;
+  const idNum = parseInt(String(req.id), 10);
+  return Number.isFinite(idNum) ? idNum : 0;
+}
+
+export function sortProcurementRequestsLatestFirst<T extends Pick<ProcurementRequest, 'createdDate' | 'id'>>(
+  rows: T[],
+): T[] {
+  return [...rows].sort((a, b) => getProcurementRequestSortKey(b) - getProcurementRequestSortKey(a));
+}
+
+function planningAskTimestamp(raw: string | undefined | null): number {
+  if (raw == null || !String(raw).trim()) return 0;
+  const full = new Date(String(raw).trim()).getTime();
+  if (Number.isFinite(full) && full > 0) return full;
+  return timestampFromDateString(raw);
+}
+
+/** Newest planning quotation ask first (full createdAt time, then id). */
+export function getPlanningQuotationAskSortKey(ask: {
+  id: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): number {
+  const created =
+    ask.createdAt ?? ask.created_at ?? ask.updatedAt ?? ask.updated_at ?? '';
+  const ts = planningAskTimestamp(created);
+  return ts > 0 ? ts : ask.id;
+}
+
+export function sortPlanningQuotationAsksLatestFirst<
+  T extends {
+    id: number;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  },
+>(asks: T[]): T[] {
+  return [...asks].sort((a, b) => {
+    const diff = getPlanningQuotationAskSortKey(b) - getPlanningQuotationAskSortKey(a);
+    return diff !== 0 ? diff : b.id - a.id;
+  });
+}
+
+export function computeRequestDaysUntilDue(
+  request: Pick<ProcurementRequest, 'dueDate' | 'createdDate' | 'itemDetails'>,
+  today: Date = new Date(),
+): number {
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+
+  const explicitDue = parseDateStringToLocalDate(request.dueDate);
+  if (explicitDue) {
+    return calendarDaysBetween(startToday, explicitDue);
+  }
+
+  const anchor = parseRequestAnchorDate(request.createdDate ?? '');
+  if (!anchor) return 0;
+
+  let maxLead = 0;
+  let hasLead = false;
+  for (const d of request.itemDetails ?? []) {
+    const ld = normalizeLeadTimeDays(d.leadTimeDays);
+    if (ld !== undefined) {
+      hasLead = true;
+      if (ld > maxLead) maxLead = ld;
+    }
+  }
+
+  if (hasLead && maxLead > 0) {
+    const effectiveDue = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 12, 0, 0, 0);
+    effectiveDue.setDate(effectiveDue.getDate() + maxLead);
+    return calendarDaysBetween(startToday, effectiveDue);
+  }
+
+  return Math.max(0, calendarDaysBetween(anchor, startToday));
+}
+
 function normItemKeyForLead(s: string): string {
   return String(s ?? '')
     .trim()
@@ -500,6 +626,8 @@ export function mapBackendQuotationToQuote(
     vendor: q.vendorName ?? '',
     vendorId: String(q.vendorId),
     status: QUOTE_STATUS_MAP[q.status ?? ''] ?? 'Pending Review',
+    createdAt: q.createdAt ?? undefined,
+    updatedAt: q.updatedAt ?? undefined,
     quotedOn: q.quoteDate ?? '',
     leadTimeDays: q.leadTimeDays ?? 0,
     terms: q.paymentTerms ?? '',

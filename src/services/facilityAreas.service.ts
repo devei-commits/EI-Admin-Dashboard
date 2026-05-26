@@ -198,15 +198,15 @@ export interface EnsureCustomLocationResult {
   zoneName: string;
   rackCode: string;
   areaType: 'warehouse' | 'production';
+  routedToDefault?: boolean;
+  stockLinesMoved?: number;
+  createdZone?: boolean;
+  createdRack?: boolean;
 }
 
 /**
- * Register a custom (free-text) zone + rack into Facility Management.
- * Idempotent: reuses any existing zone (case-insensitive code/name match within the
- * same location type) and any existing rack (case-insensitive code match within the
- * zone). New entries are parented under a single auto-created "CUSTOM" area per
- * area type (WH-CUSTOM / PROD-CUSTOM). Called from GRN (warehouse) and Production
- * MU save paths when the user is in custom-location mode.
+ * Warehouse custom GRN put-away: find or create zone under main warehouse, then rack in that zone.
+ * Production still uses PROD-CUSTOM find-or-create.
  */
 export async function setZoneAsDefault(zoneId: number): Promise<ServiceResult<{
   id: number;

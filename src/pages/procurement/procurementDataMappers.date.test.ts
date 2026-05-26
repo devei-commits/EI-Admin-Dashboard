@@ -6,7 +6,13 @@ import {
   mapBackendPrToRequest,
   mergePlannedRateIntoLineNotes,
   resolvePlannedUnitPrice,
+  computeRequestDaysUntilDue,
+  sortVendorQuotesLatestFirst,
+  sortPlanningQuotationAsksLatestFirst,
 } from './procurementDataMappers';
+import type { VendorQuote } from '../../types/procurement.types';
+import type { PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
+import type { ProcurementRequest } from '../../types/procurement.types';
 
 describe('procurement date helpers', () => {
   it('parseDateStringToLocalDate handles YYYY-MM-DD and DD-MM-YYYY', () => {
@@ -37,6 +43,112 @@ describe('procurement date helpers', () => {
     });
     expect(req.dueDate).toBe('');
     expect(formatDateEnInSafe(req.dueDate)).toBe('—');
+  });
+
+  it('computeRequestDaysUntilDue uses due date, then created+lead, then open age', () => {
+    const today = new Date(2026, 4, 26, 12, 0, 0, 0);
+    const withDue: Pick<ProcurementRequest, 'dueDate' | 'createdDate' | 'itemDetails'> = {
+      dueDate: '2026-06-01',
+      createdDate: '2026-05-01',
+      itemDetails: [],
+    };
+    expect(computeRequestDaysUntilDue(withDue, today)).toBe(6);
+
+    const withLead: Pick<ProcurementRequest, 'dueDate' | 'createdDate' | 'itemDetails'> = {
+      dueDate: '',
+      createdDate: '2026-05-20',
+      itemDetails: [{ itemCode: 'A', itemName: 'X', reqQty: 1, unit: 'kg', moq: '', packSize: '', plannedPrice: 0, estValue: 0, leadTimeDays: 10 }],
+    };
+    expect(computeRequestDaysUntilDue(withLead, today)).toBe(4);
+
+    const openOnly: Pick<ProcurementRequest, 'dueDate' | 'createdDate' | 'itemDetails'> = {
+      dueDate: '',
+      createdDate: '2026-05-20T10:00:00.000Z',
+      itemDetails: [],
+    };
+    expect(computeRequestDaysUntilDue(openOnly, today)).toBe(6);
+  });
+
+  it('sortVendorQuotesLatestFirst orders by createdAt descending', () => {
+    const mk = (id: string, createdAt: string): VendorQuote => ({
+      id,
+      requestId: '1',
+      requestCode: 'PR-REQ-001',
+      requestType: 'RM',
+      vendor: 'V',
+      status: 'Confirmed',
+      createdAt,
+      quotedOn: '',
+      leadTimeDays: 0,
+      terms: '',
+      validTill: '',
+      rating: 0,
+      fileName: '',
+      note: '',
+      lines: [],
+    });
+    const sorted = sortVendorQuotesLatestFirst([
+      mk('1', '2026-05-20T10:00:00Z'),
+      mk('3', '2026-05-26T10:00:00Z'),
+      mk('2', '2026-05-22T10:00:00Z'),
+    ]);
+    expect(sorted.map((q) => q.id)).toEqual(['3', '2', '1']);
+  });
+
+  it('sortPlanningQuotationAsksLatestFirst orders by createdAt descending', () => {
+    const mk = (id: number, createdAt: string): PlanningQuotationAsk => ({
+      id,
+      planningExtractedId: 1,
+      itemType: 'RM',
+      rawMaterialId: 1,
+      packMaterialId: null,
+      itemCode: 'RM-1',
+      itemName: 'A',
+      quantityRequested: 1,
+      unit: 'KG',
+      vendorHint: null,
+      moqHint: null,
+      status: 'pending',
+      notes: null,
+      requestedBy: null,
+      fulfilledAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const sorted = sortPlanningQuotationAsksLatestFirst([
+      mk(1, '2026-05-20T10:00:00Z'),
+      mk(3, '2026-05-26T10:00:00Z'),
+      mk(2, '2026-05-22T10:00:00Z'),
+    ]);
+    expect(sorted.map((a) => a.id)).toEqual([3, 2, 1]);
+  });
+
+  it('sortPlanningQuotationAsksLatestFirst uses time within same calendar day and id tie-break', () => {
+    const mk = (id: number, createdAt: string): PlanningQuotationAsk => ({
+      id,
+      planningExtractedId: 1,
+      itemType: 'RM',
+      rawMaterialId: 1,
+      packMaterialId: null,
+      itemCode: 'RM-1',
+      itemName: 'A',
+      quantityRequested: 1,
+      unit: 'KG',
+      vendorHint: null,
+      moqHint: null,
+      status: 'pending',
+      notes: null,
+      requestedBy: null,
+      fulfilledAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const sorted = sortPlanningQuotationAsksLatestFirst([
+      mk(2, '2026-05-26T08:00:00Z'),
+      mk(4, '2026-05-26T18:00:00Z'),
+      mk(3, '2026-05-26T12:00:00Z'),
+    ]);
+    expect(sorted.map((a) => a.id)).toEqual([4, 3, 2]);
   });
 
   it('normalizeDateOnlyString outputs YYYY-MM-DD', () => {
