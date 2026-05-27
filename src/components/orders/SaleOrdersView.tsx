@@ -412,6 +412,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
 
       {/* Sale Orders Grid */}
       {filteredSOs.length > 0 ? (
+        <>
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-sm border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -681,6 +682,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
             </button>
           </div>
         </div>
+        </>
       ) : (
         <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
           <div className="inline-block bg-gray-200 p-4 rounded-full">
