@@ -32,7 +32,15 @@ import {
   type ProcurementRequestItem,
   type ProcurementRequest,
 } from '../services/procurement.service';
-import { createPlanningQuotationAsk } from '../services/planningQuotationAsks.service';
+import {
+  createPlanningQuotationAsk,
+  fetchPlanningQuotationAsks,
+} from '../services/planningQuotationAsks.service';
+import {
+  getPlanningQuotationAskUiStatus,
+  loadSeenPlanningQuotationAskIds,
+  markMatchingFulfilledAsksSeen,
+} from '../lib/planningQuotationAskDisplay';
 import { fetchPriceListPage, type PriceListItemPage } from '../services/itemsList.service';
 import {
   fetchBOMByProductId,
@@ -2506,6 +2514,20 @@ const Planning = () => {
     enabled: activeMainTab === 'items-involved',
   });
 
+  const { data: planningQuotationAsks = [] } = useQuery({
+    queryKey: ['planning-quotation-asks', 'all', 'items-involved'],
+    queryFn: async () => {
+      const res = await fetchPlanningQuotationAsks({ status: 'all' });
+      return res.success ? (res.data ?? []) : [];
+    },
+    enabled: activeMainTab === 'items-involved',
+    refetchInterval: activeMainTab === 'items-involved' ? 60_000 : false,
+  });
+
+  const [seenPlanningQuotationAskIds, setSeenPlanningQuotationAskIds] = useState<Set<number>>(() =>
+    loadSeenPlanningQuotationAskIds()
+  );
+
   // Tab-specific stats — derived from API data (planning-extracted, items-involved, procurement)
   const tabStats = useMemo(() => {
     const totalSOs = planningExtractedList.length;
@@ -3085,6 +3107,13 @@ const Planning = () => {
       leadTimeDays: first?.leadTimeDays ?? 0,
       paymentTermsRaw: first ? String(first.paymentTerms ?? '').trim() || null : null,
     });
+  };
+
+  const openRequestQuotationModalForItem = (item: ItemsInvolvedDisplayRow): void => {
+    setSeenPlanningQuotationAskIds((prev) =>
+      markMatchingFulfilledAsksSeen(planningQuotationAsks, item, prev)
+    );
+    openReleaseToPlanningModal(item, { intent: 'quotation' });
   };
 
   const addPlannedLine = async (): Promise<boolean> => {
@@ -4935,11 +4964,57 @@ const Planning = () => {
                         );
                         const cs = procurementDisp.currentStatus;
                         const lc = procurementDisp.latestComment;
+                        const quotationAskUi = getPlanningQuotationAskUiStatus(
+                          planningQuotationAsks,
+                          {
+                            itemType: item.itemType,
+                            code: item.code,
+                            name: item.name,
+                            raw_material_id: item.raw_material_id,
+                            pack_material_id: item.pack_material_id,
+                            planningExtractedIds: item.planningExtractedIds,
+                            planningExtractedId: item.planningExtractedId,
+                          },
+                          seenPlanningQuotationAskIds
+                        );
+                        const quotationBtnClass =
+                          quotationAskUi.status === 'fulfilled_unread'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                            : quotationAskUi.status === 'fulfilled_read'
+                              ? 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'
+                              : quotationAskUi.status === 'pending'
+                                ? 'border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                                : 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100';
+                        const quotationBtnLabel =
+                          quotationAskUi.status === 'fulfilled_unread'
+                            ? 'Quotation ready'
+                            : quotationAskUi.status === 'pending'
+                              ? 'Quotation pending'
+                              : 'Request quotation';
+                        const quotationBtnTitle =
+                          quotationAskUi.status === 'fulfilled_unread'
+                            ? 'Procurement recorded vendor rates on Items List — open to release procurement or request another quote.'
+                            : quotationAskUi.status === 'pending'
+                              ? 'Quotation requested — awaiting Procurement → Quotations.'
+                              : quotationAskUi.status === 'fulfilled_read'
+                                ? 'Quotation was recorded earlier — open to release procurement or request another quote.'
+                                : 'Ask Procurement to quote this material — optional new vendor or MOQ even when rates already exist on Items List.';
                         return (
                           <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                             <td className="px-2 py-2 min-w-[220px]">
-                              <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                              <div className="text-xs text-gray-500">{item.code}</div>
+                              <div className="flex items-start gap-1.5">
+                                {quotationAskUi.status === 'fulfilled_unread' ? (
+                                  <span
+                                    className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-500"
+                                    title="Quotation recorded on Items List"
+                                    aria-hidden
+                                  />
+                                ) : null}
+                                <div>
+                                  <div className="text-gray-900 font-medium text-xs">{item.name}</div>
+                                  <div className="text-xs text-gray-500">{item.code}</div>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-2 py-2">
                               <span className={`text-xs font-semibold px-1 py-0.5 rounded ${item.itemType === 'PM'
@@ -5097,11 +5172,25 @@ const Planning = () => {
                                 )}
                                 <button
                                   type="button"
-                                  className="px-2 py-1 rounded border border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 text-[11px] font-semibold w-full"
-                                  title="Ask Procurement to quote this material — optional new vendor or MOQ even when rates already exist on Items List."
-                                  onClick={() => openReleaseToPlanningModal(item, { intent: 'quotation' })}
+                                  className={`relative px-2 py-1 rounded border text-[11px] font-semibold w-full ${quotationBtnClass}`}
+                                  title={quotationBtnTitle}
+                                  onClick={() => openRequestQuotationModalForItem(item)}
                                 >
-                                  Request quotation
+                                  {quotationAskUi.status === 'fulfilled_unread' ? (
+                                    <span
+                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"
+                                      title="New quotation on Items List"
+                                      aria-hidden
+                                    />
+                                  ) : null}
+                                  {quotationAskUi.status === 'pending' ? (
+                                    <span
+                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white"
+                                      title="Quotation requested"
+                                      aria-hidden
+                                    />
+                                  ) : null}
+                                  {quotationBtnLabel}
                                 </button>
                               </div>
                             </td>
@@ -5276,94 +5365,181 @@ const Planning = () => {
           setReleaseToPlanningItem(null);
           setReleaseModalIntent('release');
         };
+        const applyVendorSlabPick = (s: (typeof slabs)[number]) => {
+          const p = parsePaymentTermsString(s.paymentTerms || '');
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            vendorId: s.vendorId,
+            vendorName: s.vendorName,
+            moq: s.moq,
+            unitPrice: String(s.unitPrice),
+            paymentTermsType: p.type,
+            advancePercent: String(
+              p.advancePercent ||
+              (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
+            ),
+            leadTimeDays: s.leadTimeDays,
+            paymentTermsRaw: String(s.paymentTerms || '').trim() || null,
+          }));
+        };
+
         return (
-          <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[92vh] overflow-hidden flex flex-col">
-              <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">
+          <div className="fixed inset-0 z-95 bg-black/35 flex items-end sm:items-center justify-center p-2 sm:p-4">
+            <div className="bg-white w-full max-w-6xl rounded-xl shadow-xl border border-gray-200 max-h-[min(92vh,100dvh)] overflow-hidden flex flex-col">
+              <div className="px-3 sm:px-5 py-3 sm:py-4 border-b border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 pr-2">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
                     {isQuotationOnlyModal ? 'Request vendor quotation' : 'Release to PO Planned Stage'}
                   </h2>
-                  <p className="text-xs text-slate-600 mt-0.5">
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                     {isQuotationOnlyModal
                       ? 'Sends a quote request to Procurement → Quotations only. Does not change Items Involved planned qty, NET, or shortages.'
                       : 'Pick vendor & MOQ price, choose qty, set payment terms. Add Planned Line updates procurement release; Request quotation does not.'}
                   </p>
                 </div>
-                <button type="button" onClick={closeReleaseModal} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
+                <button
+                  type="button"
+                  onClick={closeReleaseModal}
+                  className="shrink-0 self-end sm:self-start px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Close
+                </button>
               </div>
-              <div className="p-5 overflow-auto">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="font-bold text-slate-900 text-sm mb-1">{item.name} <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.code}</span></h3>
-                    <p className="text-xs text-slate-500 mb-3">
-                      {item.itemType} · {item.unit}
-                      {isQuotationOnlyModal
-                        ? ' · Enter qty to quote (reference for Procurement; planning balances unchanged).'
-                        : ` · Open gap vs TOTAL REQ (after supply): ${qtyFmt(gapNeedModal)} · On PR / draft PO lines: ${qtyFmt(releasedModal)}`}
+              <div className="p-3 sm:p-5 overflow-auto min-h-0">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:gap-5">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0">
+                    <h3 className="font-bold text-slate-900 text-sm leading-snug break-words" title={item.name}>
+                      {item.name}
+                    </h3>
+                    <p className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 inline-block mt-1.5 break-all">
+                      {item.code}
                     </p>
+                    <div className="flex flex-wrap gap-1.5 mt-2.5 mb-3">
+                      <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                        {item.itemType} · {item.unit}
+                      </span>
+                      {isQuotationOnlyModal ? (
+                        <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900">
+                          Qty for Procurement reference only
+                        </span>
+                      ) : (
+                        <>
+                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-900">
+                            Gap {qtyFmt(gapNeedModal)}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                            On PR / draft {qtyFmt(releasedModal)}
+                          </span>
+                        </>
+                      )}
+                    </div>
                     <div className="border-t border-slate-200 my-3" />
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-2 font-medium">Vendor</th>
-                          <th className="text-left py-2 font-medium">MOQ</th>
-                          <th className="text-right py-2 font-medium">Unit ₹</th>
-                          <th className="text-right py-2 font-medium">Lead</th>
-                          <th className="text-left py-2 font-medium min-w-[8rem]">Terms</th>
-                          <th className="w-16" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {slabs.map((s, i) => (
-                          <tr key={`${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`} className="border-b border-slate-100">
-                            <td className="py-2 font-medium text-slate-900">{s.vendorName}</td>
-                            <td className="py-2 text-slate-700">{s.moq || '—'}</td>
-                            <td className="py-2 text-right font-medium">₹{s.unitPrice.toLocaleString('en-IN')}</td>
-                            <td className="py-2 text-right text-slate-700">{s.leadTimeDays}d</td>
-                            <td className="py-2 text-slate-600 text-[11px] leading-snug max-w-[11rem]">
-                              {formatStagedPaymentTermsSummary(s.paymentTerms)}
-                            </td>
-                            <td className="py-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const p = parsePaymentTermsString(s.paymentTerms || '');
-                                  setReleaseToPlanningForm((f) => ({
-                                    ...f,
-                                    vendorId: s.vendorId,
-                                    vendorName: s.vendorName,
-                                    moq: s.moq,
-                                    unitPrice: String(s.unitPrice),
-                                    paymentTermsType: p.type,
-                                    advancePercent: String(
-                                      p.advancePercent ||
-                                      (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
-                                    ),
-                                    leadTimeDays: s.leadTimeDays,
-                                    paymentTermsRaw: String(s.paymentTerms || '').trim() || null,
-                                  }));
-                                }}
-                                className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
-                              >
-                                Pick
-                              </button>
-                            </td>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                      Items List rates
+                    </p>
+                    <ul className="space-y-2 2xl:hidden">
+                      {slabs.map((s, i) => (
+                        <li
+                          key={`card-${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`}
+                          className="rounded-lg border border-slate-200 bg-slate-50/80 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900 leading-snug break-words min-w-0">
+                              {s.vendorName}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => applyVendorSlabPick(s)}
+                              className="shrink-0 px-2.5 py-1 rounded border border-cyan-400 text-cyan-700 text-[11px] font-semibold hover:bg-cyan-50"
+                            >
+                              Pick
+                            </button>
+                          </div>
+                          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                            <div>
+                              <dt className="text-slate-500">MOQ</dt>
+                              <dd className="font-medium text-slate-800">{s.moq || '—'}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-slate-500">Unit price</dt>
+                              <dd className="font-medium text-slate-800">₹{s.unitPrice.toLocaleString('en-IN')}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-slate-500">Lead time</dt>
+                              <dd className="text-slate-800">{s.leadTimeDays}d</dd>
+                            </div>
+                            <div className="col-span-2">
+                              <dt className="text-slate-500">Payment terms</dt>
+                              <dd className="text-slate-700 leading-snug mt-0.5">
+                                {formatStagedPaymentTermsSummary(s.paymentTerms)}
+                              </dd>
+                            </div>
+                          </dl>
+                        </li>
+                      ))}
+                      {slabs.length === 0 && (
+                        <li className="rounded-lg border border-dashed border-slate-200 py-6 px-3 text-center">
+                          <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
+                          <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                            Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
+                            so Procurement can quote this material.
+                          </p>
+                        </li>
+                      )}
+                    </ul>
+                    <div className="hidden 2xl:block overflow-x-auto -mx-1 px-1">
+                      <table className="w-full min-w-[36rem] text-xs">
+                        <thead>
+                          <tr className="text-slate-500 border-b border-slate-200">
+                            <th className="text-left py-2 pr-2 font-medium">Vendor</th>
+                            <th className="text-left py-2 pr-2 font-medium whitespace-nowrap">MOQ</th>
+                            <th className="text-right py-2 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
+                            <th className="text-right py-2 pr-2 font-medium whitespace-nowrap">Lead</th>
+                            <th className="text-left py-2 pr-2 font-medium min-w-[9rem]">Terms</th>
+                            <th className="w-14 py-2" />
                           </tr>
-                        ))}
-                        {slabs.length === 0 && (
-                          <tr>
-                            <td colSpan={6} className="py-4 text-center">
-                              <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
-                              <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto">
-                                Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
-                                so Procurement can quote this material.
-                              </p>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {slabs.map((s, i) => (
+                            <tr key={`${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`} className="border-b border-slate-100">
+                              <td className="py-2 pr-2 font-medium text-slate-900 align-top break-words max-w-[10rem]">
+                                {s.vendorName}
+                              </td>
+                              <td className="py-2 pr-2 text-slate-700 whitespace-nowrap align-top">{s.moq || '—'}</td>
+                              <td className="py-2 pr-2 text-right font-medium whitespace-nowrap align-top">
+                                ₹{s.unitPrice.toLocaleString('en-IN')}
+                              </td>
+                              <td className="py-2 pr-2 text-right text-slate-700 whitespace-nowrap align-top">
+                                {s.leadTimeDays}d
+                              </td>
+                              <td className="py-2 pr-2 text-slate-600 text-[11px] leading-snug align-top">
+                                {formatStagedPaymentTermsSummary(s.paymentTerms)}
+                              </td>
+                              <td className="py-2 align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => applyVendorSlabPick(s)}
+                                  className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50 whitespace-nowrap"
+                                >
+                                  Pick
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {slabs.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-4 text-center">
+                                <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
+                                <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto leading-relaxed">
+                                  Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
+                                  so Procurement can quote this material.
+                                </p>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                     {hasVendorSlabs ? (
                       <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
                     ) : (
@@ -5385,7 +5561,7 @@ const Planning = () => {
                       </p>
                     )}
                   </div>
-                  <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${isQuotationOnlyModal ? 'lg:col-span-2' : ''}`}>
+                  <div className={`rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0 ${isQuotationOnlyModal ? 'xl:col-span-2' : ''}`}>
                     <h3 className="font-bold text-slate-900 text-sm mb-3">
                       {isQuotationOnlyModal ? 'Quotation request' : 'Planned line details'}
                     </h3>
@@ -5423,8 +5599,10 @@ const Planning = () => {
                         )}
                       </div>
                     )}
-                    <div className={`grid grid-cols-2 gap-3 mb-3 ${isQuotationOnlyModal ? 'max-w-2xl' : ''}`}>
-                      <div>
+                    <div
+                      className={`grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 ${isQuotationOnlyModal ? 'xl:max-w-2xl' : ''}`}
+                    >
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                           {isQuotationOnlyModal ? 'Vendor to quote (optional)' : 'Vendor'}
                         </label>
@@ -5457,7 +5635,7 @@ const Planning = () => {
                           </p>
                         )}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                           {isQuotationOnlyModal ? 'Target MOQ (optional)' : 'MOQ'}
                         </label>
@@ -5471,7 +5649,11 @@ const Planning = () => {
                         />
                       </div>
                     </div>
-                    <div className={`grid gap-3 mb-3 ${isQuotationOnlyModal ? 'grid-cols-1 max-w-xs' : 'grid-cols-2'}`}>
+                    <div
+                      className={`grid gap-3 mb-3 ${
+                        isQuotationOnlyModal ? 'grid-cols-1 sm:max-w-sm' : 'grid-cols-1 sm:grid-cols-2'
+                      }`}
+                    >
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                           {isQuotationOnlyModal ? 'Quantity to quote' : 'Quantity'}
@@ -5508,8 +5690,8 @@ const Planning = () => {
                     </div>
                     {!isQuotationOnlyModal && (
                     <>
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
                         <select
                           value={releaseToPlanningForm.paymentTermsType}
@@ -5557,7 +5739,7 @@ const Planning = () => {
                       <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
                         Payment split (advance · pre-shipment · post-shipment)
                       </p>
-                      <div className="grid grid-cols-4 gap-2 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                         <div>
                           <div className="text-[10px] text-slate-500">Advance</div>
                           <div className="text-sm font-semibold text-slate-900">{releasePtStages.advance_pct}%</div>
@@ -5596,24 +5778,25 @@ const Planning = () => {
                     <>
                     <div className="border-t border-slate-200 my-3" />
                     <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
-                    <table className="w-full text-xs">
+                    <div className="overflow-x-auto -mx-1 px-1">
+                    <table className="w-full min-w-[20rem] text-xs">
                       <thead>
                         <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-1 font-medium">Date</th>
-                          <th className="text-left py-1 font-medium">Vendor</th>
-                          <th className="text-right py-1 font-medium">Qty</th>
-                          <th className="text-right py-1 font-medium">Unit ₹</th>
-                          <th className="text-right py-1 font-medium">Pick</th>
+                          <th className="text-left py-1 pr-2 font-medium whitespace-nowrap">Date</th>
+                          <th className="text-left py-1 pr-2 font-medium">Vendor</th>
+                          <th className="text-right py-1 pr-2 font-medium whitespace-nowrap">Qty</th>
+                          <th className="text-right py-1 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
+                          <th className="text-right py-1 font-medium w-14">Pick</th>
                         </tr>
                       </thead>
                       <tbody>
                         {previous.map((r, i) => (
                           <tr key={`${r.createdAt}-${i}`} className="border-b border-slate-100">
-                            <td className="py-1.5 text-slate-700">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                            <td className="py-1.5 text-slate-700">{r.vendorName}</td>
-                            <td className="py-1.5 text-right text-slate-700">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
-                            <td className="py-1.5 text-right font-medium">₹{r.unitPrice.toLocaleString('en-IN')}</td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 pr-2 text-slate-700 whitespace-nowrap align-top">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="py-1.5 pr-2 text-slate-700 align-top break-words max-w-[8rem] sm:max-w-none">{r.vendorName}</td>
+                            <td className="py-1.5 pr-2 text-right text-slate-700 whitespace-nowrap align-top">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
+                            <td className="py-1.5 pr-2 text-right font-medium whitespace-nowrap align-top">₹{r.unitPrice.toLocaleString('en-IN')}</td>
+                            <td className="py-1.5 text-right align-top">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -5653,24 +5836,25 @@ const Planning = () => {
                         )}
                       </tbody>
                     </table>
+                    </div>
                     </>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                <p className="text-xs text-slate-500">
+              <div className="px-3 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500 leading-relaxed min-w-0">
                   {isQuotationOnlyModal
                     ? 'Sends a reminder to Procurement → Quotations only (no procurement request). After rates are recorded, use Release to Planning → Add Planned Line.'
                     : hasVendorSlabs
                       ? 'Add Planned Line updates planned release. Request quotation reminds Procurement to add vendor/MOQ on Items List (no PR).'
                       : 'Request quotation reminds Procurement → Quotations (no procurement request or planning qty change).'}
                 </p>
-                <div className="flex flex-wrap gap-2 justify-end">
+                <div className="flex flex-wrap gap-2 justify-stretch sm:justify-end shrink-0">
                   <button
                     type="button"
                     onClick={closeReleaseModal}
-                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
                   >
                     Cancel
                   </button>
@@ -5719,7 +5903,7 @@ const Planning = () => {
                           setReleaseToPlanningSaving(false);
                         }
                       }}
-                      className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                      className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
                     >
                       Add Planned Line
                     </button>

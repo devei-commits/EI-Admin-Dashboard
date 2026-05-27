@@ -158,3 +158,45 @@ export async function deletePurchaseOrder(id: string): Promise<ServiceResult<nul
     return { data: null, error: message, success: false };
   }
 }
+
+export interface OpenSoHeadersExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  rows_imported?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+    zoho_overlay_unreliable?: number;
+  } | null;
+  summary?: {
+    sales_orders_created: number;
+    sales_orders_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    excel_row: number;
+    sheet?: string;
+    action: string;
+    reason?: string;
+    order_id?: string;
+    zoho_salesorder_id?: string;
+  }>;
+}
+
+/** Import sales order headers from workbook sheet "Open SO Headers". */
+export async function importOpenSoHeadersExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<OpenSoHeadersExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const suffix = options?.details ? '?details=true' : '';
+  return api.post<OpenSoHeadersExcelImportResponse>(
+    `/api/v1/sales-orders/import-excel${suffix}`,
+    fd,
+  );
+}
