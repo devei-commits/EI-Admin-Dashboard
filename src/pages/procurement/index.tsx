@@ -25,7 +25,12 @@ import {
   type PlanningQuotationAsk,
 } from '../../services/planningQuotationAsks.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
-import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
+import {
+  fetchPurchaseOrders,
+  createPurchaseOrder,
+  updatePurchaseOrder,
+  importPrRowsExcel,
+} from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
 import {
@@ -1098,6 +1103,8 @@ const Procurement: React.FC = () => {
   // Prevent double-click / race conditions from creating multiple GRNs for the same PO.
   // Keyed by `record.poNumber`.
   const receiveGrnLockRef = useRef<Record<string, boolean>>({});
+  const poExcelInputRef = useRef<HTMLInputElement>(null);
+  const [importingPoExcel, setImportingPoExcel] = useState(false);
 
   const { data: backendPrResult } = useQuery({
     queryKey: ['procurement-requests'],
@@ -1615,7 +1622,24 @@ const Procurement: React.FC = () => {
     (sideSection !== 'Quotations' && (backendPrResult === undefined || quotationsResult === undefined));
 
   useEffect(() => {
-    if (backendPrResult !== undefined) setRequests(requestsFromApi);
+    if (backendPrResult === undefined) return;
+    setRequests((prev) => {
+      const same =
+        prev.length === requestsFromApi.length &&
+        prev.every((p, i) => {
+          const n = requestsFromApi[i];
+          if (!n) return false;
+          return (
+            p.id === n.id &&
+            p.status === n.status &&
+            p.dueDate === n.dueDate &&
+            p.priority === n.priority &&
+            p.preferredVendor === n.preferredVendor &&
+            p.items.length === n.items.length
+          );
+        });
+      return same ? prev : requestsFromApi;
+    });
   }, [backendPrResult, requestsFromApi]);
 
   /** Keep open request detail in sync after list refetch (e.g. Edit Request saved required date). */
@@ -1638,7 +1662,23 @@ const Procurement: React.FC = () => {
   }, [requestsFromApi, selectedRequest?.id]);
 
   useEffect(() => {
-    if (quotationsResult !== undefined) setQuotes(quotesFromApi);
+    if (quotationsResult === undefined) return;
+    setQuotes((prev) => {
+      const same =
+        prev.length === quotesFromApi.length &&
+        prev.every((p, i) => {
+          const n = quotesFromApi[i];
+          if (!n) return false;
+          return (
+            p.id === n.id &&
+            p.requestId === n.requestId &&
+            p.vendor === n.vendor &&
+            p.status === n.status &&
+            p.validTill === n.validTill
+          );
+        });
+      return same ? prev : quotesFromApi;
+    });
   }, [quotationsResult, quotesFromApi]);
 
   const lastDraftPOsFromApiKeyRef = useRef<string>('');
@@ -1659,6 +1699,50 @@ const Procurement: React.FC = () => {
     lastDraftPOsFromApiKeyRef.current = '';
     await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
   }, [queryClient]);
+
+  const handlePoExcelChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+
+      setImportingPoExcel(true);
+      try {
+        const res = await importPrRowsExcel(file, { details: true });
+        const summary = res.summary;
+        if (!res.ok) {
+          addToast('error', res.error ?? 'Purchase order import failed');
+          return;
+        }
+        const quoteHint =
+          res.quotation_rows_total != null && res.quotation_rows_total > 0
+            ? ` · ${res.quotation_rows_total} quotation rows`
+            : '';
+        const rawHint =
+          res.raw_detail_rows_total != null && res.raw_detail_rows_total > 0
+            ? ` · ${res.raw_detail_rows_total} reconcile rows`
+            : '';
+        addToast(
+          'success',
+          `POs imported: ${summary?.purchase_orders_created ?? 0} created, ${summary?.purchase_orders_updated ?? 0} updated, ${res.rows_total ?? 0} PR rows${quoteHint}${rawHint}, ${summary?.errors ?? 0} errors`,
+        );
+        if ((summary?.errors ?? 0) > 0 && Array.isArray(res.row_log) && res.row_log.length > 0) {
+          const sampleErrors = res.row_log
+            .filter((r) => r.action === 'error')
+            .slice(0, 3)
+            .map((r) => `${r.po_key ?? 'PO'}: ${r.reason ?? r.action}`)
+            .join('; ');
+          if (sampleErrors) addToast('warning', `Import issues: ${sampleErrors}`);
+        }
+        await invalidatePurchaseOrdersQueries();
+      } catch (err) {
+        addToast('error', err instanceof Error ? err.message : 'Purchase order import failed');
+      } finally {
+        setImportingPoExcel(false);
+      }
+    },
+    [addToast, invalidatePurchaseOrdersQueries],
+  );
 
   useEffect(() => {
     if (!editRequestTarget) return;
@@ -1788,6 +1872,7 @@ const Procurement: React.FC = () => {
 
     setSearchParams(nextSearchParams, { replace: true });
   };
+
 
   const updateProcurementState = (
     updater: (current: {
@@ -4982,6 +5067,30 @@ const Procurement: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs">
+            <input
+              ref={poExcelInputRef}
+              type="file"
+              accept=".xlsx,.xlsm"
+              className="hidden"
+              onChange={handlePoExcelChange}
+              aria-hidden
+            />
+            <button
+              type="button"
+              onClick={() => poExcelInputRef.current?.click()}
+              disabled={importingPoExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              title="Import PO Excel (PR rows, Quotation rows, Raw PO Detail)"
+            >
+              {importingPoExcel ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden />
+                  Importing…
+                </>
+              ) : (
+                'Import PO Excel'
+              )}
+            </button>
             <span className="px-2 py-1 rounded-full border border-rose-300 bg-rose-50 text-rose-700">{quoteStats.urgent} Urgent</span>
             <span className="px-2 py-1 rounded-full border border-yellow-300 bg-yellow-50 text-yellow-700">{quoteStats.pendingAction} Pending Action</span>
             <span className="hidden sm:inline px-2 py-1 rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700">Esthetic Insights CDMO</span>

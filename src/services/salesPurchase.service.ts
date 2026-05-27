@@ -200,3 +200,51 @@ export async function importOpenSoHeadersExcel(
     fd,
   );
 }
+
+export interface PrRowsExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  po_groups_total?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+  } | null;
+  quotation_sheet?: string | null;
+  quotation_header_row?: number | null;
+  quotation_rows_total?: number;
+  quotation_parse_stats?: Record<string, unknown> | null;
+  raw_detail_sheet?: string | null;
+  raw_detail_header_row?: number | null;
+  raw_detail_rows_total?: number;
+  raw_detail_parse_stats?: Record<string, unknown> | null;
+  summary?: {
+    purchase_orders_created: number;
+    purchase_orders_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    po_key?: string;
+    excel_rows?: number[];
+    action: string;
+    reason?: string;
+    order_id?: string;
+  }>;
+}
+
+/** Import PO workbook (PR rows + Quotation rows + Raw PO Detail sheets). */
+export async function importPrRowsExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<PrRowsExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const suffix = options?.details ? '?details=true' : '';
+  return api.post<PrRowsExcelImportResponse>(
+    `/api/v1/purchase-orders/import-excel${suffix}`,
+    fd,
+  );
+}

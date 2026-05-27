@@ -3,7 +3,7 @@
  * Main container for order fulfillment management
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingCart, Package, Search, Loader2, LayoutDashboard, ArrowUpDown } from 'lucide-react';
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
@@ -18,6 +18,7 @@ import {
   shipFulfillmentSplits,
   deliverFulfillmentSplits,
 } from '../services/fulfillment.service';
+import { importOpenSoHeadersExcel } from '../services/salesPurchase.service';
 import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
@@ -62,6 +63,8 @@ export const OrderFulfillment: React.FC = () => {
   const [reworkQtyInput, setReworkQtyInput] = useState('');
   const [reworkBatchSizeKgInput, setReworkBatchSizeKgInput] = useState('');
   const [reworkSubmitting, setReworkSubmitting] = useState(false);
+  const salesOrderExcelInputRef = useRef<HTMLInputElement>(null);
+  const [importingSalesOrders, setImportingSalesOrders] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -114,6 +117,41 @@ export const OrderFulfillment: React.FC = () => {
       await loadOrders();
     } catch (err) {
       console.error('Failed to create sale order:', err);
+    }
+  };
+
+  const handleSalesOrderExcelChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImportingSalesOrders(true);
+    try {
+      const res = await importOpenSoHeadersExcel(file, { details: true });
+      const summary = res.summary;
+      if (!res.ok) {
+        addToast('error', res.error ?? 'Sales order import failed');
+        return;
+      }
+      addToast(
+        'success',
+        `Sales orders imported: ${summary?.sales_orders_created ?? 0} created, ${summary?.sales_orders_updated ?? 0} updated, ${res.rows_imported ?? res.rows_total ?? 0} rows`
+      );
+      if ((summary?.errors ?? 0) > 0 && Array.isArray(res.row_log) && res.row_log.length > 0) {
+        const sampleErrors = res.row_log
+          .filter((r) => r.action === 'error')
+          .slice(0, 3)
+          .map((r) => `row ${r.excel_row}: ${r.reason ?? r.action}`)
+          .join('; ');
+        if (sampleErrors) addToast('warning', `Import issues: ${sampleErrors}`);
+      }
+      await loadOrders();
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Sales order import failed');
+    } finally {
+      setImportingSalesOrders(false);
     }
   };
 
@@ -325,13 +363,32 @@ export const OrderFulfillment: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-800">Order Fulfillment</h1>
               <p className="text-sm text-gray-500 mt-1">Manage sale orders from creation to delivery.</p>
             </div>
-            <Link
-              to="/planning"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 hover:text-orange-700 underline-offset-2 hover:underline shrink-0"
-            >
-              <LayoutDashboard size={16} className="shrink-0" aria-hidden />
-              Planning dashboard
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={salesOrderExcelInputRef}
+                type="file"
+                accept=".xlsx,.xlsm"
+                className="hidden"
+                onChange={handleSalesOrderExcelChange}
+                aria-hidden
+              />
+              <button
+                type="button"
+                onClick={() => salesOrderExcelInputRef.current?.click()}
+                disabled={importingSalesOrders}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                title="Import Sales Order Excel"
+              >
+                {importingSalesOrders ? 'Importing SO…' : 'Import SO Excel'}
+              </button>
+              <Link
+                to="/planning"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 hover:text-orange-700 underline-offset-2 hover:underline shrink-0"
+              >
+                <LayoutDashboard size={16} className="shrink-0" aria-hidden />
+                Planning dashboard
+              </Link>
+            </div>
           </div>
 
           <div className="flex justify-between items-center mb-4">
