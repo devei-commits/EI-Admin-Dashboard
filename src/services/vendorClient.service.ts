@@ -262,6 +262,104 @@ export async function updateVendorClient(
   }
 }
 
+export interface ClientMasterExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+    skipped_no_name?: number;
+    zoho_unreliable_rows?: number;
+    zoho_overlay_unreliable?: number;
+  } | null;
+  rows_imported?: number;
+  import_stats?: {
+    unique_zoho_ids?: number;
+    merged_duplicate_rows?: number;
+    zoho_id_collisions_cleared?: number;
+  };
+  summary?: {
+    clients_created: number;
+    clients_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    excel_row: number;
+    sheet?: string;
+    action: string;
+    reason?: string;
+    entity_code?: string;
+    zoho_id?: string;
+  }>;
+}
+
+/** Import clients from workbook sheet "Active Clients" (ignores Summary tab). */
+export async function importClientMasterExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<ClientMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const suffix = options?.details ? "?details=true" : "";
+  return api.post<ClientMasterExcelImportResponse>(
+    `/api/v1/vendor-client/import-excel${suffix}`,
+    fd,
+  );
+}
+
+export interface VendorMasterExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+    skipped_no_name?: number;
+    zoho_unreliable_rows?: number;
+    zoho_overlay_unreliable?: number;
+  } | null;
+  rows_imported?: number;
+  import_stats?: {
+    unique_zoho_ids?: number;
+    merged_duplicate_rows?: number;
+    zoho_id_collisions_cleared?: number;
+  };
+  summary?: {
+    vendors_created: number;
+    vendors_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    excel_row: number;
+    sheet?: string;
+    action: string;
+    reason?: string;
+    entity_code?: string;
+    zoho_id?: string;
+  }>;
+}
+
+/** Import vendors from workbook sheet "Active Vendors" (ignores Summary tab). */
+export async function importVendorMasterExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<VendorMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const suffix = options?.details ? "?details=true" : "";
+  return api.post<VendorMasterExcelImportResponse>(
+    `/api/v1/vendor-client/import-vendor-excel${suffix}`,
+    fd,
+  );
+}
+
 export async function deleteVendorClient(
   id: string,
 ): Promise<ServiceResult<null>> {

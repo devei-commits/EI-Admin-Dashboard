@@ -26,6 +26,16 @@ export interface PlanningExtractedPackagingMaterial {
   code?: string;
 }
 
+export interface PlanningSlaMeta {
+  elapsedHours: number;
+  label: string;
+  sub: string;
+  tone: 'green' | 'amber' | 'red';
+  startedAt?: string | null;
+  stoppedAt?: string | null;
+  timezone?: string;
+}
+
 export interface PlanningExtractedRow {
   id: string;
   soNumber: string;
@@ -59,6 +69,8 @@ export interface PlanningExtractedRow {
   bomConfirmedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /** Server-computed 48h SLA (Asia/Kolkata); prefer over client-side orderDate math. */
+  planningSla?: PlanningSlaMeta;
 }
 
 export async function fetchPlanningExtractedList(): Promise<PlanningExtractedRow[]> {

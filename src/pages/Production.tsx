@@ -1,6 +1,6 @@
 /**
  * Production Page — Manufacturing Management System
- * BMR: draft > batch_confirmed > rm_reserved > scheduled > rm_connected > dispensing > in_production > bulk_qc > cleared
+ * BMR: draft (schedule: mfg date + MU site) > confirm on mfg date > batch_confirmed > rm_reserved > scheduled > rm_connected > …
  * BPR: draft > pm_reserved > pm_connected > pm_dispensing > scheduled > filling > fill_qc > packaging > pack_qc > fg_ready
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -14,7 +14,7 @@ import {
   ClipboardList, Link2, Scale, Microscope, Zap, Info, Factory,
   Settings, Activity, Eye, CheckCircle2, ArrowRight, Send,
   ShieldCheck, Sparkles, Droplets, CircleDot, Layers, Cylinder, Pencil, RotateCcw,
-  Truck, Search, Loader2,
+  Truck, Search, Loader2, MapPin,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
@@ -124,6 +124,8 @@ interface Batch {
   mainVessel: string; supportingTanks: string[];
   fillingLine: string; fillingType: FillingType; packagingLine: string; monocarton: boolean; shrink: boolean;
   teamBMR: string[]; teamBPR: string[]; qcOfficerBMR: string; qcOfficerBPR: string;
+  scheduledMuZone?: string;
+  scheduleRemarks?: string;
   mfgDate: string; fillDate: string; packDate: string; fgDate: string; rmConnectDate: string; pmConnectDate: string;
   rmReserved: boolean; pmReserved: boolean; rmConnected: boolean; pmConnected: boolean;
   dispensingRM: DispensingItem[]; dispensingPM: DispensingItem[];
@@ -216,10 +218,24 @@ function ScheduleYieldContextBanner({ batch }: { batch: Batch }) {
  * Saving the schedule modal must not rewind BMR (e.g. bulk_qc → scheduled) — that broke workflows
  * and made "Edit schedule" appear to do nothing or corrupt state.
  */
+/** Batch has manufacturing date + MU site saved from Schedule step. */
+function hasProductionBatchSchedule(batch: Batch): boolean {
+  return Boolean(String(batch.mfgDate || '').trim() && String(batch.scheduledMuZone || '').trim());
+}
+
+/** Confirm is allowed on or after the scheduled manufacturing date. */
+function canConfirmProductionBatch(batch: Batch): boolean {
+  if (!hasProductionBatchSchedule(batch)) return false;
+  const mfg = String(batch.mfgDate || '').trim();
+  const today = new Date().toISOString().slice(0, 10);
+  return today >= mfg;
+}
+
 function bmrStatusAfterScheduleSave(batch: Batch, canMoveToScheduled: boolean): BMRStatus {
   const locked: BMRStatus[] = ['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
   if (locked.includes(batch.bmrStatus)) return batch.bmrStatus;
   if (batch.bmrStatus === 'scheduled') return 'scheduled';
+  if (batch.bmrStatus === 'draft') return 'draft';
   return canMoveToScheduled ? 'scheduled' : 'batch_confirmed';
 }
 
@@ -236,7 +252,7 @@ function scheduleSaveBmrStatusPatch(batch: Batch, canMoveToScheduled: boolean): 
 
 /** Shift MFG / fill / pack / FG dates while BPR is active (e.g. waiting on BMR QC release). */
 function canRescheduleProductionDates(batch: Batch): boolean {
-  if (batch.bmrStatus === 'draft') return false;
+  if (batch.bmrStatus === 'draft') return hasProductionBatchSchedule(batch);
   if (batch.bprStatus === 'fg_ready') return false;
   if (batch.mfgDate || batch.fillDate || batch.packDate || batch.fgDate) return true;
   if (batch.bmrStatus === 'scheduled') return true;
@@ -718,6 +734,8 @@ function apiBatchToBatch(r: BatchRow): Batch {
     packagingLine: r.packagingLine, monocarton: r.monocarton, shrink: r.shrink,
     teamBMR: r.teamBMR || [], teamBPR: r.teamBPR || [],
     qcOfficerBMR: r.qcOfficerBMR, qcOfficerBPR: r.qcOfficerBPR,
+    scheduledMuZone: r.scheduledMuZone || '',
+    scheduleRemarks: r.scheduleRemarks || '',
     mfgDate: r.mfgDate, fillDate: r.fillDate, packDate: r.packDate, fgDate: r.fgDate,
     rmConnectDate: r.rmConnectDate, pmConnectDate: r.pmConnectDate,
     rmReserved: r.rmReserved, pmReserved: r.pmReserved,
@@ -966,7 +984,7 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
 
       {tab === 'process' && (
         <>
-          <Tip color="orange" icon={<Zap size={14} />}>Define process parameters. <b>No dates here</b> - dates are set during Schedule after confirmation.</Tip>
+          <Tip color="orange" icon={<Zap size={14} />}>Define process parameters. <b>Schedule the batch first</b> (mfg date + manufacturing site), then confirm on the scheduled manufacturing date.</Tip>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div><label className={LBL}>Process Type</label><select className={INP} value={form.processType} onChange={e => setForm(f => ({ ...f, processType: e.target.value as ProcessType }))}><option value="hot">Hot Process</option><option value="cold">Cold Process</option></select></div>
             <div><label className={LBL}>Batch Size (KG)</label><input className={INP} type="number" value={form.batchSize} onChange={e => setForm(f => ({ ...f, batchSize: parseFloat(e.target.value) || 0 }))} /></div>
@@ -1696,7 +1714,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
   // Match batch so_no to SO orderId: backend may store SO as "EI-SO-2026-003" and batch as "SO-2026-003" (or vice versa)
   const batchesForSo = batches.filter(b => batchMatchesSo(b.soNo, selectedSoId));
   // Show unscheduled batches for this SO (RM/PM can be reserved later in BMR steps)
-  const schedulableForSo = batchesForSo.filter(b => !b.mfgDate);
+  const schedulableForSo = batchesForSo.filter(b => !hasProductionBatchSchedule(b));
 
   useEffect(() => {
     fetchSalesOrders().then(({ data }) => {
@@ -1747,6 +1765,20 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
   const [vessel, setVessel] = useState(batch?.mainVessel || compatV[0] || '');
   const [fillLine, setFillLine] = useState(batch?.fillingLine || compatF[0] || '');
   const [packLine, setPackLine] = useState(batch?.packagingLine || compatP[0] || '');
+  const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  const [scheduledMuZone, setScheduledMuZone] = useState(batch?.scheduledMuZone || '');
+  const [scheduleRemarks, setScheduleRemarks] = useState(batch?.scheduleRemarks || '');
+
+  const allProductionZones = useMemo(
+    () => productionAreas.flatMap((a) => a.zones || []),
+    [productionAreas],
+  );
+
+  useEffect(() => {
+    fetchFacilityAreas('production').then((res) => {
+      setProductionAreas(res.data || []);
+    });
+  }, []);
 
   useEffect(() => {
     if (!batch) return;
@@ -1759,22 +1791,16 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     setVessel(batch.mainVessel || compatV[0] || '');
     setFillLine(batch.fillingLine || compatF[0] || '');
     setPackLine(batch.packagingLine || compatP[0] || '');
+    setScheduledMuZone(batch.scheduledMuZone || '');
+    setScheduleRemarks(batch.scheduleRemarks || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batch?.bmrNo]);
 
   useEffect(() => {
-    if (!batch) return;
-    setMfgDate(batch.mfgDate || today());
-    setFillDate(batch.fillDate || addDaysStr(batch.mfgDate || today(), 3));
-    setPackDate(batch.packDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), 1));
-    setFgDate(batch.fgDate || addDaysStr(batch.packDate || addDaysStr(today(), 4), 1));
-    setRmDate(batch.rmConnectDate || addDaysStr(batch.mfgDate || today(), -2));
-    setPmDate(batch.pmConnectDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), -2));
-    setVessel(batch.mainVessel || compatV[0] || '');
-    setFillLine(batch.fillingLine || compatF[0] || '');
-    setPackLine(batch.packagingLine || compatP[0] || '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch?.bmrNo]);
+    if (scheduledMuZone || allProductionZones.length === 0) return;
+    const defaultZone = allProductionZones.find((z) => z.isDefault) ?? allProductionZones[0];
+    if (defaultZone?.code) setScheduledMuZone(defaultZone.code);
+  }, [allProductionZones, scheduledMuZone]);
 
   const handleMfgChange = (val: string) => {
     setMfgDate(val);
@@ -1783,21 +1809,35 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     const p = addDaysStr(f, 1); setPackDate(p); setFgDate(addDaysStr(p, 1));
   };
 
+  const buildSchedulePayload = (dates: {
+    mfgDate: string; fillDate: string; packDate: string; fgDate: string;
+    rmConnectDate: string; pmConnectDate: string;
+    mainVessel: string; fillingLine: string; packagingLine: string;
+  }): Partial<Batch> => {
+    if (!batch) return {};
+    const canMoveToScheduled = batch.rmReserved && batch.pmReserved;
+    return {
+      ...dates,
+      scheduledMuZone: String(scheduledMuZone || '').trim(),
+      scheduleRemarks: String(scheduleRemarks || '').trim(),
+      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
+    };
+  };
+
   const handleSave = () => {
     if (!batch || !mfgDate) return;
-    const canMoveToScheduled = batch.rmReserved && batch.pmReserved;
-    onSave({
+    if (!String(scheduledMuZone || '').trim()) return;
+    onSave(buildSchedulePayload({
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
-      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
-    });
+    }));
     onClose();
   };
 
   const handleConfirmRecommendation = () => {
     if (!batch || !bestRecommendation) return;
-    const canMoveToScheduled = batch.rmReserved && batch.pmReserved;
-    onSave({
+    if (!String(scheduledMuZone || '').trim()) return;
+    onSave(buildSchedulePayload({
       mfgDate: bestRecommendation.mfgDate,
       fillDate: bestRecommendation.fillDate,
       packDate: bestRecommendation.packDate,
@@ -1807,23 +1847,25 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
       mainVessel: bestRecommendation.vessel,
       fillingLine: bestRecommendation.fillLine,
       packagingLine: bestRecommendation.packLine,
-      ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
-    });
+    }));
     onClose();
   };
 
   const handleUnschedule = () => {
-    if (!batch || !confirm(`Clear schedule for ${batch.bmrNo}? Dates and equipment assignments will be removed.`)) return;
+    if (!batch || !confirm(`Clear schedule for ${batch.bmrNo}? Dates, manufacturing site, and equipment assignments will be removed.`)) return;
     const lockedBmr: BMRStatus[] = ['rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'];
     onSave({
       mfgDate: '', fillDate: '', packDate: '', fgDate: '', rmConnectDate: '', pmConnectDate: '',
       mainVessel: '', fillingLine: '', packagingLine: '',
+      scheduledMuZone: '', scheduleRemarks: '',
       ...(lockedBmr.includes(batch.bmrStatus)
         ? {}
-        : { bmrStatus: batch.rmReserved ? 'rm_reserved' : 'batch_confirmed' }),
+        : { bmrStatus: batch.bmrStatus === 'draft' ? 'draft' : batch.rmReserved ? 'rm_reserved' : 'batch_confirmed' }),
     });
     onClose();
   };
+
+  const scheduledSiteLabel = zoneLabelInAreas(productionAreas, scheduledMuZone);
 
   const scheduleRow = (icon: React.ReactNode, label: string, color: string, dateVal: string, setDate: (v: string) => void, equipList: string[], equipVal: string, setEquip: (v: string) => void) => (
     <div className={`grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-3 rounded-xl border mb-2 ${color}`}>
@@ -1894,6 +1936,56 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
       {batch && (
         <>
           <ScheduleYieldContextBanner batch={batch} />
+          <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/30 p-4">
+            <SectionLabel icon={<Factory size={13} />} color="text-teal-700">Manufacturing site &amp; plan</SectionLabel>
+            <Tip color="teal" icon={<MapPin size={14} />}>
+              Choose where this batch will run. <b>MTR transfers</b> will send RM/PM to this manufacturing unit (ML) automatically.
+            </Tip>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className={LBL}>Manufacturing location (MU zone) <span className="text-red-500">*</span></label>
+                <select
+                  className={INP}
+                  value={scheduledMuZone}
+                  onChange={(e) => setScheduledMuZone(e.target.value)}
+                  required
+                >
+                  <option value="">— Select manufacturing site —</option>
+                  {productionAreas.map((a) => (
+                    <optgroup key={a.id} label={`${a.name} (manufacturing unit)`}>
+                      {(a.zones || []).map((z) => (
+                        <option key={z.code} value={z.code}>
+                          {z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''} ({z.code})
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {allProductionZones.length === 0 && (
+                  <p className="text-[10px] text-amber-700 mt-1">Add manufacturing zones under Masters → Facility Management.</p>
+                )}
+              </div>
+              <div>
+                <label className={LBL}>Planned manufacturing date</label>
+                <div className="text-sm font-semibold text-gray-800 mt-1.5">{mfgDate || '—'}</div>
+                <p className="text-[10px] text-gray-500 mt-0.5">Set in Stage 1 below. Batch confirmation is allowed on or after this date.</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className={LBL}>Schedule notes / other details</label>
+              <textarea
+                className={`${INP} min-h-16 resize-y`}
+                value={scheduleRemarks}
+                onChange={(e) => setScheduleRemarks(e.target.value)}
+                placeholder="Shift, line constraints, special handling, contact on site…"
+              />
+            </div>
+            {scheduledMuZone && (
+              <p className="text-[10px] text-teal-800 mt-2">
+                MTR receive zone: <b>{scheduledSiteLabel}</b> ({scheduledMuZone})
+              </p>
+            )}
+          </div>
           {bprAwaitingBmrRelease(batch) && (
             <Tip color="amber" icon={<Calendar size={14} />}>
               BMR is not cleared yet — you can still <b>move fill, pack, and FG dates</b> here if the BPR plan slips while waiting on bulk QC release.
@@ -2018,7 +2110,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
             </div>
             <div className="flex gap-2">
               <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-              <button onClick={handleSave} disabled={!batch} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {isScheduled ? 'Update Schedule' : 'Save Schedule'}</button>
+              <button onClick={handleSave} disabled={!batch || !mfgDate || !String(scheduledMuZone || '').trim()} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {isScheduled ? 'Update Schedule' : 'Save Schedule'}</button>
             </div>
           </div>
         </>
@@ -3679,17 +3771,23 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     });
   }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const scheduledMuFromBatch = String(batch.scheduledMuZone || '').trim();
+
   useEffect(() => {
     setTransferFromCode('');
-    setTransferTo('');
-  }, [type]);
+    if (!scheduledMuFromBatch) setTransferTo('');
+  }, [type, scheduledMuFromBatch]);
 
   useEffect(() => {
     if (allWhZones.length === 0 && allProductionZones.length === 0) return;
     /* RM and BPR/PM MTR: same route WH (pick) → production (manufacturing unit receive). */
     setTransferFromCode((prev) => prev || (allWhZones[0]?.code ?? ''));
+    if (scheduledMuFromBatch) {
+      setTransferTo(scheduledMuFromBatch);
+      return;
+    }
     setTransferTo((prev) => prev || (allProductionZones[0]?.code ?? ''));
-  }, [type, allWhZones.length, allProductionZones.length]);
+  }, [type, allWhZones.length, allProductionZones.length, scheduledMuFromBatch]);
 
   const fromLabel = zoneLabelInAreas(warehouseAreas, transferFromCode);
   const toLabel = zoneLabelInAreas(productionAreas, transferTo);
@@ -3789,6 +3887,11 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   return (
     <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
       <Tip color="orange" icon={<Send size={14} />}>Request transfer of {type.toUpperCase()} from <b>{fromLabel}</b> to <b>{toLabel}</b></Tip>
+      {scheduledMuFromBatch && (
+        <Tip color="teal" icon={<MapPin size={14} />}>
+          Manufacturing site from batch schedule: <b>{toLabel}</b>. MTR will receive at this ML zone.
+        </Tip>
+      )}
       {loadingBatchReserved && (
         <div className="mt-3 text-xs text-gray-500">Loading batch reservation…</div>
       )}
@@ -3815,8 +3918,14 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
           </select>
         </div>
         <div>
-          <label className={LBL}>Transfer To</label>
-          <select className={INP} value={transferTo} onChange={e => setTransferTo(e.target.value)}>
+          <label className={LBL}>Transfer To (ML / MU zone)</label>
+          <select
+            className={INP}
+            value={transferTo}
+            onChange={e => setTransferTo(e.target.value)}
+            disabled={!!scheduledMuFromBatch}
+            title={scheduledMuFromBatch ? 'Set during Schedule Batch; change there if needed.' : undefined}
+          >
             {allProductionZones.length === 0 && <option value="">No production zones in Facility Management</option>}
             {productionAreas.map((a) => (
               <optgroup key={a.id} label={`${a.name} (manufacturing unit)`}>
@@ -5452,13 +5561,19 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             {tab === 'schedule' && (
               <div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
-                  {([['Mfg Date', batch.mfgDate], ['Fill Date', batch.fillDate], ['Pack Date', batch.packDate],
+                  {([['Mfg Date', batch.mfgDate], ['Manufacturing site', batch.scheduledMuZone || ''],
+                  ['Fill Date', batch.fillDate], ['Pack Date', batch.packDate],
                   ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
                   ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
                   ] as [string, string][]).map(([k, v]) => (
                     <div key={k}><div className="text-[10px] text-gray-400 font-medium">{k}</div><div className="text-sm font-semibold text-gray-800">{v || '-'}</div></div>
                   ))}
                 </div>
+                {batch.scheduleRemarks && (
+                  <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                    <span className="font-semibold text-slate-500">Schedule notes:</span> {batch.scheduleRemarks}
+                  </div>
+                )}
                 {canRescheduleProductionDates(batch) && (
                   <button type="button" onClick={() => { onClose(); onAction('schedule', batch); }} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
                     <Calendar size={12} /> {batch.mfgDate || batch.fillDate || batch.packDate ? 'Reschedule dates' : 'Set / adjust schedule'}
@@ -5591,13 +5706,25 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
         {/* modal-foot */}
         <div id="bdm-actions" className="flex flex-wrap gap-2 items-center px-5 py-4 border-t border-gray-100 shrink-0 bg-gray-50/50 rounded-b-2xl">
           <button type="button" onClick={onClose} className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Close</button>
-          {batch.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>}
+          {batch.bmrStatus === 'draft' && (
+            <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>
+              {hasProductionBatchSchedule(batch) ? 'Edit Schedule' : 'Schedule Batch'}
+            </Btn>
+          )}
+          {batch.bmrStatus === 'draft' && hasProductionBatchSchedule(batch) && !canConfirmProductionBatch(batch) && (
+            <span className="inline-flex items-center px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+              Confirm available on {batch.mfgDate}
+            </span>
+          )}
+          {batch.bmrStatus === 'draft' && canConfirmProductionBatch(batch) && (
+            <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>
+          )}
           {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
           {type === 'bpr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.pmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
           {canAdjustBatchSize(batch) && (
             <Btn color="orange" icon={<Settings size={12} />} onClick={() => { onClose(); onAction('adjustBatch', batch); }}>Adjust batch size</Btn>
           )}
-          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && batch.rmReserved && batch.pmReserved && !batch.mfgDate && !batch.fillDate && !batch.packDate && (
+          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !hasProductionBatchSchedule(batch) && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Set Schedule</Btn>
           )}
           {canShowRescheduleFooterButton(batch) && (
@@ -6163,9 +6290,21 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     <div><span className="text-gray-400">Due:</span> <b>{b.dueDate || '-'}</b></div>
                   </div>
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
-                    {b.bmrStatus === 'draft' && <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>}
+                    {b.bmrStatus === 'draft' && (
+                      <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>
+                        {hasProductionBatchSchedule(b) ? 'Edit schedule' : 'Schedule'}
+                      </Btn>
+                    )}
+                    {b.bmrStatus === 'draft' && hasProductionBatchSchedule(b) && !canConfirmProductionBatch(b) && (
+                      <span className="inline-flex items-center px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+                        Confirm on {b.mfgDate}
+                      </span>
+                    )}
+                    {b.bmrStatus === 'draft' && canConfirmProductionBatch(b) && (
+                      <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>
+                    )}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
-                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && b.rmReserved && b.pmReserved && !b.mfgDate && !b.fillDate && !b.packDate && (
+                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !hasProductionBatchSchedule(b) && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
                     )}
                     {canShowRescheduleFooterButton(b) && (
@@ -7951,7 +8090,8 @@ const Production = () => {
   const closeModal = useCallback(() => { setModalBatch(null); setModalType(null); setScheduleSlot(null); setPendingMtrItems(null); }, []);
 
   const schedulableForManual = useMemo(() => state.batches.filter(b =>
-    !b.mfgDate && (b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved')
+    !hasProductionBatchSchedule(b)
+    && (b.bmrStatus === 'draft' || b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved')
   ), [state.batches]);
 
   const handleManualSchedule = useCallback(async (batch: Batch, updates: Partial<Batch>) => {

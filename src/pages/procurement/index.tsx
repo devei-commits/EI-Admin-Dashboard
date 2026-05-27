@@ -126,8 +126,12 @@ import {
   serializeStagedPaymentTerms,
   validateStagedPercents,
   parseVendorThreeWayFromPlainText,
+  formatStagedPaymentTermsObject,
+  resolveStagedPaymentTermsForForm,
 } from '../../lib/stagedPaymentTerms';
 import { queryKeys } from '../../lib/queryClient';
+import VendorClientNameTypeahead from '../../components/VendorClientNameTypeahead';
+import { fetchAllBatches, type PlanningBatchAllRow } from '../../services/planningExtracted.service';
 
 /** Populate tier editor fields from Items List payment_terms (JSON or legacy vendor text). */
 function paymentTermsToStagedFields(raw: string): {
@@ -155,6 +159,144 @@ function paymentTermsToStagedFields(raw: string): {
     };
   }
   return { advancePct: '', preShipmentPct: '', postShipmentPct: '', creditDays: '0' };
+}
+
+const NEW_REQUEST_FIELD_CLASS =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400';
+
+/** Same shape as Planning → Items Involved → Release to Planning (planned line). */
+function createEmptyNewRequestForm() {
+  return {
+    itemMasterKey: '',
+    itemSearch: '',
+    type: 'RM' as RequestType,
+    vendorId: null as number | null,
+    vendorName: '',
+    moq: 0,
+    qty: '',
+    unitPrice: '',
+    paymentTermsType: 'as_per_contract' as PaymentTermsStructuredType,
+    advancePercent: '50',
+    leadTimeDays: 0,
+    paymentTermsRaw: null as string | null,
+  };
+}
+
+type NewRequestFormState = ReturnType<typeof createEmptyNewRequestForm>;
+
+type NewRequestBatchItemOption = {
+  key: string;
+  label: string;
+  searchText: string;
+  itemType: 'RM' | 'PM';
+  itemId: string;
+  name: string;
+  uom: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
+};
+
+type BatchLineLike = {
+  raw_material_id?: number;
+  pack_material_id?: number;
+  rm_code?: string;
+  pm_code?: string;
+  code?: string;
+  inci_name?: string;
+  name?: string;
+  description?: string;
+  uom?: string;
+  unit?: string;
+};
+
+function batchLinesToNewRequestItemOptions(batch: PlanningBatchAllRow): NewRequestBatchItemOption[] {
+  const opts: NewRequestBatchItemOption[] = [];
+  const seen = new Set<string>();
+
+  const push = (opt: NewRequestBatchItemOption) => {
+    if (seen.has(opt.key)) return;
+    seen.add(opt.key);
+    opts.push(opt);
+  };
+
+  for (const line of (batch.rmLines ?? []) as BatchLineLike[]) {
+    const rmId = line.raw_material_id != null ? Number(line.raw_material_id) : NaN;
+    const code = String(line.rm_code ?? line.code ?? '').trim();
+    const name = String(line.inci_name ?? line.name ?? code).trim();
+    if (!name && !code && !Number.isFinite(rmId)) continue;
+    const key =
+      Number.isFinite(rmId) && rmId > 0
+        ? `rm-${rmId}`
+        : code
+          ? `rm-code-${code.toLowerCase()}`
+          : `rm-name-${name.toLowerCase()}`;
+    const label = `RM - ${code || (Number.isFinite(rmId) ? String(rmId) : name)} - ${name || code}`;
+    push({
+      key,
+      label,
+      searchText: ['rm', String(rmId), code, name].filter(Boolean).join(' ').toLowerCase(),
+      itemType: 'RM',
+      itemId: code || name,
+      name: name || code,
+      uom: String(line.uom ?? line.unit ?? 'KG').trim() || 'KG',
+      raw_material_id: Number.isFinite(rmId) && rmId > 0 ? rmId : undefined,
+    });
+  }
+
+  for (const line of (batch.pmLines ?? []) as BatchLineLike[]) {
+    const pmId = line.pack_material_id != null ? Number(line.pack_material_id) : NaN;
+    const code = String(line.pm_code ?? line.code ?? '').trim();
+    const name = String(line.description ?? line.name ?? code).trim();
+    if (!name && !code && !Number.isFinite(pmId)) continue;
+    const key =
+      Number.isFinite(pmId) && pmId > 0
+        ? `pm-${pmId}`
+        : code
+          ? `pm-code-${code.toLowerCase()}`
+          : `pm-name-${name.toLowerCase()}`;
+    const label = `PM - ${code || (Number.isFinite(pmId) ? String(pmId) : name)} - ${name || code}`;
+    push({
+      key,
+      label,
+      searchText: ['pm', String(pmId), code, name].filter(Boolean).join(' ').toLowerCase(),
+      itemType: 'PM',
+      itemId: code || name,
+      name: name || code,
+      uom: String(line.uom ?? line.unit ?? 'PCS').trim() || 'PCS',
+      pack_material_id: Number.isFinite(pmId) && pmId > 0 ? pmId : undefined,
+    });
+  }
+
+  return opts.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function filterNewRequestBatchItemOptions(
+  options: NewRequestBatchItemOption[],
+  query: string,
+  max = 100,
+): NewRequestBatchItemOption[] {
+  const q = query.trim().toLowerCase();
+  const list = !q ? options : options.filter((o) => o.searchText.includes(q));
+  return list.slice(0, max);
+}
+
+function resolveNewRequestBatchItemOption(
+  options: NewRequestBatchItemOption[],
+  raw: string,
+): NewRequestBatchItemOption | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  const byLabel = options.find((o) => o.label.toLowerCase() === lower);
+  if (byLabel) return byLabel;
+  const idMatch = /^(rm|pm)-(\d+)$/i.exec(trimmed.replace(/\s+/g, ''));
+  if (idMatch) {
+    const key = `${idMatch[1].toLowerCase()}-${idMatch[2]}`;
+    return options.find((o) => o.key === key) ?? null;
+  }
+  const cands = options.filter((o) => o.searchText.includes(lower));
+  if (cands.length === 1) return cands[0];
+  return null;
 }
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
@@ -768,24 +910,8 @@ const Procurement: React.FC = () => {
   const [expandedQuoteLineLists, setExpandedQuoteLineLists] = useState<Record<string, boolean>>({});
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
-  const [newRequestForm, setNewRequestForm] = useState({
-    category: '',
-    type: 'RM' as RequestType,
-    source: 'Planning Team',
-    priority: 'High' as 'High' | 'Medium' | 'Low',
-    requestDate: '27-02-2026',
-    requiredDate: '',
-    itemName: '',
-    reqQty: '',
-    uom: '',
-    moq: '',
-    plannedPrice: '',
-    packSize: '',
-    leadTimeDays: '',
-    preferredVendor: '',
-    notes: '',
-    requireStockCheck: 'No'
-  });
+  const [newRequestBatchId, setNewRequestBatchId] = useState<number | null>(null);
+  const [newRequestForm, setNewRequestForm] = useState<NewRequestFormState>(createEmptyNewRequestForm);
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
   /** In PR View: which quotation is selected for "Create Draft PO" (dropdown) */
   const [selectedQuoteIdInPrView, setSelectedQuoteIdInPrView] = useState<string>('');
@@ -1004,7 +1130,7 @@ const Procurement: React.FC = () => {
     [planningQuotationAsksResult],
   );
 
-  const { data: vendorClientList } = useQuery({
+  const { data: vendorClientList, isLoading: vendorClientsLoading } = useQuery({
     queryKey: ['vendor-client', 'vendor'],
     queryFn: async () => {
       const res = await fetchVendorClients('vendor');
@@ -1128,6 +1254,27 @@ const Procurement: React.FC = () => {
     queryFn: () => fetchPackMaterialsList(),
     enabled: showRecordQuoteModal,
   });
+
+  const { data: newRequestBatches = [], isLoading: newRequestBatchesLoading } = useQuery({
+    queryKey: ['planning-batches-all', 'procurement-new-request'],
+    queryFn: fetchAllBatches,
+    enabled: showNewRequestModal,
+  });
+
+  const newRequestSelectedBatch = useMemo(
+    () => (newRequestBatches as PlanningBatchAllRow[]).find((b) => b.id === newRequestBatchId) ?? null,
+    [newRequestBatchId, newRequestBatches],
+  );
+
+  const newRequestBatchItemOptions = useMemo(
+    () => (newRequestSelectedBatch ? batchLinesToNewRequestItemOptions(newRequestSelectedBatch) : []),
+    [newRequestSelectedBatch],
+  );
+
+  const newRequestBatchItemOptionByKey = useMemo(
+    () => new Map(newRequestBatchItemOptions.map((opt) => [opt.key, opt])),
+    [newRequestBatchItemOptions],
+  );
 
   const MAX_QUOTE_LINE_RM_PM_SUGGESTIONS = 100;
 
@@ -4423,52 +4570,113 @@ const Procurement: React.FC = () => {
   };
 
   const openNewRequestModal = () => {
+    setNewRequestBatchId(null);
+    setNewRequestForm(createEmptyNewRequestForm());
     setShowNewRequestModal(true);
   };
 
   const closeNewRequestModal = () => {
     setShowNewRequestModal(false);
-    // Reset form
-    setNewRequestForm({
-      category: '',
-      type: 'RM',
-      source: 'Planning Team',
-      priority: 'High',
-      requestDate: '27-02-2026',
-      requiredDate: '',
-      itemName: '',
-      reqQty: '',
-      uom: '',
-      moq: '',
-      plannedPrice: '',
-      packSize: '',
-      leadTimeDays: '',
-      preferredVendor: '',
-      notes: '',
-      requireStockCheck: 'No'
-    });
+    setNewRequestBatchId(null);
+    setNewRequestForm(createEmptyNewRequestForm());
   };
 
+  const selectNewRequestBatch = (batchId: number) => {
+    setNewRequestBatchId(batchId);
+    setNewRequestForm((f) => ({ ...f, itemMasterKey: '', itemSearch: '' }));
+  };
+
+  const applyNewRequestVendorInput = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setNewRequestForm((f) => ({ ...f, vendorName: '', vendorId: null, paymentTermsRaw: null }));
+        return;
+      }
+      const masterMatch = (vendorClientList ?? []).find(
+        (v) => (v.name || '').trim().toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (masterMatch) {
+        const masterTerms = parsePaymentTermsString(masterMatch.paymentTerms || '');
+        const masterLead = parseInt(String(masterMatch.leadTime || ''), 10);
+        const masterId = parseInt(String(masterMatch.id), 10);
+        setNewRequestForm((f) => ({
+          ...f,
+          vendorName: trimmed,
+          vendorId: Number.isFinite(masterId) ? masterId : null,
+          paymentTermsType: masterTerms.type,
+          advancePercent: String(
+            masterTerms.advancePercent ||
+              (paymentTermsTypeRequiresAdvancePercent(masterTerms.type) ? 50 : 0),
+          ),
+          leadTimeDays: Number.isFinite(masterLead) ? masterLead : f.leadTimeDays,
+          paymentTermsRaw: String(masterMatch.paymentTerms || '').trim() || null,
+        }));
+        return;
+      }
+      setNewRequestForm((f) => ({
+        ...f,
+        vendorName: trimmed,
+        vendorId: null,
+        paymentTermsRaw: null,
+      }));
+    },
+    [vendorClientList],
+  );
+
   const submitNewRequest = () => {
-    if (!newRequestForm.itemName.trim()) {
-      addToast('error', 'Item name is required');
+    if (!newRequestSelectedBatch) {
+      addToast('warning', 'Select a planning batch first.');
       return;
     }
-    if (!newRequestForm.requiredDate) {
-      addToast('error', 'Required date is required');
+
+    const itemOpt =
+      (newRequestForm.itemMasterKey
+        ? newRequestBatchItemOptionByKey.get(newRequestForm.itemMasterKey)
+        : undefined) ?? resolveNewRequestBatchItemOption(newRequestBatchItemOptions, newRequestForm.itemSearch);
+    if (!itemOpt) {
+      addToast('warning', 'Pick an item from the selected batch.');
       return;
     }
+
+    const qty = Number(newRequestForm.qty || 0);
+    const unitPrice = Number(newRequestForm.unitPrice || 0);
+    if (!newRequestForm.vendorName.trim() || qty <= 0 || unitPrice <= 0) {
+      addToast('warning', 'Pick vendor and enter valid qty and unit price.');
+      return;
+    }
+
+    const advErr = validateAdvancePercentForType(
+      newRequestForm.paymentTermsType,
+      Number(newRequestForm.advancePercent),
+    );
+    if (advErr) {
+      addToast('warning', advErr);
+      return;
+    }
+
+    const slabMoq = Number(newRequestForm.moq) || 0;
+    if (slabMoq > 0 && qty + 1e-4 < slabMoq) {
+      const u = itemOpt.itemType === 'RM' ? (itemOpt.uom || 'kg') : 'pcs';
+      addToast('error', `Order quantity must be at least the vendor MOQ (${slabMoq} ${u}).`);
+      return;
+    }
+
+    const leadDaysForDue = Math.max(Number(newRequestForm.leadTimeDays || 0) || 0, 14);
+    const requiredByDate = new Date(Date.now() + leadDaysForDue * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
     const newCode = `REQ-${String(requests.length + 101).padStart(3, '0')}`;
 
     const newRequest: ProcurementRequest = {
       id: `req-${Date.now()}`,
       code: newCode,
-      type: newRequestForm.type,
-      items: [newRequestForm.itemName],
+      type: itemOpt.itemType,
+      items: [itemOpt.name],
       status: 'New',
-      priority: newRequestForm.priority,
-      dueDate: newRequestForm.requiredDate,
+      priority: 'High',
+      dueDate: requiredByDate,
     };
 
     updateProcurementState((current) => ({
@@ -5214,6 +5422,7 @@ const Procurement: React.FC = () => {
                             className="w-64 min-w-[12rem] px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                           <button
+                            type="button"
                             onClick={openNewRequestModal}
                             className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 font-bold text-sm hover:bg-amber-500 shadow-md transition-all"
                           >
@@ -11028,274 +11237,344 @@ const Procurement: React.FC = () => {
         );
       })()}
 
-      {/* New Request Modal */}
-      {showNewRequestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-            {/* Header */}
-            <div className="bg-linear-to-r from-cyan-500 via-blue-500 to-cyan-600 px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-bold text-white tracking-tight">New Procurement Request</h2>
-              <button
-                onClick={closeNewRequestModal}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-1.5 transition-all hover:rotate-90 duration-300"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+      {/* New Request Modal — fields aligned with Planning → Release to Planning */}
+      {showNewRequestModal && (() => {
+        const newRequestPtStages = resolveStagedPaymentTermsForForm(
+          newRequestForm.paymentTermsRaw,
+          newRequestForm.paymentTermsType,
+          Number(newRequestForm.advancePercent),
+        );
+        const vendorNameKey = newRequestForm.vendorName.trim().toLowerCase();
+        const selectedVendorPartyId = vendorNameKey
+          ? (vendorClientList ?? []).find((v) => (v.name || '').trim().toLowerCase() === vendorNameKey)?.id ?? ''
+          : '';
+        const newRequestItemDatalistOptions = filterNewRequestBatchItemOptions(
+          newRequestBatchItemOptions,
+          newRequestForm.itemSearch,
+        );
+        const selectedItemOption = newRequestForm.itemMasterKey
+          ? newRequestBatchItemOptionByKey.get(newRequestForm.itemMasterKey)
+          : undefined;
+        const itemFieldDisabled = !newRequestSelectedBatch;
 
-            {/* Form Body - Scrollable */}
-            <div className="overflow-y-auto flex-1 p-6 bg-linear-to-b from-slate-50 to-white">
-              <div className="space-y-5">
-                {/* Row 1: Category, Type */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Category *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. UV FILTER, SURFACTANT"
-                      value={newRequestForm.category}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, category: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Type
-                    </label>
-                    <select
-                      value={newRequestForm.type}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, type: e.target.value as RequestType })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="RM">RM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 2: Source, Priority */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Source
-                    </label>
-                    <select
-                      value={newRequestForm.source}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, source: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="Planning Team">Planning Team</option>
-                      <option value="Production Team">Production Team</option>
-                      <option value="Quality Team">Quality Team</option>
-                      <option value="R&D Team">R&D Team</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Priority
-                    </label>
-                    <select
-                      value={newRequestForm.priority}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, priority: e.target.value as 'High' | 'Medium' | 'Low' })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 3: Request Date, Required Date */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Request Date *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="dd-mm-yyyy"
-                      value={newRequestForm.requestDate}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requestDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Required Date *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="dd-mm-yyyy"
-                      value={newRequestForm.requiredDate}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requiredDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 4: Item Name */}
+        return (
+          <div
+            className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-procurement-request-title"
+            onClick={closeNewRequestModal}
+          >
+            <div
+              className="my-auto flex w-full max-w-2xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Item Name *
+                  <h2 id="new-procurement-request-title" className="text-lg font-semibold text-slate-900">
+                    New procurement request
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select a planning batch, then pick an item from that batch&apos;s BOM (same fields as Release to Planning).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeNewRequestModal}
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                <section aria-labelledby="new-request-batch-heading">
+                  <h3
+                    id="new-request-batch-heading"
+                    className="text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-100 pb-2 mb-2"
+                  >
+                    Planning batch <span className="text-red-600">*</span>
+                  </h3>
+                  {newRequestBatchesLoading ? (
+                    <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Loading batches…
+                    </div>
+                  ) : (newRequestBatches as PlanningBatchAllRow[]).length === 0 ? (
+                    <p className="text-sm text-slate-500 py-2">No planning batches found. Create batches in Planning first.</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                      {(newRequestBatches as PlanningBatchAllRow[]).map((batch) => {
+                        const selected = newRequestBatchId === batch.id;
+                        return (
+                          <button
+                            key={batch.id}
+                            type="button"
+                            onClick={() => selectNewRequestBatch(batch.id)}
+                            className={`w-full text-left px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 ${
+                              selected ? 'bg-blue-50 text-blue-950' : 'bg-white hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <span className="font-semibold">{batch.batchCode}</span>
+                            <span className="text-slate-500 mx-1">·</span>
+                            <span className="text-slate-700">{batch.productName || '—'}</span>
+                            {batch.soNumber ? (
+                              <span className="text-slate-500 text-xs ml-1">({batch.soNumber})</span>
+                            ) : null}
+                            {batch.sizeKg != null && batch.sizeKg > 0 ? (
+                              <span className="block text-[11px] text-slate-500 mt-0.5">{batch.sizeKg} kg</span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <div>
+                  <label htmlFor="new-request-item" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Item (from batch BOM) <span className="text-red-600">*</span>
                   </label>
                   <input
-                    type="text"
-                    placeholder="e.g. Homosalate"
-                    value={newRequestForm.itemName}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, itemName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    id="new-request-item"
+                    list={itemFieldDisabled ? undefined : 'new-request-item-options'}
+                    value={newRequestForm.itemSearch}
+                    disabled={itemFieldDisabled}
+                    onChange={(e) =>
+                      setNewRequestForm((f) => ({
+                        ...f,
+                        itemSearch: e.target.value,
+                        itemMasterKey: '',
+                      }))
+                    }
+                    onBlur={(e) => {
+                      const opt = resolveNewRequestBatchItemOption(newRequestBatchItemOptions, e.target.value);
+                      if (opt) {
+                        setNewRequestForm((f) => ({
+                          ...f,
+                          itemMasterKey: opt.key,
+                          itemSearch: opt.label,
+                          type: opt.itemType,
+                        }));
+                      }
+                    }}
+                    placeholder={
+                      itemFieldDisabled
+                        ? 'Select a batch above to choose an item'
+                        : 'Search items in this batch…'
+                    }
+                    className={`${NEW_REQUEST_FIELD_CLASS} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500`}
                   />
+                  {!itemFieldDisabled && newRequestBatchItemOptions.length > 0 ? (
+                    <datalist id="new-request-item-options">
+                      {newRequestItemDatalistOptions.map((opt) => (
+                        <option key={opt.key} value={opt.label} />
+                      ))}
+                    </datalist>
+                  ) : null}
+                  {itemFieldDisabled ? (
+                    <p className="text-[10px] text-slate-500 mt-0.5">Items load only after you select a batch.</p>
+                  ) : newRequestBatchItemOptions.length === 0 ? (
+                    <p className="text-[10px] text-amber-700 mt-0.5" role="alert">
+                      This batch has no RM/PM lines on its BOM.
+                    </p>
+                  ) : selectedItemOption ? (
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {selectedItemOption.itemType} · {selectedItemOption.uom}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {newRequestBatchItemOptions.length} item{newRequestBatchItemOptions.length === 1 ? '' : 's'} in this batch
+                    </p>
+                  )}
                 </div>
 
-                {/* Row 5: Req Qty, UOM, MOQ */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Req Qty *
+                    <label htmlFor="new-request-vendor" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Vendor <span className="text-red-600">*</span>
                     </label>
-                    <input
-                      type="text"
-                      placeholder="100"
-                      value={newRequestForm.reqQty}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, reqQty: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                    <VendorClientNameTypeahead
+                      parties={vendorClientList ?? []}
+                      selectedId={selectedVendorPartyId}
+                      loading={vendorClientsLoading}
+                      allowFreeText
+                      freeTextValue={newRequestForm.vendorName}
+                      onFreeTextChange={applyNewRequestVendorInput}
+                      onSelect={(party) => {
+                        if (party) applyNewRequestVendorInput(party.name ?? '');
+                        else applyNewRequestVendorInput('');
+                      }}
+                      partyKind="vendor"
+                      placeholder="Search vendor from master…"
+                      inputId="new-request-vendor"
+                      className="[&_input]:rounded-lg [&_input]:border-slate-300 [&_input]:px-2 [&_input]:py-1.5 [&_input]:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      UOM
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="KG or pcs"
-                      value={newRequestForm.uom}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, uom: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                    <label htmlFor="new-request-moq" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                       MOQ
                     </label>
                     <input
-                      type="text"
-                      placeholder="25"
-                      value={newRequestForm.moq}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, moq: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                      id="new-request-moq"
+                      type="number"
+                      min={0}
+                      value={newRequestForm.moq || ''}
+                      onChange={(e) =>
+                        setNewRequestForm((f) => ({ ...f, moq: Number(e.target.value || 0) }))
+                      }
+                      className={NEW_REQUEST_FIELD_CLASS}
                     />
                   </div>
                 </div>
 
-                {/* Row 6: Planned Price, Pack Size, Lead Time */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Planned Price
+                    <label htmlFor="new-request-qty" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Quantity <span className="text-red-600">*</span>
+                      {selectedItemOption?.itemType === 'PM' ? ' (pcs)' : selectedItemOption ? ` (${selectedItemOption.uom})` : ''}
                     </label>
                     <input
-                      type="text"
-                      placeholder="₹20"
-                      value={newRequestForm.plannedPrice}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, plannedPrice: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                      id="new-request-qty"
+                      type="number"
+                      min={0}
+                      value={newRequestForm.qty}
+                      onChange={(e) => setNewRequestForm((f) => ({ ...f, qty: e.target.value }))}
+                      className={NEW_REQUEST_FIELD_CLASS}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Pack Size
+                    <label htmlFor="new-request-unit-price" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Unit price (₹) <span className="text-red-600">*</span>
                     </label>
                     <input
-                      type="text"
-                      placeholder="25 KG drum"
-                      value={newRequestForm.packSize}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, packSize: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Lead Time (Days)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="21"
-                      value={newRequestForm.leadTimeDays}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, leadTimeDays: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                      id="new-request-unit-price"
+                      type="number"
+                      min={0}
+                      value={newRequestForm.unitPrice}
+                      onChange={(e) => setNewRequestForm((f) => ({ ...f, unitPrice: e.target.value }))}
+                      className={NEW_REQUEST_FIELD_CLASS}
                     />
                   </div>
                 </div>
 
-                {/* Row 7: Preferred Vendor */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Preferred Vendor
-                  </label>
-                  <select
-                    value={newRequestForm.preferredVendor}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, preferredVendor: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="new-request-payment-terms" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Payment terms (type)
+                    </label>
+                    <select
+                      id="new-request-payment-terms"
+                      value={newRequestForm.paymentTermsType}
+                      onChange={(e) =>
+                        setNewRequestForm((f) => ({
+                          ...f,
+                          paymentTermsType: e.target.value as PaymentTermsStructuredType,
+                          paymentTermsRaw: null,
+                        }))
+                      }
+                      className={NEW_REQUEST_FIELD_CLASS}
+                    >
+                      {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="new-request-lead-time" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Lead time (days)
+                    </label>
+                    <input
+                      id="new-request-lead-time"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={newRequestForm.leadTimeDays || ''}
+                      onChange={(e) =>
+                        setNewRequestForm((f) => ({
+                          ...f,
+                          leadTimeDays: Number(e.target.value || 0),
+                        }))
+                      }
+                      placeholder="From vendor master"
+                      className={NEW_REQUEST_FIELD_CLASS}
+                    />
+                  </div>
+                </div>
+
+                {paymentTermsTypeRequiresAdvancePercent(newRequestForm.paymentTermsType) && (
+                  <div>
+                    <label htmlFor="new-request-advance-pct" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      Advance %
+                    </label>
+                    <input
+                      id="new-request-advance-pct"
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={newRequestForm.advancePercent}
+                      onChange={(e) =>
+                        setNewRequestForm((f) => ({
+                          ...f,
+                          advancePercent: e.target.value,
+                          paymentTermsRaw: null,
+                        }))
+                      }
+                      className={`${NEW_REQUEST_FIELD_CLASS} max-w-xs`}
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
+                    Payment split (advance · pre-shipment · post-shipment)
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <div className="text-[10px] text-slate-500">Advance</div>
+                      <div className="text-sm font-semibold text-slate-900">{newRequestPtStages.advance_pct}%</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500">Pre-shipment</div>
+                      <div className="text-sm font-semibold text-slate-900">{newRequestPtStages.pre_shipment_pct}%</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500">Post-shipment</div>
+                      <div className="text-sm font-semibold text-slate-900">{newRequestPtStages.post_shipment_pct}%</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500">Credit</div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {newRequestPtStages.credit_days > 0 ? `Net ${newRequestPtStages.credit_days}d` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-2">{formatStagedPaymentTermsObject(newRequestPtStages)}</p>
+                </div>
+              </div>
+
+              <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                  <button
+                    type="button"
+                    onClick={closeNewRequestModal}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   >
-                    <option value="">— None —</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.name}>
-                        {vendor.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Row 8: Notes */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Notes
-                  </label>
-                  <textarea
-                    placeholder="Additional notes or context"
-                    rows={3}
-                    value={newRequestForm.notes}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, notes: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all resize-none"
-                  />
-                </div>
-
-                {/* Hidden: Require Stock Check - Not in reference image */}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-white px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3 rounded-b-xl">
-              <div className="text-xs text-slate-500">
-                Fields marked with <span className="text-red-500">*</span> are required
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={closeNewRequestModal}
-                  className="px-5 py-2.5 rounded-lg border-2 border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-400 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitNewRequest}
-                  className="px-6 py-2.5 rounded-lg bg-slate-700 text-white font-bold text-sm hover:bg-slate-800 shadow-lg hover:shadow-xl transition-all"
-                >
-                  Create Request
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitNewRequest}
+                    className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                  Create request
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showRecordQuoteModal && (
         <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6">

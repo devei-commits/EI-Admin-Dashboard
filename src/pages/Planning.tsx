@@ -42,6 +42,8 @@ import {
 } from '../services/bom.service';
 import { fetchBatches, type BatchRow } from '../services/production.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
+import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
   normRmPrimaryUom,
   parseSpecificGravity,
@@ -490,27 +492,38 @@ function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number;
   return { createdUnits, remainingUnits };
 }
 
-function getPlanningSlaMeta(order: SalesOrder, remainingUnits: number): {
+function formatPlanningSlaClock(elapsedHours: number): string {
+  const hrs = Math.floor(elapsedHours);
+  const mins = Math.floor((elapsedHours - hrs) * 60);
+  if (hrs === 0 && mins === 0 && elapsedHours > 0) return '< 1m / 48h';
+  return `${hrs}h ${mins}m / 48h`;
+}
+
+/** Live SLA for open rows; frozen stop time for fully planned rows (from BOM confirm or API snapshot). */
+function getPlanningSlaMeta(
+  order: SalesOrder,
+  remainingUnits: number,
+  nowMs: number = Date.now(),
+): {
   elapsedHours: number;
   label: string;
   sub: string;
   tone: 'green' | 'amber' | 'red';
 } {
   const start =
-    parsePlanningSlaTimestamp(order.orderDate) ??
     parsePlanningSlaTimestamp(order.createdAt) ??
-    new Date();
-  const now = new Date();
+    parsePlanningSlaTimestamp(order.orderDate) ??
+    new Date(nowMs);
+  const now = new Date(nowMs);
   let stopAt = now;
   if (remainingUnits <= 0) {
     const confirmedAt = parsePlanningSlaTimestamp(order.bomConfirmedAt ?? null);
-    stopAt = confirmedAt ?? now;
+    const frozenFromApi = parsePlanningSlaTimestamp(order.planningSla?.stoppedAt ?? null);
+    stopAt = confirmedAt ?? frozenFromApi ?? now;
     if (stopAt.getTime() > now.getTime()) stopAt = now;
   }
   const elapsedHours = Math.max(0, (stopAt.getTime() - start.getTime()) / (1000 * 60 * 60));
-  const hrs = Math.floor(elapsedHours);
-  const mins = Math.floor((elapsedHours - hrs) * 60);
-  const clock = `${hrs}h ${mins}m / 48h`;
+  const clock = formatPlanningSlaClock(elapsedHours);
   if (remainingUnits <= 0) {
     if (elapsedHours < 48) return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed on time', tone: 'green' };
     return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed late', tone: 'red' };
@@ -697,7 +710,7 @@ interface SalesOrder {
   orderQty: string;
   totalKg: string;
   orderDate: string;
-  /** When this row entered planning (fallback SLA start if order date is date-only). */
+  /** When this row entered planning — SLA clock starts here (not SO date at midnight). */
   createdAt?: string | null;
   dueDate: string;
   daysLeft: string;
@@ -705,6 +718,12 @@ interface SalesOrder {
   batchesRequired: number;
   bomStatus: 'Production Released' | 'Production Ready' | 'In Progress' | 'Planned';
   bomConfirmedAt?: string | null;
+  planningSla?: {
+    elapsedHours: number;
+    label: string;
+    sub: string;
+    tone: 'green' | 'amber' | 'red';
+  };
   /** Single BOM-level Specific Gravity (vs water). Null until the planner confirms BOM on the first-batch flow. */
   bomSpecificGravity?: number | null;
   approvedBy: string;
@@ -774,6 +793,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     batchesRequired: row.batchesRequired,
     bomStatus: (row.bomStatus as SalesOrder['bomStatus']) || 'Planned',
     bomConfirmedAt: (row as { bomConfirmedAt?: string | null }).bomConfirmedAt ?? null,
+    planningSla: row.planningSla,
     bomSpecificGravity: (row as { bomSpecificGravity?: number | null }).bomSpecificGravity ?? null,
     approvedBy: row.approvedBy,
     rawMaterials: (row.rawMaterials ?? []).map((rm, i) => ({ ...rm, id: rm.id ?? String((rm as { raw_material_id?: number }).raw_material_id ?? i) } as RawMaterial)),
@@ -1191,9 +1211,19 @@ const Planning = () => {
   const pathTab = location.pathname.split('/planning/')[1]?.split('/')[0] || '';
   const activeMainTab: 'pis-extracted' | 'items-involved' | 'batches' =
     pathTab === 'items-involved' ? 'items-involved' : pathTab === 'batches' ? 'batches' : 'pis-extracted';
+
+  useEffect(() => {
+    if (activeMainTab !== 'pis-extracted') return undefined;
+    const timer = window.setInterval(() => {
+      setSlaClockTick((n) => n + 1);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [activeMainTab]);
   const [itemsInvolvedCategoryFilter, setItemsInvolvedCategoryFilter] = useState<'all' | 'RM' | 'PM' | 'shortage' | 'available'>('all');
   const [itemsInvolvedProductFilter, setItemsInvolvedProductFilter] = useState<string>('all');
   const [itemsInvolvedSearchTerm, setItemsInvolvedSearchTerm] = useState('');
+  /** Re-render PIs Extracted SLA column every minute while tab is open. */
+  const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [releaseToPlanningItem, setReleaseToPlanningItem] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [releaseToPlanningForm, setReleaseToPlanningForm] = useState<{
@@ -1337,6 +1367,20 @@ const Planning = () => {
   });
   const rawMaterialsList = useMemo(() => rawMaterialsData ?? [], [rawMaterialsData]);
   const packMaterialsList = useMemo(() => packMaterialsData ?? [], [packMaterialsData]);
+
+  const { data: vendorClientsData, isLoading: vendorClientsLoading } = useQuery({
+    queryKey: ['vendor-clients', 'vendor', 'planning-release'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('vendor');
+      return res.success && res.data ? res.data : [];
+    },
+    enabled: releaseToPlanningItem != null,
+    staleTime: 5 * 60 * 1000,
+  });
+  const vendorClientsList = useMemo(
+    () => vendorClientsData ?? [],
+    [vendorClientsData],
+  );
 
   const { data: productsList = [] } = useQuery({
     queryKey: ['products-list'],
@@ -4633,6 +4677,7 @@ const Planning = () => {
                           </td>
                           <td className="px-4 py-3">
                             {(() => {
+                              void slaClockTick;
                               const sla = getPlanningSlaMeta(order, remainingUnits);
                               const toneCls =
                                 sla.tone === 'green'
@@ -5137,7 +5182,6 @@ const Planning = () => {
         const item = releaseToPlanningItem;
         const isQuotationOnlyModal = releaseModalIntent === 'quotation';
         const slabs = getQuotationSlabsForItem(item);
-        const vendorOptions = Array.from(new Set(slabs.map((s) => s.vendorName)));
         const previous = plannedLinesFromBackend
           .filter((l) => plannedLineCountsTowardItemRelease(l, item))
           .slice(0, 10);
@@ -5168,40 +5212,65 @@ const Planning = () => {
           Number(releaseToPlanningForm.advancePercent)
         );
         const hasVendorSlabs = slabs.length > 0;
-        const vendorDatalistId = `release-vendor-suggestions-${item.id}`;
         const canRequestQuotation = Number(releaseToPlanningForm.qty || 0) > 0;
+        const vendorNameKey = releaseToPlanningForm.vendorName.trim().toLowerCase();
+        const selectedVendorPartyId = vendorNameKey
+          ? vendorClientsList.find((v) => (v.name || '').trim().toLowerCase() === vendorNameKey)?.id ?? ''
+          : '';
         const applyReleaseVendorInput = (name: string) => {
           const trimmed = name.trim();
           if (!trimmed) {
             setReleaseToPlanningForm((f) => ({ ...f, vendorName: '', vendorId: null, paymentTermsRaw: null }));
             return;
           }
-          const match = slabs.find((s) => s.vendorName === trimmed);
-          if (match) {
-            const p = parsePaymentTermsString(match.paymentTerms || '');
+          const slabMatch = slabs.find((s) => s.vendorName.trim().toLowerCase() === trimmed.toLowerCase());
+          if (slabMatch) {
+            const p = parsePaymentTermsString(slabMatch.paymentTerms || '');
             setReleaseToPlanningForm((f) => ({
               ...f,
               vendorName: trimmed,
-              vendorId: match.vendorId,
-              moq: match.moq,
-              unitPrice: isQuotationOnlyModal ? '' : String(match.unitPrice),
+              vendorId: slabMatch.vendorId,
+              moq: slabMatch.moq,
+              unitPrice: isQuotationOnlyModal ? '' : String(slabMatch.unitPrice),
               paymentTermsType: p.type,
               advancePercent: String(
                 p.advancePercent ||
                 (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
               ),
-              leadTimeDays: match.leadTimeDays,
-              paymentTermsRaw: String(match.paymentTerms || '').trim() || null,
+              leadTimeDays: slabMatch.leadTimeDays,
+              paymentTermsRaw: String(slabMatch.paymentTerms || '').trim() || null,
             }));
-          } else {
+            return;
+          }
+          const masterMatch = vendorClientsList.find(
+            (v) => (v.name || '').trim().toLowerCase() === trimmed.toLowerCase(),
+          );
+          if (masterMatch) {
+            const masterTerms = parsePaymentTermsString(masterMatch.paymentTerms || '');
+            const masterLead = parseInt(String(masterMatch.leadTime || ''), 10);
+            const masterId = parseInt(String(masterMatch.id), 10);
             setReleaseToPlanningForm((f) => ({
               ...f,
               vendorName: trimmed,
-              vendorId: null,
-              paymentTermsRaw: null,
+              vendorId: Number.isFinite(masterId) ? masterId : null,
+              paymentTermsType: masterTerms.type,
+              advancePercent: String(
+                masterTerms.advancePercent ||
+                (paymentTermsTypeRequiresAdvancePercent(masterTerms.type) ? 50 : 0)
+              ),
+              leadTimeDays: Number.isFinite(masterLead) ? masterLead : f.leadTimeDays,
+              paymentTermsRaw: String(masterMatch.paymentTerms || '').trim() || null,
               ...(isQuotationOnlyModal ? { unitPrice: '' } : {}),
             }));
+            return;
           }
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            vendorName: trimmed,
+            vendorId: null,
+            paymentTermsRaw: null,
+            ...(isQuotationOnlyModal ? { unitPrice: '' } : {}),
+          }));
         };
         const closeReleaseModal = () => {
           setReleaseToPlanningItem(null);
@@ -5359,24 +5428,34 @@ const Planning = () => {
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                           {isQuotationOnlyModal ? 'Vendor to quote (optional)' : 'Vendor'}
                         </label>
-                        <input
-                          type="text"
-                          list={vendorDatalistId}
-                          value={releaseToPlanningForm.vendorName}
-                          onChange={(e) => applyReleaseVendorInput(e.target.value)}
-                          placeholder={isQuotationOnlyModal ? 'New vendor or pick existing' : 'Select or type vendor'}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        <VendorClientNameTypeahead
+                          parties={vendorClientsList}
+                          selectedId={selectedVendorPartyId}
+                          loading={vendorClientsLoading}
+                          allowFreeText
+                          freeTextValue={releaseToPlanningForm.vendorName}
+                          onFreeTextChange={applyReleaseVendorInput}
+                          onSelect={(party) => {
+                            if (party) applyReleaseVendorInput(party.name ?? '');
+                            else applyReleaseVendorInput('');
+                          }}
+                          partyKind="vendor"
+                          placeholder={
+                            isQuotationOnlyModal
+                              ? 'Search vendor name or type new…'
+                              : 'Search vendor from master…'
+                          }
+                          className="[&_input]:rounded-lg [&_input]:border-slate-300 [&_input]:px-2 [&_input]:py-1.5 [&_input]:text-sm"
                         />
-                        <datalist id={vendorDatalistId}>
-                          {vendorOptions.map((v) => (
-                            <option key={v} value={v} />
-                          ))}
-                        </datalist>
                         {isQuotationOnlyModal ? (
                           <p className="text-[10px] text-slate-500 mt-0.5">
-                            Pick an existing vendor or type a new name for Procurement to quote.
+                            Search all vendors from Vendor Master, or type a new name for Procurement to quote.
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Search vendors from Vendor Master. Items List rates still auto-fill MOQ and price when available.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">

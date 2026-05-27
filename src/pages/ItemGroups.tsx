@@ -14,6 +14,7 @@ import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import type { PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 
@@ -74,12 +75,31 @@ const ItemGroups: React.FC = () => {
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: warehouseInventoryData } = useQuery({
+    queryKey: ['warehouse-inventory-for-item-groups'],
+    queryFn: async () => {
+      const res = await fetchWarehouseInventory();
+      return res.data?.rows ?? [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
   const primaryItemOptions = useMemo(() => {
     if (form.type === 'PM') return packMaterials.map(p => ({ id: p.id, name: p.description || p.code }));
     return rawMaterials.map(r => ({ id: r.id, name: r.name || r.code }));
   }, [form.type, rawMaterials, packMaterials]);
 
   const rmTypeaheadOptions = useMemo(() => buildRmTypeaheadOptions(rawMaterials), [rawMaterials]);
+
+  const stockByItemKey = useMemo(() => {
+    const index = new Map<string, WarehouseInventoryRow>();
+    const rows = warehouseInventoryData ?? [];
+    for (const row of rows) {
+      if (!row?.type || row.sourceId == null) continue;
+      index.set(`${row.type}:${row.sourceId}`, row);
+    }
+    return index;
+  }, [warehouseInventoryData]);
 
   const alternateRmTypeaheadOptions = useMemo(() => {
     const excludeIds = new Set([
@@ -252,6 +272,35 @@ const ItemGroups: React.FC = () => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
+  const renderStockWindow = (groupType: 'RM' | 'PM', memberId: string | number) => {
+    const sourceId = Number(memberId);
+    if (!Number.isFinite(sourceId) || sourceId <= 0) {
+      return (
+        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+          Stock unavailable
+        </div>
+      );
+    }
+    const key = `${groupType}:${sourceId}`;
+    const stock = stockByItemKey.get(key);
+    if (!stock) {
+      return (
+        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+          Stock unavailable
+        </div>
+      );
+    }
+    return (
+      <div className="mt-1 inline-flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] text-violet-800">
+        <span className="font-semibold">Total {stock.stockInHand}</span>
+        <span className="text-violet-400">|</span>
+        <span>WH {stock.whStock}</span>
+        <span>ML1 {stock.ml1Stock}</span>
+        <span>ML2 {stock.ml2Stock}</span>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
       <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
@@ -350,8 +399,13 @@ const ItemGroups: React.FC = () => {
                       <ul className="space-y-1">
                         {ig.approvedMembers.map(member => (
                           <li key={member.id} className="flex items-center gap-2 text-xs">
-                            <span className="text-yellow-500"></span>
-                            <span className="text-gray-800 font-medium">{member.name}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-yellow-500"></span>
+                                <span className="text-gray-800 font-medium">{member.name}</span>
+                              </div>
+                              {renderStockWindow(ig.type, member.id)}
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -369,6 +423,7 @@ const ItemGroups: React.FC = () => {
                             <li key={alt.id} className="text-xs">
                               <div className="text-gray-800 font-medium">{alt.name}</div>
                               <div className="text-gray-500 text-[10px]">{alt.notes}</div>
+                              {renderStockWindow(ig.type, alt.item_id)}
                             </li>
                           ))}
                         </ul>

@@ -30,6 +30,11 @@ export type VendorClientNameTypeaheadProps = {
   inputId?: string;
   disabledIds?: Set<string>;
   allowClear?: boolean;
+  /** Combobox mode: keep typed text (e.g. new vendor name) while still showing master suggestions. */
+  allowFreeText?: boolean;
+  freeTextValue?: string;
+  onFreeTextChange?: (value: string) => void;
+  partyKind?: 'vendor' | 'client';
 };
 
 export default function VendorClientNameTypeahead({
@@ -43,6 +48,10 @@ export default function VendorClientNameTypeahead({
   inputId,
   disabledIds,
   allowClear = true,
+  allowFreeText = false,
+  freeTextValue,
+  onFreeTextChange,
+  partyKind = 'client',
 }: VendorClientNameTypeaheadProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -56,12 +65,16 @@ export default function VendorClientNameTypeahead({
   );
 
   useEffect(() => {
+    if (allowFreeText) {
+      setInputValue(freeTextValue ?? '');
+      return;
+    }
     if (selectedParty) {
       setInputValue(selectedParty.name ?? selectedParty.id);
     } else if (!selectedId) {
       setInputValue('');
     }
-  }, [selectedParty, selectedId]);
+  }, [allowFreeText, freeTextValue, selectedParty, selectedId]);
 
   const suggestions = useMemo(() => {
     const filtered = filterVendorClientsForTypeahead(parties, inputValue, MAX_SUGGESTIONS);
@@ -82,19 +95,28 @@ export default function VendorClientNameTypeahead({
 
   const pick = (party: VendorClientRecord) => {
     if (disabledIds?.has(party.id)) return;
+    const label = party.name ?? party.id;
     onSelect(party);
-    setInputValue(party.name ?? party.id);
+    setInputValue(label);
+    onFreeTextChange?.(label);
     setOpen(false);
   };
 
   const clearSelection = () => {
     onSelect(null);
     setInputValue('');
+    onFreeTextChange?.('');
     setOpen(false);
   };
 
   const onInputChange = (next: string) => {
     setInputValue(next);
+    if (allowFreeText) {
+      onFreeTextChange?.(next);
+      if (selectedId) onSelect(null);
+      setOpen(true);
+      return;
+    }
     if (selectedId) onSelect(null);
     setOpen(true);
   };
@@ -140,7 +162,13 @@ export default function VendorClientNameTypeahead({
           aria-autocomplete="list"
           autoComplete="off"
           disabled={disabled || loading}
-          placeholder={loading ? 'Loading clients…' : placeholder}
+          placeholder={
+            loading
+              ? partyKind === 'vendor'
+                ? 'Loading vendors…'
+                : 'Loading clients…'
+              : placeholder
+          }
           value={inputValue}
           onChange={(e) => onInputChange(e.target.value)}
           onFocus={() => setOpen(true)}
@@ -152,7 +180,7 @@ export default function VendorClientNameTypeahead({
             type="button"
             onClick={clearSelection}
             className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-            aria-label="Clear client"
+            aria-label={partyKind === 'vendor' ? 'Clear vendor' : 'Clear client'}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -197,7 +225,9 @@ export default function VendorClientNameTypeahead({
       ) : null}
       {showEmpty ? (
         <p className="absolute z-40 mt-1 w-full min-w-[220px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 shadow-lg">
-          No matching clients. Try another name or city.
+          {partyKind === 'vendor'
+            ? 'No matching vendors. Try another name or type a new vendor.'
+            : 'No matching clients. Try another name or city.'}
         </p>
       ) : null}
     </div>

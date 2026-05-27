@@ -122,6 +122,9 @@ export interface BatchRow {
   monocarton: boolean; shrink: boolean;
   teamBMR: string[]; teamBPR: string[];
   qcOfficerBMR: string; qcOfficerBPR: string;
+  /** Manufacturing unit zone (MTR receive) set when scheduling the batch. */
+  scheduledMuZone?: string;
+  scheduleRemarks?: string;
   mfgDate: string; fillDate: string; packDate: string; fgDate: string;
   rmConnectDate: string; pmConnectDate: string;
   rmReserved: boolean; pmReserved: boolean;

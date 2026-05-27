@@ -1,6 +1,8 @@
+const INDIA_OFFSET = '+05:30';
+
 /**
  * Parse API / form timestamps for Planning SLA elapsed time.
- * - DATEONLY (YYYY-MM-DD): local calendar start of day
+ * - DATEONLY (YYYY-MM-DD): start of day in India (Asia/Kolkata)
  * - ISO with Z or offset: instant as stored
  * - Legacy "YYYY-MM-DD HH:mm:ss" from old FE (UTC wall clock, no Z): treat as UTC
  */
@@ -14,11 +16,8 @@ export function parsePlanningSlaTimestamp(raw: string | Date | null | undefined)
 
   const dateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (dateOnly) {
-    const y = Number(dateOnly[1]);
-    const m = Number(dateOnly[2]) - 1;
-    const d = Number(dateOnly[3]);
-    const dt = new Date(y, m, d, 0, 0, 0, 0);
-    return Number.isNaN(dt.getTime()) ? null : dt;
+    const ts = Date.parse(`${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}T00:00:00${INDIA_OFFSET}`);
+    return Number.isFinite(ts) ? new Date(ts) : null;
   }
 
   const legacyUtcSpace = s.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
