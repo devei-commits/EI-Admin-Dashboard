@@ -1057,6 +1057,8 @@ const Procurement: React.FC = () => {
   const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
   const [quotationsPage, setQuotationsPage] = useState(1);
   const [quotationsPageSize, setQuotationsPageSize] = useState<number>(10);
+  const [issuedPoPage, setIssuedPoPage] = useState(1);
+  const [issuedPoPageSize, setIssuedPoPageSize] = useState<number>(10);
   const [selectedGrnMonitor, setSelectedGrnMonitor] = useState<GRNRecordFromApi | null>(null);
   const [grnMonitorDetailLoading, setGrnMonitorDetailLoading] = useState(false);
   const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
@@ -1097,6 +1099,10 @@ const Procurement: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { dispatch: globalDispatch } = useGlobalState();
+  const isIssuedLikePoStatus = useCallback((status: unknown): boolean => {
+    const s = String(status ?? '').trim().toLowerCase();
+    return s === 'released' || s === 'issued';
+  }, []);
 
   const procurementQueriesFetching = useIsFetching({ predicate: procurementPageQueryPredicate }) > 0;
 
@@ -1440,11 +1446,11 @@ const Procurement: React.FC = () => {
   /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
   const releasedPoBackendIdsForTracking = useMemo(() => {
     const ids = purchaseOrders
-      .filter((p) => p.status === 'Released')
+      .filter((p) => isIssuedLikePoStatus(p.status))
       .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
       .filter((id) => /^\d+$/.test(id));
     return [...new Set(ids)].sort();
-  }, [purchaseOrders]);
+  }, [isIssuedLikePoStatus, purchaseOrders]);
 
   const { data: releasedPoTrackingByBackendId } = useQuery({
     queryKey: ['po-tracking-released-map', releasedPoBackendIdsForTracking.join(',')],
@@ -2670,7 +2676,7 @@ const Procurement: React.FC = () => {
         const releasedPosForRequest = purchaseOrders
           .filter(
             (p) =>
-              p.status === 'Released' &&
+              isIssuedLikePoStatus(p.status) &&
               (String(p.formData?.requestId) === String(request.id) ||
                 String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase()),
           )
@@ -2850,7 +2856,7 @@ const Procurement: React.FC = () => {
     const requestPoNumbers = new Set(requestRecords.map((r) => r.poNumber));
 
     const unlinkedReleasedPOs = purchaseOrders
-      .filter((p) => p.status === 'Released')
+      .filter((p) => isIssuedLikePoStatus(p.status))
       .filter((p) => {
         const poNumber = String(p.poNumber ?? '').replace('DPO', 'PO');
         if (requestPoNumbers.has(poNumber)) return false;
@@ -2950,7 +2956,7 @@ const Procurement: React.FC = () => {
     return Array.from(dedupedByPo.values()).filter(
       (r) => !isIssuedPoHandedOffToWarehouse(r, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides),
     );
-  }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
+  }, [draftPOs, isIssuedLikePoStatus, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   /** KPI + timeline stage counts for Issued POs itemised dashboard (aligned with fulfillment overview). */
   const issuedPoOverviewKpis = useMemo(() => {
@@ -3073,11 +3079,19 @@ const Procurement: React.FC = () => {
     unlinkedPoTimelineOverrides,
   ]);
 
+  const issuedPoTotalPages = Math.max(1, Math.ceil(filteredIssuedPORecords.length / issuedPoPageSize));
+  const issuedPoSafePage = Math.min(issuedPoPage, issuedPoTotalPages);
+  const issuedPoStartIndex = (issuedPoSafePage - 1) * issuedPoPageSize;
+  const pagedIssuedPORecords = useMemo(
+    () => filteredIssuedPORecords.slice(issuedPoStartIndex, issuedPoStartIndex + issuedPoPageSize),
+    [filteredIssuedPORecords, issuedPoStartIndex, issuedPoPageSize],
+  );
+
   /** Issued PO list grouped by vendor (Fulfillment-style client grouping). */
   const groupedIssuedPoByVendor = useMemo(() => {
-    type IssuedRecord = (typeof filteredIssuedPORecords)[number];
+    type IssuedRecord = (typeof pagedIssuedPORecords)[number];
     const map = new Map<string, IssuedRecord[]>();
-    for (const record of filteredIssuedPORecords) {
+    for (const record of pagedIssuedPORecords) {
       const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
       const list = map.get(vendorName) ?? [];
       list.push(record);
@@ -3092,7 +3106,24 @@ const Procurement: React.FC = () => {
         lineCount: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
         totalValue: orders.reduce((sum, o) => sum + o.grandTotal, 0),
       }));
-  }, [filteredIssuedPORecords]);
+  }, [pagedIssuedPORecords]);
+
+  useEffect(() => {
+    setIssuedPoPage(1);
+  }, [
+    categoryFilter,
+    issuedVendorFilter,
+    issuedStatusFilter,
+    issuedPoPipelineStageKey,
+    issuedSearch,
+    issuedPoPageSize,
+  ]);
+
+  useEffect(() => {
+    if (issuedPoPage > issuedPoTotalPages) {
+      setIssuedPoPage(issuedPoTotalPages);
+    }
+  }, [issuedPoPage, issuedPoTotalPages]);
 
   const issuedFilteredLineCount = useMemo(
     () => filteredIssuedPORecords.reduce((sum, r) => sum + r.lineItems.length, 0),
@@ -7462,6 +7493,38 @@ const Procurement: React.FC = () => {
                           </div>
                         </div>
                       ))}
+                      <div className="flex items-center justify-between gap-3 px-1">
+                        <div className="text-xs text-slate-500">
+                          Page {issuedPoSafePage} of {issuedPoTotalPages} · Showing {pagedIssuedPORecords.length} of {filteredIssuedPORecords.length} POs
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={issuedPoPageSize}
+                            onChange={(event) => setIssuedPoPageSize(Number(event.target.value) || 10)}
+                            className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white text-gray-900"
+                          >
+                            <option value={10}>10 / page</option>
+                            <option value={20}>20 / page</option>
+                            <option value={50}>50 / page</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setIssuedPoPage((p) => Math.max(1, p - 1))}
+                            disabled={issuedPoSafePage <= 1}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                          >
+                            Prev
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIssuedPoPage((p) => Math.min(issuedPoTotalPages, p + 1))}
+                            disabled={issuedPoSafePage >= issuedPoTotalPages}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     )}
                   </div>

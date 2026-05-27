@@ -47,6 +47,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [activePipelineStage, setActivePipelineStage] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modal states
   const [isAddSOModalOpen, setIsAddSOModalOpen] = useState(false);
@@ -111,6 +113,17 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
     }
     return Array.from(map.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
   }, [filteredSOs]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter, activePipelineStage, pageSize]);
+
+  const totalClientPages = Math.max(1, Math.ceil(groupedByClient.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalClientPages);
+  const pagedClientGroups = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize;
+    return groupedByClient.slice(start, start + pageSize);
+  }, [groupedByClient, safeCurrentPage, pageSize]);
 
   useEffect(() => {
     console.log('[FULFILLMENT-AVAIL][FRONTEND][LIFECYCLE] visibleSoNos changed', {
@@ -423,7 +436,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {groupedByClient.flatMap((clientGroup) => {
+              {pagedClientGroups.flatMap((clientGroup) => {
                 const clientRows = clientGroup.orders.flatMap((so) =>
                   so.items.map((item) => {
                   const soKey = normalizeSoKey(so.soNo);
@@ -635,6 +648,38 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               })}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
+          <div className="text-xs text-gray-600">
+            Page {safeCurrentPage} of {totalClientPages} · Showing {pagedClientGroups.length} of {groupedByClient.length} clients
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value) || 10)}
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+            >
+              <option value={10}>10 / page</option>
+              <option value={20}>20 / page</option>
+              <option value={50}>50 / page</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={safeCurrentPage <= 1}
+              className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(totalClientPages, p + 1))}
+              disabled={safeCurrentPage >= totalClientPages}
+              className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       ) : (
         <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">

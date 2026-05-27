@@ -1178,6 +1178,8 @@ const Planning = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
+  const [pisPage, setPisPage] = useState(1);
+  const [pisPageSize, setPisPageSize] = useState(20);
   const [prModalOpen, setPrModalOpen] = useState(false);
   const [selectedSO, setSelectedSO] = useState<SalesOrder | null>(null);
   const [prSending, setPrSending] = useState(false);
@@ -2603,6 +2605,17 @@ const Planning = () => {
     });
   }, [pisRows, statusFilter, searchTerm, dateFilter]);
 
+  useEffect(() => {
+    setPisPage(1);
+  }, [statusFilter, searchTerm, dateFilter.from, dateFilter.to, pisPageSize]);
+
+  const pisTotalPages = Math.max(1, Math.ceil(filteredPisOrders.length / pisPageSize));
+  const safePisPage = Math.min(pisPage, pisTotalPages);
+  const pagedPisOrders = useMemo(() => {
+    const start = (safePisPage - 1) * pisPageSize;
+    return filteredPisOrders.slice(start, start + pisPageSize);
+  }, [filteredPisOrders, safePisPage, pisPageSize]);
+
   const handleExportPisCsv = useCallback(() => {
     const header = ['SO Date', 'SO No', 'Client', 'Product', 'Units Ordered', 'Planned', 'Pending', 'Batch Status', 'SLA'];
     const rows = filteredPisOrders.map((order) => {
@@ -2633,8 +2646,8 @@ const Planning = () => {
   }, [filteredPisOrders]);
 
   const visiblePisSoNos = useMemo(
-    () => Array.from(new Set(filteredPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
-    [filteredPisOrders]
+    () => Array.from(new Set(pagedPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
+    [pagedPisOrders]
   );
 
   useEffect(() => {
@@ -4614,7 +4627,7 @@ const Planning = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPisOrders.map((order) => {
+                    {pagedPisOrders.map((order) => {
                       const orderDateDisplay = (() => {
                         const d = order.orderDate ? new Date(order.orderDate) : null;
                         if (!d || Number.isNaN(d.getTime())) return '—';
@@ -4744,6 +4757,40 @@ const Planning = () => {
                   </tbody>
                 </table>
               </div>
+              {!planningLoading && filteredPisOrders.length > 0 && (
+                <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
+                  <div className="text-xs text-gray-600">
+                    Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {filteredPisOrders.length} rows
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={pisPageSize}
+                      onChange={(e) => setPisPageSize(Number(e.target.value) || 20)}
+                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                    >
+                      <option value={20}>20 / page</option>
+                      <option value={50}>50 / page</option>
+                      <option value={100}>100 / page</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setPisPage((p) => Math.max(1, p - 1))}
+                      disabled={safePisPage <= 1}
+                      className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPisPage((p) => Math.min(pisTotalPages, p + 1))}
+                      disabled={safePisPage >= pisTotalPages}
+                      className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Detail popup: full order details, RM/PM, Plan Batches & Raise PR */}

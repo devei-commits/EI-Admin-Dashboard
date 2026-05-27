@@ -677,7 +677,13 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
 /** Order (PO from sales-purchase API) -> PurchaseOrder */
 export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
   const items = Array.isArray(po.items) ? po.items : [];
-  const totalValue = items.reduce((sum, i: any) => sum + (Number(i.rate ?? i.price ?? 0) * Number(i.quantity ?? 0)), 0);
+  const totalValue = items.reduce((sum, i: any) => {
+    const directTotal = Number(i.itemTotal ?? i.lineTotal ?? i.total ?? NaN);
+    if (Number.isFinite(directTotal) && directTotal > 0) return sum + directTotal;
+    const unit = Number(i.rate ?? i.price ?? i.unitPrice ?? 0);
+    const qty = Number(i.quantity ?? i.orderedQty ?? i.reqQty ?? i.quotedQty ?? 0);
+    return sum + unit * qty;
+  }, 0);
   const expected = po.expectedShipmentDate ?? '';
   const etaDays = expected ? Math.max(0, Math.ceil((new Date(expected).getTime() - Date.now()) / 86400000)) : 0;
   const formData = po.formData && typeof po.formData === 'object' ? po.formData : {};
