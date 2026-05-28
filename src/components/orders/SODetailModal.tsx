@@ -42,6 +42,9 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
   onClose,
   saleOrder,
   onAction,
+  onEditSO,
+  editDisabled = false,
+  editDisabledReason,
 }) => {
   const [planningAvailability, setPlanningAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
@@ -113,6 +116,15 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
       size="xl"
       footer={
         <>
+          {onEditSO && !editDisabled && (
+            <Button
+              variant="ghost"
+              onClick={() => onEditSO(saleOrder.soNo)}
+              title="Edit sale order"
+            >
+              Edit SO
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>

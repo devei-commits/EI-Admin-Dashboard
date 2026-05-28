@@ -207,6 +207,12 @@ type BatchLineLike = {
   rm_code?: string;
   pm_code?: string;
   code?: string;
+  sku?: string;
+  sku_code?: string;
+  zoho_sku_code?: string;
+  zohoSkuCode?: string;
+  rm_sku?: string;
+  pm_sku?: string;
   inci_name?: string;
   name?: string;
   description?: string;
@@ -228,6 +234,7 @@ function batchLinesToNewRequestItemOptions(batch: PlanningBatchAllRow): NewReque
     const rmId = line.raw_material_id != null ? Number(line.raw_material_id) : NaN;
     const code = String(line.rm_code ?? line.code ?? '').trim();
     const name = String(line.inci_name ?? line.name ?? code).trim();
+    const sku = String(line.rm_sku ?? line.sku ?? line.sku_code ?? line.zoho_sku_code ?? line.zohoSkuCode ?? '').trim();
     if (!name && !code && !Number.isFinite(rmId)) continue;
     const key =
       Number.isFinite(rmId) && rmId > 0
@@ -235,11 +242,12 @@ function batchLinesToNewRequestItemOptions(batch: PlanningBatchAllRow): NewReque
         : code
           ? `rm-code-${code.toLowerCase()}`
           : `rm-name-${name.toLowerCase()}`;
-    const label = `RM - ${code || (Number.isFinite(rmId) ? String(rmId) : name)} - ${name || code}`;
+    const labelBase = `RM - ${code || (Number.isFinite(rmId) ? String(rmId) : name)} - ${name || code}`;
+    const label = sku ? `${labelBase} [SKU: ${sku}]` : labelBase;
     push({
       key,
       label,
-      searchText: ['rm', String(rmId), code, name].filter(Boolean).join(' ').toLowerCase(),
+      searchText: ['rm', String(rmId), code, name, sku].filter(Boolean).join(' ').toLowerCase(),
       itemType: 'RM',
       itemId: code || name,
       name: name || code,
@@ -252,6 +260,7 @@ function batchLinesToNewRequestItemOptions(batch: PlanningBatchAllRow): NewReque
     const pmId = line.pack_material_id != null ? Number(line.pack_material_id) : NaN;
     const code = String(line.pm_code ?? line.code ?? '').trim();
     const name = String(line.description ?? line.name ?? code).trim();
+    const sku = String(line.pm_sku ?? line.sku ?? line.sku_code ?? line.zoho_sku_code ?? line.zohoSkuCode ?? '').trim();
     if (!name && !code && !Number.isFinite(pmId)) continue;
     const key =
       Number.isFinite(pmId) && pmId > 0
@@ -259,11 +268,12 @@ function batchLinesToNewRequestItemOptions(batch: PlanningBatchAllRow): NewReque
         : code
           ? `pm-code-${code.toLowerCase()}`
           : `pm-name-${name.toLowerCase()}`;
-    const label = `PM - ${code || (Number.isFinite(pmId) ? String(pmId) : name)} - ${name || code}`;
+    const labelBase = `PM - ${code || (Number.isFinite(pmId) ? String(pmId) : name)} - ${name || code}`;
+    const label = sku ? `${labelBase} [SKU: ${sku}]` : labelBase;
     push({
       key,
       label,
-      searchText: ['pm', String(pmId), code, name].filter(Boolean).join(' ').toLowerCase(),
+      searchText: ['pm', String(pmId), code, name, sku].filter(Boolean).join(' ').toLowerCase(),
       itemType: 'PM',
       itemId: code || name,
       name: name || code,

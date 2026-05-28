@@ -15,6 +15,7 @@ import { PickModal } from './PickModal';
 import { InvoiceModal } from './InvoiceModal';
 import { ShipModal } from './ShipModal';
 import { TrackModal } from './TrackModal';
+import { EditSOModal } from './EditSOModal';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../../types/orderFulfillment';
 import { aggregateKPIs, aggregatePipelineCounts, formatINR, formatLakhs, formatNumber } from '../../utils/orderFulfillmentUtils';
 import { computeOrderItemExecutionPercent } from '../../lib/fulfillmentExecutionPct';
@@ -26,6 +27,20 @@ import { fetchSoPlanningAvailability } from '../../services/fulfillment.service'
 interface SaleOrdersViewProps {
   saleOrders: SaleOrder[];
   onAddSO: (data: AddSOData) => void;
+  onUpdateSO: (
+    soNo: string,
+    data: {
+      customer: string;
+      customerCity: string;
+      orderDate: string;
+      dueDate: string;
+      priority: 'normal' | 'high';
+      shipAddress: string;
+      paymentTerms: string;
+      notes: string;
+      items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number }>;
+    }
+  ) => Promise<void> | void;
   /** Returns updated order on success so we can open Invoice modal with fresh data. */
   onPickConfirm: (soNo: string, data: PickData) => void | Promise<SaleOrder | void>;
   onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
@@ -36,6 +51,7 @@ interface SaleOrdersViewProps {
 export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   saleOrders,
   onAddSO,
+  onUpdateSO,
   onPickConfirm,
   onGenerateInvoice,
   onDispatch,
@@ -57,6 +73,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [invoiceModalSO, setInvoiceModalSO] = useState<SaleOrder | null>(null);
   const [shipModalSO, setShipModalSO] = useState<SaleOrder | null>(null);
   const [trackModalSO, setTrackModalSO] = useState<SaleOrder | null>(null);
+  const [editModalSO, setEditModalSO] = useState<SaleOrder | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
   /** When set, action modals restrict to these BPRs (single-batch from SO detail). */
   const [pickSelectedBprNos, setPickSelectedBprNos] = useState<string[] | undefined>(undefined);
   const [invoiceSelectedBprNos, setInvoiceSelectedBprNos] = useState<string[] | undefined>(undefined);
@@ -71,16 +89,33 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
 
   // Filter sale orders
   const filteredSOs = useMemo(() => {
+    const normalizeForSearch = (value: unknown): string =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
     let filtered = saleOrders;
 
     // Apply search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(so =>
-        so.soNo.toLowerCase().includes(query) ||
-        so.customer.toLowerCase().includes(query) ||
-        so.items.some(item => item.productName.toLowerCase().includes(query))
-      );
+      const query = normalizeForSearch(searchQuery);
+      filtered = filtered.filter((so) => {
+        const clientSearchText = [
+          so.customer,
+          (so as SaleOrder & { clientName?: string; customerName?: string }).clientName,
+          (so as SaleOrder & { clientName?: string; customerName?: string }).customerName,
+          (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client,
+          (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client_name,
+          (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).customer_name,
+        ]
+          .map((v) => normalizeForSearch(v))
+          .join(' ');
+        return (
+          normalizeForSearch(so.soNo).includes(query) ||
+          clientSearchText.includes(query) ||
+          so.items.some((item) => normalizeForSearch(item.productName).includes(query))
+        );
+      });
     }
 
     // Apply status filter
@@ -278,6 +313,30 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       setTrackSelectedBprNos(undefined);
     }
   };
+  const hasPlanningBatch = (so: SaleOrder): boolean => {
+    const soKey = normalizeSoKey(so.soNo);
+    const planningResp = planningAvailabilityBySoNo[so.soNo] ?? planningAvailabilityBySoNo[soKey];
+    const planningItems = planningResp?.items ?? [];
+    return planningItems.some((item) => (Number(item.totalBatches) || 0) > 0 || (Number(item.sentCount) || 0) > 0);
+  };
+
+  const isEditLocked = (so: SaleOrder) => {
+    if (hasPlanningBatch(so)) return true;
+    return so.items.some((item) =>
+      item.batchSplits.some((split) =>
+        split.productionBatchId != null ||
+        ['picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(String(split.ffStatus || '').toLowerCase()) ||
+        ['batch_confirmed', 'rm_reserved', 'scheduled', 'rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'cleared'].includes(
+          String(split.bmrStatus || '').toLowerCase()
+        ) ||
+        ['pm_reserved', 'scheduled', 'pm_connected', 'pm_dispensing', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'fg_ready'].includes(
+          String(split.bprStatus || '').toLowerCase()
+        )
+      )
+    );
+  };
+  const editLockReason =
+    'Editing is allowed only before BO/batch confirmation. This order already has confirmed/active batches.';
 
   const handlePickConfirm = async (data: PickData) => {
     if (!pickModalSO) return;
@@ -434,6 +493,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   <div className="text-[10px] font-normal text-gray-500">click to open BMR</div>
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">#</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -624,13 +684,25 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                       <td className="px-4 py-3 text-right align-top">
                         <b className="font-mono text-[14px] text-gray-900">{sentCount}</b>
                       </td>
+                      <td className="px-4 py-3 align-top">
+                        {!isEditLocked(so) ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditModalSO(so)}
+                            title={`Edit ${so.soNo}`}
+                            className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                          >
+                            Edit SO
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                   })
                 );
                 const groupHeader = (
                   <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
-                    <td colSpan={7} className="px-4 py-2.5">
+                    <td colSpan={8} className="px-4 py-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-semibold text-blue-900">
                           {clientGroup.clientName}
@@ -708,6 +780,12 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
         isOpen={!!detailModalSO}
         onClose={() => setDetailModalSO(null)}
         saleOrder={detailModalSO}
+        onEditSO={(soNo) => {
+          const so = saleOrders.find((order) => order.soNo === soNo);
+          if (so) setEditModalSO(so);
+        }}
+        editDisabled={detailModalSO ? isEditLocked(detailModalSO) : false}
+        editDisabledReason={editLockReason}
         onAction={(action, _soNo, split) => {
           if (!detailModalSO) return;
           const bprNos = split ? [split.bprNo] : undefined;
@@ -730,6 +808,25 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               break;
           }
           setDetailModalSO(null);
+        }}
+      />
+
+      <EditSOModal
+        isOpen={!!editModalSO}
+        saleOrder={editModalSO}
+        canEdit={editModalSO ? !isEditLocked(editModalSO) : false}
+        lockReason={editLockReason}
+        isSaving={editSaving}
+        onClose={() => setEditModalSO(null)}
+        onSave={async (payload) => {
+          if (!editModalSO) return;
+          setEditSaving(true);
+          try {
+            await Promise.resolve(onUpdateSO(editModalSO.soNo, payload));
+            setEditModalSO(null);
+          } finally {
+            setEditSaving(false);
+          }
         }}
       />
 

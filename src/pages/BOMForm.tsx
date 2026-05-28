@@ -620,9 +620,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     rawMaterials.forEach((r) => m.set(String(r.id), r));
     return m;
   }, [rawMaterials]);
+  const rawMaterialByCode = useMemo(() => {
+    const m = new Map<string, RawMaterialRecord>();
+    rawMaterials.forEach((r) => {
+      const key = String(r.code ?? '').trim().toLowerCase();
+      if (key) m.set(key, r);
+    });
+    return m;
+  }, [rawMaterials]);
   const packMaterialById = useMemo(() => {
     const m = new Map<string, PackMaterialRecord>();
     packMaterials.forEach((p) => m.set(String(p.id), p));
+    return m;
+  }, [packMaterials]);
+  const packMaterialByCode = useMemo(() => {
+    const m = new Map<string, PackMaterialRecord>();
+    packMaterials.forEach((p) => {
+      const key = String(p.code ?? '').trim().toLowerCase();
+      if (key) m.set(key, p);
+    });
     return m;
   }, [packMaterials]);
   const selectedRmIds = useMemo(
@@ -665,6 +681,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
   const stepDraftRef = useRef<HTMLDivElement>(null);
+
+  const getFormulaIngredientSku = useCallback(
+    (ing: BOMFormState['formulaIngredients'][number]): string => {
+      const byId = ing.rawMaterialId ? rawMaterialById.get(String(ing.rawMaterialId)) : undefined;
+      if (byId?.zohoSkuCode) return String(byId.zohoSkuCode).trim();
+      const byCode = ing.rmCode ? rawMaterialByCode.get(String(ing.rmCode).trim().toLowerCase()) : undefined;
+      return byCode?.zohoSkuCode ? String(byCode.zohoSkuCode).trim() : '';
+    },
+    [rawMaterialByCode, rawMaterialById]
+  );
+  const getPackComponentSku = useCallback(
+    (comp: BOMFormState['packingComponents'][number]): string => {
+      const byId = comp.packMaterialId ? packMaterialById.get(String(comp.packMaterialId)) : undefined;
+      if (byId?.zohoSkuCode) return String(byId.zohoSkuCode).trim();
+      const byCode = comp.pmCode ? packMaterialByCode.get(String(comp.pmCode).trim().toLowerCase()) : undefined;
+      return byCode?.zohoSkuCode ? String(byCode.zohoSkuCode).trim() : '';
+    },
+    [packMaterialByCode, packMaterialById]
+  );
 
   const formulaPercentTotal = useMemo(() => {
     return formData.formulaIngredients.reduce((sum, ing) => {
@@ -1461,26 +1496,32 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[620px] grid-cols-5 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
-                    <div>INCI Name / Raw Material</div>
-                    <div>Phase</div>
-                    <div>% W/W</div>
-                    <div>SG</div>
-                    <div>UOM</div>
+                  <div className="grid min-w-[860px] grid-cols-12 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                    <div className="col-span-3 min-w-0">INCI Name / Raw Material</div>
+                    <div className="col-span-2 min-w-0">SKU</div>
+                    <div className="col-span-2 min-w-0">Phase</div>
+                    <div className="col-span-2 min-w-0">% W/W</div>
+                    <div className="col-span-1 min-w-0">SG</div>
+                    <div className="col-span-2 min-w-0">UOM</div>
                   </div>
                   <div className="space-y-2">
                     {formData.formulaIngredients.map(ing => (
                       <div
                         key={ing.id}
-                        className={`grid min-w-[620px] grid-cols-5 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                        className={`grid min-w-[860px] grid-cols-12 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
                           ing.id === editingIngredientId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
                         }`}
                       >
-                        <div className="text-slate-900">{ing.inciName}</div>
-                        <div className="text-slate-600">{ing.phase}</div>
-                        <div className="text-slate-600">{ing.percentWW}</div>
-                        <div className="text-slate-600 font-mono tabular-nums">{ing.specificGravity || '1'}</div>
-                        <div className="flex justify-end items-center gap-1">
+                        <div className="col-span-3 min-w-0 text-slate-900 break-words">{ing.inciName}</div>
+                        <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs break-all">
+                          {getFormulaIngredientSku(ing) || '—'}
+                        </div>
+                        <div className="col-span-2 min-w-0 text-slate-600 break-words">{ing.phase}</div>
+                        <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs tabular-nums break-all leading-tight" title={ing.percentWW}>
+                          {ing.percentWW}
+                        </div>
+                        <div className="col-span-1 min-w-0 text-slate-600 font-mono tabular-nums">{ing.specificGravity || '1'}</div>
+                        <div className="col-span-2 min-w-0 flex justify-end items-center gap-1">
                           <span className="text-slate-600 mr-auto">KG</span>
                           <button
                             type="button"
@@ -1727,8 +1768,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[480px] grid-cols-4 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[620px] grid-cols-5 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                     <div className="col-span-2">PM Description</div>
+                    <div>SKU</div>
                     <div>Type</div>
                     <div>Qty / Unit</div>
                   </div>
@@ -1736,11 +1778,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     {formData.packingComponents.map(comp => (
                       <div
                         key={comp.id}
-                        className={`grid min-w-[480px] grid-cols-4 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                        className={`grid min-w-[620px] grid-cols-5 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
                           comp.id === editingComponentId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
                         }`}
                       >
                         <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
+                        <div className="text-slate-600 font-mono text-xs break-all">
+                          {getPackComponentSku(comp) || '—'}
+                        </div>
                         <div className="text-slate-600">{comp.type}</div>
                         <div className="flex justify-end items-center gap-1">
                           <span className="text-slate-600 mr-auto">{comp.qtyUnit}</span>

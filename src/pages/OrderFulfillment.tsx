@@ -14,6 +14,7 @@ import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
 import {
   fetchFulfillmentOrders,
   createFulfillmentOrder,
+  updateFulfillmentOrder,
   pickFulfillmentSplits,
   shipFulfillmentSplits,
   deliverFulfillmentSplits,
@@ -174,6 +175,26 @@ export const OrderFulfillment: React.FC = () => {
     }
   };
 
+  const handleUpdateSO = async (
+    soNo: string,
+    data: {
+      customer: string;
+      customerCity: string;
+      orderDate: string;
+      dueDate: string;
+      priority: 'normal' | 'high';
+      shipAddress: string;
+      paymentTerms: string;
+      notes: string;
+      items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number }>;
+    }
+  ): Promise<void> => {
+    const id = findOrderId(soNo);
+    if (!id) return;
+    await updateFulfillmentOrder(id, data);
+    await loadOrders();
+  };
+
   const handleGenerateInvoice = async (_soNo: string, _data: InvoiceData) => {
     try {
       await loadOrders();
@@ -305,18 +326,36 @@ export const OrderFulfillment: React.FC = () => {
   }, [saleOrders]);
 
   const filteredSaleOrders = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+    const normalizeForSearch = (value: unknown): string =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    const q = normalizeForSearch(searchTerm);
     const filtered = saleOrders.filter((so) => {
       if (!matchesDateRangeFilter(so.orderDate, dateFilter.from, dateFilter.to)) return false;
       if (statusFilter !== 'all' && so.soStatus !== statusFilter) return false;
       if (priorityFilter !== 'all' && so.priority !== priorityFilter) return false;
       if (cityFilter !== 'all' && String(so.customerCity || '').trim() !== cityFilter) return false;
       if (!q) return true;
+      const clientSearchText = [
+        so.customer,
+        (so as SaleOrder & { clientName?: string; customerName?: string }).clientName,
+        (so as SaleOrder & { clientName?: string; customerName?: string }).customerName,
+        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client,
+        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client_name,
+        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).customer_name,
+      ]
+        .map((v) => normalizeForSearch(v))
+        .join(' ');
       return (
-        so.soNo.toLowerCase().includes(q) ||
-        so.customer.toLowerCase().includes(q) ||
-        so.customerCity.toLowerCase().includes(q) ||
-        so.items.some((item) => item.productName.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q))
+        normalizeForSearch(so.soNo).includes(q) ||
+        clientSearchText.includes(q) ||
+        normalizeForSearch(so.customerCity).includes(q) ||
+        so.items.some(
+          (item) =>
+            normalizeForSearch(item.productName).includes(q) || normalizeForSearch(item.sku).includes(q)
+        )
       );
     });
 
@@ -512,7 +551,7 @@ export const OrderFulfillment: React.FC = () => {
               </button>
             </div>
           ) : viewMode === 'orders' ? (
-            <SaleOrdersView saleOrders={filteredSaleOrders} onAddSO={handleAddSO} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
+            <SaleOrdersView saleOrders={filteredSaleOrders} onAddSO={handleAddSO} onUpdateSO={handleUpdateSO} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
           ) : (
             <ProductsBatchesView
               saleOrders={filteredSaleOrders}

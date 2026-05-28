@@ -2586,6 +2586,12 @@ const Planning = () => {
   }, [pisRows, dateFilter]);
 
   const filteredPisOrders = useMemo(() => {
+    const normalizeForSearch = (value: unknown): string =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
     return pisRows.filter((order) => {
       if (!matchesDateRangeFilter(order.orderDate, dateFilter.from, dateFilter.to)) return false;
       const { remainingUnits } = getCreatedAndRemainingUnits(order);
@@ -2596,10 +2602,23 @@ const Planning = () => {
         (statusFilter === 'Planned' && order.bomStatus === 'Planned') ||
         (statusFilter === 'Not Planned' && remainingUnits > 0 && (Number(order.batchCount) || 0) === 0);
 
+      const q = normalizeForSearch(searchTerm);
+      if (!q) return matchesStatus;
+
+      const clientSearchText = [
+        order.customerName,
+        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).clientName,
+        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).customer_name,
+        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).client_name,
+      ]
+        .map((v) => normalizeForSearch(v))
+        .join(' ');
+
       const matchesSearch =
-        order.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.productCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.soNumber.toLowerCase().includes(searchTerm.toLowerCase());
+        normalizeForSearch(order.productName).includes(q) ||
+        normalizeForSearch(order.productCode).includes(q) ||
+        normalizeForSearch(order.soNumber).includes(q) ||
+        clientSearchText.includes(q);
 
       return matchesStatus && matchesSearch;
     });

@@ -45,6 +45,7 @@ export type PaymentTerms = string;
 // ═══════════════════════════════════════════════════════════
 
 export interface BatchSplit {
+  productionBatchId?: number | null;
   bmrNo: string;
   bprNo: string;
   plannedQty: number;
@@ -175,6 +176,9 @@ export interface SODetailModalProps {
   saleOrder: SaleOrder | null;
   /** action, soNo, and optionally the batch split (for per-batch Pick/Invoice/Ship/Track) */
   onAction: (action: string, soNo: string, split?: BatchSplit) => void;
+  onEditSO?: (soNo: string) => void;
+  editDisabled?: boolean;
+  editDisabledReason?: string;
 }
 
 export interface PickModalProps {

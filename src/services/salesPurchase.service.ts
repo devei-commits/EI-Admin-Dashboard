@@ -7,25 +7,57 @@ import type { ServiceResult } from '../types/api.types';
 import type { Order } from '../types/salesPurchase.types';
 import { api } from '../lib/apiClient';
 
-function toOrder(row: any, type: 'SO' | 'PO'): Order {
+function pickFirst(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function toOrder(row: Record<string, unknown>, type: 'SO' | 'PO'): Order {
+  const orderId = pickFirst(row.order_id, row.orderId);
+  const customerName = pickFirst(row.customer_name, row.customerName);
+  const vendorName = pickFirst(row.vendor_name, row.vendorName);
+  const orderDate = pickFirst(row.order_date, row.orderDate);
+  const expectedShipmentDate = pickFirst(
+    row.expected_shipment_date,
+    row.expectedShipmentDate,
+    (row.form_data as Record<string, unknown> | undefined)?.expected_shipment_date,
+    (row.formData as Record<string, unknown> | undefined)?.expectedShipmentDate
+  );
+  const reference = pickFirst(row.reference);
+  const paymentTerms = pickFirst(row.payment_terms, row.paymentTerms);
+  const status = pickFirst(row.status) || 'Draft';
+  const formData =
+    row.form_data && typeof row.form_data === 'object'
+      ? (row.form_data as Record<string, unknown>)
+      : row.formData && typeof row.formData === 'object'
+        ? (row.formData as Record<string, unknown>)
+        : {};
+  const orderStatus =
+    row.order_status && typeof row.order_status === 'object'
+      ? (row.order_status as Record<string, unknown>)
+      : row.orderStatus && typeof row.orderStatus === 'object'
+        ? (row.orderStatus as Record<string, unknown>)
+        : { orderStatus: '', invoiced: '', payment: '', packed: '', shipped: '', deliveryMethod: '' };
+
   return {
-    id: `${type}-${row.id}`,
+    id: `${type}-${row.id ?? ''}`,
     type,
-    orderId: row.orderId,
-    customerName: row.customerName ?? '',
-    vendorName: row.vendorName ?? '',
-    orderDate: row.orderDate ?? '',
-    expectedShipmentDate: row.expectedShipmentDate ?? (row.formData && row.formData.expectedShipmentDate) ?? '',
-    reference: row.reference ?? '',
-    paymentTerms: row.paymentTerms ?? '',
-    status: row.status ?? 'Draft',
+    orderId,
+    customerName,
+    vendorName,
+    orderDate,
+    expectedShipmentDate,
+    reference,
+    paymentTerms,
+    status,
     items: Array.isArray(row.items) ? row.items : [],
-    formData: row.formData && typeof row.formData === 'object' ? row.formData : {},
-    orderStatus: row.orderStatus && typeof row.orderStatus === 'object'
-      ? row.orderStatus
-      : { orderStatus: '', invoiced: '', payment: '', packed: '', shipped: '', deliveryMethod: '' },
-    zohoPurchaseOrderId: row.zohoPurchaseOrderId ?? null,
-    zohoBillId: row.zohoBillId ?? null,
+    formData,
+    orderStatus,
+    zohoPurchaseOrderId: row.zoho_purchase_order_id ?? row.zohoPurchaseOrderId ?? null,
+    zohoBillId: row.zoho_bill_id ?? row.zohoBillId ?? null,
   };
 }
 

@@ -50,17 +50,87 @@ function unwrapList<T>(res: unknown): T[] {
   return [];
 }
 
+function compactSpaces(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pickFirstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = compactSpaces(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function normalizeSaleOrder(order: SaleOrder | Record<string, unknown>): SaleOrder {
+  const raw = order as SaleOrder & {
+    clientName?: string;
+    customerName?: string;
+    client?: string;
+    client_name?: string;
+    customer_name?: string;
+    city?: string;
+    customer_city?: string;
+    so_no?: string;
+    so_date?: string;
+    order_date?: string;
+    due_date?: string;
+    so_status?: string;
+    so_value?: number;
+    ship_address?: string;
+    payment_terms?: string;
+    invoice_no?: string;
+    invoice_date?: string;
+    awb_no?: string;
+    dispatch_date?: string;
+    zoho_invoice_id?: string;
+  };
+  const customer = pickFirstNonEmpty(
+    raw.customer,
+    raw.clientName,
+    raw.customerName,
+    raw.client,
+    raw.client_name,
+    raw.customer_name
+  );
+  const customerCity = pickFirstNonEmpty(raw.customerCity, raw.city, raw.customer_city);
+  return {
+    ...raw,
+    soNo: pickFirstNonEmpty(raw.soNo, raw.so_no),
+    soDate: pickFirstNonEmpty(raw.soDate, raw.so_date, raw.orderDate, raw.order_date),
+    orderDate: pickFirstNonEmpty(raw.orderDate, raw.order_date, raw.soDate, raw.so_date),
+    dueDate: pickFirstNonEmpty(raw.dueDate, raw.due_date),
+    soStatus: (pickFirstNonEmpty(raw.soStatus, raw.so_status) || 'planned') as SaleOrder['soStatus'],
+    soValue: Number(raw.soValue ?? raw.so_value ?? 0) || 0,
+    shipAddress: pickFirstNonEmpty(raw.shipAddress, raw.ship_address),
+    paymentTerms: pickFirstNonEmpty(raw.paymentTerms, raw.payment_terms),
+    invoiceNo: pickFirstNonEmpty(raw.invoiceNo, raw.invoice_no) || undefined,
+    invoiceDate: pickFirstNonEmpty(raw.invoiceDate, raw.invoice_date) || undefined,
+    awbNo: pickFirstNonEmpty(raw.awbNo, raw.awb_no) || undefined,
+    dispatchDate: pickFirstNonEmpty(raw.dispatchDate, raw.dispatch_date) || undefined,
+    zohoInvoiceId: pickFirstNonEmpty(
+      (raw as Record<string, unknown>).zohoInvoiceId,
+      raw.zoho_invoice_id
+    ) || undefined,
+    customer: customer || 'Unknown Client',
+    customerCity: customerCity || '',
+  } as SaleOrder;
+}
+
 /* ── List / Get ── */
 
 export async function fetchFulfillmentOrders(): Promise<SaleOrder[]> {
   const res = await api.get<unknown>(BASE);
-  return unwrapList<SaleOrder>(res);
+  return unwrapList<SaleOrder>(res).map((order) => normalizeSaleOrder(order));
 }
 
 export async function fetchFulfillmentOrderById(id: number): Promise<SaleOrder | null> {
   try {
     const res = await api.get<SaleOrder>(`${BASE}/${id}`);
-    return ((res as any)?.data ?? res) ?? null;
+    const payload = ((res as { data?: SaleOrder })?.data ?? res) ?? null;
+    return payload ? normalizeSaleOrder(payload) : null;
   } catch {
     return null;
   }
@@ -76,12 +146,12 @@ export async function fetchBatchSplits(): Promise<unknown[]> {
 
 export async function createFulfillmentOrder(payload: Record<string, unknown>): Promise<SaleOrder> {
   const res = await api.post<SaleOrder>(BASE, payload);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function updateFulfillmentOrder(id: number, payload: Record<string, unknown>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}`, payload);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function deleteFulfillmentOrder(id: number) {
@@ -220,22 +290,22 @@ export async function fetchInvoices(fulfillmentOrderId?: number) {
 
 export async function pickFulfillmentSplits(id: number, data: PickData): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/pick`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function invoiceFulfillmentSplits(id: number, data: Partial<InvoiceData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/invoice`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function shipFulfillmentSplits(id: number, data: Partial<ShipData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/ship`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function deliverFulfillmentSplits(id: number, data: Partial<DeliveryData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/deliver`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 /* ── Planning availability for SO ── */
