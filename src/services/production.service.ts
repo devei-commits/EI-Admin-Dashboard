@@ -260,6 +260,49 @@ export interface BatchBOMResponse {
   error?: string;
 }
 
+export interface BatchDispensingMuStockResponse {
+  success: boolean;
+  scheduledMuZone?: string;
+  /** Exact DECIMAL strings from DB (ml1_stock / ml2_stock bucket). */
+  rmByCode?: Record<string, string>;
+  pmByCode?: Record<string, string>;
+  error?: string;
+}
+
+/** Qty at batch manufacturing zone per code (same source as dispensing PATCH validation). */
+export async function fetchBatchDispensingMuStock(batchPk: number): Promise<BatchDispensingMuStockResponse> {
+  try {
+    const res = await api.get<BatchDispensingMuStockResponse>(`${BASE}/batches/${batchPk}/dispensing-mu-stock`);
+    const body = (res as {
+      success?: boolean;
+      scheduledMuZone?: string;
+      rmByCode?: Record<string, string | number>;
+      pmByCode?: Record<string, string | number>;
+    }) ?? res;
+    if (body?.success) {
+      const toStrMap = (m: Record<string, string | number> | undefined): Record<string, string> => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(m ?? {})) {
+          out[k] = typeof v === 'string' ? v : String(v);
+        }
+        return out;
+      };
+      return {
+        success: true,
+        scheduledMuZone: body.scheduledMuZone,
+        rmByCode: toStrMap(body.rmByCode),
+        pmByCode: toStrMap(body.pmByCode),
+      };
+    }
+    return { success: false, error: 'Invalid response' };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Failed to load dispensing MU stock',
+    };
+  }
+}
+
 export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMResponse> {
   try {
     const path = `${BASE}/batches/${batchPk}/bom`;

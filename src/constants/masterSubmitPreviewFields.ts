@@ -303,7 +303,9 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   },
   {
     title: 'Formula BOM',
-    fields: [{ key: 'formulaIngredients', label: 'Formula BOM lines' }],
+    fields: fieldDefs(['specificGravity'], {
+      specificGravity: 'Specific gravity (vs water)',
+    }).concat([{ key: 'formulaIngredients', label: 'Formula BOM lines' }]),
   },
   {
     title: 'SKU BOM (per unit)',
@@ -325,7 +327,6 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
     fields: fieldDefs([
       'phRange',
       'viscosity',
-      'specificGravity',
       'appearance',
       'odour',
       'fillWeightSpec',
@@ -342,6 +343,6 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
       'crueltyFreeVegan',
       'approvedMarketingClaims',
       'claimsSubstantiation',
-    ], { specificGravity: 'Specific gravity (vs water)' }),
+    ]),
   },
 ];

@@ -1,39 +1,61 @@
-/** Max decimals for RM/PM material qty through SO lifecycle (planning → production reserve). */
+import { materialQtyLt, materialQtyMin, materialQtySubNonNeg, materialQtyToNum, toQtyString } from './materialQtyCompare';
+
+/** Max decimals for RM (kg) through SO lifecycle — full facility precision. */
 export const MATERIAL_QTY_MAX_DECIMALS = 16;
+
+/** Packaging (pcs) — short UI: whole numbers when possible, max 2 fractional digits. */
+export const PCS_DISPLAY_MAX_DECIMALS = 2;
 
 /** @deprecated Use MATERIAL_QTY_MAX_DECIMALS — kept for imports. */
 export const QTY_KG_MAX_DECIMALS = MATERIAL_QTY_MAX_DECIMALS;
 
-/** @deprecated Use MATERIAL_QTY_MAX_DECIMALS — kept for imports. */
-export const QTY_PCS_MAX_DECIMALS = MATERIAL_QTY_MAX_DECIMALS;
+/** @deprecated Use PCS_DISPLAY_MAX_DECIMALS for packaging display. */
+export const QTY_PCS_MAX_DECIMALS = PCS_DISPLAY_MAX_DECIMALS;
 
 export type QtyKind = 'kg' | 'pcs' | 'raw';
 
 function maxDecimalsFor(kind: QtyKind): number {
+  if (kind === 'pcs') return PCS_DISPLAY_MAX_DECIMALS;
   return MATERIAL_QTY_MAX_DECIMALS;
 }
 
-/** Persist/compare at lifecycle precision (16 dp). */
-export function roundMaterialQty(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Number(n.toFixed(MATERIAL_QTY_MAX_DECIMALS));
+/** Persist/compare; packaging rounded to display precision (max 2 dp). */
+export function roundMaterialQty(value: unknown, kind: QtyKind = 'kg'): number {
+  const n = materialQtyToNum(value);
+  if (kind === 'pcs') {
+    const factor = 10 ** PCS_DISPLAY_MAX_DECIMALS;
+    return Math.round(n * factor) / factor;
+  }
+  return n;
 }
 
 /**
- * Normalize for comparisons only — avoids 63.0000000001 vs 63 false "short".
- * Does not change stored values; use before isQtyShort / reserve checks.
+ * Normalize for comparisons — kg at full precision; pcs at packaging display precision.
  */
 export function normalizeQtyForCompare(value: unknown, kind: QtyKind = 'kg'): number {
-  return roundMaterialQty(value);
+  return roundMaterialQty(value, kind);
+}
+
+/** Display pcs as compact whole numbers when possible; kg keeps meaningful decimals. */
+function formatPackagingQtyDisplay(n: number): string {
+  const snapped = Math.round(n * 100) / 100;
+  if (Math.abs(snapped - Math.round(snapped)) < 1e-9) {
+    return Math.round(snapped).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+  return snapped.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: PCS_DISPLAY_MAX_DECIMALS,
+  });
 }
 
 /**
  * Display quantity with all meaningful decimals (up to max), never rounding 0.0004 → 0.
  */
 export function formatQtyExact(value: unknown, kind: QtyKind = 'raw'): string {
-  const n = Number(value);
+  const n = Number(toQtyString(value));
   if (!Number.isFinite(n)) return '0';
+  if (kind === 'pcs') return formatPackagingQtyDisplay(n);
+
   const maxDecimals = maxDecimalsFor(kind);
   const fixed = n.toFixed(maxDecimals);
   const trimmed = fixed.replace(/\.?0+$/, '');
@@ -47,8 +69,10 @@ export function formatQtyExact(value: unknown, kind: QtyKind = 'raw'): string {
 
 /** Shortage line — never show "0" when there is a positive gap (even sub-gram). */
 export function formatQtyShortage(value: unknown, kind: QtyKind = 'kg'): string {
-  const n = Number(value);
+  const n = Number(toQtyString(value));
   if (!Number.isFinite(n) || n <= 0) return '0';
+  if (kind === 'pcs') return formatPackagingQtyDisplay(n);
+
   const maxDecimals = maxDecimalsFor(kind);
   let decimals = maxDecimals;
   for (let d = 0; d <= maxDecimals; d += 1) {
@@ -69,9 +93,7 @@ export function formatQtyWithUnit(value: unknown, kind: 'kg' | 'pcs'): string {
 
 /** Free stock at warehouse for reserve (SIH − reserved). */
 export function qtyAvailable(sih: number, reserved: number): number {
-  const s = Number(sih) || 0;
-  const r = Number(reserved) || 0;
-  return Math.max(0, s - r);
+  return materialQtyToNum(materialQtySubNonNeg(sih, reserved));
 }
 
 /**
@@ -84,24 +106,24 @@ export function qtyMtrFromReserved(whStock: number, reservedGlobal: number, batc
     batchReserved !== undefined && batchReserved !== null
       ? Number(batchReserved) || 0
       : Number(reservedGlobal) || 0;
-  return Math.max(0, Math.min(alloc, wh));
+  return materialQtyToNum(materialQtyMin(alloc, wh));
 }
 
 /** Compare at full decimal precision so float noise does not false-trigger Short. */
-export function isQtyShort(available: number, required: number, kind: QtyKind = 'kg'): boolean {
-  return normalizeQtyForCompare(available, kind) < normalizeQtyForCompare(required, kind);
+export function isQtyShort(available: number, required: number, _kind: QtyKind = 'kg'): boolean {
+  return materialQtyLt(available, required);
 }
 
 export function calcShortageQty(available: number, required: number): number {
-  const a = normalizeQtyForCompare(available, 'kg');
-  const req = normalizeQtyForCompare(required, 'kg');
+  const a = materialQtyToNum(available);
+  const req = materialQtyToNum(required);
   return Math.max(0, req - a);
 }
 
 /** PM shortage uses pcs precision. */
-export function calcShortageQtyForKind(available: number, required: number, kind: QtyKind): number {
-  const a = normalizeQtyForCompare(available, kind);
-  const req = normalizeQtyForCompare(required, kind);
+export function calcShortageQtyForKind(available: number, required: number, _kind: QtyKind): number {
+  const a = materialQtyToNum(available);
+  const req = materialQtyToNum(required);
   return Math.max(0, req - a);
 }
 

@@ -811,6 +811,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   const beginEditIngredient = (id: string) => {
+    if (editingIngredientId && editingIngredientId !== id) {
+      cancelIngredientEdit();
+    }
     const ing = formData.formulaIngredients.find((i) => i.id === id);
     if (!ing) return;
     setEditingIngredientId(id);
@@ -818,7 +821,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       inciName: ing.inciName,
       phase: ing.phase,
       percentWW: ing.percentWW,
-      uom: ing.uom || 'GM',
+      uom: ing.uom || 'KG',
       specificGravity: ing.specificGravity || '1',
     });
     setSelectedRmId(ing.rawMaterialId || '');
@@ -827,9 +830,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         ? rmTypeaheadLabelForId(rawMaterials, ing.rawMaterialId)
         : ing.inciName
     );
-    window.setTimeout(() => {
-      ingredientDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 0);
+  };
+
+  const saveIngredientEdit = () => {
+    flushIngredientDraft();
   };
 
   const cancelIngredientEdit = () => {
@@ -1490,6 +1494,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
+                <div className="mb-4 max-w-md rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label htmlFor="formula-bom-bulk-sg" className="mb-1 block text-xs font-semibold text-slate-700">
+                    Specific Gravity (vs water)
+                  </label>
+                  <input
+                    id="formula-bom-bulk-sg"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 1.02 or 0.95–1.02"
+                    value={formData.specificGravity}
+                    onChange={(e) => handleInputChange('specificGravity', e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    title="Bulk finished-product SG — pre-fills Planning BOM confirmation default SG"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Default SG for the whole blend when confirming BOM in Planning (litre stock → kg). Set per-RM SG on each line below.
+                  </p>
+                </div>
                 <p className="text-xs text-slate-600 mb-2">
                   Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line. Formula amounts are always <strong>% w/w on a kg batch</strong>; SG converts litre-based RMs to kg at Planning BOM confirmation (e.g. SG 0.9 → 9 kg = 10 L). Total % w/w should equal 100%. Use{' '}
                   <strong>Import from Formula BOM</strong> on the SKU BOM step to derive per-unit quantities from these % w/w lines.
@@ -1505,114 +1527,223 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div className="col-span-2 min-w-0">UOM</div>
                   </div>
                   <div className="space-y-2">
-                    {formData.formulaIngredients.map(ing => (
-                      <div
-                        key={ing.id}
-                        className={`grid min-w-[860px] grid-cols-12 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
-                          ing.id === editingIngredientId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
-                        }`}
-                      >
-                        <div className="col-span-3 min-w-0 text-slate-900 break-words">{ing.inciName}</div>
-                        <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs break-all">
-                          {getFormulaIngredientSku(ing) || '—'}
-                        </div>
-                        <div className="col-span-2 min-w-0 text-slate-600 break-words">{ing.phase}</div>
-                        <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs tabular-nums break-all leading-tight" title={ing.percentWW}>
-                          {ing.percentWW}
-                        </div>
-                        <div className="col-span-1 min-w-0 text-slate-600 font-mono tabular-nums">{ing.specificGravity || '1'}</div>
-                        <div className="col-span-2 min-w-0 flex justify-end items-center gap-1">
-                          <span className="text-slate-600 mr-auto">KG</span>
-                          <button
-                            type="button"
-                            onClick={() => beginEditIngredient(ing.id)}
-                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
-                            title="Edit line"
-                            aria-label="Edit line"
+                    {formData.formulaIngredients.map((ing) => {
+                      const isEditing = ing.id === editingIngredientId;
+                      const inlineSku =
+                        selectedRmId && isEditing
+                          ? rawMaterialById.get(String(selectedRmId))?.code || getFormulaIngredientSku(ing)
+                          : getFormulaIngredientSku(ing);
+
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={ing.id}
+                            className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-start p-2 rounded bg-blue-50 ring-2 ring-blue-200 sm:min-w-0"
                           >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeIngredient(ing.id)}
-                            className="text-red-600 hover:text-red-800 p-1 rounded"
-                            title="Remove line"
-                            aria-label="Remove line"
+                            <div className="col-span-3 min-w-0">
+                              <RmMasterTypeahead
+                                options={formulaRmTypeaheadOptions}
+                                value={ingredientRmQuery}
+                                loading={masterLoading}
+                                selectedId={selectedRmId}
+                                onValueChange={(next) => {
+                                  setIngredientRmQuery(next);
+                                  setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                                }}
+                                onSelect={(opt) => {
+                                  setSelectedRmId(opt.id);
+                                  setIngredientRmQuery(opt.label);
+                                  const rm = rawMaterialById.get(opt.id);
+                                  setTempIngredient((prev) => ({
+                                    ...prev,
+                                    inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                                    uom: prev.uom || rm?.uom || 'KG',
+                                  }));
+                                }}
+                                onClearSelection={() => setSelectedRmId('')}
+                                placeholder="RM code or INCI"
+                              />
+                            </div>
+                            <div className="col-span-2 min-w-0 pt-1.5 text-slate-600 font-mono text-xs break-all">
+                              {inlineSku || '—'}
+                            </div>
+                            <div className="col-span-2 min-w-0">
+                              <input
+                                type="text"
+                                placeholder="Phase"
+                                value={tempIngredient.phase}
+                                onChange={(e) => setTempIngredient((prev) => ({ ...prev, phase: e.target.value }))}
+                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                              />
+                            </div>
+                            <div className="col-span-2 min-w-0">
+                              <input
+                                type="number"
+                                placeholder="% W/W"
+                                value={tempIngredient.percentWW}
+                                onChange={(e) => setTempIngredient((prev) => ({ ...prev, percentWW: e.target.value }))}
+                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono bg-white"
+                              />
+                            </div>
+                            <div className="col-span-1 min-w-0">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="SG"
+                                title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
+                                value={tempIngredient.specificGravity}
+                                onChange={(e) =>
+                                  setTempIngredient((prev) => ({ ...prev, specificGravity: e.target.value }))
+                                }
+                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono bg-white"
+                              />
+                            </div>
+                            <div className="col-span-2 min-w-0 flex justify-end items-center gap-1 pt-0.5">
+                              <span className="text-slate-600 mr-auto text-xs font-semibold">KG</span>
+                              <button
+                                type="button"
+                                onClick={saveIngredientEdit}
+                                className="text-emerald-700 hover:text-emerald-900 p-1 rounded"
+                                title="Save line"
+                                aria-label="Save line"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelIngredientEdit}
+                                className="text-slate-600 hover:text-slate-900 p-1 rounded text-xs font-medium px-1"
+                                title="Cancel edit"
+                                aria-label="Cancel edit"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeIngredient(ing.id)}
+                                className="text-red-600 hover:text-red-800 p-1 rounded"
+                                title="Remove line"
+                                aria-label="Remove line"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={ing.id}
+                          className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                        >
+                          <div className="col-span-3 min-w-0 text-slate-900 break-words">{ing.inciName}</div>
+                          <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs break-all">
+                            {getFormulaIngredientSku(ing) || '—'}
+                          </div>
+                          <div className="col-span-2 min-w-0 text-slate-600 break-words">{ing.phase}</div>
+                          <div
+                            className="col-span-2 min-w-0 text-slate-600 font-mono text-xs tabular-nums break-all leading-tight"
+                            title={ing.percentWW}
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                            {ing.percentWW}
+                          </div>
+                          <div className="col-span-1 min-w-0 text-slate-600 font-mono tabular-nums">
+                            {ing.specificGravity || '1'}
+                          </div>
+                          <div className="col-span-2 min-w-0 flex justify-end items-center gap-1">
+                            <span className="text-slate-600 mr-auto">KG</span>
+                            <button
+                              type="button"
+                              onClick={() => beginEditIngredient(ing.id)}
+                              disabled={Boolean(editingIngredientId)}
+                              className="text-blue-600 hover:text-blue-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                              title="Edit line"
+                              aria-label="Edit line"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(ing.id)}
+                              disabled={Boolean(editingIngredientId)}
+                              className="text-red-600 hover:text-red-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                              title="Remove line"
+                              aria-label="Remove line"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div
-                  ref={ingredientDraftRef}
-                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      {editingIngredientId ? 'Edit line' : 'New line'}
-                    </p>
-                    {editingIngredientId ? (
-                      <button type="button" onClick={cancelIngredientEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
-                        Cancel edit
-                      </button>
-                    ) : null}
+                {!editingIngredientId ? (
+                  <div
+                    ref={ingredientDraftRef}
+                    className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                  >
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
+                    <RmMasterTypeahead
+                      className="sm:col-span-2"
+                      options={formulaRmTypeaheadOptions}
+                      value={ingredientRmQuery}
+                      loading={masterLoading}
+                      selectedId={selectedRmId}
+                      onValueChange={(next) => {
+                        setIngredientRmQuery(next);
+                        setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                      }}
+                      onSelect={(opt) => {
+                        setSelectedRmId(opt.id);
+                        setIngredientRmQuery(opt.label);
+                        const rm = rawMaterialById.get(opt.id);
+                        setTempIngredient((prev) => ({
+                          ...prev,
+                          inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                          uom: prev.uom || rm?.uom || 'KG',
+                        }));
+                      }}
+                      onClearSelection={() => setSelectedRmId('')}
+                      placeholder="Search RM by code or INCI — pick from list or type manual name"
+                    />
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                      <input
+                        type="text"
+                        placeholder="Phase"
+                        value={tempIngredient.phase}
+                        onChange={(e) => setTempIngredient((prev) => ({ ...prev, phase: e.target.value }))}
+                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="% W/W"
+                        value={tempIngredient.percentWW}
+                        onChange={(e) => setTempIngredient((prev) => ({ ...prev, percentWW: e.target.value }))}
+                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="SG (vs water)"
+                        title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
+                        value={tempIngredient.specificGravity}
+                        onChange={(e) =>
+                          setTempIngredient((prev) => ({ ...prev, specificGravity: e.target.value }))
+                        }
+                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      />
+                      <span
+                        className="px-2 py-1.5 text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded"
+                        title="Formula BOM % w/w is always on a kg batch basis"
+                      >
+                        KG
+                      </span>
+                    </div>
                   </div>
-                  <RmMasterTypeahead
-                    className="sm:col-span-2"
-                    options={formulaRmTypeaheadOptions}
-                    value={ingredientRmQuery}
-                    loading={masterLoading}
-                    selectedId={selectedRmId}
-                    onValueChange={(next) => {
-                      setIngredientRmQuery(next);
-                      setTempIngredient((prev) => ({ ...prev, inciName: next }));
-                    }}
-                    onSelect={(opt) => {
-                      setSelectedRmId(opt.id);
-                      setIngredientRmQuery(opt.label);
-                      const rm = rawMaterialById.get(opt.id);
-                      setTempIngredient((prev) => ({
-                        ...prev,
-                        inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
-                        uom: prev.uom || rm?.uom || 'GM',
-                      }));
-                    }}
-                    onClearSelection={() => setSelectedRmId('')}
-                    placeholder="Search RM by code or INCI — pick from list or type manual name"
-                  />
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-                    <input
-                      type="text"
-                      placeholder="Phase"
-                      value={tempIngredient.phase}
-                      onChange={(e) => setTempIngredient(prev => ({ ...prev, phase: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    />
-                    <input
-                      type="number"
-                      placeholder="% W/W"
-                      value={tempIngredient.percentWW}
-                      onChange={(e) => setTempIngredient(prev => ({ ...prev, percentWW: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="SG (vs water)"
-                      title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
-                      value={tempIngredient.specificGravity}
-                      onChange={(e) => setTempIngredient(prev => ({ ...prev, specificGravity: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
-                    />
-                    <span className="px-2 py-1.5 text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded" title="Formula BOM % w/w is always on a kg batch basis">
-                      KG
-                    </span>
-                  </div>
-                </div>
+                ) : null}
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                   <div>
@@ -1636,15 +1767,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     {errors.formulaPercentTotal ? (
                       <p className="mt-1 text-xs text-red-600">{errors.formulaPercentTotal}</p>
                     ) : null}
+                    {editingIngredientId ? (
+                      <p className="mt-1 text-xs text-blue-700">Editing in place — save with ✓ on the row or Cancel.</p>
+                    ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={addIngredient}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
-                  >
-                    {editingIngredientId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                    {editingIngredientId ? 'Update ingredient' : 'Add ingredient to list'}
-                  </button>
+                  {!editingIngredientId ? (
+                    <button
+                      type="button"
+                      onClick={addIngredient}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add ingredient to list
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2117,21 +2253,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Viscosity</label>
                       <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Specific Gravity (vs water)</label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="e.g. 1.02 or 0.95–1.02"
-                        value={formData.specificGravity}
-                        onChange={(e) => handleInputChange('specificGravity', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        title="Bulk finished-product SG — pre-fills Planning BOM confirmation default SG"
-                      />
-                      <p className="text-xs text-slate-500 mt-1">
-                        Used as the default SG when confirming BOM in Planning (litre stock → kg). Per-RM SG is set on Formula BOM lines.
-                      </p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Appearance</label>

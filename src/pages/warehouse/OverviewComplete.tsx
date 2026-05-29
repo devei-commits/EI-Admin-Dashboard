@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase } from '../../services/mrn.service';
 import { resolveItemDedicatedForMrn } from '../../services/itemDedicatedFacilityLocations.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
+import { parseQtyInputString } from '../../utils/qtyInput';
+import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
 
 /** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
 export type OutboundUiStatus =
@@ -203,6 +205,7 @@ const OutboundDashboard = () => {
     : '';
   const persistedPickerLocked = Boolean((selectedMRN?.assignedPicker || '').trim());
   const savePickAvailable = selectedMRN?.status === 'Pending Pick';
+  const canShowInitiateTransferUi = selectedMRN ? selectedMRN.status !== 'Pending Pick' : false;
 
   useEffect(() => {
     let cancelled = false;
@@ -328,7 +331,13 @@ const OutboundDashboard = () => {
       raw_material_id: li.raw_material_id,
       pack_material_id: li.pack_material_id,
       product_id: li.product_id,
-      quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity),
+      quantity: materialQtyToNum(
+        sanitizeMrnLineItemQuantity(
+          pickedQty[li.id] != null && String(pickedQty[li.id]).trim() !== ''
+            ? parseQtyInputString(String(pickedQty[li.id]))
+            : li.quantity
+        )
+      ),
       unit: li.unit || '',
       notes: li.notes || '',
     }));
@@ -352,7 +361,22 @@ const OutboundDashboard = () => {
       setMrnData((prev) =>
         prev.map((mrn) =>
           mrn.id === selectedMRN.id
-            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, muReceiveZone: selectedMlLocation, lineItems: selectedMRN.lineItems.map((li) => ({ ...li, quantity: Math.max(0, parseInt(String(pickedQty[li.id]), 10) || li.quantity) })) }
+            ? {
+                ...mrn,
+                assignedPicker,
+                transferTeam: assignedTransferBy,
+                muReceiveZone: selectedMlLocation,
+                lineItems: selectedMRN.lineItems.map((li) => ({
+                  ...li,
+                  quantity: materialQtyToNum(
+                    sanitizeMrnLineItemQuantity(
+                      pickedQty[li.id] != null && String(pickedQty[li.id]).trim() !== ''
+                        ? parseQtyInputString(String(pickedQty[li.id]))
+                        : li.quantity
+                    )
+                  ),
+                })),
+              }
             : mrn
         )
       );
@@ -847,7 +871,7 @@ const OutboundDashboard = () => {
                 </div>
               </section>
 
-              {isMtrOutbound(selectedMRN) && (
+              {isMtrOutbound(selectedMRN) && canShowInitiateTransferUi && (
                 <section>
                   <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Initiate transfer details</h3>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -1018,52 +1042,56 @@ const OutboundDashboard = () => {
               >
                 Save changes
               </button>
-              <button
-                type="button"
-                onClick={handleSavePick}
-                disabled={!savePickAvailable}
-                title={
-                  !savePickAvailable
-                    ? 'Pick was already saved (status is no longer Pending pick).'
-                    : 'Requires an assigned picker. Sets status to In pick.'
-                }
-                className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cyan-500"
-              >
-                Save Pick
-              </button>
-              <button
-                type="button"
-                onClick={handleInitiateTransfer}
-                disabled={
-                  initiatingTransfer ||
-                  !String(selectedMRN.assignedPicker || assignedPicker || '').trim() ||
-                  (isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed') ||
-                  (isMtrOutbound(selectedMRN) &&
-                    (!String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim() ||
-                      !logisticsTrackingNo.trim() ||
-                      !logisticsTransporter.trim() ||
-                      !logisticsVehicleNo.trim() ||
-                      !logisticsDispatchDate)) ||
-                  (isMtrOutbound(selectedMRN) &&
-                    selectedMRN.lineItems.length > 0 &&
-                    selectedMRN.lineItems.every((li) => mtrLineLockedAtWh(li.id, selectedMRN.lineTransferStatus))) ||
-                  (!isMtrOutbound(selectedMRN) &&
-                    ['In Transfer', 'In Transit', 'Received at MU', 'Completed'].includes(selectedMRN.status))
-                }
-                title={
-                  !String(selectedMRN.assignedPicker || assignedPicker || '').trim()
-                    ? 'Picker is required before initiating transfer.'
-                    : isMtrOutbound(selectedMRN) &&
-                        !String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim()
-                      ? 'Select ML location (destination) before initiating transfer.'
-                      : isMtrOutbound(selectedMRN)
-                        ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
-                        : undefined
-                }
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
-              >
-                {initiatingTransfer ? 'Initiating…' : 'Initiate Transfer'}
-              </button>
+              {savePickAvailable && (
+                <button
+                  type="button"
+                  onClick={handleSavePick}
+                  disabled={!savePickAvailable}
+                  title={
+                    !savePickAvailable
+                      ? 'Pick was already saved (status is no longer Pending pick).'
+                      : 'Requires an assigned picker. Sets status to In pick.'
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cyan-500"
+                >
+                  Save Pick
+                </button>
+              )}
+              {canShowInitiateTransferUi && (
+                <button
+                  type="button"
+                  onClick={handleInitiateTransfer}
+                  disabled={
+                    initiatingTransfer ||
+                    !String(selectedMRN.assignedPicker || assignedPicker || '').trim() ||
+                    (isMtrOutbound(selectedMRN) && selectedMRN.status === 'Completed') ||
+                    (isMtrOutbound(selectedMRN) &&
+                      (!String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim() ||
+                        !logisticsTrackingNo.trim() ||
+                        !logisticsTransporter.trim() ||
+                        !logisticsVehicleNo.trim() ||
+                        !logisticsDispatchDate)) ||
+                    (isMtrOutbound(selectedMRN) &&
+                      selectedMRN.lineItems.length > 0 &&
+                      selectedMRN.lineItems.every((li) => mtrLineLockedAtWh(li.id, selectedMRN.lineTransferStatus))) ||
+                    (!isMtrOutbound(selectedMRN) &&
+                      ['In Transfer', 'In Transit', 'Received at MU', 'Completed'].includes(selectedMRN.status))
+                  }
+                  title={
+                    !String(selectedMRN.assignedPicker || assignedPicker || '').trim()
+                      ? 'Picker is required before initiating transfer.'
+                      : isMtrOutbound(selectedMRN) &&
+                          !String(selectedMlLocation || selectedMRN.muReceiveZone || '').trim()
+                        ? 'Select ML location (destination) before initiating transfer.'
+                        : isMtrOutbound(selectedMRN)
+                          ? 'Check lines to release from warehouse, then initiate (only not-initiated lines move).'
+                          : undefined
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
+                >
+                  {initiatingTransfer ? 'Initiating…' : 'Initiate Transfer'}
+                </button>
+              )}
               <button
                 onClick={closePickPanel}
                 className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"

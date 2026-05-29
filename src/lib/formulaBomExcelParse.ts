@@ -53,6 +53,8 @@ function detectFormulaHeaders(headerRow: unknown[]): {
   headers: string[];
 } {
   const map: Record<string, number> = {};
+  let qtyPerKgLtrIdx: number | null = null;
+  let fallbackQtyIdx: number | null = null;
   const flat = headerRow.map((h) => String(h ?? '').trim()).filter(Boolean);
   headerRow.forEach((h, idx) => {
     if (h === '' || h == null) return;
@@ -88,19 +90,24 @@ function detectFormulaHeaders(headerRow: unknown[]): {
       map.component_sku = idx;
     } else if (norm === 'component name' && map.component_name == null) map.component_name = idx;
     else if (
-      (norm === 'qty per unit' ||
-        norm === 'qty per sku kg nos' ||
-        norm === 'qty per sku' ||
-        norm === 'quantity per unit' ||
-        norm === 'qty kg ltr' ||
+      (norm === 'qty kg ltr' ||
         norm === 'qty in kg ltr' ||
         norm === 'qty kg litre' ||
-        norm === 'qty kg liter') &&
-      map.qty == null
+        norm === 'qty kg liter' ||
+        norm === 'qty per kg ltr' ||
+        norm === 'qty per kg litre' ||
+        norm === 'qty per kg liter') &&
+      qtyPerKgLtrIdx == null
     ) {
-      map.qty = idx;
+      qtyPerKgLtrIdx = idx;
+    } else if (
+      (norm === 'qty per unit' || norm === 'qty per sku kg nos' || norm === 'qty per sku' || norm === 'quantity per unit') &&
+      fallbackQtyIdx == null
+    ) {
+      fallbackQtyIdx = idx;
     }
   });
+  map.qty = qtyPerKgLtrIdx ?? fallbackQtyIdx ?? map.qty;
   return { map, headers: flat };
 }
 
@@ -167,7 +174,7 @@ function parseSheet(
   if (m.composite_sku == null) missing.push('Composite SKU (or SKU Code)');
   if (m.component_sku == null) missing.push('Component SKU');
   if (m.component_name == null) missing.push('Component Name');
-  if (m.qty == null) missing.push('Qty per Unit');
+  if (m.qty == null) missing.push('Qty per KG/LTR');
   if (m.uom == null) missing.push('UoM');
   if (missing.length > 0) {
     return {

@@ -17,11 +17,12 @@ import {
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
 import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
-import type {
-  WarehouseLocationHistoryEntry,
-  InTransitBreakdownItem,
-  UsageStatsRow,
-  WarehouseInventoryRow,
+import {
+  warehouseInventoryAvailable,
+  type WarehouseLocationHistoryEntry,
+  type InTransitBreakdownItem,
+  type UsageStatsRow,
+  type WarehouseInventoryRow,
 } from '../../services/warehouseInventory.service';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 import StockByLocationPanel from '../../components/StockByLocationPanel';
@@ -39,6 +40,8 @@ export interface InventoryItem {
   ml1Stock: number;
   ml2Stock: number;
   stockInHand: number;
+  /** Usable = stockInHand − reserved (computed from API or locally) */
+  available?: number;
   reserved: number;
   inTransit: number;
   underGrn?: number;
@@ -898,6 +901,10 @@ function rowToInventoryItem(row: WarehouseInventoryRow): InventoryItem {
     ml1Stock: row.ml1Stock,
     ml2Stock: row.ml2Stock,
     stockInHand: row.stockInHand,
+    available:
+      row.available != null && Number.isFinite(Number(row.available))
+        ? Math.max(0, Number(row.available))
+        : warehouseInventoryAvailable(row.stockInHand, row.reserved),
     reserved: row.reserved,
     inTransit: row.inTransit,
     underGrn: Number(row.underGrn) || 0,
@@ -1785,7 +1792,10 @@ const WarehouseInventory = () => {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Under GRN
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th
+                        className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                        title="Usable stock (physical WH+ML1+ML2 minus reserved for production/planning)"
+                      >
                         Stock in Hand
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -1820,8 +1830,12 @@ const WarehouseInventory = () => {
                               (Number(item.poQuantity || 0) + Number(item.inTransit || 0) + Number(item.underGrn || 0))
                           )
                         : 0;
+                      const availableQty =
+                        item.available ?? warehouseInventoryAvailable(item.stockInHand, item.reserved);
                       const canReleaseToPlanning =
-                        plan != null && (item.type === 'RM' || item.type === 'PM') && plan.totalRequired < item.stockInHand;
+                        plan != null &&
+                        (item.type === 'RM' || item.type === 'PM') &&
+                        plan.totalRequired < availableQty;
 
                       return (
                         <tr
@@ -1936,7 +1950,21 @@ const WarehouseInventory = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
+                            <div
+                              className="text-sm font-bold text-emerald-700"
+                              title={
+                                item.reserved > 0
+                                  ? `Physical total ${item.stockInHand} ${item.whUnit}; ${item.reserved} ${item.whUnit} reserved`
+                                  : `Physical stock ${item.stockInHand} ${item.whUnit}`
+                              }
+                            >
+                              {availableQty} {item.whUnit}
+                            </div>
+                            {item.reserved > 0 ? (
+                              <div className="text-[10px] text-gray-500 mt-0.5">
+                                Total {item.stockInHand} {item.whUnit}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3">
                             <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">

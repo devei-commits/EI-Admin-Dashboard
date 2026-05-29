@@ -9,6 +9,15 @@ import type { ItemGroupRecord } from './itemGroups.service';
 
 export type WarehouseItemType = 'RM' | 'PM' | 'FG/PR';
 
+function defaultWhUnitForType(type: WarehouseItemType | string): string {
+  return String(type).trim().toUpperCase() === 'PM' ? 'PCS' : 'KG';
+}
+
+function resolveWhUnitFromApi(whUnit: string | undefined, type: WarehouseItemType | string): string {
+  const u = whUnit != null ? String(whUnit).trim() : '';
+  return u || defaultWhUnitForType(type);
+}
+
 export interface InTransitBreakdownItem {
   vendor: string;
   poId: number | null;
@@ -34,8 +43,10 @@ export interface WarehouseInventoryRow {
   whUnit: string;
   ml1Stock: number;
   ml2Stock: number;
-  /** WH + ML1 + ML2 (backend computes; frontend may recompute on adjust) */
+  /** WH + ML1 + ML2 physical total (backend computes; frontend may recompute on adjust) */
   stockInHand: number;
+  /** Usable stock = stockInHand − reserved (blocks other batches/orders) */
+  available?: number;
   reserved: number;
   inTransit: number;
   underGrn?: number;
@@ -57,14 +68,21 @@ export interface WarehouseInventoryRow {
 export function deriveWarehouseInventoryDisplayStatus(
   qcStatus: string | null | undefined,
   stockInHand: number,
-  reorderPt: number
+  reorderPt: number,
+  reserved = 0
 ): 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock' | string {
   let status = (qcStatus || 'In Stock').trim();
+  const available = Math.max(0, (Number(stockInHand) || 0) - (Number(reserved) || 0));
   if (status === 'In Stock' && reorderPt > 0) {
-    if (stockInHand < reorderPt * 0.5) return 'Critical';
-    if (stockInHand < reorderPt) return 'Low Stock';
+    if (available < reorderPt * 0.5) return 'Critical';
+    if (available < reorderPt) return 'Low Stock';
   }
   return status || 'In Stock';
+}
+
+/** Usable warehouse stock after all reservations. */
+export function warehouseInventoryAvailable(stockInHand: number, reserved: number): number {
+  return Math.max(0, (Number(stockInHand) || 0) - (Number(reserved) || 0));
 }
 
 export const INVENTORY_AUDIT_FIELD_LABELS: Record<string, string> = {
@@ -158,6 +176,7 @@ interface ApiWarehouseRow {
   ml1Stock: number;
   ml2Stock: number;
   stockInHand: number;
+  available?: number;
   reserved: number;
   inTransit: number;
   underGrn?: number;
@@ -192,7 +211,7 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       zone: r.zone ?? '—',
       rack: r.rack ?? '—',
       whStock: Number(r.whStock) || 0,
-      whUnit: r.whUnit ?? 'KG',
+      whUnit: resolveWhUnitFromApi(r.whUnit, r.type),
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
       stockInHand: (() => {
@@ -201,6 +220,17 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
           if (Number.isFinite(n)) return n;
         }
         return (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+      })(),
+      available: (() => {
+        const sih =
+          r.stockInHand != null && r.stockInHand !== '' && Number.isFinite(Number(r.stockInHand))
+            ? Number(r.stockInHand)
+            : (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+        const res = Number(r.reserved) || 0;
+        if (r.available != null && Number.isFinite(Number(r.available))) {
+          return Math.max(0, Number(r.available));
+        }
+        return warehouseInventoryAvailable(sih, res);
       })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
@@ -263,7 +293,7 @@ export async function fetchWarehouseInventoryPage(opts: {
       zone: r.zone ?? '—',
       rack: r.rack ?? '—',
       whStock: Number(r.whStock) || 0,
-      whUnit: r.whUnit ?? 'KG',
+      whUnit: resolveWhUnitFromApi(r.whUnit, r.type),
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
       stockInHand: (() => {
@@ -272,6 +302,17 @@ export async function fetchWarehouseInventoryPage(opts: {
           if (Number.isFinite(n)) return n;
         }
         return (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+      })(),
+      available: (() => {
+        const sih =
+          r.stockInHand != null && r.stockInHand !== '' && Number.isFinite(Number(r.stockInHand))
+            ? Number(r.stockInHand)
+            : (Number(r.whStock) + Number(r.ml1Stock) + Number(r.ml2Stock)) || 0;
+        const res = Number(r.reserved) || 0;
+        if (r.available != null && Number.isFinite(Number(r.available))) {
+          return Math.max(0, Number(r.available));
+        }
+        return warehouseInventoryAvailable(sih, res);
       })(),
       reserved: Number(r.reserved) || 0,
       inTransit: Number(r.inTransit) || 0,
@@ -534,7 +575,7 @@ export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: W
       zone: r.zone ?? '—',
       rack: r.rack ?? '—',
       whStock: Number(r.whStock) || 0,
-      whUnit: r.whUnit ?? 'KG',
+      whUnit: resolveWhUnitFromApi(r.whUnit, r.type),
       ml1Stock: Number(r.ml1Stock) || 0,
       ml2Stock: Number(r.ml2Stock) || 0,
       stockInHand: Number.isFinite(Number(r.stockInHand)) ? Number(r.stockInHand) : 0,

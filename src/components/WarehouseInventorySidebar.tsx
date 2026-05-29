@@ -6,6 +6,7 @@ import {
   fetchWarehouseLocationHistory,
   fetchStockByLocation,
   deriveWarehouseInventoryDisplayStatus,
+  warehouseInventoryAvailable,
   inventoryAdjustChangeLines,
   type WarehouseLocationHistoryEntry,
   type StockByLocationPayload,
@@ -113,10 +114,12 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
       const whTotal = next.reduce((s, d) => s + d.qtyWh, 0);
       setSelectedItem((itemPrev) => {
         if (!itemPrev) return itemPrev;
+        const stockInHand = whTotal + itemPrev.ml1Stock + itemPrev.ml2Stock;
         return {
           ...itemPrev,
           whStock: whTotal,
-          stockInHand: whTotal + itemPrev.ml1Stock + itemPrev.ml2Stock,
+          stockInHand,
+          available: warehouseInventoryAvailable(stockInHand, itemPrev.reserved),
         };
       });
       setStockQtyDraft((prev) => ({ ...prev, whStock: formatQtyInputDisplay(whTotal) }));
@@ -220,8 +223,9 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
     setSelectedItem((prev) => {
       if (!prev) return prev;
       const updated: InventoryItem = { ...prev, [field]: value as never };
-      if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock') {
+      if (field === 'whStock' || field === 'ml1Stock' || field === 'ml2Stock' || field === 'reserved') {
         updated.stockInHand = updated.whStock + updated.ml1Stock + updated.ml2Stock;
+        updated.available = warehouseInventoryAvailable(updated.stockInHand, updated.reserved);
       }
       return updated;
     });
@@ -317,7 +321,8 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
       const stockInHand = numOr(d.stock_in_hand, wh + ml1 + ml2);
       const reorderPt = numOr(d.reorder_pt, itemToSave.reorderPt);
       const qc = d.qc_status != null ? String(d.qc_status) : itemToSave.qcStatus ?? 'In Stock';
-      const status = deriveWarehouseInventoryDisplayStatus(qc, stockInHand, reorderPt);
+      const reserved = numOr(d.reserved, itemToSave.reserved);
+      const status = deriveWarehouseInventoryDisplayStatus(qc, stockInHand, reorderPt, reserved);
 
       const updated: InventoryItem = {
         ...itemToSave,
@@ -325,7 +330,8 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
         ml1Stock: ml1,
         ml2Stock: ml2,
         stockInHand,
-        reserved: numOr(d.reserved, itemToSave.reserved),
+        available: warehouseInventoryAvailable(stockInHand, reserved),
+        reserved,
         inTransit: numOr(d.in_transit, itemToSave.inTransit),
         zone: displayZoneRack(d.zone != null ? String(d.zone) : itemToSave.zone),
         rack: displayZoneRack(d.rack != null ? String(d.rack) : itemToSave.rack),
@@ -580,8 +586,16 @@ const WarehouseInventorySidebar: React.FC<Props> = ({
               )}
             </label>
             <div className="bg-emerald-50 border border-emerald-200 rounded p-2">
-              <p className="text-[9px] uppercase text-emerald-700">Stock in hand (total)</p>
-              <p className="text-base font-bold text-emerald-700">{selectedItem.stockInHand}</p>
+              <p className="text-[9px] uppercase text-emerald-700">Available (SIH − reserved)</p>
+              <p className="text-base font-bold text-emerald-700">
+                {warehouseInventoryAvailable(selectedItem.stockInHand, selectedItem.reserved)}{' '}
+                {selectedItem.whUnit}
+              </p>
+              {selectedItem.reserved > 0 ? (
+                <p className="text-[10px] text-emerald-800/80 mt-0.5">
+                  Physical total {selectedItem.stockInHand} {selectedItem.whUnit}
+                </p>
+              ) : null}
             </div>
             <label className="bg-slate-50 border border-slate-200 rounded p-2">
               <p className="text-[9px] uppercase text-slate-500 mb-1">Reserved</p>
