@@ -69,6 +69,126 @@ export interface InventoryItem {
   qualityGrade?: string;
 }
 
+type InventorySortColumn =
+  | 'code'
+  | 'name'
+  | 'type'
+  | 'itemGroups'
+  | 'whStock'
+  | 'ml1Stock'
+  | 'ml2Stock'
+  | 'plannedQty'
+  | 'poQuantity'
+  | 'inTransit'
+  | 'underGrn'
+  | 'stockInHand'
+  | 'reserved'
+  | 'reorderPt'
+  | 'avgMo'
+  | 'status';
+
+type InventorySortDirection = 'asc' | 'desc';
+
+type PlanningTotalsMap = Map<string, { plannedQty: number; totalRequired: number; unit: string }>;
+
+function plannedOpenQtyForItem(item: InventoryItem, planningTotalsByKey: PlanningTotalsMap): number {
+  const planKey =
+    (item.type === 'RM' || item.type === 'PM') && item.sourceId != null && item.sourceId > 0
+      ? `${item.type}-${item.sourceId}`
+      : null;
+  const plan = planKey ? planningTotalsByKey.get(planKey) : undefined;
+  if (!plan) return 0;
+  return Math.max(
+    0,
+    Number(plan.plannedQty || 0) -
+      (Number(item.poQuantity || 0) + Number(item.inTransit || 0) + Number(item.underGrn || 0))
+  );
+}
+
+function sortValueForInventoryItem(
+  item: InventoryItem,
+  column: InventorySortColumn,
+  planningTotalsByKey: PlanningTotalsMap
+): string | number {
+  switch (column) {
+    case 'code':
+      return item.code.toLowerCase();
+    case 'name':
+      return item.name.toLowerCase();
+    case 'type':
+      return item.type;
+    case 'itemGroups':
+      return (item.itemGroupNames?.join(', ') || '').toLowerCase();
+    case 'whStock':
+      return item.whStock;
+    case 'ml1Stock':
+      return item.ml1Stock;
+    case 'ml2Stock':
+      return item.ml2Stock;
+    case 'plannedQty':
+      return plannedOpenQtyForItem(item, planningTotalsByKey);
+    case 'poQuantity':
+      return Number(item.poQuantity) || 0;
+    case 'inTransit':
+      return item.inTransit;
+    case 'underGrn':
+      return Number(item.underGrn) || 0;
+    case 'stockInHand':
+      return item.stockInHand;
+    case 'reserved':
+      return item.reserved;
+    case 'reorderPt':
+      return item.reorderPt;
+    case 'avgMo':
+      return item.avgMo;
+    case 'status':
+      return item.status.toLowerCase();
+    default:
+      return '';
+  }
+}
+
+function SortableInventoryTh({
+  label,
+  column,
+  sortColumn,
+  sortDirection,
+  onSort,
+  title,
+}: {
+  label: string;
+  column: InventorySortColumn;
+  sortColumn: InventorySortColumn | null;
+  sortDirection: InventorySortDirection;
+  onSort: (col: InventorySortColumn) => void;
+  title?: string;
+}): JSX.Element {
+  const active = sortColumn === column;
+  return (
+    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        title={title}
+        aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+          active ? 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+        }`}
+      >
+        {label}
+        <span
+          className={`text-[10px] not-italic leading-none transition-opacity duration-150 ${
+            active ? 'opacity-100 text-cyan-600' : 'opacity-0 group-hover:opacity-70 text-gray-500'
+          }`}
+          aria-hidden
+        >
+          {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 interface Location {
   id: string;
   name: string;
@@ -938,6 +1058,8 @@ const WarehouseInventory = () => {
   const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<InventorySortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<InventorySortDirection>('asc');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
   const inventoryData = useMemo(
@@ -1216,16 +1338,43 @@ const WarehouseInventory = () => {
     return items;
   }, [searchQuery, activeFilter, itemGroupFilter, inventoryData]);
 
-  useEffect(() => {
-    // Keep pagination consistent with filters/search.
-    setCurrentPage(1);
-  }, [searchQuery, activeFilter, itemGroupFilter, pageSize]);
+  const sortedItems = useMemo(() => {
+    if (!sortColumn) return filteredItems;
+    const rows = [...filteredItems];
+    rows.sort((a, b) => {
+      const av = sortValueForInventoryItem(a, sortColumn, planningTotalsByKey);
+      const bv = sortValueForInventoryItem(b, sortColumn, planningTotalsByKey);
+      let cmp: number;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        cmp = av - bv;
+      } else {
+        cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (cmp === 0) cmp = a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [filteredItems, sortColumn, sortDirection, planningTotalsByKey]);
 
-  const totalFiltered = filteredItems.length;
+  const toggleInventorySort = (column: InventorySortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
+
+  useEffect(() => {
+    // Keep pagination consistent with filters/search/sort.
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter, itemGroupFilter, pageSize, sortColumn, sortDirection]);
+
+  const totalFiltered = sortedItems.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const pagedItems = filteredItems.slice(startIndex, startIndex + pageSize);
+  const pagedItems = sortedItems.slice(startIndex, startIndex + pageSize);
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -1759,60 +1908,29 @@ const WarehouseInventory = () => {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Code
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Item Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Item groups
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        WH Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ML1 Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ML2 Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Planned qty
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        PO Qty
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        In Transit
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Under GRN
-                      </th>
-                      <th
-                        className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                      <SortableInventoryTh label="Code" column="code" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Item Name" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Type" column="type" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Item groups" column="itemGroups" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="WH Stock" column="whStock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="ML1 Stock" column="ml1Stock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="ML2 Stock" column="ml2Stock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Planned qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="PO Qty" column="poQuantity" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="In Transit" column="inTransit" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Under GRN" column="underGrn" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh
+                        label="Stock in Hand"
+                        column="stockInHand"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={toggleInventorySort}
                         title="Usable stock (physical WH+ML1+ML2 minus reserved for production/planning)"
-                      >
-                        Stock in Hand
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Reserved
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Reorder PT
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Avg/MO
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        QC / Status
-                      </th>
-                      {/* <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Planning
-                      </th> */}
+                      />
+                      <SortableInventoryTh label="Reserved" column="reserved" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Reorder PT" column="reorderPt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Avg/MO" column="avgMo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="QC / Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -2011,7 +2129,7 @@ const WarehouseInventory = () => {
               </div>
 
               {/* Empty State */}
-              {filteredItems.length === 0 && (
+              {sortedItems.length === 0 && (
                 <div className="py-16 text-center">
                   <div className="text-gray-400 text-5xl mb-4"></div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
@@ -2023,7 +2141,7 @@ const WarehouseInventory = () => {
             </div>
 
             {/* Footer Info */}
-            {filteredItems.length > 0 && (
+            {sortedItems.length > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between text-sm text-gray-600">
                   <div>

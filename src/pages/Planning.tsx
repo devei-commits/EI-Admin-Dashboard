@@ -3,6 +3,7 @@ import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import { parsePlanningSlaTimestamp, planningBomConfirmedAtIso } from '../utils/planningSlaDates';
@@ -397,6 +398,116 @@ function bomLineMatchesItemGroupMember(
   const lineName = String(line.name ?? '').trim().toLowerCase();
   const memberName = String(member.name ?? '').trim().toLowerCase();
   return lineName.length > 0 && memberName.length > 0 && lineName === memberName;
+}
+
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+type PisOrderSortColumn =
+  | 'soDate'
+  | 'soNo'
+  | 'client'
+  | 'product'
+  | 'unitsOrdered'
+  | 'planStatus'
+  | 'batchStatus'
+  | 'planningSla';
+
+function sortValueForPisOrder(order: SalesOrder, col: PisOrderSortColumn, nowMs: number = Date.now()): string | number {
+  switch (col) {
+    case 'soDate':
+      return order.orderDate ? new Date(order.orderDate).getTime() : 0;
+    case 'soNo':
+      return order.soNumber || '';
+    case 'client':
+      return order.customerName || '';
+    case 'product':
+      return `${order.productName || ''} ${order.productCode || ''}`;
+    case 'unitsOrdered':
+      return parseUnitCount(order.orderQty);
+    case 'planStatus':
+      return getCreatedAndRemainingUnits(order).createdUnits;
+    case 'batchStatus':
+      return order.bomStatus || '';
+    case 'planningSla':
+      return getPlanningSlaMeta(order, getCreatedAndRemainingUnits(order).remainingUnits, nowMs).elapsedHours;
+    default:
+      return '';
+  }
+}
+
+type ItemsInvolvedSortColumn =
+  | 'item'
+  | 'category'
+  | 'linkedBatches'
+  | 'qtyBalance'
+  | 'pipelineStage'
+  | 'procurement'
+  | 'lastUpdate';
+
+function sortValueForItemsInvolvedRow(row: ItemsInvolvedDisplayRow, col: ItemsInvolvedSortColumn): string | number {
+  switch (col) {
+    case 'item':
+      return `${row.name} ${row.code}`;
+    case 'category':
+      return row.itemType;
+    case 'linkedBatches':
+      return row.batchCount || Number.parseInt(row.usedIn, 10) || 0;
+    case 'qtyBalance':
+      return row.netNum;
+    case 'pipelineStage': {
+      const pct = Number.parseInt(String(row.coverage).replace('%', ''), 10);
+      return Number.isFinite(pct) ? pct : 0;
+    }
+    case 'procurement':
+      return row.totalOnPONum + row.plannedQtyNum;
+    case 'lastUpdate':
+      return row.totalReleasedNum + row.totalReceivedNum;
+    default:
+      return '';
+  }
+}
+
+type PlanningBatchSortColumn =
+  | 'batchProduct'
+  | 'customer'
+  | 'batchSpecs'
+  | 'itemStatus'
+  | 'currentStatus'
+  | 'timeline'
+  | 'soProduct'
+  | 'relatedSo'
+  | 'status';
+
+function sortValueForPlanningBatchRow(row: PlanningBatchAllRow, col: PlanningBatchSortColumn): string | number {
+  switch (col) {
+    case 'batchProduct':
+      return row.batchCode || '';
+    case 'customer':
+      return row.customerName || '';
+    case 'batchSpecs':
+      return Number(row.sizeKg) || 0;
+    case 'itemStatus':
+      return (Array.isArray(row.rmLines) ? row.rmLines.length : 0) + (Array.isArray(row.pmLines) ? row.pmLines.length : 0);
+    case 'currentStatus':
+    case 'status':
+      return getBatchLifecycleStatus(row);
+    case 'timeline':
+      return row.dueDate ? new Date(row.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    case 'soProduct':
+      return `${row.soNumber || ''} ${row.productName || ''} ${row.productCode || ''}`;
+    case 'relatedSo':
+      return row.soNumber || '';
+    default:
+      return '';
+  }
 }
 
 function parseUnitCount(value: string | number | null | undefined): number {
@@ -1023,12 +1134,23 @@ function PlanningBatchesTab({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
-  const [sortBy, setSortBy] = useState<'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc'>('dueAsc');
+  const [sortColumn, setSortColumn] = useState<PlanningBatchSortColumn | null>('timeline');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { data: allBatches = [], isLoading } = useQuery({
     queryKey: ['planning-batches-all'],
     queryFn: fetchAllBatches,
     enabled: true,
   });
+
+  const toggleBatchSort = (column: PlanningBatchSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1070,29 +1192,21 @@ function PlanningBatchesTab({
     if (batchTypeFilter === 'on-hold') return st === 'On Hold';
     return true;
   });
-  const sortedRows = [...filteredRows].sort((a, b) => {
-    const codeA = String(a.batchCode ?? '').toLowerCase();
-    const codeB = String(b.batchCode ?? '').toLowerCase();
-    const sizeA = Number(a.sizeKg) || 0;
-    const sizeB = Number(b.sizeKg) || 0;
-    const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
-    const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
-    switch (sortBy) {
-      case 'dueDesc':
-        return dueB - dueA;
-      case 'sizeAsc':
-        return sizeA - sizeB;
-      case 'sizeDesc':
-        return sizeB - sizeA;
-      case 'codeAsc':
-        return codeA.localeCompare(codeB);
-      case 'codeDesc':
-        return codeB.localeCompare(codeA);
-      case 'dueAsc':
-      default:
-        return dueA - dueB;
-    }
-  });
+  const sortedRows = !sortColumn
+    ? filteredRows
+    : [...filteredRows].sort((a, b) => {
+        const cmp = compareSortValues(
+          sortValueForPlanningBatchRow(a, sortColumn),
+          sortValueForPlanningBatchRow(b, sortColumn),
+          sortDirection
+        );
+        if (cmp !== 0) return cmp;
+        return `${a.planningExtractedId}-${a.id}`.localeCompare(`${b.planningExtractedId}-${b.id}`, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
@@ -1121,33 +1235,76 @@ function PlanningBatchesTab({
           <option value="released">Released</option>
           <option value="on-hold">On Hold</option>
         </select>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'dueAsc' | 'dueDesc' | 'sizeAsc' | 'sizeDesc' | 'codeAsc' | 'codeDesc')}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-        >
-          <option value="dueAsc">Sort: Due date (earliest)</option>
-          <option value="dueDesc">Sort: Due date (latest)</option>
-          <option value="sizeDesc">Sort: Size (high to low)</option>
-          <option value="sizeAsc">Sort: Size (low to high)</option>
-          <option value="codeAsc">Sort: Batch code (A-Z)</option>
-          <option value="codeDesc">Sort: Batch code (Z-A)</option>
-        </select>
       </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[1280px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch / Product</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch Specs</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Item Status</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Current Status</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Timeline</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">SO / Product</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Related SO</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
+                <SortableTableTh
+                  label="Batch / Product"
+                  column="batchProduct"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Customer"
+                  column="customer"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Batch Specs"
+                  column="batchSpecs"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Item Status"
+                  column="itemStatus"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Current Status"
+                  column="currentStatus"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Timeline"
+                  column="timeline"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="SO / Product"
+                  column="soProduct"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Related SO"
+                  column="relatedSo"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                />
+                <SortableTableTh
+                  label="Status"
+                  column="status"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleBatchSort}
+                  align="right"
+                />
               </tr>
             </thead>
             <tbody>
@@ -1180,6 +1337,8 @@ const Planning = () => {
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
   const [pisPage, setPisPage] = useState(1);
   const [pisPageSize, setPisPageSize] = useState(20);
+  const [pisSortColumn, setPisSortColumn] = useState<PisOrderSortColumn | null>(null);
+  const [pisSortDirection, setPisSortDirection] = useState<SortDirection>('asc');
   const [prModalOpen, setPrModalOpen] = useState(false);
   const [selectedSO, setSelectedSO] = useState<SalesOrder | null>(null);
   const [prSending, setPrSending] = useState(false);
@@ -1232,6 +1391,8 @@ const Planning = () => {
   const [itemsInvolvedCategoryFilter, setItemsInvolvedCategoryFilter] = useState<'all' | 'RM' | 'PM' | 'shortage' | 'available'>('all');
   const [itemsInvolvedProductFilter, setItemsInvolvedProductFilter] = useState<string>('all');
   const [itemsInvolvedSearchTerm, setItemsInvolvedSearchTerm] = useState('');
+  const [itemsInvolvedSortColumn, setItemsInvolvedSortColumn] = useState<ItemsInvolvedSortColumn | null>(null);
+  const [itemsInvolvedSortDirection, setItemsInvolvedSortDirection] = useState<SortDirection>('asc');
   /** Re-render PIs Extracted SLA column every minute while tab is open. */
   const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
@@ -2626,14 +2787,37 @@ const Planning = () => {
 
   useEffect(() => {
     setPisPage(1);
-  }, [statusFilter, searchTerm, dateFilter.from, dateFilter.to, pisPageSize]);
+  }, [statusFilter, searchTerm, dateFilter.from, dateFilter.to, pisPageSize, pisSortColumn, pisSortDirection]);
 
-  const pisTotalPages = Math.max(1, Math.ceil(filteredPisOrders.length / pisPageSize));
+  const sortedFilteredPisOrders = useMemo(() => {
+    if (!pisSortColumn) return filteredPisOrders;
+    const nowMs = Date.now();
+    return [...filteredPisOrders].sort((a, b) => {
+      const cmp = compareSortValues(
+        sortValueForPisOrder(a, pisSortColumn, nowMs),
+        sortValueForPisOrder(b, pisSortColumn, nowMs),
+        pisSortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [filteredPisOrders, pisSortColumn, pisSortDirection, slaClockTick]);
+
+  const togglePisSort = (column: PisOrderSortColumn) => {
+    if (pisSortColumn === column) {
+      setPisSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setPisSortColumn(column);
+    setPisSortDirection('asc');
+  };
+
+  const pisTotalPages = Math.max(1, Math.ceil(sortedFilteredPisOrders.length / pisPageSize));
   const safePisPage = Math.min(pisPage, pisTotalPages);
   const pagedPisOrders = useMemo(() => {
     const start = (safePisPage - 1) * pisPageSize;
-    return filteredPisOrders.slice(start, start + pisPageSize);
-  }, [filteredPisOrders, safePisPage, pisPageSize]);
+    return sortedFilteredPisOrders.slice(start, start + pisPageSize);
+  }, [sortedFilteredPisOrders, safePisPage, pisPageSize]);
 
   const handleExportPisCsv = useCallback(() => {
     const header = ['SO Date', 'SO No', 'Client', 'Product', 'Units Ordered', 'Planned', 'Pending', 'Batch Status', 'SLA'];
@@ -3033,6 +3217,28 @@ const Planning = () => {
     dateFilter,
     planningExtractedIdsInDateRange,
   ]);
+
+  const sortedFilteredItemsInvolved = useMemo(() => {
+    if (!itemsInvolvedSortColumn) return filteredItemsInvolved;
+    return [...filteredItemsInvolved].sort((a, b) => {
+      const cmp = compareSortValues(
+        sortValueForItemsInvolvedRow(a, itemsInvolvedSortColumn),
+        sortValueForItemsInvolvedRow(b, itemsInvolvedSortColumn),
+        itemsInvolvedSortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [filteredItemsInvolved, itemsInvolvedSortColumn, itemsInvolvedSortDirection]);
+
+  const toggleItemsInvolvedSort = (column: ItemsInvolvedSortColumn) => {
+    if (itemsInvolvedSortColumn === column) {
+      setItemsInvolvedSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setItemsInvolvedSortColumn(column);
+    setItemsInvolvedSortDirection('asc');
+  };
 
   const hasPlannedLineForItem = (item: ItemsInvolvedDisplayRow) =>
     plannedLinesFromBackend.some((line) => plannedLineCountsTowardItemRelease(line, item));
@@ -4634,14 +4840,63 @@ const Planning = () => {
                 <table className="w-full text-sm min-w-[1180px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">SO Date</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">SO No</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Units Ordered</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Plan Status</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Batch Status</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Planning SLA (48h)</th>
+                      <SortableTableTh
+                        label="SO Date"
+                        column="soDate"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="SO No"
+                        column="soNo"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Client"
+                        column="client"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Product"
+                        column="product"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Units Ordered"
+                        column="unitsOrdered"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                        align="right"
+                      />
+                      <SortableTableTh
+                        label="Plan Status"
+                        column="planStatus"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Batch Status"
+                        column="batchStatus"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Planning SLA (48h)"
+                        column="planningSla"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
                       <th className="px-4 py-3 text-right font-semibold text-gray-700"></th>
                     </tr>
                   </thead>
@@ -4779,7 +5034,7 @@ const Planning = () => {
               {!planningLoading && filteredPisOrders.length > 0 && (
                 <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
                   <div className="text-xs text-gray-600">
-                    Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {filteredPisOrders.length} rows
+                    Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {sortedFilteredPisOrders.length} rows
                   </div>
                   <div className="flex items-center gap-2">
                     <select
@@ -4992,18 +5247,62 @@ const Planning = () => {
                 <table className="w-full text-xs border-collapse min-w-[1120px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Item</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Category</th>
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Linked Batches</th>
-                      <th className="px-2 py-2 text-right font-semibold text-gray-700 whitespace-nowrap">Qty Balance</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Pipeline stage</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Procurement &amp; PO</th>
-                      <th className="px-2 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">Last update</th>
+                      <SortableTableTh
+                        label="Item"
+                        column="item"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                      />
+                      <SortableTableTh
+                        label="Category"
+                        column="category"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                      />
+                      <SortableTableTh
+                        label="Linked Batches"
+                        column="linkedBatches"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                      />
+                      <SortableTableTh
+                        label="Qty Balance"
+                        column="qtyBalance"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                      />
+                      <SortableTableTh
+                        label="Pipeline stage"
+                        column="pipelineStage"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                      />
+                      <SortableTableTh
+                        label="Procurement & PO"
+                        column="procurement"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                      />
+                      <SortableTableTh
+                        label="Last update"
+                        column="lastUpdate"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                      />
                       <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredItemsInvolved.map((item, idx) => (
+                    {sortedFilteredItemsInvolved.map((item, idx) => (
                       (() => {
                         // Release when still short vs full TOTAL REQ (netNum) or vs batch-unallocated supply (planned shortfall).
                         const hasShortfall = item.netNum < 0;

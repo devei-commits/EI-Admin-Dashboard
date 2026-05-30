@@ -14,6 +14,7 @@ function defaultWhUnitForType(type: WarehouseItemType | string): string {
 }
 
 function resolveWhUnitFromApi(whUnit: string | undefined, type: WarehouseItemType | string): string {
+  if (String(type).trim().toUpperCase() === 'PM') return 'PCS';
   const u = whUnit != null ? String(whUnit).trim() : '';
   return u || defaultWhUnitForType(type);
 }

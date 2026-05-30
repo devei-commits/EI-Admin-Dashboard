@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
 import {
   fetchFacilityAreas,
   ensureCustomZoneAndRack,
@@ -107,6 +108,59 @@ interface GRNRecord {
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+}
+
+type InboundSortColumn =
+  | 'grnNo'
+  | 'item'
+  | 'rcvdQty'
+  | 'remaining'
+  | 'type'
+  | 'received'
+  | 'assignedTo'
+  | 'qc'
+  | 'status';
+
+interface InboundTableRow {
+  rowId: string;
+  grn: GRNRecord;
+  lineItem: LineItem | null;
+}
+
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): string | number {
+  const { grn, lineItem } = row;
+  switch (col) {
+    case 'grnNo':
+      return displayGrnNo(grn.grnNo);
+    case 'item':
+      return lineItem ? `${lineItem.item} ${lineItem.itemCode}` : '';
+    case 'rcvdQty':
+      return lineItem?.rcvdQty ?? -1;
+    case 'remaining':
+      return lineItem ? Math.max(0, lineItem.poQty - lineItem.rcvdQty) : -1;
+    case 'type':
+      return grn.type;
+    case 'received':
+      return grn.receivedDate ? new Date(grn.receivedDate).getTime() : 0;
+    case 'assignedTo':
+      return grn.assignedTo || '';
+    case 'qc':
+      return grn.qcStatus || '';
+    case 'status':
+      return grn.status || '';
+    default:
+      return '';
+  }
 }
 
 /** Simulate scanning a QR: paste payload JSON → show decoded text + suggested action */
@@ -1569,6 +1623,8 @@ const WarehouseInbound = () => {
   const [selectedGRN, setSelectedGRN] = useState<GRNRecord | null>(null);
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [grnDate, setGrnDate] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<InboundSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   useEffect(() => {
     fetchGRNList()
@@ -1639,21 +1695,45 @@ const WarehouseInbound = () => {
     return true;
   });
 
-  const filteredItemRows = filteredData.flatMap((grn) => {
-    const lineItems = Array.isArray(grn.lineItems) ? grn.lineItems : [];
-    if (lineItems.length === 0) {
-      return [{
-        rowId: `${grn.id}-empty`,
+  const filteredItemRows = useMemo((): InboundTableRow[] => {
+    return filteredData.flatMap((grn) => {
+      const lineItems = Array.isArray(grn.lineItems) ? grn.lineItems : [];
+      if (lineItems.length === 0) {
+        return [{
+          rowId: `${grn.id}-empty`,
+          grn,
+          lineItem: null as LineItem | null,
+        }];
+      }
+      return lineItems.map((line) => ({
+        rowId: `${grn.id}-${line.id}`,
         grn,
-        lineItem: null as LineItem | null,
-      }];
+        lineItem: line,
+      }));
+    });
+  }, [filteredData]);
+
+  const sortedItemRows = useMemo(() => {
+    if (!sortColumn) return filteredItemRows;
+    return [...filteredItemRows].sort((a, b) => {
+      const cmp = compareSortValues(
+        sortValueForInboundRow(a, sortColumn),
+        sortValueForInboundRow(b, sortColumn),
+        sortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return a.rowId.localeCompare(b.rowId, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [filteredItemRows, sortColumn, sortDirection]);
+
+  const toggleInboundSort = (column: InboundSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
     }
-    return lineItems.map((line) => ({
-      rowId: `${grn.id}-${line.id}`,
-      grn,
-      lineItem: line,
-    }));
-  });
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
 
   const getQCStatusColor = (status: QCStatus) => {
     switch (status) {
@@ -1781,15 +1861,75 @@ const WarehouseInbound = () => {
             <table className="w-full min-w-[840px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">GRN No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Item</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">RCVD Qty</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Remaining</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Received</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned To</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">QC</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                  <SortableTableTh
+                    label="GRN No."
+                    column="grnNo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="Item"
+                    column="item"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="RCVD Qty"
+                    column="rcvdQty"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Remaining"
+                    column="remaining"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Type"
+                    column="type"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Received"
+                    column="received"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Assigned To"
+                    column="assignedTo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="QC"
+                    column="qc"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Status"
+                    column="status"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1797,12 +1937,12 @@ const WarehouseInbound = () => {
                   <tr>
                     <td colSpan={9} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
-                ) : filteredItemRows.length === 0 ? (
+                ) : sortedItemRows.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No GRN items found</td>
                   </tr>
                 ) : (
-                  filteredItemRows.map(({ rowId, grn, lineItem }) => (
+                  sortedItemRows.map(({ rowId, grn, lineItem }) => (
                     <tr
                       key={rowId}
                       className="hover:bg-amber-50/50 transition-colors cursor-pointer"

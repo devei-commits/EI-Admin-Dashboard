@@ -10,8 +10,55 @@ import {
  importVendorMasterExcel,
 } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
+
+type VendorClientSortColumn =
+ | 'code'
+ | 'name'
+ | 'zohoId'
+ | 'category'
+ | 'email'
+ | 'phone'
+ | 'state'
+ | 'status'
+ | 'updated';
+
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+ let cmp: number;
+ if (typeof av === 'number' && typeof bv === 'number') {
+  cmp = av - bv;
+ } else {
+  cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+ }
+ return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForVendorClientRow(row: VendorClientType, col: VendorClientSortColumn): string | number {
+ switch (col) {
+  case 'code':
+   return String(row.data?.entityCode || '');
+  case 'name':
+   return row.name || '';
+  case 'zohoId':
+   return row.zohoId || String((row.data as { zohoId?: string } | undefined)?.zohoId || '');
+  case 'category':
+   return row.category || '';
+  case 'email':
+   return row.email || '';
+  case 'phone':
+   return row.phone || '';
+  case 'state':
+   return row.location || '';
+  case 'status':
+   return row.status || '';
+  case 'updated':
+   return row.lastModified ? new Date(row.lastModified).getTime() : 0;
+  default:
+   return '';
+ }
+}
 
 const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boolean }> = ({ label, value, mono }) => {
  const isEl = React.isValidElement(value);
@@ -60,6 +107,10 @@ const VendorClient: React.FC = () => {
  const [clientCategory, setClientCategory] = useState<string>('all');
  const [clientPage, setClientPage] = useState(1);
  const [clientPageSize, setClientPageSize] = useState(10);
+ const [vendorSortColumn, setVendorSortColumn] = useState<VendorClientSortColumn | null>(null);
+ const [vendorSortDirection, setVendorSortDirection] = useState<SortDirection>('asc');
+ const [clientSortColumn, setClientSortColumn] = useState<VendorClientSortColumn | null>(null);
+ const [clientSortDirection, setClientSortDirection] = useState<SortDirection>('asc');
  const [importingClientExcel, setImportingClientExcel] = useState(false);
  const [importingVendorExcel, setImportingVendorExcel] = useState(false);
  const clientExcelFileRef = useRef<HTMLInputElement>(null);
@@ -171,6 +222,50 @@ const VendorClient: React.FC = () => {
  // Server returns rows for the requested page (so no additional slicing).
  const pagedVendors = filteredVendors;
  const pagedClients = filteredClients;
+
+ const sortedPagedVendors = useMemo(() => {
+  if (!vendorSortColumn) return pagedVendors;
+  return [...pagedVendors].sort((a, b) => {
+   const cmp = compareSortValues(
+    sortValueForVendorClientRow(a, vendorSortColumn),
+    sortValueForVendorClientRow(b, vendorSortColumn),
+    vendorSortDirection
+   );
+   if (cmp !== 0) return cmp;
+   return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+  });
+ }, [pagedVendors, vendorSortColumn, vendorSortDirection]);
+
+ const sortedPagedClients = useMemo(() => {
+  if (!clientSortColumn) return pagedClients;
+  return [...pagedClients].sort((a, b) => {
+   const cmp = compareSortValues(
+    sortValueForVendorClientRow(a, clientSortColumn),
+    sortValueForVendorClientRow(b, clientSortColumn),
+    clientSortDirection
+   );
+   if (cmp !== 0) return cmp;
+   return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+  });
+ }, [pagedClients, clientSortColumn, clientSortDirection]);
+
+ const toggleVendorSort = (column: VendorClientSortColumn) => {
+  if (vendorSortColumn === column) {
+   setVendorSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setVendorSortColumn(column);
+  setVendorSortDirection('asc');
+ };
+
+ const toggleClientSort = (column: VendorClientSortColumn) => {
+  if (clientSortColumn === column) {
+   setClientSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setClientSortColumn(column);
+  setClientSortDirection('asc');
+ };
 
  useEffect(() => {
   setVendorPage(1);
@@ -498,18 +593,18 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
+        <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Vendor</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
+          <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Category" column="category" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Email" column="email" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Phone" column="phone" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="State" column="state" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Status" column="status" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Updated" column="updated" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -518,7 +613,7 @@ const VendorClient: React.FC = () => {
            <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
           </tr>
          ) : (
-          pagedVendors.map((v) => (
+          sortedPagedVendors.map((v) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
@@ -559,7 +654,7 @@ const VendorClient: React.FC = () => {
        {vendorTotal === 0 ? (
         <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No vendors found.</div>
        ) : (
-        pagedVendors.map((v) => (
+        sortedPagedVendors.map((v) => (
          <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">
@@ -736,18 +831,18 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
+        <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Client</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
+          <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Category" column="category" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Email" column="email" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Phone" column="phone" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="State" column="state" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Status" column="status" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Updated" column="updated" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -756,7 +851,7 @@ const VendorClient: React.FC = () => {
            <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
           </tr>
          ) : (
-          pagedClients.map((c) => (
+          sortedPagedClients.map((c) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
@@ -797,7 +892,7 @@ const VendorClient: React.FC = () => {
        {clientTotal === 0 ? (
         <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No clients found.</div>
        ) : (
-        pagedClients.map((c) => (
+        sortedPagedClients.map((c) => (
          <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">

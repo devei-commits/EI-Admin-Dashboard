@@ -68,9 +68,13 @@ import {
 } from '../services/planningExtracted.service';
 import {
   createMRN, fetchMRNList, fetchMRNById, updateMRN, getApiErrorMessage, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
+  mrnSourceDocFromApi,
+  formatMrnDisplayDate,
+  mrnDisplayPrName,
+  mrnDisplayExpectedDate,
+  mrnDisplayBatchNumber,
   type MRNRecordFromApi, type GeneratedMRNLabel, type MRNLocationHistoryEntry, type AssignablePicker as MRNAssignablePicker,
 } from '../services/mrn.service';
-import { resolveItemDedicatedForMrn } from '../services/itemDedicatedFacilityLocations.service';
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchBOMByProductId, type BOMRecord, type BOMRmLine, type BOMPmLine } from '../services/bom.service';
 import { fetchBOMByBatchId, fetchBatchDispensingMuStock } from '../services/production.service';
@@ -4138,6 +4142,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         itemType: type,
         ...(String(transferFromCode || '').trim() ? { whDispatchZone: String(transferFromCode).trim() } : {}),
         ...(String(transferTo || '').trim() ? { muReceiveZone: String(transferTo).trim() } : {}),
+        ...(String(reqDate || '').trim() ? { requiredByDate: String(reqDate).trim().slice(0, 10) } : {}),
       });
       addToast(
         'success',
@@ -4160,7 +4165,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
   const fmtQtyMtr = (n: number) => formatQtyExact(n, qtyKindMtr);
 
   return (
-    <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`}>
+    <Modal onClose={onClose} title={`Material Transfer Request - ${type === 'rm' ? batch.bmrNo : batch.bprNo}`} size="lg">
       <Tip color="orange" icon={<Send size={14} />}>Request transfer of {type.toUpperCase()} from <b>{fromLabel}</b> to <b>{toLabel}</b></Tip>
       {scheduledMuFromBatch && (
         <Tip color="teal" icon={<MapPin size={14} />}>
@@ -4579,42 +4584,6 @@ function MRNDetailModal({
   }, [mrn.id, mrn.muReceiveZone, mrn.muReceiveRack, mrn.locationPrefix, productionFacilityData, productionFacilityLoading, isOutboundMtr]);
 
   useEffect(() => {
-    if (!isOutboundMtr || productionFacilityLoading) return;
-    if (String(mrn.muReceiveRack || '').trim() || String(muReceiveRack || '').trim()) return;
-    const z = String(muReceiveZone || mrn.muReceiveZone || '').trim();
-    if (!z || !(mrn.lineItems || []).length) return;
-    let cancelled = false;
-    (async () => {
-      const res = await resolveItemDedicatedForMrn(mrn.lineItems);
-      if (cancelled || !res.success || !res.data?.prodOk || !res.data.prodRackCode) return;
-      const d = res.data;
-      if (d.prodZoneCode && z && d.prodZoneCode !== z) return;
-      const rackCode = d.prodRackCode;
-      const m = matchMrnMuLocationToFacility(z || d.prodZoneCode || null, rackCode, productionFacilityData);
-      setMuReceiveRack(rackCode);
-      if (m && productionFacilityData.length > 0) {
-        setMuLocationSource('facility');
-        setSelectedMuAreaId(m.areaId);
-        setSelectedMuZoneId(m.zoneId);
-        setSelectedMuRackId(m.rackId);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isOutboundMtr,
-    productionFacilityLoading,
-    mrn.id,
-    JSON.stringify(mrn.lineItems),
-    mrn.muReceiveZone,
-    mrn.muReceiveRack,
-    muReceiveZone,
-    muReceiveRack,
-    productionFacilityData,
-  ]);
-
-  useEffect(() => {
     if (muLocationSource !== 'facility') return;
     const area = productionFacilityData.find((a) => a.id === selectedMuAreaId);
     const zone = area?.zones?.find((z) => z.id === selectedMuZoneId);
@@ -4907,7 +4876,13 @@ function MRNDetailModal({
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Transfer order — {mrn.mrnNo}</h2>
-            <p className="text-sm text-slate-600 mt-0.5">{mrn.requestedBy} {mrn.bmrNo ? ` · ${mrn.bmrNo}` : ''}</p>
+            <p className="text-sm text-slate-600 mt-0.5">
+              {mrn.requestedBy}
+              {(() => {
+                const src = mrnSourceDocFromApi(mrn);
+                return src ? ` · ${src.kind.toUpperCase()} ${src.id}` : '';
+              })()}
+            </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600" aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
@@ -5491,11 +5466,16 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
       m.mrnNo.toLowerCase().includes(q) ||
       (m.requestedBy || '').toLowerCase().includes(q) ||
       (m.bmrNo || '').toLowerCase().includes(q) ||
+      (m.bprNo || '').toLowerCase().includes(q) ||
+      (m.sourceRef || '').toLowerCase().includes(q) ||
+      (m.productName || '').toLowerCase().includes(q) ||
+      (m.batchNo || '').toLowerCase().includes(q) ||
+      (m.lineItems || []).some((li) =>
+        String(li.item || li.itemCode || li.notes || '').toLowerCase().includes(q)
+      ) ||
       (m.status || '').toLowerCase().includes(q)
     );
   }, [mrnList, searchQuery]);
-
-  const formatDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—');
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50/80">
@@ -5509,7 +5489,7 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search MRN, BMR, requested by…" className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search MRN, PR name, batch…" className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500" />
             </div>
           </div>
         </div>
@@ -5520,23 +5500,23 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">MRN No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Requested by</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">BMR No.</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase">Items</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Source</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">PR name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Request date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Expected date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Batch number</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-500">Loading transfer orders…</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">Loading transfer orders…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-500">No MRNs found. Raise an MTR from a batch (BMR/BPR) to see it here.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">No MRNs found. Raise an MTR from a batch (BMR/BPR) to see it here.</td></tr>
                 ) : (
                   filtered.map((m) => (
                     <tr key={m.id} className="hover:bg-amber-50/50 cursor-pointer transition-colors" onClick={() => setSelectedMRN(m)}>
                       <td className="px-4 py-3"><span className="text-sm font-mono font-medium text-blue-600">{m.mrnNo}</span></td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{m.requestedBy}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${String(m.status).toLowerCase() === 'succeeded' || m.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                           m.status === 'Received at MU' ? 'bg-amber-100 text-amber-700 border-amber-200' :
@@ -5546,9 +5526,32 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
                                   'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>{m.status}</span>
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono text-slate-700">{m.bmrNo ?? '—'}</td>
-                      <td className="px-4 py-3 text-center text-sm text-slate-700">{(m.lineItems?.length ?? 0)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600">{formatDate(m.createdAt as string)}</td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const src = mrnSourceDocFromApi(m);
+                          if (!src) return <span className="text-sm text-slate-400">—</span>;
+                          return (
+                            <span className="inline-flex items-center gap-1.5 text-sm">
+                              <span
+                                className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                  src.kind === 'bpr'
+                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                    : 'bg-teal-100 text-teal-700 border border-teal-200'
+                                }`}
+                              >
+                                {src.kind === 'bpr' ? 'BPR' : 'BMR'}
+                              </span>
+                              <span className="font-mono text-slate-700">{src.id}</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-800 max-w-[220px] truncate" title={mrnDisplayPrName(m)}>
+                        {mrnDisplayPrName(m)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{formatMrnDisplayDate(m.createdAt)}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-800">{mrnDisplayBatchNumber(m)}</td>
                     </tr>
                   ))
                 )}

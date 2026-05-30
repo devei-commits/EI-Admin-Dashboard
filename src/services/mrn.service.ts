@@ -37,6 +37,13 @@ export interface MRNRecordFromApi {
   lineTransferStatus?: Record<string, MtrLineTransferPhase | string>;
   notes: string;
   bmrNo?: string;
+  bprNo?: string;
+  productName?: string;
+  batchNo?: string;
+  /** Outbound MTR: rm | pm (from line items). */
+  mtrKind?: 'rm' | 'pm' | null;
+  /** BMR no. for RM MTR, BPR no. for PM MTR. */
+  sourceRef?: string;
   source?: string;
   /** true = Inbound from MU (MU→WH); false = Outbound to MU (WH→MU). */
   isInboundFromMu?: boolean;
@@ -56,7 +63,83 @@ export interface MRNRecordFromApi {
   logisticsDispatchDate?: string | null;
   logisticsEtaDate?: string | null;
   logisticsVehicleNo?: string | null;
+  /** Send MTR Required By Date — shown as Expected date in transfer orders. */
+  requiredByDate?: string | null;
   createdAt?: string | null;
+}
+
+export function inferMtrKindFromMrnLines(
+  lineItems: Pick<MRNLineItemFromApi, 'raw_material_id' | 'pack_material_id' | 'unit'>[]
+): 'rm' | 'pm' | null {
+  const rm = lineItems.some(
+    (l) => l.raw_material_id != null || String(l.unit || '').toUpperCase() === 'KG'
+  );
+  const pm = lineItems.some((l) => {
+    if (l.pack_material_id != null) return true;
+    const u = String(l.unit || '').toUpperCase();
+    return u === 'PCS' || u === 'PC' || u === 'PIECES';
+  });
+  if (pm && !rm) return 'pm';
+  if (rm && !pm) return 'rm';
+  if (pm) return 'pm';
+  if (rm) return 'rm';
+  return null;
+}
+
+/** BMR id for RM MTR, BPR id for PM MTR (transfer orders source column). */
+export function mrnSourceDocFromApi(
+  m: Pick<MRNRecordFromApi, 'source' | 'mtrKind' | 'sourceRef' | 'bmrNo' | 'bprNo' | 'lineItems'>
+): { kind: 'bmr' | 'bpr'; id: string } | null {
+  if (m.source !== 'MTR') return null;
+  const mtrKind = m.mtrKind ?? inferMtrKindFromMrnLines(m.lineItems || []);
+  const id = String(m.sourceRef || (mtrKind === 'pm' ? m.bprNo : m.bmrNo) || '').trim();
+  if (!id) return null;
+  return { kind: mtrKind === 'pm' ? 'bpr' : 'bmr', id };
+}
+
+export function formatMrnDisplayDate(value: string | null | undefined): string {
+  if (!value || !String(value).trim()) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+export function mrnLineItemNameSummary(
+  lineItems: Pick<MRNLineItemFromApi, 'item' | 'itemCode' | 'notes'>[]
+): string {
+  if (!lineItems.length) return '—';
+  const label = (li: (typeof lineItems)[number]) =>
+    String(li.item || li.notes || li.itemCode || '').trim() || 'Item';
+  const first = label(lineItems[0]);
+  if (lineItems.length === 1) return first;
+  return `${first} +${lineItems.length - 1} more`;
+}
+
+export function mrnDisplayExpectedDate(
+  m: Pick<MRNRecordFromApi, 'requiredByDate'>
+): string {
+  return formatMrnDisplayDate(m.requiredByDate);
+}
+
+export function mrnDisplayPrName(m: Pick<MRNRecordFromApi, 'productName'>): string {
+  const name = String(m.productName || '').trim();
+  return name || '—';
+}
+
+/** @deprecated Use mrnDisplayPrName — PR name is product_name, not MTR line items. */
+export function mrnDisplayItemName(
+  m: Pick<MRNRecordFromApi, 'productName' | 'lineItems'>
+): string {
+  return mrnDisplayPrName(m);
+}
+
+export function mrnDisplayBatchNumber(
+  m: Pick<MRNRecordFromApi, 'batchNo' | 'sourceRef' | 'bmrNo' | 'bprNo' | 'mtrKind' | 'source' | 'lineItems'>
+): string {
+  const batchNo = String(m.batchNo || '').trim();
+  if (batchNo) return batchNo;
+  const src = mrnSourceDocFromApi(m);
+  return src?.id || '—';
 }
 
 export interface CreateMRNPayload {
@@ -76,6 +159,8 @@ export interface CreateMRNPayload {
   muReceiveRack?: string;
   /** Outbound MTR: warehouse zone stock is issued from */
   whDispatchZone?: string;
+  /** Send MTR Required By Date (Production) */
+  requiredByDate?: string;
 }
 
 /** Fetch all MRNs, optionally filtered by transferType: 'outbound' (WH→MU) or 'inbound_from_mu' (MU→WH). */
@@ -136,6 +221,7 @@ export interface UpdateMRNPayload {
   logisticsDispatchDate?: string | null;
   logisticsEtaDate?: string | null;
   logisticsVehicleNo?: string | null;
+  requiredByDate?: string | null;
 }
 
 export interface GenerateMRNLabelsPayload {

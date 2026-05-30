@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
-import FacilityItemLocationsPanel from './FacilityItemLocationsPanel';
 import {
   fetchFacilityAreas,
   createFacilityArea,
@@ -11,10 +10,7 @@ import {
   type ZoneDTO,
   type RackDTO,
 } from '../services/facilityAreas.service';
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 
 const AREA_FORM_EMPTY = { code: '', name: '', area_type: 'warehouse' as 'warehouse' | 'production', icon: '', description: '' };
 const ZONE_FORM_EMPTY = { code: '', name: '', zone_label: '', icon: '', area_sqm: '', description: '' };
@@ -23,38 +19,139 @@ const RACK_FORM_EMPTY = { code: '', name: '', description: '', levels: '4', slot
 type AreaForm = typeof AREA_FORM_EMPTY;
 type ZoneForm = typeof ZONE_FORM_EMPTY;
 type RackForm = typeof RACK_FORM_EMPTY;
+type ZoneSortColumn = 'code' | 'name' | 'status' | 'label' | 'areaSqm' | 'racks' | 'default' | 'description';
+type RackSortColumn = 'code' | 'name' | 'levels' | 'slots' | 'capacity' | 'description';
 
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForZone(zone: ZoneDTO, col: ZoneSortColumn): string | number {
+  switch (col) {
+    case 'code':
+      return zone.code || '';
+    case 'name':
+      return zone.name || '';
+    case 'status':
+      return zone.isActive === false ? 0 : 1;
+    case 'label':
+      return zone.zoneLabel || '';
+    case 'areaSqm':
+      return zone.areaSqm ?? -1;
+    case 'racks':
+      return zone.racks?.length ?? 0;
+    case 'default':
+      return zone.isDefault ? 1 : 0;
+    case 'description':
+      return zone.description || '';
+    default:
+      return '';
+  }
+}
+
+function sortValueForRack(rack: RackDTO, col: RackSortColumn): string | number {
+  switch (col) {
+    case 'code':
+      return rack.code || '';
+    case 'name':
+      return rack.name || '';
+    case 'levels':
+      return rack.levels ?? 0;
+    case 'slots':
+      return rack.slotsTotal ?? 0;
+    case 'capacity':
+      return (rack.levels ?? 0) * (rack.slotsTotal ?? 0);
+    case 'description':
+      return rack.description || '';
+    default:
+      return '';
+  }
+}
+
+function sortRows<T, C extends string>(
+  rows: T[],
+  col: C | null,
+  direction: SortDirection,
+  getValue: (row: T, column: C) => string | number,
+  tieBreak: (a: T, b: T) => number
+): T[] {
+  if (!col) return rows;
+  return [...rows].sort((a, b) => {
+    const cmp = compareSortValues(getValue(a, col), getValue(b, col), direction);
+    if (cmp !== 0) return cmp;
+    return tieBreak(a, b);
+  });
+}
+
+function countRacksInArea(area: FacilityAreaDTO): number {
+  return (area.zones || []).reduce((sum, z) => sum + (z.racks?.length ?? 0), 0);
+}
+
+function defaultZonesInAreas(areaList: FacilityAreaDTO[]): ZoneDTO[] {
+  return areaList.flatMap((a) => (a.zones || []).filter((z) => z.isDefault));
+}
+
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  hint: string;
+  tone?: 'neutral' | 'warehouse' | 'production' | 'warning';
+}
+
+const StatCard: React.FC<StatCardProps> = ({ label, value, hint, tone = 'neutral' }) => {
+  const toneClasses = {
+    neutral: 'border-gray-200 bg-white',
+    warehouse: 'border-blue-200 bg-blue-50/50',
+    production: 'border-amber-200 bg-amber-50/50',
+    warning: 'border-amber-300 bg-amber-50',
+  };
+  const valueClasses = {
+    neutral: 'text-gray-900',
+    warehouse: 'text-blue-900',
+    production: 'text-amber-900',
+    warning: 'text-amber-900',
+  };
+  return (
+    <div className={`rounded-xl border p-4 ${toneClasses[tone]}`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClasses[tone]}`}>{value}</p>
+      <p className="mt-1 text-xs text-gray-600 leading-snug">{hint}</p>
+    </div>
+  );
+};
 
 const FacilityManagement: React.FC = () => {
   const { addToast } = useToast();
-  const [mainTab, setMainTab] = useState<'structure' | 'item_locations'>('structure');
 
   const [areas, setAreas] = useState<FacilityAreaDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [facilityGroup, setFacilityGroup] = useState<'warehouse' | 'production'>('warehouse');
 
-  // area modal (create only)
   const [showAreaModal, setShowAreaModal] = useState(false);
   const [areaForm, setAreaForm] = useState<AreaForm>({ ...AREA_FORM_EMPTY });
   const [areaSaving, setAreaSaving] = useState(false);
 
-  // zone modal (create only)
   const [showZoneModal, setShowZoneModal] = useState(false);
   const [zoneForm, setZoneForm] = useState<ZoneForm>({ ...ZONE_FORM_EMPTY });
   const [zoneSaving, setZoneSaving] = useState(false);
 
-  // rack modal (create only)
   const [showRackModal, setShowRackModal] = useState(false);
   const [rackForm, setRackForm] = useState<RackForm>({ ...RACK_FORM_EMPTY });
   const [rackSaving, setRackSaving] = useState(false);
   const [rackZone, setRackZone] = useState<ZoneDTO | null>(null);
   const [defaultSavingZoneId, setDefaultSavingZoneId] = useState<number | null>(null);
-
-  /* --- Load -------------------------------------------------------- */
+  const [zoneSortColumn, setZoneSortColumn] = useState<ZoneSortColumn | null>(null);
+  const [zoneSortDirection, setZoneSortDirection] = useState<SortDirection>('asc');
+  const [rackSortColumn, setRackSortColumn] = useState<RackSortColumn | null>(null);
+  const [rackSortDirection, setRackSortDirection] = useState<SortDirection>('asc');
 
   const loadAreas = useCallback(async () => {
     setLoading(true);
@@ -64,12 +161,17 @@ const FacilityManagement: React.FC = () => {
     setLoading(false);
   }, [addToast]);
 
-  useEffect(() => { loadAreas(); }, [loadAreas]);
+  useEffect(() => {
+    loadAreas();
+  }, [loadAreas]);
 
-  const warehouseAreas = areas.filter((a) => a.areaType === 'warehouse');
-  /** Legacy umbrella row (no zones); stock is on AREA-MU-01 / AREA-MU-02 only. */
-  const manufacturingAreas = areas.filter(
-    (a) => a.areaType === 'production' && a.code !== 'AREA-MU'
+  const warehouseAreas = useMemo(
+    () => areas.filter((a) => a.areaType === 'warehouse'),
+    [areas]
+  );
+  const manufacturingAreas = useMemo(
+    () => areas.filter((a) => a.areaType === 'production' && a.code !== 'AREA-MU'),
+    [areas]
   );
   const groupAreas = facilityGroup === 'warehouse' ? warehouseAreas : manufacturingAreas;
 
@@ -82,53 +184,80 @@ const FacilityManagement: React.FC = () => {
 
   const selectedArea = areas.find((a) => a.id === selectedAreaId) ?? null;
 
-  const allWarehouseZones = warehouseAreas.flatMap((a) => a.zones);
-  const warehouseDefaultZones = allWarehouseZones.filter((z) => z.isDefault);
-  const facilityWarehouseDefault =
-    warehouseDefaultZones.length === 1 ? warehouseDefaultZones[0] : null;
+  useEffect(() => {
+    if (!selectedArea) {
+      setSelectedZoneId(null);
+      return;
+    }
+    const zoneStillValid = selectedArea.zones.some((z) => z.id === selectedZoneId);
+    if (!zoneStillValid) setSelectedZoneId(null);
+  }, [selectedArea, selectedZoneId]);
 
-  const renderAreaCard = (area: FacilityAreaDTO) => (
-    <div
-      key={area.id}
-      onClick={() => {
-        setFacilityGroup(area.areaType === 'production' ? 'production' : 'warehouse');
-        setSelectedAreaId(area.id);
-      }}
-      className={`p-4 rounded-xl border cursor-pointer transition-all ${
-        selectedAreaId === area.id
-          ? area.areaType === 'warehouse'
-            ? 'border-blue-600 bg-blue-50/80 shadow-sm'
-            : 'border-amber-600 bg-amber-50/80 shadow-sm'
-          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'
-      }`}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">{area.icon || (area.areaType === 'warehouse' ? '🏭' : '⚙️')}</span>
-          <div>
-            <h3 className="font-semibold text-gray-900 text-sm">{area.name}</h3>
-            <p className="text-xs text-gray-500">{area.code}</p>
-          </div>
-        </div>
-        <span
-          className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-            area.areaType === 'warehouse' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'
-          }`}
-        >
-          {area.areaType === 'warehouse' ? 'Warehouse' : 'Manufacturing'}
-        </span>
-      </div>
-      {area.description && <p className="text-xs text-gray-400 mt-2 line-clamp-2">{area.description}</p>}
-      <div className="mt-3 text-xs text-gray-500">
-        {area.zones.length} zone{area.zones.length !== 1 ? 's' : ''}
-        {(area.zones || []).some((z) => z.isDefault) && (
-          <span className="ml-2 text-amber-700 font-medium">· has default zone</span>
-        )}
-      </div>
-    </div>
+  const selectedZone =
+    selectedArea?.zones.find((z) => z.id === selectedZoneId) ?? null;
+
+  useEffect(() => {
+    setZoneSortColumn(null);
+    setZoneSortDirection('asc');
+  }, [selectedAreaId]);
+
+  useEffect(() => {
+    setRackSortColumn(null);
+    setRackSortDirection('asc');
+  }, [selectedZoneId]);
+
+  const sortedZones = useMemo(() => {
+    if (!selectedArea) return [];
+    return sortRows(
+      selectedArea.zones,
+      zoneSortColumn,
+      zoneSortDirection,
+      sortValueForZone,
+      (a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [selectedArea, zoneSortColumn, zoneSortDirection]);
+
+  const sortedRacks = useMemo(() => {
+    if (!selectedZone) return [];
+    return sortRows(
+      selectedZone.racks ?? [],
+      rackSortColumn,
+      rackSortDirection,
+      sortValueForRack,
+      (a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [selectedZone, rackSortColumn, rackSortDirection]);
+
+  const stats = useMemo(() => {
+    const zoneCount = areas.reduce((s, a) => s + (a.zones?.length ?? 0), 0);
+    const rackCount = areas.reduce((s, a) => s + countRacksInArea(a), 0);
+    const whDefaults = defaultZonesInAreas(warehouseAreas);
+    const prodDefaults = defaultZonesInAreas(manufacturingAreas);
+    return {
+      areaCount: areas.length,
+      zoneCount,
+      rackCount,
+      whDefaultOk: whDefaults.length === 1,
+      whDefaultLabel:
+        whDefaults.length === 1
+          ? `${whDefaults[0].name} (${whDefaults[0].code})`
+          : whDefaults.length === 0
+            ? 'Not configured'
+            : 'Multiple defaults',
+      prodDefaultOk: prodDefaults.length === 1,
+      prodDefaultLabel:
+        prodDefaults.length === 1
+          ? `${prodDefaults[0].name} (${prodDefaults[0].code})`
+          : prodDefaults.length === 0
+            ? 'Not configured'
+            : 'Multiple defaults',
+    };
+  }, [areas, warehouseAreas, manufacturingAreas]);
+
+  const warehouseDefaultZones = useMemo(
+    () => warehouseAreas.flatMap((a) => a.zones).filter((z) => z.isDefault),
+    [warehouseAreas]
   );
-
-  /* --- Area CRUD --------------------------------------------------- */
 
   const openCreateArea = (presetType?: 'warehouse' | 'production') => {
     setAreaForm({
@@ -157,8 +286,6 @@ const FacilityManagement: React.FC = () => {
     else addToast('error', res.error || 'Create failed');
     loadAreas();
   };
-
-  /* --- Zone CRUD --------------------------------------------------- */
 
   const openCreateZone = () => {
     if (!selectedArea) return;
@@ -235,290 +362,639 @@ const FacilityManagement: React.FC = () => {
     }
   };
 
-  /* ================================================================ */
-  /*  Render                                                           */
-  /* ================================================================ */
+  const selectArea = (area: FacilityAreaDTO) => {
+    setFacilityGroup(area.areaType === 'production' ? 'production' : 'warehouse');
+    setSelectedAreaId(area.id);
+    setSelectedZoneId(null);
+  };
+
+  const selectZone = (zone: ZoneDTO) => {
+    setSelectedZoneId(zone.id);
+  };
+
+  const goBackToZones = () => {
+    setSelectedZoneId(null);
+  };
+
+  const toggleZoneSort = (column: ZoneSortColumn) => {
+    if (zoneSortColumn === column) {
+      setZoneSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setZoneSortColumn(column);
+    setZoneSortDirection('asc');
+  };
+
+  const toggleRackSort = (column: RackSortColumn) => {
+    if (rackSortColumn === column) {
+      setRackSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setRackSortColumn(column);
+    setRackSortDirection('asc');
+  };
+
+  const renderAreaNavItem = (area: FacilityAreaDTO) => {
+    const zoneCount = area.zones.length;
+    const rackCount = countRacksInArea(area);
+    const isSelected = selectedAreaId === area.id;
+    const isWh = area.areaType === 'warehouse';
+
+    return (
+      <button
+        key={area.id}
+        type="button"
+        onClick={() => selectArea(area)}
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 ${
+          isSelected
+            ? isWh
+              ? 'border-blue-600 bg-blue-50 shadow-sm'
+              : 'border-amber-600 bg-amber-50 shadow-sm'
+            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
+        }`}
+      >
+        <span className="text-base" aria-hidden>
+          {area.icon || (isWh ? '🏭' : '⚙️')}
+        </span>
+        <span className="min-w-0">
+          <span className="block font-semibold text-sm text-gray-900 truncate">{area.name}</span>
+          <span className="block font-mono text-xs text-gray-500">
+            {area.code} · {zoneCount}z · {rackCount}r
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  const switchFacilityGroup = (group: 'warehouse' | 'production') => {
+    setFacilityGroup(group);
+    setSelectedZoneId(null);
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2 max-w-2xl">
           <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {mainTab === 'structure'
-              ? 'Layout: one Main Warehouse (RM + PM + FG zones) and two Manufacturing units (each with zones → racks). One default warehouse zone (GRN) and one default manufacturing zone (MTR).'
-              : 'Default warehouse and manufacturing storage per item for MTR / GRN routing.'}
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Define where stock lives in your operation: <strong>areas</strong> group buildings or sites,{' '}
+            <strong>zones</strong> are stores or ML lines, and <strong>racks</strong> are physical putaway slots.
+            Defaults drive GRN inbound and MTR transfers automatically.
           </p>
         </div>
-        {mainTab === 'structure' && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => loadAreas()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              Refresh
-            </button>
-            <button
-              onClick={() => openCreateArea()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-              Add Area
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2 border-b border-gray-200 pb-2">
         <button
           type="button"
-          onClick={() => setMainTab('structure')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-            mainTab === 'structure' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
+          onClick={() => openCreateArea()}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
         >
-          Warehouse & manufacturing locations
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add area
         </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('item_locations')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-            mainTab === 'item_locations' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Item locations
-        </button>
-      </div>
+      </header>
 
-      {mainTab === 'item_locations' && <FacilityItemLocationsPanel />}
-
-      {mainTab === 'structure' && (
-      <>
       {loading ? (
-        <div className="flex items-center justify-center py-20">
+        <div className="flex items-center justify-center py-24" role="status" aria-label="Loading facilities">
           <div className="w-10 h-10 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Areas grouped by facility type */}
-          <div className="lg:col-span-1 space-y-5 max-h-[70vh] overflow-y-auto pr-1">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-800">Warehouse facilities</h3>
-                <span className="text-[10px] text-blue-600">GRN · storage · pick</span>
-              </div>
-              <div className="space-y-2">
-                {warehouseAreas.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-4 text-center border border-dashed border-blue-200 rounded-lg">
-                    No warehouse areas
-                  </p>
-                ) : (
-                  warehouseAreas.map(renderAreaCard)
-                )}
-              </div>
+        <>
+          {/* Overview */}
+          <section aria-labelledby="facility-overview-heading">
+            <h2 id="facility-overview-heading" className="sr-only">
+              Facility overview
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard label="Areas" value={stats.areaCount} hint="Warehouse + manufacturing buildings" />
+              <StatCard label="Zones" value={stats.zoneCount} hint="Stores, ML lines, and storage rooms" />
+              <StatCard
+                label="Racks"
+                value={stats.rackCount}
+                hint="Putaway locations inside each zone"
+              />
+              <StatCard
+                label="GRN default"
+                value={stats.whDefaultLabel}
+                hint="Where inbound goods receipt posts stock"
+                tone={stats.whDefaultOk ? 'warehouse' : 'warning'}
+              />
             </div>
-            <div className="border-t border-gray-200 pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-800">Manufacturing units</h3>
-                <span className="text-[10px] text-amber-700">2 units · ML1 / ML2</span>
-              </div>
-              <div className="space-y-2">
-                {manufacturingAreas.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-4 text-center border border-dashed border-amber-200 rounded-lg">
-                    No manufacturing areas
-                  </p>
-                ) : (
-                  manufacturingAreas.map(renderAreaCard)
-                )}
-              </div>
-            </div>
-          </div>
+          </section>
 
-          {/* Right: Zones for selected area */}
-          <div className="lg:col-span-2">
+          {/* How it works */}
+          <section
+            className="rounded-xl border border-gray-200 bg-gray-50/60 p-5"
+            aria-labelledby="facility-hierarchy-heading"
+          >
+            <h2 id="facility-hierarchy-heading" className="text-sm font-semibold text-gray-900">
+              How locations are used
+            </h2>
+            <ol className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-800">
+                  1
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Warehouse areas</p>
+                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                    RM, PM, and FG zones. One zone must be the <strong>GRN default</strong> — all inbound receipts
+                    post there (DEFAULT rack if none specified).
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-amber-900">
+                  2
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Manufacturing units</p>
+                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                    ML1 / ML2 zones per unit. Set an <strong>MTR default</strong> for transfers from warehouse when
+                    Send MTR does not pick a destination.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-800">
+                  3
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Area → Zone → Rack</p>
+                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                    Pick an area below, then click a zone to view its racks. Codes appear on labels,
+                    pick lists, and transfer orders.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <div className="mt-4 flex flex-wrap gap-3 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-gray-700">
+                <span className="font-semibold text-amber-800">GRN default</span>
+                {stats.whDefaultLabel}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-gray-700">
+                <span className="font-semibold text-amber-800">MTR default</span>
+                {stats.prodDefaultLabel}
+              </span>
+            </div>
+          </section>
+
+          {/* Full-width layout */}
+          <div className="space-y-4 w-full">
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden w-full">
+              <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-lg border border-gray-200 p-0.5 flex">
+                    <button
+                      type="button"
+                      onClick={() => switchFacilityGroup('warehouse')}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 ${
+                        facilityGroup === 'warehouse'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      Warehouse
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => switchFacilityGroup('production')}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 ${
+                        facilityGroup === 'production'
+                          ? 'bg-amber-600 text-white'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      Manufacturing
+                    </button>
+                  </div>
+                  <span className="text-xs text-gray-500 hidden sm:inline">
+                    {facilityGroup === 'warehouse'
+                      ? 'GRN · storage · outbound pick'
+                      : 'MTR receive · batch ML stock'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openCreateArea(facilityGroup)}
+                  className="text-sm font-medium text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                >
+                  + Add area
+                </button>
+              </div>
+              <div className="p-3 flex flex-wrap gap-2">
+                {groupAreas.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-2 px-1">
+                    No {facilityGroup === 'warehouse' ? 'warehouse' : 'manufacturing'} areas yet.{' '}
+                    <button
+                      type="button"
+                      onClick={() => openCreateArea(facilityGroup)}
+                      className="text-gray-900 font-medium underline"
+                    >
+                      Create one
+                    </button>
+                  </p>
+                ) : (
+                  groupAreas.map(renderAreaNavItem)
+                )}
+              </div>
+            </div>
+
             {selectedArea ? (
-              <div className="border border-gray-200 rounded-xl">
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
-                      <span>{selectedArea.icon || (selectedArea.areaType === 'warehouse' ? '🏭' : '⚙️')}</span>
-                      {selectedArea.name} — Zones
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          selectedArea.areaType === 'warehouse'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-amber-100 text-amber-900'
-                        }`}
-                      >
-                        {selectedArea.areaType === 'warehouse' ? 'Warehouse facility' : 'Manufacturing facility'}
-                      </span>
-                    </h2>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {selectedArea.areaType === 'warehouse'
-                        ? facilityWarehouseDefault
-                          ? `Inbound GRN posts to ${facilityWarehouseDefault.name} (${facilityWarehouseDefault.code}) — the single facility default warehouse zone.`
-                          : 'Inbound GRN posts to the one default warehouse zone (and DEFAULT rack). Only one zone can be default.'
-                        : 'MTR from warehouse posts to default manufacturing zone / rack when MU zone is not specified.'}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{selectedArea.description || 'No description'}</p>
+              <div className="space-y-4 w-full">
+                <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-2xl shrink-0" aria-hidden>
+                      {selectedArea.icon || (selectedArea.areaType === 'warehouse' ? '🏭' : '⚙️')}
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-bold text-gray-900 truncate">{selectedArea.name}</h2>
+                      <p className="font-mono text-xs text-gray-500">
+                        {selectedArea.code} · {selectedArea.zones.length} zones ·{' '}
+                        {countRacksInArea(selectedArea)} racks
+                      </p>
+                    </div>
                   </div>
                   <button
+                    type="button"
                     onClick={openCreateZone}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    Add Zone
+                    Add zone
                   </button>
                 </div>
-                {selectedArea.areaType === 'warehouse' && warehouseDefaultZones.length !== 1 && (
-                  <div
-                    className={`mx-4 mt-4 px-3 py-2 rounded-lg text-xs ${
-                      warehouseDefaultZones.length === 0
-                        ? 'bg-amber-50 text-amber-900 border border-amber-200'
-                        : 'bg-red-50 text-red-900 border border-red-200'
-                    }`}
-                  >
-                    {warehouseDefaultZones.length === 0 ? (
-                      <>
-                        No default warehouse zone is set. GRN inbound needs exactly one — use{' '}
-                        <strong>Set as default</strong> on the zone that should receive all GRN stock (e.g. RM Store).
-                      </>
-                    ) : (
-                      <>
-                        Multiple warehouse zones are marked default ({warehouseDefaultZones.map((z) => z.code).join(', ')}
-                        ). Only one is allowed — restart the API or set default again on the correct zone.
-                      </>
-                    )}
-                  </div>
-                )}
-                {selectedArea.zones.length === 0 ? (
-                  <div className="py-16 text-center text-gray-400 text-sm">
-                    No zones in this area yet. Click "Add Zone" to create one.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-xs text-gray-500 uppercase tracking-wider bg-gray-50/50">
-                          <th className="px-4 py-3 font-medium">Icon</th>
-                          <th className="px-4 py-3 font-medium">Code</th>
-                          <th className="px-4 py-3 font-medium">Name</th>
-                          <th className="px-4 py-3 font-medium">Status</th>
-                          <th className="px-4 py-3 font-medium">Label</th>
-                          <th className="px-4 py-3 font-medium">Area (sqm)</th>
-                          <th className="px-4 py-3 font-medium">Description</th>
-                          <th className="px-4 py-3 font-medium">Default</th>
-                          <th className="px-4 py-3 font-medium">Racks</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {selectedArea.zones.map((zone) => (
-                          <tr key={zone.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 text-lg">{zone.icon || ''}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-gray-600">{zone.code}</td>
-                            <td className="px-4 py-3 font-medium text-gray-900">
-                              {zone.name}
-                              {zone.zohoWarehouseId && (
-                                <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700">
-                                  Zoho
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                  zone.isActive === false
-                                    ? 'bg-gray-100 text-gray-600'
-                                    : 'bg-emerald-100 text-emerald-700'
-                                }`}
+
+                  {selectedArea.areaType === 'warehouse' && warehouseDefaultZones.length !== 1 && (
+                    <div
+                      role="alert"
+                      className={`rounded-xl px-4 py-3 text-sm border ${
+                        warehouseDefaultZones.length === 0
+                          ? 'bg-amber-50 text-amber-950 border-amber-200'
+                          : 'bg-red-50 text-red-950 border-red-200'
+                      }`}
+                    >
+                      {warehouseDefaultZones.length === 0 ? (
+                        <>
+                          <strong>GRN default missing.</strong> Inbound goods receipt needs exactly one warehouse
+                          zone marked as default. Use &quot;Set as GRN default zone&quot; on the correct zone (e.g. RM
+                          Store).
+                        </>
+                      ) : (
+                        <>
+                          <strong>Multiple GRN defaults.</strong> Only one warehouse zone may be default (
+                          {warehouseDefaultZones.map((z) => z.code).join(', ')}). Fix by setting default on the
+                          correct zone again.
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedArea.areaType === 'warehouse' && warehouseDefaultZones.length === 1 && (
+                    <p className="text-sm text-blue-900 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                      Inbound <strong>GRN</strong> posts to{' '}
+                      <span className="font-mono">{warehouseDefaultZones[0].code}</span> —{' '}
+                      {warehouseDefaultZones[0].name}.
+                    </p>
+                  )}
+
+                  {selectedArea.areaType === 'production' && (
+                    <p className="text-sm text-amber-950 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                      Outbound <strong>MTR</strong> transfers should specify Transfer To (ML zone) in Production.
+                      The facility <strong>MTR default</strong> zone applies when that field is left empty:{' '}
+                      <span className="font-medium">{stats.prodDefaultLabel}</span>.
+                    </p>
+                  )}
+
+                  {selectedArea.zones.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 py-16 text-center">
+                      <p className="text-sm text-gray-600">This area has no zones yet.</p>
+                      <button
+                        type="button"
+                        onClick={openCreateZone}
+                        className="mt-3 text-sm font-medium text-gray-900 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
+                      >
+                        Create the first zone
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden w-full">
+                      <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="min-w-0">
+                          <nav className="flex flex-wrap items-center gap-1 text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+                            {selectedZone ? (
+                              <button
+                                type="button"
+                                onClick={goBackToZones}
+                                className="text-gray-700 font-medium hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
                               >
-                                {zone.isActive === false ? 'Inactive' : 'Active'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-500">{zone.zoneLabel || '—'}</td>
-                            <td className="px-4 py-3 text-gray-500">{zone.areaSqm != null ? zone.areaSqm : '—'}</td>
-                            <td className="px-4 py-3 text-gray-400 max-w-[200px] truncate">{zone.description || '—'}</td>
-                            <td className="px-4 py-3">
-                              {zone.isDefault ? (
-                                <span
-                                  className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800"
-                                  title={
-                                    selectedArea.areaType === 'warehouse'
-                                      ? 'Facility default for GRN inbound (only one warehouse zone)'
-                                      : 'Facility default for MTR receive'
-                                  }
-                                >
-                                  {selectedArea.areaType === 'warehouse' ? 'GRN default' : 'MTR default'}
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={defaultSavingZoneId === zone.id}
-                                  onClick={() => handleSetDefaultZone(zone)}
-                                  className="text-xs font-medium text-gray-700 hover:text-gray-900 underline disabled:opacity-50"
-                                >
-                                  {defaultSavingZoneId === zone.id
-                                    ? 'Saving…'
-                                    : selectedArea.areaType === 'warehouse'
-                                      ? 'Set as GRN default'
-                                      : 'Set as default'}
-                                </button>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex flex-col gap-1">
-                                {(zone.racks || []).length === 0 ? (
-                                  <span className="text-xs text-gray-400">No racks</span>
-                                ) : (
-                                  (zone.racks || []).map((r) => (
-                                    <span key={r.id} className="text-xs font-mono text-gray-600">
-                                      {r.code}
-                                      {r.levels != null && r.slotsTotal != null ? ` (${r.levels}×${r.slotsTotal})` : ''}
-                                    </span>
-                                  ))
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => openCreateRack(zone)}
-                                  className="text-xs font-medium text-gray-700 hover:text-gray-900 mt-0.5"
-                                >
-                                  + Add Rack
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-                <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                <p className="text-sm">Select an area to view and manage its zones</p>
-              </div>
-            )}
+                                {selectedArea.name}
+                              </button>
+                            ) : (
+                              <span className="text-gray-900 font-semibold">{selectedArea.name}</span>
+                            )}
+                            {selectedZone && (
+                              <>
+                                <span aria-hidden>/</span>
+                                <span className="text-gray-900 font-semibold truncate">{selectedZone.name}</span>
+                              </>
+                            )}
+                          </nav>
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            {selectedZone
+                              ? `Racks — ${selectedZone.code}`
+                              : `Zones — ${selectedArea.name}`}
+                          </h3>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {selectedZone
+                              ? 'Putaway slots in this zone'
+                              : 'Click a zone row to view its racks'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          {selectedZone ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={goBackToZones}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Back to zones
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openCreateRack(selectedZone)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                              >
+                                Add rack
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-500">
+                              {selectedArea.zones.length} zone{selectedArea.zones.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        {!selectedZone ? (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-50/80 border-b border-gray-100">
+                                <th className="px-4 py-3 font-medium w-10" />
+                                <SortableTableTh
+                                  label="Code"
+                                  column="code"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Name"
+                                  column="name"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Status"
+                                  column="status"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Label"
+                                  column="label"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Area"
+                                  column="areaSqm"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Racks"
+                                  column="racks"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Default"
+                                  column="default"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                                <SortableTableTh
+                                  label="Description"
+                                  column="description"
+                                  sortColumn={zoneSortColumn}
+                                  sortDirection={zoneSortDirection}
+                                  onSort={toggleZoneSort}
+                                />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {sortedZones.map((zone) => {
+                                const isWh = selectedArea.areaType === 'warehouse';
+                                const rackCount = zone.racks?.length ?? 0;
+                                return (
+                                  <tr
+                                    key={zone.id}
+                                    onClick={() => selectZone(zone)}
+                                    className="cursor-pointer transition-colors hover:bg-gray-50/80"
+                                  >
+                                    <td className="px-4 py-3 text-lg">{zone.icon || (isWh ? '📦' : '⚙️')}</td>
+                                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{zone.code}</td>
+                                    <td className="px-4 py-3 font-medium text-gray-900">
+                                      {zone.name}
+                                      {zone.zohoWarehouseId && (
+                                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700">
+                                          Zoho
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                          zone.isActive === false
+                                            ? 'bg-gray-100 text-gray-600'
+                                            : 'bg-emerald-100 text-emerald-700'
+                                        }`}
+                                      >
+                                        {zone.isActive === false ? 'Inactive' : 'Active'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-600">{zone.zoneLabel || '—'}</td>
+                                    <td className="px-4 py-3 text-gray-600">
+                                      {zone.areaSqm != null ? `${zone.areaSqm} m²` : '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-700 tabular-nums">{rackCount}</td>
+                                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                      {zone.isDefault ? (
+                                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-900">
+                                          {isWh ? 'GRN default' : 'MTR default'}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={defaultSavingZoneId === zone.id}
+                                          onClick={() => handleSetDefaultZone(zone)}
+                                          className="text-xs font-medium text-gray-700 hover:text-gray-900 underline disabled:opacity-50"
+                                        >
+                                          {defaultSavingZoneId === zone.id
+                                            ? 'Saving…'
+                                            : isWh
+                                              ? 'Set GRN default'
+                                              : 'Set default'}
+                                        </button>
+                                      )}
+                                    </td>
+                                    <td
+                                      className="px-4 py-3 text-gray-500 max-w-xs truncate"
+                                      title={zone.description || undefined}
+                                    >
+                                      {zone.description || '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (selectedZone.racks ?? []).length === 0 ? (
+                          <div className="py-16 text-center">
+                            <p className="text-sm text-gray-400">
+                              No racks in this zone yet. Add a{' '}
+                              <span className="font-mono text-gray-600">DEFAULT</span> rack for inbound putaway.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => openCreateRack(selectedZone)}
+                              className="mt-4 inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                            >
+                              Add rack
+                            </button>
+                          </div>
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-50/50 border-b border-gray-100">
+                                <SortableTableTh
+                                  label="Code"
+                                  column="code"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                                <SortableTableTh
+                                  label="Name"
+                                  column="name"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                                <SortableTableTh
+                                  label="Levels"
+                                  column="levels"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                                <SortableTableTh
+                                  label="Slots"
+                                  column="slots"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                                <SortableTableTh
+                                  label="Capacity"
+                                  column="capacity"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                                <SortableTableTh
+                                  label="Description"
+                                  column="description"
+                                  sortColumn={rackSortColumn}
+                                  sortDirection={rackSortDirection}
+                                  onSort={toggleRackSort}
+                                />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {sortedRacks.map((rack) => (
+                                <tr key={rack.id} className="hover:bg-gray-50/50">
+                                  <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">
+                                    {rack.code}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700">{rack.name || '—'}</td>
+                                  <td className="px-4 py-3 text-gray-700 tabular-nums">{rack.levels}</td>
+                                  <td className="px-4 py-3 text-gray-700 tabular-nums">{rack.slotsTotal}</td>
+                                  <td className="px-4 py-3 text-gray-600 text-xs">
+                                    {rack.levels} × {rack.slotsTotal} slots
+                                  </td>
+                                  <td
+                                    className="px-4 py-3 text-gray-500 max-w-xs truncate"
+                                    title={rack.description || undefined}
+                                  >
+                                    {rack.description || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 flex flex-col items-center justify-center py-16 px-6 text-center w-full">
+                  <p className="text-base font-medium text-gray-700">Select an area above to view zones</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Choose Warehouse or Manufacturing, then pick an area chip.
+                  </p>
+                </div>
+              )}
           </div>
-        </div>
-      )}
-      </>
+        </>
       )}
 
       {/* Area Modal */}
       {showAreaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            role="dialog"
+            aria-labelledby="create-area-title"
+          >
             <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">Create Area</h3>
+              <h3 id="create-area-title" className="text-lg font-semibold text-gray-900">
+                Create area
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Top-level building or site (warehouse or manufacturing).</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                  <label htmlFor="area-code" className="block text-xs font-medium text-gray-700 mb-1">
+                    Code *
+                  </label>
                   <input
+                    id="area-code"
                     type="text"
                     value={areaForm.code}
                     onChange={(e) => setAreaForm((f) => ({ ...f, code: e.target.value }))}
@@ -527,20 +1003,28 @@ const FacilityManagement: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Type *</label>
+                  <label htmlFor="area-type" className="block text-xs font-medium text-gray-700 mb-1">
+                    Type *
+                  </label>
                   <select
+                    id="area-type"
                     value={areaForm.area_type}
-                    onChange={(e) => setAreaForm((f) => ({ ...f, area_type: e.target.value as 'warehouse' | 'production' }))}
+                    onChange={(e) =>
+                      setAreaForm((f) => ({ ...f, area_type: e.target.value as 'warehouse' | 'production' }))
+                    }
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
                   >
-                    <option value="warehouse">Warehouse location</option>
-                    <option value="production">Manufacturing location</option>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="production">Manufacturing</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                <label htmlFor="area-name" className="block text-xs font-medium text-gray-700 mb-1">
+                  Name *
+                </label>
                 <input
+                  id="area-name"
                   type="text"
                   value={areaForm.name}
                   onChange={(e) => setAreaForm((f) => ({ ...f, name: e.target.value }))}
@@ -549,39 +1033,47 @@ const FacilityManagement: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Icon</label>
+                <label htmlFor="area-icon" className="block text-xs font-medium text-gray-700 mb-1">
+                  Icon (emoji)
+                </label>
                 <input
+                  id="area-icon"
                   type="text"
                   value={areaForm.icon}
                   onChange={(e) => setAreaForm((f) => ({ ...f, icon: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
-                  placeholder=""
+                  placeholder="🏭"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label htmlFor="area-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                  Description
+                </label>
                 <textarea
+                  id="area-desc"
                   value={areaForm.description}
                   onChange={(e) => setAreaForm((f) => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
                   rows={2}
-                  placeholder="Area description..."
+                  placeholder="What is stored or produced here?"
                 />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowAreaModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={saveArea}
                 disabled={areaSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
               >
-                {areaSaving ? 'Saving...' : 'Create'}
+                {areaSaving ? 'Saving…' : 'Create'}
               </button>
             </div>
           </div>
@@ -590,16 +1082,26 @@ const FacilityManagement: React.FC = () => {
 
       {/* Zone Modal */}
       {showZoneModal && selectedArea && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            role="dialog"
+            aria-labelledby="create-zone-title"
+          >
             <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">Add Zone — {selectedArea.name}</h3>
+              <h3 id="create-zone-title" className="text-lg font-semibold text-gray-900">
+                Add zone — {selectedArea.name}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">A store, ML line, or room inside this area.</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                  <label htmlFor="zone-code" className="block text-xs font-medium text-gray-700 mb-1">
+                    Code *
+                  </label>
                   <input
+                    id="zone-code"
                     type="text"
                     value={zoneForm.code}
                     onChange={(e) => setZoneForm((f) => ({ ...f, code: e.target.value }))}
@@ -608,8 +1110,11 @@ const FacilityManagement: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Label</label>
+                  <label htmlFor="zone-label" className="block text-xs font-medium text-gray-700 mb-1">
+                    Label
+                  </label>
                   <input
+                    id="zone-label"
                     type="text"
                     value={zoneForm.zone_label}
                     onChange={(e) => setZoneForm((f) => ({ ...f, zone_label: e.target.value }))}
@@ -619,8 +1124,11 @@ const FacilityManagement: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                <label htmlFor="zone-name" className="block text-xs font-medium text-gray-700 mb-1">
+                  Name *
+                </label>
                 <input
+                  id="zone-name"
                   type="text"
                   value={zoneForm.name}
                   onChange={(e) => setZoneForm((f) => ({ ...f, name: e.target.value }))}
@@ -630,18 +1138,23 @@ const FacilityManagement: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Icon</label>
+                  <label htmlFor="zone-icon" className="block text-xs font-medium text-gray-700 mb-1">
+                    Icon
+                  </label>
                   <input
+                    id="zone-icon"
                     type="text"
                     value={zoneForm.icon}
                     onChange={(e) => setZoneForm((f) => ({ ...f, icon: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
-                    placeholder=""
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Area (sqm)</label>
+                  <label htmlFor="zone-sqm" className="block text-xs font-medium text-gray-700 mb-1">
+                    Area (m²)
+                  </label>
                   <input
+                    id="zone-sqm"
                     type="number"
                     value={zoneForm.area_sqm}
                     onChange={(e) => setZoneForm((f) => ({ ...f, area_sqm: e.target.value }))}
@@ -651,67 +1164,87 @@ const FacilityManagement: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label htmlFor="zone-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                  Description
+                </label>
                 <textarea
+                  id="zone-desc"
                   value={zoneForm.description}
                   onChange={(e) => setZoneForm((f) => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
                   rows={2}
-                  placeholder="Zone description..."
                 />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowZoneModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={saveZone}
                 disabled={zoneSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
               >
-                {zoneSaving ? 'Saving...' : 'Create'}
+                {zoneSaving ? 'Saving…' : 'Create'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Rack Modal (create only) */}
+      {/* Rack Modal */}
       {showRackModal && rackZone && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            role="dialog"
+            aria-labelledby="create-rack-title"
+          >
             <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">Add Rack — {rackZone.name}</h3>
+              <h3 id="create-rack-title" className="text-lg font-semibold text-gray-900">
+                Add rack — {rackZone.name}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1 font-mono">{rackZone.code}</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Code *</label>
+                <label htmlFor="rack-code" className="block text-xs font-medium text-gray-700 mb-1">
+                  Code *
+                </label>
                 <input
+                  id="rack-code"
                   type="text"
                   value={rackForm.code}
                   onChange={(e) => setRackForm((f) => ({ ...f, code: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
-                  placeholder="A1"
+                  placeholder="DEFAULT or A1"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+                <label htmlFor="rack-name" className="block text-xs font-medium text-gray-700 mb-1">
+                  Name
+                </label>
                 <input
+                  id="rack-name"
                   type="text"
                   value={rackForm.name}
                   onChange={(e) => setRackForm((f) => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
-                  placeholder="Rack A1"
+                  placeholder="Default storage"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Levels</label>
+                  <label htmlFor="rack-levels" className="block text-xs font-medium text-gray-700 mb-1">
+                    Levels
+                  </label>
                   <input
+                    id="rack-levels"
                     type="number"
                     min={1}
                     value={rackForm.levels}
@@ -720,8 +1253,11 @@ const FacilityManagement: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Slots total</label>
+                  <label htmlFor="rack-slots" className="block text-xs font-medium text-gray-700 mb-1">
+                    Slots total
+                  </label>
                   <input
+                    id="rack-slots"
                     type="number"
                     min={1}
                     value={rackForm.slots_total}
@@ -731,29 +1267,36 @@ const FacilityManagement: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <label htmlFor="rack-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                  Description
+                </label>
                 <textarea
+                  id="rack-desc"
                   value={rackForm.description}
                   onChange={(e) => setRackForm((f) => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
                   rows={2}
-                  placeholder="Optional"
                 />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={() => { setShowRackModal(false); setRackZone(null); }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
+                type="button"
+                onClick={() => {
+                  setShowRackModal(false);
+                  setRackZone(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={saveRack}
                 disabled={rackSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
               >
-                {rackSaving ? 'Saving...' : 'Create'}
+                {rackSaving ? 'Saving…' : 'Create'}
               </button>
             </div>
           </div>

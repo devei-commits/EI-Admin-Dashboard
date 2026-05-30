@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
-import { parseFormulaBomWorkbook, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaSummaryChunk, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaSummaryGroupResult, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
+import { parseFormulaBomWorkbook, chunkSummaryRows, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
 import {
   validateSkuBomTotals,
@@ -20,7 +20,10 @@ import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
 
-/** Composite SKU groups per chunk POST (RM then Packaging). */
+/** Summary rows per chunk POST. */
+const FORMULA_SUMMARY_CHUNK_ROWS = 25;
+
+/** Composite SKU groups per RM BOM chunk POST. */
 const FORMULA_BOM_CHUNK_GROUPS = 5;
 
 const BOMDashboard: React.FC = () => {
@@ -206,8 +209,8 @@ const BOMDashboard: React.FC = () => {
       if (!okDraft) return;
     }
     const ok = window.confirm(
-      'This permanently deletes ALL PR master data from the database:\n' +
-        '• Every catalogue product that is linked from a BOM row\n' +
+      'This permanently HARD-deletes ALL PR master data from the database (rows are removed, not archived):\n' +
+        '• Every product row in the catalogue table (including previously soft-deleted)\n' +
         '• Every row in the BOM table (including orphan BOMs)\n' +
         '• Related planning, warehouse FG rows, items-list PR links, and product customizations\n\n' +
         'Raw material and pack material masters are not deleted. If any ecommerce order lines still reference these products, the reset will be blocked. You will be asked to type a confirmation phrase next.'
@@ -254,22 +257,31 @@ const BOMDashboard: React.FC = () => {
         const buf = await file.arrayBuffer();
         const parsed = parseFormulaBomWorkbook(buf);
 
+        if (parsed.errors.length > 0) {
+          for (const err of parsed.errors) {
+            toast.error(err);
+          }
+          return;
+        }
+
         if (parsed.warnings.length > 0) {
           for (const w of parsed.warnings) {
             toast.info(w);
           }
         }
 
-        const rmRows = parsed.rm?.rows ?? [];
-        const packRows = parsed.pack?.rows ?? [];
-        if (rmRows.length === 0 && packRows.length === 0) {
-          toast.error('No data rows found on the Formula RM or Packaging BOM sheets.');
+        const summaryRows = parsed.summary?.rows ?? [];
+        if (summaryRows.length === 0) {
+          toast.error('No data rows found on the Summary sheet.');
           return;
         }
 
+        const rmRows = parsed.rm?.rows ?? [];
+        const packRows = parsed.pack?.rows ?? [];
+        const summaryChunks = chunkSummaryRows(summaryRows, FORMULA_SUMMARY_CHUNK_ROWS);
         const rmChunks = chunkCompositeGroups(groupRowsByCompositeSku(rmRows), FORMULA_BOM_CHUNK_GROUPS);
         const packChunks = chunkCompositeGroups(groupRowsByCompositeSku(packRows), FORMULA_BOM_CHUNK_GROUPS);
-        const totalSteps = rmChunks.length + packChunks.length;
+        const totalSteps = summaryChunks.length + rmChunks.length + packChunks.length;
 
         let stepDone = 0;
         const setProgressFromStep = () => {
@@ -279,69 +291,95 @@ const BOMDashboard: React.FC = () => {
           }
         };
 
+        const allSummaryResults: FormulaSummaryGroupResult[] = [];
         const allRmResults: FormulaRmBomGroupResult[] = [];
         const allPackResults: FormulaPackBomGroupResult[] = [];
 
-        for (let i = 0; i < rmChunks.length; i += 1) {
-          const res = await postFormulaRmBomChunk({
+        for (let i = 0; i < summaryChunks.length; i += 1) {
+          const res = await postFormulaSummaryChunk({
             chunk_index: i,
-            chunk_total: rmChunks.length,
-            apply_sg: true,
-            groups: rmChunks[i],
+            chunk_total: summaryChunks.length,
+            rows: summaryChunks[i],
           });
           if (!res.success || !res.data) {
             toast.error(
               typeof res.error === 'object' && res.error && 'message' in res.error
                 ? String(res.error.message)
-                : 'RM chunk import failed'
+                : 'Summary chunk import failed'
             );
             return;
           }
-          allRmResults.push(...res.data.results);
+          allSummaryResults.push(...res.data.results);
           setProgressFromStep();
         }
 
-        for (let i = 0; i < packChunks.length; i += 1) {
-          const res = await postFormulaPackBomChunk({
-            chunk_index: i,
-            chunk_total: packChunks.length,
-            groups: packChunks[i],
-          });
-          if (!res.success || !res.data) {
-            toast.error(
-              typeof res.error === 'object' && res.error && 'message' in res.error
-                ? String(res.error.message)
-                : 'Packaging BOM chunk import failed'
-            );
-            return;
+        if (rmRows.length > 0) {
+          for (let i = 0; i < rmChunks.length; i += 1) {
+            const res = await postFormulaRmBomChunk({
+              chunk_index: i,
+              chunk_total: rmChunks.length,
+              apply_sg: false,
+              groups: rmChunks[i],
+            });
+            if (!res.success || !res.data) {
+              toast.error(
+                typeof res.error === 'object' && res.error && 'message' in res.error
+                  ? String(res.error.message)
+                  : 'RM BOM chunk import failed'
+              );
+              return;
+            }
+            allRmResults.push(...res.data.results);
+            setProgressFromStep();
           }
-          allPackResults.push(...res.data.results);
-          setProgressFromStep();
+        } else if (parsed.rm?.sheetName) {
+          toast.info(`RM BOM sheet "${parsed.rm.sheetName}" had no importable formula lines.`);
+        }
+
+        if (packRows.length > 0) {
+          for (let i = 0; i < packChunks.length; i += 1) {
+            const res = await postFormulaPackBomChunk({
+              chunk_index: i,
+              chunk_total: packChunks.length,
+              groups: packChunks[i],
+            });
+            if (!res.success || !res.data) {
+              toast.error(
+                typeof res.error === 'object' && res.error && 'message' in res.error
+                  ? String(res.error.message)
+                  : 'PM BOM chunk import failed'
+              );
+              return;
+            }
+            allPackResults.push(...res.data.results);
+            setProgressFromStep();
+          }
+        } else if (parsed.pack?.sheetName) {
+          toast.info(`PM BOM sheet "${parsed.pack.sheetName}" had no importable packaging lines.`);
         }
 
         if (totalSteps === 0) {
           setFormulaBomUploadPercent(100);
         }
 
+        const summaryOk = allSummaryResults.filter((r) => r.success).length;
+        const summaryFail = allSummaryResults.filter((r) => !r.success).length;
+        const summaryNewPr = allSummaryResults.filter((r) => r.success && r.product_created).length;
         const rmOk = allRmResults.filter((r) => r.success).length;
         const rmFail = allRmResults.filter((r) => !r.success).length;
         const packOk = allPackResults.filter((r) => r.success).length;
         const packFail = allPackResults.filter((r) => !r.success).length;
-        const rmNewPr = allRmResults.filter((r) => r.success && r.product_created).length;
-        const packNewPr = allPackResults.filter((r) => r.success && r.product_created).length;
 
         const parts: string[] = [];
+        const newBit = summaryNewPr > 0 ? `, ${summaryNewPr} new PR` : '';
+        parts.push(
+          `Summary (${parsed.summary?.sheetName ?? 'Summary'}): ${summaryOk} ok${newBit}, ${summaryFail} failed`
+        );
         if (rmRows.length > 0) {
-          const newBit = rmNewPr > 0 ? `, ${rmNewPr} new PR` : '';
-          parts.push(
-            `RM (${parsed.rm?.sheetName ?? 'sheet'}): ${rmOk} ok${newBit}, ${rmFail} failed`
-          );
+          parts.push(`RM (${parsed.rm?.sheetName ?? 'RM BOM'}): ${rmOk} ok, ${rmFail} failed`);
         }
         if (packRows.length > 0) {
-          const newBit = packNewPr > 0 ? `, ${packNewPr} new PR` : '';
-          parts.push(
-            `Packaging (${parsed.pack?.sheetName ?? 'sheet'}): ${packOk} ok${newBit}, ${packFail} failed`
-          );
+          parts.push(`PM (${parsed.pack?.sheetName ?? 'PM BOM'}): ${packOk} ok, ${packFail} failed`);
         }
         toast.success(`Formula BOM import — ${parts.join('; ')}.`);
 
@@ -350,13 +388,16 @@ const BOMDashboard: React.FC = () => {
         ).trim();
         if (selectedZoho && selectedProduct) {
           const z = selectedZoho.toLowerCase();
+          const hitSummary = allSummaryResults.some(
+            (r) => r.success && String(r.sku ?? '').trim().toLowerCase() === z
+          );
           const hitRm = allRmResults.some(
             (r) => r.success && String(r.composite_sku ?? '').trim().toLowerCase() === z
           );
           const hitPack = allPackResults.some(
             (r) => r.success && String(r.composite_sku ?? '').trim().toLowerCase() === z
           );
-          if (hitRm || hitPack) {
+          if (hitSummary || hitRm || hitPack) {
             const detail = await fetchPRProductDetail(selectedProduct.product_id);
             if (detail.success && detail.data) {
               setSelectedProduct(detail.data);
@@ -654,7 +695,7 @@ const BOMDashboard: React.FC = () => {
                   <button
                     type="button"
                     disabled={formulaRmExcelUploading}
-                    title='Reads "Formula BOM - RM per KG-LTR" (SKU RM lines + net fill) and "Packaging BOM" (pm_lines only). Import runs in chunks; large files show progress.'
+                    title='Requires Summary, RM BOM, and PM BOM worksheets. Summary: category, pack, SG. RM: Formula % (RM Count). PM: Qty/Unit per FG (PM Count).'
                     onClick={() => formulaRmFileInputRef.current?.click()}
                     className="inline-flex items-center px-3 py-2 border border-blue-200 bg-white text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap gap-1"
                   >

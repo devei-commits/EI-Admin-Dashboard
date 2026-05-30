@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Modal } from './Modal';
@@ -15,6 +15,7 @@ import {
   serializeStagedPaymentTerms,
   validateStagedPercents,
 } from '../../lib/stagedPaymentTerms';
+import { computeSuggestPanelRect, getScrollParents, type SuggestPanelRect } from '../../utils/suggestPanelPosition';
 
 interface EditableItem {
   sku: string;
@@ -47,7 +48,7 @@ interface EditSOModalProps {
 const DEFAULT_STAGED = { advance_pct: 0, pre_shipment_pct: 100, post_shipment_pct: 0, credit_days: 30 };
 const MAX_PRODUCT_SUGGESTIONS = 100;
 const SUGGEST_LIST_BOX_CLASS =
-  'fixed z-[10000] max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5';
+  'fixed z-[10050] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5';
 const SUGGEST_ITEM_CLASS =
   'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-slate-100 focus:bg-slate-100 focus:outline-none border-b border-gray-50 last:border-0';
 const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-gray-900';
@@ -104,7 +105,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const [priceHints, setPriceHints] = useState<Record<number, string>>({});
   const priceResolveGenRef = useRef(0);
   const [activeProductSuggestIndex, setActiveProductSuggestIndex] = useState<number | null>(null);
-  const [suggestPanelRect, setSuggestPanelRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [suggestPanelRect, setSuggestPanelRect] = useState<SuggestPanelRect | null>(null);
   const suggestPanelRef = useRef<HTMLDivElement | null>(null);
   const productInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
@@ -156,32 +157,53 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     }
     const el = productInputRefs.current[activeProductSuggestIndex];
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    setSuggestPanelRect({
-      top: r.bottom + 4,
-      left: r.left,
-      width: Math.max(r.width, 220),
-    });
+    setSuggestPanelRect(computeSuggestPanelRect(el));
   }, [activeProductSuggestIndex]);
 
+  const focusProductSuggest = useCallback((index: number) => {
+    setActiveProductSuggestIndex(index);
+    requestAnimationFrame(() => {
+      const el = productInputRefs.current[index];
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (el) setSuggestPanelRect(computeSuggestPanelRect(el));
+    });
+  }, []);
+
   useEffect(() => {
+    if (!isOpen) {
+      setActiveProductSuggestIndex(null);
+      setSuggestPanelRect(null);
+    }
+  }, [isOpen]);
+
+  useLayoutEffect(() => {
     updateSuggestPanelPosition();
-    if (activeProductSuggestIndex == null) return;
+    if (activeProductSuggestIndex == null) return undefined;
+
+    const anchor = productInputRefs.current[activeProductSuggestIndex];
+    const scrollParents = getScrollParents(anchor ?? null);
+
     window.addEventListener('scroll', updateSuggestPanelPosition, true);
     window.addEventListener('resize', updateSuggestPanelPosition);
+    scrollParents.forEach((node) => node.addEventListener('scroll', updateSuggestPanelPosition, { passive: true }));
+
     return () => {
       window.removeEventListener('scroll', updateSuggestPanelPosition, true);
       window.removeEventListener('resize', updateSuggestPanelPosition);
+      scrollParents.forEach((node) => node.removeEventListener('scroll', updateSuggestPanelPosition));
     };
   }, [activeProductSuggestIndex, updateSuggestPanelPosition, items]);
 
   useEffect(() => {
     if (activeProductSuggestIndex == null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setActiveProductSuggestIndex(null);
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setActiveProductSuggestIndex(null);
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [activeProductSuggestIndex]);
 
   useEffect(() => {
@@ -285,6 +307,13 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             pack: packSizeFromProductRecord(selected),
             unitPrice: selectedCustomerId ? 0 : Number(selected.price || 0),
           };
+        } else {
+          next[index] = {
+            ...next[index],
+            sku: '',
+            pack: '',
+            unitPrice: 0,
+          };
         }
       }
       return next;
@@ -312,6 +341,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     items.forEach((item, index) => {
       const row = index + 1;
       if (!item.productName.trim()) nextErrors.push(`Item ${row}: product name is required.`);
+      else if (!productsByName.has(item.productName.trim())) {
+        nextErrors.push(`Item ${row}: select a valid product from the list (search by name or SKU).`);
+      }
       if (Number(item.orderedQty) <= 0) nextErrors.push(`Item ${row}: quantity must be greater than 0.`);
       if (Number(item.unitPrice) <= 0) nextErrors.push(`Item ${row}: unit price must be greater than 0.`);
     });
@@ -389,6 +421,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               top: suggestPanelRect.top,
               left: suggestPanelRect.left,
               width: suggestPanelRect.width,
+              maxHeight: suggestPanelRect.maxHeight,
             }}
           >
             {productSuggestList.length === 0 ? (
@@ -527,17 +560,21 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
           </div>
           <div className="p-3 space-y-2">
             {items.map((item, index) => (
-              <div key={`${item.productName}-${index}`} className="grid grid-cols-12 gap-2">
+              <div key={`edit-so-item-${index}`} className="grid grid-cols-12 gap-2">
                 <input
                   ref={(el) => {
                     productInputRefs.current[index] = el;
                   }}
                   className="col-span-3 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
-                  placeholder="Product name"
+                  placeholder="Search product (FG) by name or SKU"
                   value={item.productName}
                   disabled={!canEdit}
-                  onFocus={() => setActiveProductSuggestIndex(index)}
-                  onChange={(e) => updateItem(index, { productName: e.target.value })}
+                  autoComplete="off"
+                  onFocus={() => focusProductSuggest(index)}
+                  onChange={(e) => {
+                    setActiveProductSuggestIndex(index);
+                    updateItem(index, { productName: e.target.value });
+                  }}
                 />
                 <input className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="SKU" value={item.sku} disabled={!canEdit} onChange={(e) => updateItem(index, { sku: e.target.value })} />
                 <input className="col-span-1 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="Pack" value={item.pack} disabled={!canEdit} onChange={(e) => updateItem(index, { pack: e.target.value })} />

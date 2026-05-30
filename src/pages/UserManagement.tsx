@@ -12,11 +12,7 @@ import {
  Trash2,
  X,
  Save,
- Mail,
- Phone,
  Building2,
- Shield,
- Clock,
  ChevronDown,
  ChevronUp,
  RefreshCw,
@@ -24,6 +20,7 @@ import {
  Check,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, createStaffUser, type StaffUserFromApi } from '../services/user.service';
 import { listStaffRoles } from '../services/role.service';
 import {
@@ -47,6 +44,39 @@ interface User {
  createdAt: string;
  lastLogin: string;
  vendorClientCode?: string | null;
+}
+
+type UserSortColumn =
+ | 'name'
+ | 'email'
+ | 'mobile'
+ | 'masters'
+ | 'department'
+ | 'role'
+ | 'status'
+ | 'lastLogin';
+
+function sortValueForUser(user: User, column: UserSortColumn): string | number {
+ switch (column) {
+  case 'name':
+   return `${user.firstName} ${user.lastName}`.trim().toLowerCase();
+  case 'email':
+   return user.email.toLowerCase();
+  case 'mobile':
+   return user.mobile;
+  case 'masters':
+   return (user.vendorClientCode || '').toLowerCase();
+  case 'department':
+   return user.department.toLowerCase();
+  case 'role':
+   return user.role.toLowerCase();
+  case 'status':
+   return user.status;
+  case 'lastLogin':
+   return user.lastLogin ? new Date(user.lastLogin).getTime() || 0 : 0;
+  default:
+   return '';
+ }
 }
 
 // ==================== CONSTANTS ====================
@@ -203,8 +233,8 @@ const UserManagement = () => {
  const [statusFilter, setStatusFilter] = useState<string>('all');
  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
  const [roleFilter, setRoleFilter] = useState<string>('all');
- const [sortBy, setSortBy] = useState<'name' | 'role' | 'department' | 'status' | 'createdAt'>('name');
- const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+ const [sortColumn, setSortColumn] = useState<UserSortColumn | null>(null);
+ const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
  const [showFilters, setShowFilters] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
  const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -293,19 +323,22 @@ const UserManagement = () => {
   if (departmentFilter !== 'all') result = result.filter(u => u.department === departmentFilter);
   if (roleFilter !== 'all') result = result.filter(u => u.role === roleFilter);
 
-  result.sort((a, b) => {
-   let cmp = 0;
-   switch (sortBy) {
-    case 'name': cmp = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`); break;
-    case 'role': cmp = a.role.localeCompare(b.role); break;
-    case 'department': cmp = a.department.localeCompare(b.department); break;
-    case 'status': cmp = a.status.localeCompare(b.status); break;
-    case 'createdAt': cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); break;
-   }
-   return sortOrder === 'asc' ? cmp : -cmp;
-  });
+  if (sortColumn) {
+   result.sort((a, b) => {
+    const av = sortValueForUser(a, sortColumn);
+    const bv = sortValueForUser(b, sortColumn);
+    let cmp: number;
+    if (typeof av === 'number' && typeof bv === 'number') {
+     cmp = av - bv;
+    } else {
+     cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+    }
+    if (cmp === 0) cmp = a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
+    return sortDirection === 'asc' ? cmp : -cmp;
+   });
+  }
   return result;
- }, [users, searchTerm, statusFilter, departmentFilter, roleFilter, sortBy, sortOrder]);
+ }, [users, searchTerm, statusFilter, departmentFilter, roleFilter, sortColumn, sortDirection]);
 
  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -462,9 +495,14 @@ const UserManagement = () => {
   if (res.success) await loadUsers();
  }, [loadUsers]);
 
- const toggleSort = (field: typeof sortBy) => {
-  if (sortBy === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
-  else { setSortBy(field); setSortOrder('asc'); }
+ const toggleUserSort = (column: UserSortColumn) => {
+  if (sortColumn === column) {
+   setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setSortColumn(column);
+  setSortDirection('asc');
+  setCurrentPage(1);
  };
 
  const resetFilters = () => {
@@ -493,8 +531,6 @@ const UserManagement = () => {
   };
   return icons[status] || icons.inactive;
  };
-
- const getInitials = (first: string, last: string) => `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 
  return (
   <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
@@ -596,26 +632,16 @@ const UserManagement = () => {
    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
     <div className="hidden md:block overflow-x-auto">
      <table className="w-full table-fixed min-w-212.5">
-      <thead className="bg-slate-50">
+      <thead className="bg-slate-50 border-b border-gray-200">
        <tr>
-        {[
-         { key: 'name', label: 'User', width: 'w-[16%]' },
-         { key: null, label: 'Contact', width: 'w-[20%]' },
-         { key: null, label: 'Masters', width: 'w-[12%]' },
-         { key: 'department', label: 'Department', width: 'w-[10%]' },
-         { key: 'role', label: 'Role', width: 'w-[10%]' },
-         { key: 'status', label: 'Status', width: 'w-[10%]' },
-         { key: null, label: 'Last Login', width: 'w-[10%]' },
-         { key: null, label: 'Actions', width: 'w-[12%]' },
-        ].map(({ key, label, width }) => (
-         <th key={label} className={`${width} px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase`}>
-          {key ? (
-           <button onClick={() => toggleSort(key as typeof sortBy)} className="flex items-center gap-1 hover:text-slate-800">
-            {label} {sortBy === key && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
-           </button>
-          ) : label}
-         </th>
-        ))}
+        <SortableTableTh label="User" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Contact" column="email" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Masters" column="masters" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Department" column="department" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Role" column="role" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <SortableTableTh label="Last Login" column="lastLogin" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
+        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
        </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
@@ -627,19 +653,22 @@ const UserManagement = () => {
        ) : paginatedUsers.map(user => (
         <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
          <td className="px-4 py-3">
-          <div className="flex items-center gap-3">
-           <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-white font-semibold text-sm">
-            {getInitials(user.firstName, user.lastName)}
-           </div>
-           <div>
-            <p className="font-medium text-gray-800">{user.firstName} {user.lastName}</p>
-            <p className="text-xs text-slate-500">{user.id}</p>
-           </div>
+          <div className="min-w-0">
+           <p className="font-medium text-gray-900 truncate">{user.firstName} {user.lastName}</p>
+           <p className="text-xs text-slate-500 font-mono truncate" title="User ID">
+             ID {user.id}
+           </p>
           </div>
          </td>
          <td className="px-4 py-3">
-          <p className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Mail className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.email}</p>
-          <p className="text-sm text-slate-500 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 shrink-0 text-gray-400" />{user.mobile}</p>
+          <p className="text-sm text-slate-700 truncate">
+            <span className="text-slate-500 text-xs font-medium uppercase tracking-wide mr-1.5">Email</span>
+            {user.email || '—'}
+          </p>
+          <p className="text-sm text-slate-700 mt-0.5">
+            <span className="text-slate-500 text-xs font-medium uppercase tracking-wide mr-1.5">Phone</span>
+            {user.mobile || '—'}
+          </p>
          </td>
          <td className="px-4 py-3">
           {user.vendorClientCode ? (
@@ -650,14 +679,16 @@ const UserManagement = () => {
            <span className="text-xs text-slate-400">—</span>
           )}
          </td>
-         <td className="px-4 py-3"><span className="text-sm text-slate-300 flex items-center gap-1.5 truncate"><Building2 className="w-4 h-4 shrink-0 text-gray-400" />{user.department}</span></td>
-         <td className="px-4 py-3"><span className="text-sm font-medium text-slate-300 flex items-center gap-1.5 truncate"><Shield className="w-4 h-4 shrink-0 text-slate-700" />{user.role}</span></td>
+         <td className="px-4 py-3"><span className="text-sm text-slate-700">{user.department || '—'}</span></td>
+         <td className="px-4 py-3"><span className="text-sm font-medium text-slate-800">{user.role || '—'}</span></td>
          <td className="px-4 py-3">
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
            {getStatusIcon(user.status)} {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
           </span>
          </td>
-         <td className="px-4 py-3"><span className="text-sm text-slate-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{user.lastLogin}</span></td>
+         <td className="px-4 py-3">
+          <span className="text-sm text-slate-600">{user.lastLogin || '—'}</span>
+         </td>
          <td className="px-4 py-3">
           <div className="flex items-center justify-center gap-1">
            <button onClick={() => handleOpenModal('view', user)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="View"><Eye className="w-4 h-4" /></button>
@@ -681,19 +712,16 @@ const UserManagement = () => {
      ) : paginatedUsers.map(user => (
       <div key={user.id} className="p-4 hover:bg-slate-50/50">
        <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-         <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-white font-semibold">{getInitials(user.firstName, user.lastName)}</div>
-         <div>
-          <p className="font-semibold text-gray-800">{user.firstName} {user.lastName}</p>
-          <p className="text-xs text-slate-500">{user.id} • {user.role}</p>
-         </div>
+        <div>
+         <p className="font-semibold text-gray-800">{user.firstName} {user.lastName}</p>
+         <p className="text-xs text-slate-500 font-mono">ID {user.id} · {user.role}</p>
         </div>
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>{getStatusIcon(user.status)} {user.status}</span>
        </div>
        <div className="space-y-1.5 text-sm mb-3">
-        <p className="text-slate-400 flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" />{user.email}</p>
-        <p className="text-slate-400 flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" />{user.mobile}</p>
-        <p className="text-slate-400 flex items-center gap-2"><Building2 className="w-4 h-4 text-gray-400" />{user.department}</p>
+        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Email</span>{user.email || '—'}</p>
+        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Phone</span>{user.mobile || '—'}</p>
+        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Dept</span>{user.department || '—'}</p>
        </div>
        <div className="flex gap-2">
         <button onClick={() => handleOpenModal('view', user)} className="flex-1 px-3 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium">View</button>
@@ -723,12 +751,9 @@ const UserManagement = () => {
      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
       <div className="bg-slate-800 p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-         <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-white text-xl font-bold">{getInitials(selectedUser.firstName, selectedUser.lastName)}</div>
-         <div>
-          <h2 className="text-xl font-bold text-white">{selectedUser.firstName} {selectedUser.lastName}</h2>
-          <p className="text-gray-100">{selectedUser.role} • {selectedUser.department}</p>
-         </div>
+        <div>
+         <h2 className="text-xl font-bold text-white">{selectedUser.firstName} {selectedUser.lastName}</h2>
+         <p className="text-gray-100">{selectedUser.role} • {selectedUser.department}</p>
         </div>
         <button onClick={handleCloseModal} className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
        </div>

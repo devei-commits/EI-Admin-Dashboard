@@ -20,9 +20,56 @@ import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryDat
 import { aggregateKPIs, aggregatePipelineCounts, formatINR, formatLakhs, formatNumber } from '../../utils/orderFulfillmentUtils';
 import { computeOrderItemExecutionPercent } from '../../lib/fulfillmentExecutionPct';
 import type { ExecPlanningItem } from '../../lib/fulfillmentExecutionPct';
-import { StatusBadge } from './StatusBadge';
 import type { SoPlanningAvailabilityResponse } from '../../services/fulfillment.service';
 import { fetchSoPlanningAvailability } from '../../services/fulfillment.service';
+import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
+import type { OrderItem } from '../../types/orderFulfillment';
+
+type SaleOrderItemSortColumn = 'soNo' | 'product' | 'qty' | 'availability' | 'execPct' | 'batches' | 'sentCount';
+
+interface EnrichedSaleOrderItemRow {
+  clientKey: string;
+  clientName: string;
+  city: string;
+  so: SaleOrder;
+  item: OrderItem;
+  execPct: number;
+  batchCount: number;
+  rmAvailabilityPct: number;
+  pmAvailabilityPct: number;
+  rmNumerator: number;
+  rmDenominator: number;
+  pmNumerator: number;
+  pmDenominator: number;
+  rmStarted: number;
+  pmStarted: number;
+  totalBatches: number;
+  sentCount: number;
+  rmOk: boolean;
+  pmOk: boolean;
+  planningItem: ExecPlanningItem | null;
+}
+
+function sortValueForSaleOrderItemRow(row: EnrichedSaleOrderItemRow, column: SaleOrderItemSortColumn): string | number {
+  switch (column) {
+    case 'soNo':
+      return row.so.soNo.toLowerCase();
+    case 'product':
+      return row.item.productName.toLowerCase();
+    case 'qty':
+      return Number(row.item.orderedQty) || 0;
+    case 'availability':
+      return (row.rmAvailabilityPct + row.pmAvailabilityPct) / 2;
+    case 'execPct':
+      return row.execPct;
+    case 'batches':
+      return row.totalBatches;
+    case 'sentCount':
+      return row.sentCount;
+    default:
+      return '';
+  }
+}
 
 interface SaleOrdersViewProps {
   saleOrders: SaleOrder[];
@@ -65,6 +112,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [activePipelineStage, setActivePipelineStage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortColumn, setSortColumn] = useState<SaleOrderItemSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Modal states
   const [isAddSOModalOpen, setIsAddSOModalOpen] = useState(false);
@@ -149,16 +198,130 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
     return Array.from(map.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
   }, [filteredSOs]);
 
+  const enrichedRows = useMemo((): EnrichedSaleOrderItemRow[] => {
+    const rows: EnrichedSaleOrderItemRow[] = [];
+    for (const so of filteredSOs) {
+      const clientName = String(so.customer || 'Unknown Client').trim() || 'Unknown Client';
+      const city = String(so.customerCity || '').trim();
+      const clientKey = `${clientName.toLowerCase()}__${city.toLowerCase()}`;
+      const soKey = normalizeSoKey(so.soNo);
+      const planningResp = planningAvailabilityBySoNo[so.soNo] ?? planningAvailabilityBySoNo[soKey];
+
+      for (const item of so.items) {
+        const planningItem =
+          planningResp?.items?.find((pi) => {
+            if (pi.productName !== item.productName) return false;
+            if (!pi.sku || !item.sku) return true;
+            return pi.sku === item.sku;
+          }) ??
+          planningResp?.items?.find((pi) => pi.sku && item.sku && pi.sku === item.sku) ??
+          planningResp?.items?.find((pi) => pi.productName === item.productName) ??
+          null;
+
+        const execPct = computeOrderItemExecutionPercent(
+          item,
+          (planningItem as ExecPlanningItem | null | undefined) ?? undefined
+        );
+        const batchCount = item.batchSplits.length;
+        const rmStartable = planningItem?.rmStartableCount ?? 0;
+        const rmStarted = planningItem?.rmStartedCount ?? 0;
+        const pmStartable = planningItem?.pmStartableCount ?? 0;
+        const pmStarted = planningItem?.pmStartedCount ?? 0;
+        const totalBatches = planningItem?.totalBatches ?? 0;
+        const rmLineAvail = planningItem?.rmLineAvailableCount ?? 0;
+        const rmLineTotal = planningItem?.rmLineTotalCount ?? 0;
+        const pmLineAvail = planningItem?.pmLineAvailableCount ?? 0;
+        const pmLineTotal = planningItem?.pmLineTotalCount ?? 0;
+        const rmNumerator = rmLineTotal > 0 ? rmLineAvail : rmStartable;
+        const rmDenominator = rmLineTotal > 0 ? rmLineTotal : totalBatches;
+        const pmNumerator = pmLineTotal > 0 ? pmLineAvail : pmStartable;
+        const pmDenominator = pmLineTotal > 0 ? pmLineTotal : totalBatches;
+        const rmAvailabilityPct =
+          rmDenominator > 0 ? Math.min(100, Math.round((rmNumerator / rmDenominator) * 100)) : 0;
+        const pmAvailabilityPct =
+          pmDenominator > 0 ? Math.min(100, Math.round((pmNumerator / pmDenominator) * 100)) : 0;
+        const sentCount = planningItem?.sentCount ?? 0;
+        const rmOk = rmDenominator > 0 && rmAvailabilityPct >= 90;
+        const pmOk = pmDenominator > 0 && pmAvailabilityPct >= 90;
+
+        rows.push({
+          clientKey,
+          clientName,
+          city,
+          so,
+          item,
+          execPct,
+          batchCount,
+          rmAvailabilityPct,
+          pmAvailabilityPct,
+          rmNumerator,
+          rmDenominator,
+          pmNumerator,
+          pmDenominator,
+          rmStarted,
+          pmStarted,
+          totalBatches,
+          sentCount,
+          rmOk,
+          pmOk,
+          planningItem: (planningItem as ExecPlanningItem | null) ?? null,
+        });
+      }
+    }
+    return rows;
+  }, [filteredSOs, planningAvailabilityBySoNo]);
+
+  const sortedEnrichedRows = useMemo(() => {
+    if (!sortColumn) return enrichedRows;
+    const rows = [...enrichedRows];
+    rows.sort((a, b) => {
+      const av = sortValueForSaleOrderItemRow(a, sortColumn);
+      const bv = sortValueForSaleOrderItemRow(b, sortColumn);
+      let cmp: number;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        cmp = av - bv;
+      } else {
+        cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (cmp === 0) {
+        cmp = `${a.so.soNo}-${a.item.productName}`.localeCompare(`${b.so.soNo}-${b.item.productName}`, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [enrichedRows, sortColumn, sortDirection]);
+
+  const toggleSaleOrderSort = (column: SaleOrderItemSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, activeFilter, activePipelineStage, pageSize]);
+  }, [searchQuery, activeFilter, activePipelineStage, pageSize, sortColumn, sortDirection]);
 
+  const totalRowPages = Math.max(1, Math.ceil(sortedEnrichedRows.length / pageSize));
   const totalClientPages = Math.max(1, Math.ceil(groupedByClient.length / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalClientPages);
+  const useRowPagination = sortColumn != null;
+  const totalPages = useRowPagination ? totalRowPages : totalClientPages;
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pagedEnrichedRows = useMemo(() => {
+    if (!useRowPagination) return [];
+    const start = (safeCurrentPage - 1) * pageSize;
+    return sortedEnrichedRows.slice(start, start + pageSize);
+  }, [sortedEnrichedRows, safeCurrentPage, pageSize, useRowPagination]);
   const pagedClientGroups = useMemo(() => {
+    if (useRowPagination) return [];
     const start = (safeCurrentPage - 1) * pageSize;
     return groupedByClient.slice(start, start + pageSize);
-  }, [groupedByClient, safeCurrentPage, pageSize]);
+  }, [groupedByClient, safeCurrentPage, pageSize, useRowPagination]);
 
   useEffect(() => {
     console.log('[FULFILLMENT-AVAIL][FRONTEND][LIFECYCLE] visibleSoNos changed', {
@@ -476,255 +639,103 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
           <table className="w-full text-sm border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">SO</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Product</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">Qty</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Availability
-                  <div className="text-[10px] font-normal text-gray-500">RM / PM lines · WH or BMR/BPR done</div>
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Exec%
-                  <div className="text-[10px] font-normal text-gray-500">lifecycle / batches</div>
-                </th>
-                {/* <th className="px-4 py-3 text-left font-semibold text-gray-700">Stage</th> */}
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Batches
-                  <div className="text-[10px] font-normal text-gray-500">click to open BMR</div>
-                </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">#</th>
+                <SortableTableTh label="SO" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
+                <SortableTableTh label="Product" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
+                <SortableTableTh label="Qty" column="qty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
+                <SortableTableTh
+                  label={
+                    <>
+                      Availability
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">RM / PM lines · WH or BMR/BPR done</div>
+                    </>
+                  }
+                  column="availability"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSaleOrderSort}
+                />
+                <SortableTableTh
+                  label={
+                    <>
+                      Exec%
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">lifecycle / batches</div>
+                    </>
+                  }
+                  column="execPct"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSaleOrderSort}
+                />
+                <SortableTableTh
+                  label={
+                    <>
+                      Batches
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">click to open BMR</div>
+                    </>
+                  }
+                  column="batches"
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSaleOrderSort}
+                />
+                <SortableTableTh label="#" column="sentCount" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {pagedClientGroups.flatMap((clientGroup) => {
-                const clientRows = clientGroup.orders.flatMap((so) =>
-                  so.items.map((item) => {
-                  const soKey = normalizeSoKey(so.soNo);
-                  const planningResp = planningAvailabilityBySoNo[so.soNo] ?? planningAvailabilityBySoNo[soKey];
-                  const planningItem =
-                    planningResp?.items?.find((pi) => {
-                      if (pi.productName !== item.productName) return false;
-                      // If SKU is missing on either side, allow match by productName only.
-                      if (!pi.sku || !item.sku) return true;
-                      return pi.sku === item.sku;
-                    }) ??
-                    planningResp?.items?.find((pi) => pi.sku && item.sku && pi.sku === item.sku) ??
-                    planningResp?.items?.find((pi) => pi.productName === item.productName) ??
-                    null;
-
-                  const execPct = computeOrderItemExecutionPercent(
-                    item,
-                    (planningItem as ExecPlanningItem | null | undefined) ?? undefined
-                  );
-                  const batchCount = item.batchSplits.length;
-
-                  const rmStartable = planningItem?.rmStartableCount ?? 0;
-                  const rmStarted = planningItem?.rmStartedCount ?? 0;
-                  const pmStartable = planningItem?.pmStartableCount ?? 0;
-                  const pmStarted = planningItem?.pmStartedCount ?? 0;
-
-                  const totalBatches = planningItem?.totalBatches ?? 0;
-                  const rmLineAvail = planningItem?.rmLineAvailableCount ?? 0;
-                  const rmLineTotal = planningItem?.rmLineTotalCount ?? 0;
-                  const pmLineAvail = planningItem?.pmLineAvailableCount ?? 0;
-                  const pmLineTotal = planningItem?.pmLineTotalCount ?? 0;
-
-                  // Prefer line-level availability metric (e.g. 9/10) when backend provides it.
-                  const rmNumerator = rmLineTotal > 0 ? rmLineAvail : rmStartable;
-                  const rmDenominator = rmLineTotal > 0 ? rmLineTotal : totalBatches;
-                  const pmNumerator = pmLineTotal > 0 ? pmLineAvail : pmStartable;
-                  const pmDenominator = pmLineTotal > 0 ? pmLineTotal : totalBatches;
-
-                  const rmAvailabilityPct = rmDenominator > 0 ? Math.min(100, Math.round((rmNumerator / rmDenominator) * 100)) : 0;
-                  const pmAvailabilityPct = pmDenominator > 0 ? Math.min(100, Math.round((pmNumerator / pmDenominator) * 100)) : 0;
-
-                  // const stage = (() => {
-                  //   switch (so.soStatus) {
-                  //     case 'planned':
-                  //       return 'Batch setup';
-                  //     case 'in_production':
-                  //       return 'In manufacturing';
-                  //     case 'partial':
-                  //     case 'fg_ready':
-                  //       return 'Batch ready';
-                  //     case 'picking':
-                  //       return 'Picking';
-                  //     case 'invoiced':
-                  //       return 'Invoice';
-                  //     case 'shipped':
-                  //       return 'Shipped';
-                  //     case 'delivered':
-                  //       return 'Delivered';
-                  //     case 'closed':
-                  //       return 'Closed';
-                  //     default:
-                  //       return so.soStatus;
-                  //   }
-                  // })();
-
-                  const sentCount = planningItem?.sentCount ?? 0;
-                  // "Mostly available" threshold: show green at/above 90%.
-                  const rmOk = rmDenominator > 0 && rmAvailabilityPct >= 90;
-                  const pmOk = pmDenominator > 0 && pmAvailabilityPct >= 90;
-
-                  if (!planningItem) {
-                    console.log('[FULFILLMENT-AVAIL][FRONTEND][ROW] NO_PLANNING_ITEM_MATCH', {
-                      soNo: so.soNo,
-                      soKey,
-                      itemProductName: item.productName,
-                      itemSku: item.sku,
-                      availabilityKeys: Object.keys(planningAvailabilityBySoNo),
-                      planningItems: planningResp?.items?.map((pi) => ({ productName: pi.productName, sku: pi.sku })) ?? [],
-                    });
-                  } else {
-                    console.log('[FULFILLMENT-AVAIL][FRONTEND][ROW] MATCH', {
-                      soNo: so.soNo,
-                      itemProductName: item.productName,
-                      itemSku: item.sku,
-                      planningProductName: planningItem.productName,
-                      planningSku: planningItem.sku,
-                      totalBatches,
-                      rmLineAvail,
-                      rmLineTotal,
-                      pmLineAvail,
-                      pmLineTotal,
-                      rmStartable,
-                      rmStarted,
-                      pmStartable,
-                      pmStarted,
-                      sentCount,
-                    });
-                  }
-
-                    return (
-                    <tr key={`${so.soNo}__${item.productName}__${item.sku}`}>
-                      <td className="px-4 py-3 align-top">
-                        <div className="font-mono text-[12px] text-gray-900">
-                          {so.soNo}
-                          <div className="text-[10px] text-gray-500 font-normal">{so.orderDate}</div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="font-semibold text-gray-900 text-[13px]">{item.productName}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right align-top">
-                        <div className="font-mono text-[12px] text-gray-900 font-bold">
-                          {formatNumber(item.orderedQty)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="text-[11px]">
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                            <span className="text-gray-500">RM</span>
-                            <b className={rmOk ? 'text-emerald-700' : 'text-amber-700'}>
-                              {rmNumerator}/{rmDenominator || 0}
-                            </b>
-                          </div>
-                          <div className="text-[10px] text-gray-500 mt-1">
-                            production started {rmStarted}/{totalBatches || rmStartable || 0}
-                          </div>
-                          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
-                            <div
-                              className={rmOk ? 'bg-emerald-500' : 'bg-amber-500'}
-                              style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
-                            />
-                          </div>
-                        </div>
-                        <div className="text-[11px] mt-2">
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                            <span className="text-gray-500">PM</span>
-                            <b className={pmOk ? 'text-emerald-700' : 'text-amber-700'}>
-                              {pmNumerator}/{pmDenominator || 0}
-                            </b>
-                          </div>
-                          <div className="text-[10px] text-gray-500 mt-1">
-                            production started {pmStarted}/{totalBatches || pmStartable || 0}
-                          </div>
-                          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
-                            <div
-                              className={pmOk ? 'bg-emerald-500' : 'bg-amber-500'}
-                              style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <div
-                          className={`text-2xl font-extrabold ${execPct >= 100 ? 'text-emerald-600' : execPct >= 40 ? 'text-amber-600' : 'text-amber-700'
-                            }`}
-                        >
-                          {execPct}%
-                        </div>
-                        <div className="text-[10px] text-gray-500 font-normal">
-                          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
-                        </div>
-                      </td>
-                      {/* <td className="px-4 py-3 align-top">
-                        <StatusBadge status={so.soStatus} type="so" size="sm" />
-                      </td> */}
-                      <td className="px-4 py-3 align-top">
-                        {planningAvailabilityLoading && !planningItem ? (
-                          <div className="text-[11px] text-gray-500">Loading…</div>
-                        ) : totalBatches === 0 ? (
-                          <div className="text-[11px] text-gray-500">No batches</div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="text-left"
-                            onClick={() => handleViewDetails(so.soNo)}
-                          >
-                            <div className="text-[12px] text-gray-900 font-semibold">
-                              {sentCount}/{totalBatches} Batches
+              {useRowPagination
+                ? pagedEnrichedRows.map((row) => (
+                    <SaleOrderItemTableRow
+                      key={`${row.so.soNo}__${row.item.productName}__${row.item.sku}`}
+                      row={row}
+                      planningAvailabilityLoading={planningAvailabilityLoading}
+                      onViewDetails={handleViewDetails}
+                      onEdit={setEditModalSO}
+                      isEditLocked={isEditLocked}
+                    />
+                  ))
+                : pagedClientGroups.flatMap((clientGroup) => {
+                    const clientKey = `${clientGroup.clientName.toLowerCase()}__${clientGroup.city.toLowerCase()}`;
+                    const clientRows = enrichedRows.filter((r) => r.clientKey === clientKey);
+                    const groupHeader = (
+                      <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
+                        <td colSpan={8} className="px-4 py-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-blue-900">
+                              {clientGroup.clientName}
+                              {clientGroup.city ? (
+                                <span className="text-xs font-normal text-blue-700 ml-2">({clientGroup.city})</span>
+                              ) : null}
                             </div>
-                            <div className="text-[10px] text-gray-500">click to open BMR</div>
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right align-top">
-                        <b className="font-mono text-[14px] text-gray-900">{sentCount}</b>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {!isEditLocked(so) ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditModalSO(so)}
-                            title={`Edit ${so.soNo}`}
-                            className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-                          >
-                            Edit SO
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                  })
-                );
-                const groupHeader = (
-                  <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
-                    <td colSpan={8} className="px-4 py-2.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-blue-900">
-                          {clientGroup.clientName}
-                          {clientGroup.city ? (
-                            <span className="text-xs font-normal text-blue-700 ml-2">({clientGroup.city})</span>
-                          ) : null}
-                        </div>
-                        <div className="text-xs text-blue-800">
-                          {clientGroup.orders.length} order{clientGroup.orders.length !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                );
-                return [groupHeader, ...clientRows];
-              })}
+                            <div className="text-xs text-blue-800">
+                              {clientGroup.orders.length} order{clientGroup.orders.length !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    return [
+                      groupHeader,
+                      ...clientRows.map((row) => (
+                        <SaleOrderItemTableRow
+                          key={`${row.so.soNo}__${row.item.productName}__${row.item.sku}`}
+                          row={row}
+                          planningAvailabilityLoading={planningAvailabilityLoading}
+                          onViewDetails={handleViewDetails}
+                          onEdit={setEditModalSO}
+                          isEditLocked={isEditLocked}
+                        />
+                      )),
+                    ];
+                  })}
             </tbody>
           </table>
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
           <div className="text-xs text-gray-600">
-            Page {safeCurrentPage} of {totalClientPages} · Showing {pagedClientGroups.length} of {groupedByClient.length} clients
+            {useRowPagination
+              ? `Page ${safeCurrentPage} of ${totalPages} · Showing ${pagedEnrichedRows.length} of ${sortedEnrichedRows.length} rows`
+              : `Page ${safeCurrentPage} of ${totalPages} · Showing ${pagedClientGroups.length} of ${groupedByClient.length} clients`}
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -746,8 +757,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setCurrentPage((p) => Math.min(totalClientPages, p + 1))}
-              disabled={safeCurrentPage >= totalClientPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safeCurrentPage >= totalPages}
               className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
             >
               Next
@@ -864,3 +875,131 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
     </div>
   );
 };
+
+function SaleOrderItemTableRow({
+  row,
+  planningAvailabilityLoading,
+  onViewDetails,
+  onEdit,
+  isEditLocked,
+}: {
+  row: EnrichedSaleOrderItemRow;
+  planningAvailabilityLoading: boolean;
+  onViewDetails: (soNo: string) => void;
+  onEdit: (so: SaleOrder) => void;
+  isEditLocked: (so: SaleOrder) => boolean;
+}): JSX.Element {
+  const {
+    so,
+    item,
+    execPct,
+    batchCount,
+    rmNumerator,
+    rmDenominator,
+    pmNumerator,
+    pmDenominator,
+    rmStarted,
+    pmStarted,
+    totalBatches,
+    sentCount,
+    rmOk,
+    pmOk,
+    rmAvailabilityPct,
+    pmAvailabilityPct,
+    planningItem,
+  } = row;
+
+  return (
+    <tr>
+      <td className="px-4 py-3 align-top">
+        <div className="font-mono text-[12px] text-gray-900">
+          {so.soNo}
+          <div className="text-[10px] text-gray-500 font-normal">{so.orderDate}</div>
+        </div>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="font-semibold text-gray-900 text-[13px]">{item.productName}</div>
+      </td>
+      <td className="px-4 py-3 text-right align-top">
+        <div className="font-mono text-[12px] text-gray-900 font-bold">{formatNumber(item.orderedQty)}</div>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="text-[11px]">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span className="text-gray-500">RM</span>
+            <b className={rmOk ? 'text-emerald-700' : 'text-amber-700'}>
+              {rmNumerator}/{rmDenominator || 0}
+            </b>
+          </div>
+          <div className="text-[10px] text-gray-500 mt-1">
+            production started {rmStarted}/{totalBatches || 0}
+          </div>
+          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
+            <div
+              className={rmOk ? 'bg-emerald-500' : 'bg-amber-500'}
+              style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
+            />
+          </div>
+        </div>
+        <div className="text-[11px] mt-2">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span className="text-gray-500">PM</span>
+            <b className={pmOk ? 'text-emerald-700' : 'text-amber-700'}>
+              {pmNumerator}/{pmDenominator || 0}
+            </b>
+          </div>
+          <div className="text-[10px] text-gray-500 mt-1">
+            production started {pmStarted}/{totalBatches || 0}
+          </div>
+          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
+            <div
+              className={pmOk ? 'bg-emerald-500' : 'bg-amber-500'}
+              style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
+            />
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div
+          className={`text-2xl font-extrabold ${
+            execPct >= 100 ? 'text-emerald-600' : execPct >= 40 ? 'text-amber-600' : 'text-amber-700'
+          }`}
+        >
+          {execPct}%
+        </div>
+        <div className="text-[10px] text-gray-500 font-normal">
+          {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
+        </div>
+      </td>
+      <td className="px-4 py-3 align-top">
+        {planningAvailabilityLoading && !planningItem ? (
+          <div className="text-[11px] text-gray-500">Loading…</div>
+        ) : totalBatches === 0 ? (
+          <div className="text-[11px] text-gray-500">No batches</div>
+        ) : (
+          <button type="button" className="text-left" onClick={() => onViewDetails(so.soNo)}>
+            <div className="text-[12px] text-gray-900 font-semibold">
+              {sentCount}/{totalBatches} Batches
+            </div>
+            <div className="text-[10px] text-gray-500">click to open BMR</div>
+          </button>
+        )}
+      </td>
+      <td className="px-4 py-3 text-right align-top">
+        <b className="font-mono text-[14px] text-gray-900">{sentCount}</b>
+      </td>
+      <td className="px-4 py-3 align-top">
+        {!isEditLocked(so) ? (
+          <button
+            type="button"
+            onClick={() => onEdit(so)}
+            title={`Edit ${so.soNo}`}
+            className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+          >
+            Edit SO
+          </button>
+        ) : null}
+      </td>
+    </tr>
+  );
+}

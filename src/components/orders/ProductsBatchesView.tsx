@@ -32,6 +32,7 @@ import {
 import { StatusBadge } from './StatusBadge';
 import { UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { buildBatchTimelineSteps } from '../../services/fulfillment.service';
+import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
 
 interface ProductsBatchesViewProps {
   saleOrders: SaleOrder[];
@@ -58,6 +59,65 @@ interface ProductsBatchesViewProps {
 
 type Row = { so: SaleOrder; item: OrderItem; split: BatchSplit };
 
+type BatchSortColumn =
+  | 'saleOrder'
+  | 'customer'
+  | 'product'
+  | 'bmrBpr'
+  | 'orderDate'
+  | 'dueDate'
+  | 'plannedQty'
+  | 'fgOutput'
+  | 'completion'
+  | 'fgLocation'
+  | 'picked'
+  | 'invoice'
+  | 'awb'
+  | 'status';
+
+function batchCompletionPct(split: BatchSplit): number {
+  const planned = Number(split.plannedQty || 0) || 0;
+  const fgOutput = Number(split.fgOutput ?? split.fgQty ?? split.fgYield ?? 0) || 0;
+  if (planned <= 0) return 0;
+  return Math.min(100, Math.max(0, Number(split.completionPercent ?? Math.round((fgOutput / planned) * 100))));
+}
+
+function sortValueForBatchRow(row: Row, column: BatchSortColumn): string | number {
+  const { so, item, split } = row;
+  switch (column) {
+    case 'saleOrder':
+      return so.soNo.toLowerCase();
+    case 'customer':
+      return String(so.customer || '').toLowerCase();
+    case 'product':
+      return item.productName.toLowerCase();
+    case 'bmrBpr':
+      return `${split.bmrNo} ${split.bprNo}`.toLowerCase();
+    case 'orderDate':
+      return new Date(so.orderDate).getTime() || 0;
+    case 'dueDate':
+      return new Date(so.dueDate).getTime() || 0;
+    case 'plannedQty':
+      return Number(split.plannedQty) || 0;
+    case 'fgOutput':
+      return Number(split.fgQty ?? split.fgOutput ?? split.fgYield ?? 0) || 0;
+    case 'completion':
+      return batchCompletionPct(split);
+    case 'fgLocation':
+      return (split.fgLocation || '').toLowerCase();
+    case 'picked':
+      return Number(split.pickedQty) || 0;
+    case 'invoice':
+      return String(split.invoiceNo || '').toLowerCase();
+    case 'awb':
+      return [split.awbNo, split.courier].filter(Boolean).join(' ').toLowerCase();
+    case 'status':
+      return split.ffStatus;
+    default:
+      return '';
+  }
+}
+
 export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   saleOrders,
   onPickConfirm,
@@ -68,6 +128,8 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [sortColumn, setSortColumn] = useState<BatchSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const [pickModalSO, setPickModalSO] = useState<SaleOrder | null>(null);
   const [invoiceModalSO, setInvoiceModalSO] = useState<SaleOrder | null>(null);
@@ -79,6 +141,38 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     () => filterBatchSplits(saleOrders, activeFilter, searchQuery),
     [saleOrders, activeFilter, searchQuery]
   );
+
+  const sortedTableRows = useMemo(() => {
+    if (!sortColumn) return tableRows;
+    const rows = [...tableRows];
+    rows.sort((a, b) => {
+      const av = sortValueForBatchRow(a, sortColumn);
+      const bv = sortValueForBatchRow(b, sortColumn);
+      let cmp: number;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        cmp = av - bv;
+      } else {
+        cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (cmp === 0) {
+        cmp = `${a.so.soNo}-${a.split.bprNo}`.localeCompare(`${b.so.soNo}-${b.split.bprNo}`, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [tableRows, sortColumn, sortDirection]);
+
+  const toggleBatchSort = (column: BatchSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
 
   const findSOByBprNo = (bprNo: string) =>
     saleOrders.find((so) =>
@@ -150,25 +244,25 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
         <table className="w-full text-sm border-collapse">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Sale Order</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Customer</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Product / SKU</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">BMR / BPR</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Order Date</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Due</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Planned Qty</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">FG Output</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Completion</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">FG Location</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Picked</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Invoice</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">AWB / Courier</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+              <SortableTableTh label="Sale Order" column="saleOrder" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Customer" column="customer" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Product / SKU" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="BMR / BPR" column="bmrBpr" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Order Date" column="orderDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Due" column="dueDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Planned Qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+              <SortableTableTh label="FG Output" column="fgOutput" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+              <SortableTableTh label="Completion" column="completion" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+              <SortableTableTh label="FG Location" column="fgLocation" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Picked" column="picked" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+              <SortableTableTh label="Invoice" column="invoice" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="AWB / Courier" column="awb" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {tableRows.length === 0 ? (
+            {sortedTableRows.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-12 text-center text-gray-500">
                   <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
@@ -181,7 +275,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                 </td>
               </tr>
             ) : (
-              tableRows.map(({ so, item, split }: Row) => (
+              sortedTableRows.map(({ so, item, split }: Row) => (
                 <BatchRow
                   key={`${so.soNo}-${split.bprNo}`}
                   so={so}

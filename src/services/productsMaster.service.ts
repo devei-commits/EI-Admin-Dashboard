@@ -4,7 +4,7 @@
  */
 
 import type { ServiceResult } from '../types/api.types';
-import type { FormulaBomParsedRow } from '../lib/formulaBomExcelParse';
+import type { FormulaBomParsedRow, FormulaSummaryParsedRow } from '../lib/formulaBomExcelParse';
 import { api, getApiBaseUrl, getAuthToken } from '../lib/apiClient';
 
 export type PrRecordType = 'temporary' | 'permanent';
@@ -491,7 +491,7 @@ export async function clearPrBomFullReset(
 /** Must match server — paste this in the confirmation prompt for global BOM reset. */
 export const ALL_PR_BOM_RESET_CONFIRM = 'RESET_ALL_PR_BOM_DATA' as const;
 
-/** Deletes all PR products linked from `boms`, all BOM rows, and related dependents (server). POST /api/v1/products/bom/full-reset-all */
+/** Hard-deletes all catalogue products, all BOM rows, and related dependents (server). POST /api/v1/products/bom/full-reset-all */
 export interface ClearAllPrBomFullResetResult {
   success: boolean;
   products_deleted: number;
@@ -579,6 +579,32 @@ export interface FormulaPackBomGroupResult {
     uom: string;
   }>;
 }
+
+export interface FormulaSummaryGroupResult {
+  sku: string;
+  row_number: number | null;
+  success: boolean;
+  error?: string;
+  product_id: number | null;
+  bom_id: number | null;
+  product_created?: boolean;
+  specific_gravity?: number | null;
+  pack_size?: string | null;
+  category?: string | null;
+  pr_sub_category?: string | null;
+}
+
+export interface FormulaSummaryChunkResponse {
+  success: boolean;
+  chunk_index: number | null;
+  chunk_total: number | null;
+  rows_in_chunk: number;
+  rows_ok: number;
+  results: FormulaSummaryGroupResult[];
+  errors: Array<{ sku: string; error: string; row_number?: number | null }>;
+}
+
+export type { FormulaSummaryParsedRow };
 
 /** POST /api/v1/products/formula-pack-bom/chunk */
 export interface FormulaPackBomChunkResponse {
@@ -737,6 +763,57 @@ export async function postFormulaPackBomChunk(body: {
       };
     }
     const data = (await response.json()) as FormulaPackBomChunkResponse;
+    return { data, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Chunk request failed';
+    return {
+      data: null,
+      error: { code: 'CHUNK_ERROR', message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
+export async function postFormulaSummaryChunk(body: {
+  chunk_index: number;
+  chunk_total: number;
+  rows: FormulaSummaryParsedRow[];
+}): Promise<ServiceResult<FormulaSummaryChunkResponse>> {
+  try {
+    const base = getApiBaseUrl();
+    const token = getAuthToken();
+    const url = `${base}/api/v1/products/formula-summary/chunk`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({
+        chunk_index: body.chunk_index,
+        chunk_total: body.chunk_total,
+        rows: body.rows,
+      }),
+    });
+    if (!response.ok) {
+      let errMsg = `HTTP ${response.status}: ${response.statusText || 'Chunk failed'}`;
+      try {
+        const raw = await response.json();
+        if (raw && typeof raw === 'object') {
+          const b = raw as { error?: string; message?: string };
+          if (typeof b.error === 'string' && b.error.trim()) errMsg = b.error;
+          else if (typeof b.message === 'string' && b.message.trim()) errMsg = b.message;
+        }
+      } catch {
+        // leave errMsg
+      }
+      return {
+        data: null,
+        error: { code: 'CHUNK_ERROR', message: errMsg, timestamp: new Date().toISOString() },
+        success: false,
+      };
+    }
+    const data = (await response.json()) as FormulaSummaryChunkResponse;
     return { data, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Chunk request failed';
