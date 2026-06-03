@@ -812,19 +812,12 @@ function parseKgCount(value: string | number | null | undefined): number {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
-/** Items Involved qty display — preserve small decimals for RM mass/volume UoMs. */
-const ITEMS_INVOLVED_QTY_MAX_DECIMALS = 4;
-
 function formatItemsInvolvedQty(value: number, itemType: 'RM' | 'PM', unit?: string): string {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '0';
+  if (!Number.isFinite(Number(value))) return '0';
   if (itemsInvolvedUsesDecimalQty(itemType, unit)) {
-    return n.toLocaleString('en-IN', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: ITEMS_INVOLVED_QTY_MAX_DECIMALS,
-    });
+    return formatQtyExact(value, 'kg');
   }
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return formatQtyExact(value, 'pcs');
 }
 
 function formatItemsInvolvedQtyWithUnit(
@@ -997,8 +990,8 @@ function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number;
   const plannedKg = customBatchKg > 0 ? customBatchKg : fallbackBatchKg;
 
   const createdUnitsRaw = kgPerUnit > 0 ? Math.round(plannedKg / kgPerUnit) : 0;
-  const createdUnits = Math.min(orderUnits, Math.max(0, createdUnitsRaw));
-  const remainingUnits = Math.max(0, orderUnits - createdUnits);
+  const createdUnits = Math.max(0, createdUnitsRaw);
+  const remainingUnits = Math.max(0, orderUnits - Math.min(createdUnits, orderUnits));
   return { createdUnits, remainingUnits };
 }
 
@@ -1779,7 +1772,7 @@ const Planning = () => {
   const [plannedStartDate, setPlannedStartDate] = useState('2026-03-04');
   const [productionLine, setProductionLine] = useState('Line 1 — Primary Mixer');
   const [bomFormula, setBomFormula] = useState<RawMaterial[]>([]);
-  /** Single BOM-level Specific Gravity (vs water). Picked once on first-batch BOM confirmation, then locked for subsequent batches. */
+  /** BOM-level default Specific Gravity (vs water); editable before and after BOM confirm. */
   const [bomLevelSG, setBomLevelSG] = useState<string>('1');
   const [swapRmSearch, setSwapRmSearch] = useState('');
   const [swapRmResults, setSwapRmResults] = useState<RawMaterialRecord[]>([]);
@@ -1789,6 +1782,7 @@ const Planning = () => {
   const [swapGroupName, setSwapGroupName] = useState('');
   const [swapPendingGroupRm, setSwapPendingGroupRm] = useState<{ id: number; name: string } | null>(null);
   const [swapApplying, setSwapApplying] = useState(false);
+  const [bomSgSaving, setBomSgSaving] = useState(false);
   const [bomPackaging, setBomPackaging] = useState<PackagingMaterial[]>([]);
   const [isReadyForProduction, setIsReadyForProduction] = useState(false);
   const [productionSentOrderIds, setProductionSentOrderIds] = useState<string[]>([]);
@@ -2464,6 +2458,8 @@ const Planning = () => {
       return;
     }
     const kgPerUnit = totalKgNum / orderQtyNum;
+    // Only auto-sync preview while SO qty remains to allocate; buffer/over-production batches use manual preview qty.
+    if (remainingKg <= 1e-6) return;
     const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : orderQtyNum;
     const next = Math.max(0, remainingUnits);
     setFeasibilityPreviewQty((prev) => (prev === next ? prev : next));
@@ -2486,12 +2482,7 @@ const Planning = () => {
   /**
    * Order vs planned batches: pending kg/units and unsent batch count (Plan Batches modal).
    *
-   * Pending = orderTotalKg − sentKg − previewKg
-   *   • sentKg   : sum of `customBatches[i].sizeKg` for i in `sentBatchIndices` (stable; only changes
-   *                when a batch is actually sent)
-   *   • previewKg: `feasibilityPreviewQty * kgPerUnit` (live — updates as the user types in the
-   *                Preview qty input, so the user sees pending shrink while they allocate the next
-   *                batch)
+   * Pending = orderTotalKg − sentKg − previewKg (negative = buffer/over-production vs SO)
    *
    * Preview is read directly here instead of being folded back into `customBatches` by Effect B,
    * which decouples this memo from that sync. That's why changing the preview no longer triggers
@@ -2510,12 +2501,9 @@ const Planning = () => {
     );
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
     const previewKg = Math.max(0, previewUnits * kpu);
-    // Preview cannot exceed what remains after the sent batches.
-    const remainingAfterSentKg = Math.max(0, tk - sentKg);
-    const effectivePreviewKg = Math.min(previewKg, remainingAfterSentKg);
 
-    const allocKg = sentKg + effectivePreviewKg;
-    const pendKg = Math.max(0, tk - allocKg);
+    const allocKg = sentKg + previewKg;
+    const pendKg = tk - allocKg;
     const pendUnits = kpu > 0 ? pendKg / kpu : 0;
     const allocUnits = kpu > 0 ? allocKg / kpu : 0;
     const unsentCount = customBatches.filter((_, i) => !sent.includes(i)).length;
@@ -2576,12 +2564,8 @@ const Planning = () => {
     if (nextUnits === currentUnits) return;
 
     try {
-      const orderTk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
       setCustomBatches((prev) => {
-        const otherKg = prev.reduce((s, b, i) => (i === targetIdx ? s : s + (Number(b.sizeKg) || 0)), 0);
-        const maxKg = Math.max(0, orderTk - otherKg);
-        let newKg = nextUnits * kgPerUnitForPlanBatches;
-        if (newKg > maxKg) newKg = maxKg;
+        const newKg = nextUnits * kgPerUnitForPlanBatches;
         // Content-equal guard: if the target batch already has the computed sizeKg (within float tolerance),
         // keep the same array reference so pending / preview / gaps memos don't recompute needlessly.
         const currentKg = Number(prev[targetIdx]?.sizeKg) || 0;
@@ -2599,7 +2583,6 @@ const Planning = () => {
     activeBatchTab,
     planBatchesModalOpen,
     selectedSOForBatch?.id,
-    selectedSOForBatch?.totalKg,
     selectedSOForBatch?.sentBatchIndices,
     selectedBatchId,
     planningBatches,
@@ -4804,7 +4787,9 @@ const Planning = () => {
         if (nextBatchIndex >= 0) {
           const nextRow = (planningBatches as PlanningBatchRow[])[nextBatchIndex];
           if (nextRow?.id != null) setSelectedBatchId(Number(nextRow.id));
-          setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+          if (remainingUnits > 0) {
+            setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+          }
         }
         setActiveBatchTab('batch-plan');
         setSendToProductionConfirm(null);
@@ -4890,13 +4875,21 @@ const Planning = () => {
   );
 
   const updateBomLineSg = useCallback((lineIndex: number, rawSg: string) => {
-    const n = rawSg === '' ? NaN : parseFloat(rawSg);
-    const safeSg = Number.isFinite(n) && n > 0 ? n : 1;
     setBomFormula((prev) => {
       const next = [...prev];
       const line = next[lineIndex];
       if (!line) return prev;
-      next[lineIndex] = { ...line, specificGravity: safeSg };
+      const trimmed = rawSg.trim();
+      if (trimmed === '') {
+        next[lineIndex] = { ...line, specificGravity: undefined };
+        return next;
+      }
+      const n = parseFloat(trimmed);
+      if (!Number.isFinite(n) || n <= 0) {
+        next[lineIndex] = { ...line, specificGravity: undefined };
+        return next;
+      }
+      next[lineIndex] = { ...line, specificGravity: n };
       return next;
     });
   }, []);
@@ -4910,6 +4903,102 @@ const Planning = () => {
     },
     [bomLevelSG]
   );
+
+  const buildBomRmPmLinesForSave = useCallback((): { rmLines: BOMRmLine[]; pmLines: BOMPmLine[] } => {
+    const rmLines: BOMRmLine[] = bomFormula.map((item) => {
+      const idFromLine =
+        item.raw_material_id ??
+        (typeof item.id === 'string' && /^\d+$/.test(item.id) ? parseInt(item.id, 10) : null);
+      const master =
+        idFromLine != null
+          ? rawMaterialsList.find((r) => Number(r.id) === idFromLine)
+          : findRmMasterRecord(undefined, item.code, rawMaterialsList);
+      const rawMaterialId =
+        idFromLine != null && Number.isFinite(idFromLine)
+          ? idFromLine
+          : master
+            ? Number(master.id)
+            : undefined;
+      return {
+        phase: item.phase ?? 'Phase A',
+        inci_name: item.name,
+        rm_code: item.code ?? item.id,
+        pct_w_w: item.percentage,
+        uom: 'KG',
+        specific_gravity: resolveBomLineSgForSave(item),
+        ...(rawMaterialId != null && Number.isFinite(rawMaterialId)
+          ? { raw_material_id: rawMaterialId }
+          : {}),
+      };
+    });
+    const pmLines: BOMPmLine[] = bomPackaging.map((item) => ({
+      pm_code: item.code ?? item.id,
+      description: item.name,
+      pack_type: 'Primary',
+      qty_per_unit: item.value,
+      uom: 'pc/unit',
+    }));
+    return { rmLines, pmLines };
+  }, [bomFormula, bomPackaging, rawMaterialsList, resolveBomLineSgForSave]);
+
+  const handleSaveBomSg = async () => {
+    if (!selectedSOForBatch || !canSendToProduction) return;
+    const bomSgValue = Number(bomLevelSG);
+    const allLinesHaveSg = bomFormula.every((item) => {
+      const sg = Number(item.specificGravity);
+      return Number.isFinite(sg) && sg > 0;
+    });
+    if (!allLinesHaveSg && (!Number.isFinite(bomSgValue) || bomSgValue <= 0)) {
+      addToast(
+        'error',
+        'Enter Specific Gravity on each RM line, or set a BOM default SG (greater than 0).'
+      );
+      return;
+    }
+    const blendSg =
+      Number.isFinite(bomSgValue) && bomSgValue > 0
+        ? bomSgValue
+        : bomFormula.length > 0
+          ? resolveBomLineSgForSave(bomFormula[0])
+          : 1;
+    const { rmLines, pmLines } = buildBomRmPmLinesForSave();
+    setBomSgSaving(true);
+    try {
+      if (selectedBatchId != null) {
+        const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, { rmLines, pmLines });
+        if (!saved) {
+          addToast('error', 'Failed to save SG for this batch');
+          return;
+        }
+        queryClient.invalidateQueries({ queryKey: ['planning-batch', selectedSOForBatch.id, selectedBatchId] });
+        queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+      } else {
+        const saved = await putBomOverride(selectedSOForBatch.id, { rmLines, pmLines });
+        if (!saved) {
+          addToast('error', 'Failed to save SG for this order');
+          return;
+        }
+        queryClient.invalidateQueries({ queryKey: ['planning-bom-override', selectedSOForBatch.id] });
+      }
+      const updated = await updatePlanningExtracted(selectedSOForBatch.id, {
+        bomSpecificGravity: blendSg,
+      });
+      if (!updated) {
+        addToast('error', 'Failed to update BOM specific gravity');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
+      setSelectedSOForBatch((prev) => (prev ? { ...prev, bomSpecificGravity: blendSg } : prev));
+      setBomLevelSG(String(blendSg));
+      addToast('success', 'Specific gravity saved.');
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'Failed to save specific gravity');
+    } finally {
+      setBomSgSaving(false);
+    }
+  };
 
   const swapTargetItemGroups = useMemo(() => {
     if (!swapSourceLine || itemGroupsRm.length === 0) return [];
@@ -6067,18 +6156,21 @@ const Planning = () => {
                                     className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-800 border border-slate-200"
                                     title="Quantity already on Procurement / draft PO from Release to Planning."
                                   >
-                                    Released {item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                      ? releasedAgainstNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                      : Math.round(releasedAgainstNeed).toLocaleString()}
+                                    Released{' '}
+                                    {formatQtyExact(
+                                      releasedAgainstNeed,
+                                      item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG' ? 'kg' : 'pcs'
+                                    )}
                                     {gapNeed > 1e-6
-                                      ? ` / need ${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                        ? gapNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                        : Math.round(gapNeed).toLocaleString()}`
+                                      ? ` / need ${formatQtyExact(
+                                          gapNeed,
+                                          item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG' ? 'kg' : 'pcs'
+                                        )}`
                                       : ''}
                                     {overReleasedQty > 1e-6
                                       ? ` (over +${item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                        ? overReleasedQty.toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                        : Math.round(overReleasedQty).toLocaleString()})`
+                                        ? formatQtyExact(overReleasedQty, 'kg')
+                                        : formatQtyExact(overReleasedQty, 'pcs')})`
                                       : ''}
                                   </span>
                                 )}
@@ -6097,9 +6189,10 @@ const Planning = () => {
                                       title="Open gap vs TOTAL REQ after SIH + planned + PO + in-transit."
                                     >
                                       Shortage{' '}
-                                      {item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG'
-                                        ? gapNeed.toLocaleString(undefined, { maximumFractionDigits: 3 })
-                                        : Math.round(gapNeed).toLocaleString()}
+                                      {formatQtyExact(
+                                        gapNeed,
+                                        item.itemType === 'RM' || String(item.unit ?? '').toUpperCase() === 'KG' ? 'kg' : 'pcs'
+                                      )}
                                     </span>
                                     <button
                                       type="button"
@@ -6986,7 +7079,9 @@ const Planning = () => {
                         <td className="px-3 py-2 text-center">
                           <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${row.type === 'RM' ? 'bg-cyan-100 text-cyan-700' : 'bg-orange-100 text-orange-700'}`}>{row.type}</span>
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-900">{row.required.toLocaleString(undefined, { maximumFractionDigits: 2 })} {row.unit}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-900">
+                          {formatQtyExact(row.required, row.unit?.toUpperCase() === 'KG' ? 'kg' : 'pcs')} {row.unit}
+                        </td>
                         <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.available.toLocaleString()}</td>
@@ -7226,7 +7321,13 @@ const Planning = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Shortfall</label>
-                  <p className="text-sm font-mono text-gray-900">{batchPrModal.row.shortfall.toLocaleString(undefined, { maximumFractionDigits: 2 })} {batchPrModal.row.unit}</p>
+                  <p className="text-sm font-mono text-gray-900">
+                    {formatQtyExact(
+                      batchPrModal.row.shortfall,
+                      batchPrModal.row.unit?.toUpperCase() === 'KG' ? 'kg' : 'pcs'
+                    )}{' '}
+                    {batchPrModal.row.unit}
+                  </p>
                 </div>
               </div>
               <div>
@@ -7326,11 +7427,24 @@ const Planning = () => {
                 <p className="text-xs text-gray-500 mt-1">{selectedSOForBatch.soNumber} · {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg}</p>
                 {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                   <p className="text-xs text-slate-600 mt-1.5">
-                    <span className="font-semibold text-slate-800">Pending to plan:</span>{' '}
-                    {Number.isInteger(planBatchesAllocationSummary.pendUnits)
-                      ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
-                      : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
-                    units ({formatQtyExact(planBatchesAllocationSummary.pendKg, 'kg')} kg)
+                    <span className="font-semibold text-slate-800">
+                      {planBatchesAllocationSummary.pendKg < -0.01 ? 'Buffer planned:' : 'Pending to plan:'}
+                    </span>{' '}
+                    {planBatchesAllocationSummary.pendKg < -0.01 ? (
+                      <>
+                        +{Number.isInteger(-planBatchesAllocationSummary.pendUnits)
+                          ? Math.round(-planBatchesAllocationSummary.pendUnits).toLocaleString()
+                          : (-planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
+                        units ({formatQtyExact(Math.abs(planBatchesAllocationSummary.pendKg), 'kg')} kg over SO)
+                      </>
+                    ) : (
+                      <>
+                        {Number.isInteger(planBatchesAllocationSummary.pendUnits)
+                          ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
+                          : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
+                        units ({formatQtyExact(planBatchesAllocationSummary.pendKg, 'kg')} kg)
+                      </>
+                    )}
                     {' · '}
                     <span className="font-semibold">{planBatchesAllocationSummary.unsentCount}</span> batch
                     {planBatchesAllocationSummary.unsentCount !== 1 ? 'es' : ''} not sent
@@ -7475,14 +7589,27 @@ const Planning = () => {
                     {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                       <div className="flex-1 min-w-[130px]">
                         <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">PENDING PLAN</div>
-                        <div className={`text-lg font-bold ${planBatchesAllocationSummary.pendKg > 0.01 ? 'text-amber-700' : 'text-emerald-600'}`}>
-                          {Number.isInteger(planBatchesAllocationSummary.pendUnits)
-                            ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
-                            : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
-                          <span className="text-gray-500 text-xs font-normal">units</span>
+                        <div className={`text-lg font-bold ${planBatchesAllocationSummary.pendKg > 0.01 ? 'text-amber-700' : planBatchesAllocationSummary.pendKg < -0.01 ? 'text-cyan-700' : 'text-emerald-600'}`}>
+                          {planBatchesAllocationSummary.pendKg < -0.01 ? (
+                            <>
+                              +{Number.isInteger(-planBatchesAllocationSummary.pendUnits)
+                                ? Math.round(-planBatchesAllocationSummary.pendUnits).toLocaleString()
+                                : (-planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
+                              <span className="text-gray-500 text-xs font-normal">buffer units</span>
+                            </>
+                          ) : (
+                            <>
+                              {Number.isInteger(planBatchesAllocationSummary.pendUnits)
+                                ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
+                                : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
+                              <span className="text-gray-500 text-xs font-normal">units</span>
+                            </>
+                          )}
                         </div>
                         <div className="text-[10px] text-gray-500">
-                          {planBatchesAllocationSummary.pendKg.toFixed(1)} kg left
+                          {planBatchesAllocationSummary.pendKg < -0.01
+                            ? `${Math.abs(planBatchesAllocationSummary.pendKg).toFixed(1)} kg over SO (buffer / wastage margin)`
+                            : `${planBatchesAllocationSummary.pendKg.toFixed(1)} kg left`}
                           {planBatchesAllocationSummary.unsentCount > 0
                             ? ` · ${planBatchesAllocationSummary.unsentCount} unsent`
                             : ''}
@@ -7735,12 +7862,9 @@ const Planning = () => {
                       if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
                       else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
                     };
-                    /** Update batch units locally; cap at remaining order kg so totals do not exceed the SO. */
+                    /** Update batch units locally; over-production / buffer batches may exceed SO qty. */
                     const updateBatchUnits = (idx: number, units: number) => {
-                      const otherKg = customBatches.reduce((sum, b, i) => (i === idx ? sum : sum + (Number(b.sizeKg) || 0)), 0);
-                      const maxKg = Math.max(0, orderTotalKg - otherKg);
-                      let sizeKg = units * kgPerUnit;
-                      if (sizeKg > maxKg) sizeKg = maxKg;
+                      const sizeKg = units * kgPerUnit;
                       setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
                     };
 
@@ -7799,24 +7923,24 @@ const Planning = () => {
                         </div>
 
                         {/* Summary banner — quantity (units) to be made */}
-                        <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-cyan-50 border-cyan-200'}`}>
                           <p className="text-sm font-semibold flex items-center gap-2">
-                            <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-red-900'}>
+                            <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-cyan-900'}>
                               {customBatches.length} batch{customBatches.length !== 1 ? 'es' : ''} — {Math.round(batchTotalUnits).toLocaleString()} units to be made
-                              {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units total</>}
+                              {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units ordered</>}
                             </span>
                           </p>
                           {Math.abs(remaining) >= 0.01 && (
-                            <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
-                              {remaining > 0 ? `${Math.round(remainingUnits).toLocaleString()} units remaining to allocate` : `${Math.round(-remainingUnits).toLocaleString()} units over-allocated`}
+                            <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-cyan-700'}`}>
+                              {remaining > 0 ? `${Math.round(remainingUnits).toLocaleString()} units remaining to allocate` : `${Math.round(-remainingUnits).toLocaleString()} units buffer / over-production (allowed for wastage margin)`}
                             </p>
                           )}
-                          {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated.</p>}
+                          {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated to order qty.</p>}
                           <p className="text-xs mt-1.5 text-slate-700">
                             {(() => {
                               const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                               const unsent = customBatches.filter((_, i) => !sentBatchIndices.includes(i)).length;
-                              const pendKgLine = remaining > 0.01 ? `${remaining.toFixed(1)} kg still to allocate` : remaining < -0.01 ? 'Over-allocated vs order total' : 'No kg left to allocate';
+                              const pendKgLine = remaining > 0.01 ? `${remaining.toFixed(1)} kg still to allocate` : remaining < -0.01 ? `${Math.abs(remaining).toFixed(1)} kg buffer over SO qty` : 'Matches order total kg';
                               return (
                                 <>
                                   <span className="font-semibold">{unsent}</span> batch{unsent !== 1 ? 'es' : ''} not sent
@@ -8073,15 +8197,15 @@ const Planning = () => {
                       <p className="text-sm font-semibold text-yellow-900">Editing BOM for {selectedSOForBatch.productName}. Make all BOM updates here (add/swap materials). When done, click <strong>Confirm BOM</strong> below — then use the <strong>Batch Plan</strong> tab to set how many batches and schedule. Each batch gets its own saved BOM copy (e.g. PE-5-B1) when you save the batch plan, so this BOM is reused per batch.</p>
                     </div>
                   </div>
-                  {/* BOM-level Specific Gravity: one value for the whole blend, required on first-batch confirmation.
-                      Hidden once locked — the saved value still drives every RM line via the backend fan-out. */}
-                  {!canSendToProduction && (
-                    <div className="rounded-lg border p-4 bg-indigo-50 border-indigo-200">
+                  <div className="rounded-lg border p-4 bg-indigo-50 border-indigo-200">
                       <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="min-w-0">
                           <h3 className="text-sm font-bold text-gray-900">BOM default Specific Gravity</h3>
                           <p className="text-xs text-gray-600 mt-1">
-                            Default SG (vs water) for new or swapped RM lines — pre-filled from the PR master Specs field when set. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG). All BOM confirmation quantities are shown in kg.
+                            Default SG (vs water) for new or swapped RM lines — pre-filled from the PR master Specs field when set. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG).{' '}
+                            {canSendToProduction
+                              ? 'SG stays editable after BOM confirm — use Save SG below.'
+                              : 'All BOM confirmation quantities are shown in kg.'}
                           </p>
                           {prSpecBulkForBom ? (
                             <p className="text-xs text-indigo-900 mt-2">
@@ -8112,21 +8236,18 @@ const Planning = () => {
                           <label htmlFor="bom-level-sg" className="sr-only">BOM Specific Gravity</label>
                           <input
                             id="bom-level-sg"
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             value={bomLevelSG}
                             onChange={(e) => setBomLevelSG(e.target.value)}
-                            step="0.01"
-                            min="0.1"
-                            max="3"
                             placeholder="1.00"
-                            className="w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="no-number-spinner w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             title="Default specific gravity for new RM lines (vs water)"
                           />
                           <span className="text-xs text-gray-500">vs water</span>
                         </div>
                       </div>
                     </div>
-                  )}
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                       FORMULA BOM ({bomFormula.length} RM ITEMS)
@@ -8148,16 +8269,17 @@ const Planning = () => {
                             <div className="flex items-center gap-1.5">
                               <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">SG</label>
                               <input
-                                type="number"
-                                value={item.specificGravity ?? 1}
+                                type="text"
+                                inputMode="decimal"
+                                value={
+                                  item.specificGravity != null && Number.isFinite(Number(item.specificGravity))
+                                    ? String(item.specificGravity)
+                                    : ''
+                                }
                                 onChange={(e) => updateBomLineSg(idx, e.target.value)}
-                                step="0.01"
-                                min="0.1"
-                                max="3"
-                                readOnly={canSendToProduction}
-                                disabled={canSendToProduction}
+                                placeholder="1"
                                 title="Specific gravity vs water (for L volume)"
-                                className={`w-16 px-2 py-1 border rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                                className="no-number-spinner w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               />
                             </div>
                             <input
@@ -8242,9 +8364,19 @@ const Planning = () => {
                         );
                       })()
                     ) : (
-                      <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
-                        BOM Confirmed
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
+                          BOM Confirmed
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveBomSg()}
+                          disabled={bomSgSaving}
+                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {bomSgSaving ? 'Saving SG…' : 'Save SG'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -8306,7 +8438,7 @@ const Planning = () => {
                                   step="0.01"
                                   value={item.specificGravity ?? 1}
                                   onChange={(e) => updateBomLineSg(idx, e.target.value)}
-                                  className="w-[56px] px-2 py-1.5 text-sm border border-gray-300 rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                  className="no-number-spinner w-24 min-w-[6rem] px-2 py-1.5 text-sm border border-gray-300 rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                   title="Specific gravity vs water"
                                 />
                               </div>
@@ -8539,7 +8671,7 @@ const Planning = () => {
                                 step="0.01"
                                 value={bomFormula[swapSourceIndex]?.specificGravity ?? 1}
                                 onChange={(e) => updateBomLineSg(swapSourceIndex, e.target.value)}
-                                className="w-20 px-2 py-1.5 text-sm border border-amber-300 rounded-md bg-white font-mono text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                className="no-number-spinner w-20 px-2 py-1.5 text-sm border border-amber-300 rounded-md bg-white font-mono text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                               />
                             </div>
                             <div>

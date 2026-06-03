@@ -747,8 +747,8 @@ function makeDefaultBatches(): Batch[] {
 function today(): string { return new Date().toISOString().split('T')[0]; }
 function fmt(n: number): string { return n.toLocaleString('en-IN'); }
 
-const YIELD_KG_DECIMALS = 3;
-const YIELD_UNIT_DECIMALS = 3;
+const YIELD_KG_DECIMALS = 8;
+const YIELD_UNIT_DECIMALS = 8;
 
 function roundYieldKg(n: number): number {
   const f = 10 ** YIELD_KG_DECIMALS;
@@ -6942,9 +6942,9 @@ function YieldReworkPreflightModal({
         <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
           <h4 className="text-xs font-bold text-blue-900 mb-2">BMR (KG)</h4>
           <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-gray-600">Planned</span><b>{plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Planned</span><b>{formatYieldKg(plannedKg)}</b></div>
             <div className="flex justify-between"><span className="text-gray-600">Yield</span><b>{formatYieldKg(bmrYieldKg)}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">Wastage</span><b className="text-amber-700">{bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Wastage</span><b className="text-amber-700">{formatYieldKg(bmrWastageKg)}</b></div>
           </div>
         </div>
         <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
@@ -7081,7 +7081,7 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
                       <div className="text-gray-800">{r.b.productName}</div>
                       <div className="text-[10px] text-gray-500">{r.b.soNo || '—'}</div>
                     </td>
-                    <td className="px-3 py-2 text-right font-mono">{r.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatYieldKg(r.plannedKg)}</td>
                     <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">{formatYieldKg(r.bmrYieldKg)}</td>
                     <td className="px-3 py-2 text-right font-mono text-amber-700">{formatYieldKg(r.bmrWastageKg)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.bmrYieldPct.toFixed(1)}%</td>
@@ -7143,7 +7143,7 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
             <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
               <h4 className="text-sm font-bold text-blue-900 mb-3">BMR (Manufacturing) Detail</h4>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Planned batch weight</span><b>{selectedRow.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Planned batch weight</span><b>{formatYieldKg(selectedRow.plannedKg)} KG</b></div>
                 <div className="flex justify-between"><span className="text-gray-600">Actual yield weight</span><b>{formatYieldKg(selectedRow.bmrYieldKg)} KG</b></div>
                 <div className="flex justify-between"><span className="text-gray-600">BMR wastage</span><b className="text-amber-700">{formatYieldKg(selectedRow.bmrWastageKg)} KG</b></div>
                 <div className="flex justify-between"><span className="text-gray-600">Yield efficiency</span><b>{selectedRow.bmrYieldPct.toFixed(1)}%</b></div>

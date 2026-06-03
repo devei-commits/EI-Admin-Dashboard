@@ -26,6 +26,7 @@ import {
 } from '../../services/warehouseInventory.service';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 import StockByLocationPanel from '../../components/StockByLocationPanel';
+import { formatQtyExact } from '../../utils/formatQty';
 
 export interface InventoryItem {
   id: string;
@@ -2005,7 +2006,7 @@ const WarehouseInventory = () => {
                             {plan ? (
                               item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {plannedOpenQty.toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
+                                  {formatQtyExact(plannedOpenQty, 'kg')} kg
                                 </div>
                               ) : (
                                 <div className="text-sm font-semibold text-gray-900">

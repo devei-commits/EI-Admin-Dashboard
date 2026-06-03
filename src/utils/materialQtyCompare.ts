@@ -1,5 +1,5 @@
-/** Exact material qty compare (up to 16 dp) — transfers/MTR use DB precision. */
-export const MATERIAL_QTY_SCALE = 16;
+/** Exact material qty compare (up to 8 dp) — planning, BMR, warehouse transfers/MTR. */
+export const MATERIAL_QTY_SCALE = 8;
 const SCALE_POW = 10n ** BigInt(MATERIAL_QTY_SCALE);
 /** Snap JS number inputs at 10 dp to kill BOM float noise. */
 const FLOAT_SNAP_SCALE = 10;

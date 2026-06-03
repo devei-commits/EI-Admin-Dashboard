@@ -1,7 +1,7 @@
 import { materialQtyLt, materialQtyMin, materialQtySubNonNeg, materialQtyToNum, toQtyString } from './materialQtyCompare';
 
-/** Max decimals for RM (kg) through SO lifecycle — full facility precision. */
-export const MATERIAL_QTY_MAX_DECIMALS = 16;
+/** Max decimals for RM (kg) through planning / BMR / warehouse lifecycle. */
+export const MATERIAL_QTY_MAX_DECIMALS = 8;
 
 /** Packaging (pcs) — short UI: whole numbers when possible, max 2 fractional digits. */
 export const PCS_DISPLAY_MAX_DECIMALS = 2;
@@ -19,14 +19,15 @@ function maxDecimalsFor(kind: QtyKind): number {
   return MATERIAL_QTY_MAX_DECIMALS;
 }
 
-/** Persist/compare; packaging rounded to display precision (max 2 dp). */
+/** Persist/compare; kg capped at MATERIAL_QTY_MAX_DECIMALS; pcs at packaging display precision. */
 export function roundMaterialQty(value: unknown, kind: QtyKind = 'kg'): number {
   const n = materialQtyToNum(value);
   if (kind === 'pcs') {
     const factor = 10 ** PCS_DISPLAY_MAX_DECIMALS;
     return Math.round(n * factor) / factor;
   }
-  return n;
+  const factor = 10 ** MATERIAL_QTY_MAX_DECIMALS;
+  return Math.round(n * factor) / factor;
 }
 
 /**

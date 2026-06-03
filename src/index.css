@@ -982,4 +982,15 @@ textarea:focus-visible {
   .font-archivo {
     font-family: var(--font-archivo);
   }
+
+  /* Hide browser steppers on numeric fields where values must stay readable (e.g. BOM SG). */
+  .no-number-spinner {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .no-number-spinner::-webkit-outer-spin-button,
+  .no-number-spinner::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }

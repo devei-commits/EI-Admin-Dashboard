@@ -3,6 +3,7 @@
  * Uses stage-flow qty from planning-extracted/items-involved API.
  */
 import type { ProcurementRequest } from '../services/procurement.service';
+import { formatQtyExact } from '../utils/formatQty';
 import { itemsInvolvedUsesDecimalQty, normRmPrimaryUom } from './rmUnitConversion';
 
 export type ItemsInvolvedPipelineItem = {
@@ -124,10 +125,8 @@ function prMatchesItem(pr: ProcurementRequest, item: ItemsInvolvedPipelineItem):
 
 function formatQty(n: number, itemType: 'RM' | 'PM', unit: string): string {
   const u = itemType === 'RM' ? normRmPrimaryUom(unit) : String(unit || 'PCS');
-  if (itemsInvolvedUsesDecimalQty(itemType, u)) {
-    return `${n.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${u}`;
-  }
-  return `${Math.round(n).toLocaleString()} ${u}`;
+  const kind = itemsInvolvedUsesDecimalQty(itemType, u) ? 'kg' : 'pcs';
+  return `${formatQtyExact(n, kind)} ${u}`;
 }
 
 function formatWhen(iso: string | null | undefined): string {
